@@ -3,7 +3,7 @@ export const errors: Record<string, string> = {
     "El campo configurado para la nota del picker no existe o no es de texto en este Odoo.",
   ODOO_PICKER_FIELD_AMBIGUOUS:
     "Odoo tiene más de un campo Nota para picker. Se debe identificar el campo correcto antes de cargar.",
-  SELECT_VEHICLES: "Selecciona al menos una camioneta para cargar los pedidos.",
+  SELECT_VEHICLES: "Selecciona al menos una camioneta para continuar.",
   ODOO_SOURCE_CHANGED:
     "La conexión de Odoo cambió respecto a los pedidos guardados. Requiere revisión del administrador de la instalación.",
   ODOO_SCHEMA_UNSUPPORTED:

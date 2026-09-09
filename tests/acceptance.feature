@@ -143,6 +143,20 @@ Feature: Ana Rutas independiente y portable
     Then el modal muestra el número real de camionetas disponibles y permite seleccionarlas
     And las no disponibles permanecen visibles sin poder seleccionarse
 
+  Scenario: Añadir camionetas conserva el trabajo del borrador
+    Given el borrador ya tiene pedidos y al menos una camioneta seleccionada
+    When el administrador pulsa Añadir camioneta y elige otra unidad disponible
+    Then aparece un carril adicional sin volver a consultar Odoo
+    And ninguna camioneta, asignación ni orden existente se elimina
+    And la operación guarda versión y auditoría de forma atómica
+    And una segunda sesión con versión obsoleta recibe conflicto antes de modificar el plan
+
+  Scenario: No quedan camionetas elegibles para el plan
+    Given todas las camionetas registradas ya están en el borrador o no están disponibles
+    When el administrador abre Añadir camioneta
+    Then el modal explica que no hay camionetas disponibles para agregar
+    And no permite confirmar una selección vacía
+
   Scenario: Cambios manuales permanecen seguros entre administradores
     Given un pedido cargado y camionetas seleccionadas para el día
     When se arrastra o selecciona otra camioneta desde una versión vigente

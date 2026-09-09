@@ -41,6 +41,8 @@ No se incluyen cambios a repositorio five, sus entornos, vendedores, precios o V
 
 ## Ajuste de interfaz solicitado: nombre del borrador
 
+- [x] T12 (BL003, BL006 / S22): botón Añadir camioneta en el planificador; operación POST aditiva y atómica, sin retirar carriles ni reasignar pedidos, con disponibilidad, chofer activo, versión, auditoría, vacío accesible y pruebas de concurrencia/E2E.
+
 - [x] T09 (BL006 / S19): densidad compacta del panel y tarjetas con divulgación progresiva; mínimo seis pedidos cerrados visibles a 768 px, detalles y controles bajo demanda, responsive y QA visual. Evidencia en QA-PANEL-COMPACTO.md y BLOQUE-3B-PLANIFICADOR.md.
 
 - [x] T08 (BL004, BL006 / S18): título guardado con «Cambiar nombre», editor bajo demanda, cancelar sin escritura, conservar contrato PATCH; unidades, E2E real, QA visual y regresiones. Evidencia en QA-NOMBRE-BORRADOR.md. No cambia el alcance pendiente del bloque 1.

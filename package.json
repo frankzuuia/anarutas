@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
+    "pretest:e2e": "npm run build",
     "test:e2e": "playwright test",
     "db:migrate": "tsx scripts/migrate.ts",
     "preview:local": "tsx scripts/local-preview.ts"

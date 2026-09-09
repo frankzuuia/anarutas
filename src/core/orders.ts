@@ -29,6 +29,22 @@ async function bump(sql: Sql, planId: string, actor: string) {
     [planId, actor],
   );
 }
+async function availableVehicleRows(sql: Sql, ids: string[]) {
+  const { rows: chosen } = await sql.query(
+    "SELECT id,driver_id,available FROM route_vehicles WHERE id=ANY($1::uuid[]) ORDER BY id FOR SHARE",
+    [ids],
+  );
+  if (chosen.length !== ids.length || chosen.some((v) => !v.available))
+    throw new AppError("FLEET_UNAVAILABLE", 409);
+  const driverIds = chosen.map((v) => v.driver_id).filter(Boolean);
+  const { rows: drivers } = await sql.query(
+    "SELECT id,active FROM route_drivers WHERE id=ANY($1::uuid[]) ORDER BY id FOR SHARE",
+    [driverIds],
+  );
+  if (drivers.some((d) => !d.active))
+    throw new AppError("FLEET_UNAVAILABLE", 409);
+  return chosen;
+}
 export async function orderBoard(pool: Pool, id: string): Promise<OrderBoard> {
   return transaction(pool, async (sql) => {
     const plan = await planRow(sql, id, "SHARE");
@@ -78,19 +94,7 @@ export async function selectPlanVehicles(
     await assertActiveActor(sql, actor);
     const plan = await planRow(sql, id, "UPDATE");
     if (plan.version !== expected) throw new AppError("VERSION_CONFLICT", 409);
-    const { rows: chosen } = await sql.query(
-      "SELECT id,driver_id,available FROM route_vehicles WHERE id=ANY($1::uuid[]) ORDER BY id FOR SHARE",
-      [ids],
-    );
-    if (chosen.length !== ids.length || chosen.some((v) => !v.available))
-      throw new AppError("FLEET_UNAVAILABLE", 409);
-    const driverIds = chosen.map((v) => v.driver_id).filter(Boolean);
-    const { rows: drivers } = await sql.query(
-      "SELECT id,active FROM route_drivers WHERE id=ANY($1::uuid[]) ORDER BY id FOR SHARE",
-      [driverIds],
-    );
-    if (drivers.some((d) => !d.active))
-      throw new AppError("FLEET_UNAVAILABLE", 409);
+    const chosen = await availableVehicleRows(sql, ids);
     const { rows: previous } = await sql.query(
       "SELECT vehicle_id FROM route_plan_vehicles WHERE plan_id=$1 ORDER BY vehicle_id",
       [id],
@@ -116,6 +120,32 @@ export async function selectPlanVehicles(
     await audit(sql, actor, "plan.vehicles.selected", id, {
       count: ids.length,
     });
+  });
+}
+export async function addPlanVehicles(
+  pool: Pool,
+  actor: string,
+  id: string,
+  input: Record<string, unknown>,
+) {
+  const ids = vehicleIds(input.vehicleIds);
+  if (!ids.length) throw new AppError("SELECT_VEHICLES");
+  const expected = integer(input.expectedVersion, 1);
+  await transaction(pool, async (sql) => {
+    await assertActiveActor(sql, actor);
+    const plan = await planRow(sql, id, "UPDATE");
+    if (plan.version !== expected) throw new AppError("VERSION_CONFLICT", 409);
+    await availableVehicleRows(sql, ids);
+    const result = await sql.query(
+      `INSERT INTO route_plan_vehicles(plan_id,vehicle_id,driver_id)
+       SELECT $1,id,driver_id FROM route_vehicles WHERE id=ANY($2::uuid[])
+       ON CONFLICT(plan_id,vehicle_id) DO NOTHING RETURNING vehicle_id`,
+      [id, ids],
+    );
+    const added = result.rowCount ?? 0;
+    if (!added) return;
+    await bump(sql, id, actor);
+    await audit(sql, actor, "plan.vehicles.added", id, { count: added });
   });
 }
 export async function assertOrderSource(pool: Pool, fingerprint: string) {

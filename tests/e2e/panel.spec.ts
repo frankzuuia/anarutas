@@ -440,6 +440,44 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(page.getByRole("status")).toContainText(
     "Camionetas del día guardadas",
   );
+  await page
+    .getByRole("button", { name: "Añadir camioneta", exact: true })
+    .click();
+  const addVehicleDialog = page.getByRole("dialog", {
+    name: "Añadir camionetas al plan",
+  });
+  await expect(
+    addVehicleDialog.getByText("1 camioneta disponible para agregar", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await addVehicleDialog.getByRole("checkbox").check();
+  await addVehicleDialog
+    .getByRole("button", { name: "Añadir seleccionadas", exact: true })
+    .click();
+  await expect(addVehicleDialog).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText(
+    "1 camioneta añadida al plan",
+  );
+  await expect(page.locator(".order-lane")).toHaveCount(3);
+  await page
+    .getByRole("button", { name: "Añadir camioneta", exact: true })
+    .click();
+  await expect(
+    addVehicleDialog.getByText(
+      "Todas las camionetas registradas ya pertenecen a este plan.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    addVehicleDialog.getByRole("button", {
+      name: "Añadir seleccionadas",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await addVehicleDialog
+    .getByRole("button", { name: "Cancelar", exact: true })
+    .click();
   const actorId = (
     await db.pool.query("SELECT id FROM route_users WHERE login=$1", [
       userLogin,
@@ -540,7 +578,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     .toBeNull();
   const initialBoard = await orderBoard(db.pool, savedPlan.id);
   const chosenVehicles = [...initialBoard.vehicles.map((v) => v.id)];
-  for (let i = 2; i <= 7; i++) {
+  for (let i = 3; i <= 7; i++) {
     const vehicle = await createVehicle(db.pool, actorId, {
       id: randomUUID(),
       name: `Camioneta de prueba ${i}`,

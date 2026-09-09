@@ -5,6 +5,7 @@ import { bootstrap } from "../src/core/auth";
 import { createPlan } from "../src/core/plans";
 import { createVehicle } from "../src/core/fleet";
 import {
+  addPlanVehicles,
   assertOrderSource,
   moveShipment,
   orderBoard,
@@ -169,6 +170,116 @@ describe("fulfilled orders / real PostgreSQL", () => {
         (s) => s.vehicle_id === null,
       ),
     ).toBe(true);
+  });
+
+  it("adds plan vehicles without removing lanes or existing assignments", async () => {
+    const plan = await createPlan(db.pool, actor, {
+      date: "2026-09-13",
+      label: "Adición de flota QA",
+    });
+    const vehicles = await Promise.all(
+      ["Base", "Nueva", "Concurrente A", "Concurrente B"].map((name) =>
+        createVehicle(db.pool, actor, {
+          id: randomUUID(),
+          name: `Camioneta ${name}`,
+          brand: "Ford",
+          model: "2026",
+          plate: randomUUID().slice(0, 8),
+          mileage: 1,
+          fuel: "Gasolina",
+          available: true,
+        }),
+      ),
+    );
+    await selectPlanVehicles(db.pool, actor, plan.id, {
+      vehicleIds: [vehicles[0].id],
+      expectedVersion: plan.version,
+    });
+    await persistImportPage(db.pool, actor, plan.id, page([shipment(13, 13)]));
+    let board = await orderBoard(db.pool, plan.id);
+    const order = board.shipments[0];
+    await moveShipment(db.pool, actor, plan.id, {
+      shipmentId: order.id,
+      vehicleId: vehicles[0].id,
+      beforeId: null,
+      expectedVersion: board.plan.version,
+    });
+    board = await orderBoard(db.pool, plan.id);
+    await addPlanVehicles(db.pool, actor, plan.id, {
+      vehicleIds: [vehicles[1].id],
+      expectedVersion: board.plan.version,
+    });
+    board = await orderBoard(db.pool, plan.id);
+    expect(board.vehicles.map((vehicle) => vehicle.id).sort()).toEqual(
+      [vehicles[0].id, vehicles[1].id].sort(),
+    );
+    expect(board.shipments[0].vehicle_id).toBe(vehicles[0].id);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT details FROM route_audit WHERE action='plan.vehicles.added' AND entity_id=$1 ORDER BY id DESC LIMIT 1",
+          [plan.id],
+        )
+      ).rows[0].details,
+    ).toEqual({ count: 1 });
+
+    const unchangedVersion = board.plan.version;
+    await addPlanVehicles(db.pool, actor, plan.id, {
+      vehicleIds: [vehicles[1].id],
+      expectedVersion: unchangedVersion,
+    });
+    expect((await orderBoard(db.pool, plan.id)).plan.version).toBe(
+      unchangedVersion,
+    );
+
+    const additions = await Promise.allSettled(
+      vehicles.slice(2).map((vehicle) =>
+        addPlanVehicles(db.pool, actor, plan.id, {
+          vehicleIds: [vehicle.id],
+          expectedVersion: unchangedVersion,
+        }),
+      ),
+    );
+    expect(
+      additions.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      additions.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+    expect(
+      (
+        additions.find(
+          (result) => result.status === "rejected",
+        ) as PromiseRejectedResult
+      ).reason,
+    ).toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
+    board = await orderBoard(db.pool, plan.id);
+    expect(board.vehicles).toHaveLength(3);
+    expect(board.shipments[0].vehicle_id).toBe(vehicles[0].id);
+
+    const unavailable = await createVehicle(db.pool, actor, {
+      id: randomUUID(),
+      name: "Camioneta no disponible",
+      brand: "Ford",
+      model: "2026",
+      plate: randomUUID().slice(0, 8),
+      mileage: 1,
+      fuel: "Gasolina",
+      available: false,
+    });
+    await expect(
+      addPlanVehicles(db.pool, actor, plan.id, {
+        vehicleIds: [unavailable.id],
+        expectedVersion: board.plan.version,
+      }),
+    ).rejects.toThrow("FLEET_UNAVAILABLE");
+    await expect(
+      addPlanVehicles(db.pool, actor, plan.id, {
+        vehicleIds: [],
+        expectedVersion: board.plan.version,
+      }),
+    ).rejects.toThrow("SELECT_VEHICLES");
+    expect((await orderBoard(db.pool, plan.id)).vehicles).toHaveLength(3);
   });
 
   it("allows only one plan to claim the same Odoo shipment under concurrent imports", async () => {

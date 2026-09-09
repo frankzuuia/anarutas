@@ -199,6 +199,153 @@ function LoadDialog({
   );
 }
 
+function AddVehiclesDialog({
+  board,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  board: OrderBoard;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (vehicleIds: string[]) => Promise<void>;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const title = useId();
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [chosen, setChosen] = useState<string[]>([]);
+  const assigned = new Set(board.vehicles.map((vehicle) => vehicle.id));
+  const candidates = vehicles.filter((vehicle) => !assigned.has(vehicle.id));
+  const availableIds = new Set(
+    candidates
+      .filter((vehicle) => vehicle.available)
+      .map((vehicle) => vehicle.id),
+  );
+  const selected = chosen.filter((id) => availableIds.has(id));
+
+  useEffect(() => {
+    const element = dialog.current;
+    const previous = document.activeElement as HTMLElement;
+    let current = true;
+    element?.showModal();
+    api<Vehicle[]>("/api/vehicles")
+      .then((records) => {
+        if (current) {
+          setVehicles(records);
+          setLoaded(true);
+        }
+      })
+      .catch((e) => {
+        if (current) setError(e.message);
+      });
+    return () => {
+      current = false;
+      element?.close();
+      previous?.focus();
+    };
+  }, []);
+
+  async function submit() {
+    setError("");
+    try {
+      await onSubmit(selected);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  return (
+    <dialog
+      className="fleet-dialog"
+      ref={dialog}
+      aria-labelledby={title}
+      onCancel={(e) => {
+        e.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <header className="panel-header">
+        <h2 id={title}>Añadir camionetas al plan</h2>
+        <button
+          className="quiet"
+          aria-label="Cerrar selección de camionetas"
+          disabled={busy}
+          onClick={onClose}
+        >
+          <X size={16} />
+        </button>
+      </header>
+      <div className="panel-body stack">
+        <p className="muted">
+          {loaded
+            ? `${availableIds.size} ${availableIds.size === 1 ? "camioneta disponible" : "camionetas disponibles"} para agregar`
+            : "Consultando la flota…"}{" "}
+          · Plan {board.plan.service_date}
+        </p>
+        {error && (
+          <p className="notice error" role="alert">
+            {error}
+          </p>
+        )}
+        <fieldset disabled={busy} className="vehicle-choice">
+          <legend>Camionetas fuera del plan</legend>
+          {candidates.map((vehicle) => (
+            <label className="vehicle-option" key={vehicle.id}>
+              <input
+                type="checkbox"
+                checked={chosen.includes(vehicle.id)}
+                disabled={!vehicle.available}
+                onChange={(e) =>
+                  setChosen(
+                    e.target.checked
+                      ? [...chosen, vehicle.id]
+                      : chosen.filter((id) => id !== vehicle.id),
+                  )
+                }
+              />
+              <span>
+                <strong>{vehicle.name}</strong>
+                <small>
+                  {vehicle.plate} ·{" "}
+                  {vehicle.driver_name || "Sin chofer asignado"}
+                </small>
+              </span>
+              <span className={`badge ${vehicle.available ? "" : "amber"}`}>
+                {vehicle.available ? "Disponible" : "No disponible"}
+              </span>
+            </label>
+          ))}
+          {loaded && !candidates.length && (
+            <p className="muted">
+              Todas las camionetas registradas ya pertenecen a este plan.
+            </p>
+          )}
+          {loaded && candidates.length > 0 && !availableIds.size && (
+            <p className="muted">
+              No hay camionetas disponibles para agregar en este momento.
+            </p>
+          )}
+        </fieldset>
+        <div className="order-actions">
+          <button className="quiet" disabled={busy} onClick={onClose}>
+            Cancelar
+          </button>
+          <button
+            className="primary"
+            disabled={busy || !loaded || !selected.length}
+            onClick={() => void submit()}
+          >
+            <Truck size={16} />
+            {busy ? "Añadiendo…" : "Añadir seleccionadas"}
+          </button>
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
 export function OrdersBoard({
   plan,
   timezone,
@@ -214,6 +361,7 @@ export function OrdersBoard({
 }) {
   const [board, setBoard] = useState<OrderBoard | null>(null);
   const [modal, setModal] = useState(false);
+  const [addVehiclesOpen, setAddVehiclesOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -313,6 +461,29 @@ export function OrdersBoard({
       );
     } finally {
       await refresh().catch((e) => setError(e.message));
+      working(false);
+    }
+  }
+  async function addVehicles(vehicleIds: string[]) {
+    if (!board) return;
+    working(true);
+    setError("");
+    setNotice("");
+    try {
+      update(
+        await api<OrderBoard>(`/api/plans/${plan.id}/vehicles`, "POST", {
+          vehicleIds,
+          expectedVersion: board.plan.version,
+        }),
+      );
+      setNotice(
+        `${vehicleIds.length} ${vehicleIds.length === 1 ? "camioneta añadida" : "camionetas añadidas"} al plan.`,
+      );
+      setAddVehiclesOpen(false);
+    } catch (e) {
+      await refresh().catch(() => {});
+      throw e;
+    } finally {
       working(false);
     }
   }
@@ -496,6 +667,14 @@ export function OrdersBoard({
         <div className="orders-toolbar-actions">
           <button
             className="quiet"
+            disabled={!board || busy}
+            onClick={() => setAddVehiclesOpen(true)}
+          >
+            <Truck size={16} />
+            Añadir camioneta
+          </button>
+          <button
+            className="quiet"
             disabled={!board || busy || !board.shipments.length}
             onClick={() => setMapOpen(true)}
           >
@@ -585,6 +764,14 @@ export function OrdersBoard({
           busy={busy}
           onClose={() => setModal(false)}
           onSubmit={load}
+        />
+      )}
+      {addVehiclesOpen && board && (
+        <AddVehiclesDialog
+          board={board}
+          busy={busy}
+          onClose={() => setAddVehiclesOpen(false)}
+          onSubmit={addVehicles}
         />
       )}
       {mapOpen && board && (

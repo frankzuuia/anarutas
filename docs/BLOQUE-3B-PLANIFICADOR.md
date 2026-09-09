@@ -23,6 +23,12 @@ scroll independiente, mapa de entregas y notas picker sin modificar Five/V3/Luna
   conservan dirección, referencia de surtido, promesa, productos, notas picker,
   selector de camioneta y controles de orden. En puntero preciso esos controles bajan
   a 28 px; móvil y dispositivos táctiles conservan objetivos de 44 px.
+- Añadir camioneta vive en la barra de acciones y usa
+  `POST /api/plans/[id]/vehicles`. La operación es aditiva: valida versión, disponibilidad
+  y chofer activo dentro de una transacción, agrega sólo unidades nuevas y audita el
+  resultado. No elimina carriles, no desasigna pedidos y no consulta Odoo. El modal
+  excluye las unidades ya presentes, bloquea las no disponibles, admite selección
+  múltiple y explica cuando no quedan opciones elegibles.
 - Mapa modal de pantalla completa, Escape, foco restaurado, filtros por camioneta,
   números de parada y agrupación visual de pedidos en coordenadas idénticas.
   Direcciones vacías, ambiguas y fallidas se señalan sin inventar coordenadas.
@@ -75,11 +81,11 @@ dirección ambigua, duplicadas, filtros, cierre y reapertura, CSP y cuota con Go
 
 ## Evidencia de ejecución 2026-09-09
 
-- 100 pruebas / 11 archivos verdes. Cobertura core: statements 95.66%, branches
-  91.93%, funciones 96.58%, líneas 97.07%. Adaptador Odoo validado live y por AST.
+- 101 pruebas / 11 archivos verdes. Cobertura core: statements 96%, branches
+  92.11%, funciones 96.66%, líneas 97.37%. Adaptador Odoo validado live y por AST.
 - Mutación de notas y configuración pública: 87 eliminados / 87, 100%, sin sobrevivientes.
 - Build Next, tipos y lint verdes. npm audit de dependencias productivas: 0 vulnerabilidades.
-- E2E navegador + PostgreSQL: 1 recorrido completo verde, 22.9 s incluyendo arranque.
+- E2E navegador + PostgreSQL: 1 recorrido completo verde, 22.1 s incluyendo arranque.
   Capturas reports/screenshots/planner-seven-{768,1024,1440,1920}.png y móvil 375.
 - Tercera pasada de densidad: las tarjetas cerradas usan divulgación progresiva y
   miden menos de 80 px en la prueba de 768 px. Resultado: 8 visibles en las capturas
