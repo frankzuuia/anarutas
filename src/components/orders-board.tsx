@@ -360,25 +360,13 @@ export function OrdersBoard({
           <strong>{s.customerName}</strong>
           <span className="badge">{index + 1}</span>
         </div>
-        <p className="shipment-folio">
-          {s.orderName} · {s.pickingName}
-        </p>
-        <p className={!s.address ? "warning" : "muted"}>
-          {s.address || "Dirección pendiente"}
-        </p>
-        <div className="shipment-tags">
-          <span className="badge">
-            {s.window_start
-              ? `${s.window_start}–${s.window_end}`
-              : "Sin horario registrado"}
-          </span>
-          <span className="badge">
-            {s.high_priority === null
-              ? "Prioridad pendiente"
-              : s.high_priority
-                ? "Prioridad alta"
-                : "Respetar ventana"}
-          </span>
+        <div className="shipment-reference">
+          <p className="shipment-folio">
+            {s.orderName} · {s.pickingName}
+          </p>
+          <p className={`shipment-address ${!s.address ? "warning" : "muted"}`}>
+            {s.address || "Dirección pendiente"}
+          </p>
         </div>
         {s.promisedAt && (
           <p className="muted">
@@ -388,24 +376,40 @@ export function OrdersBoard({
             })}
           </p>
         )}
-        <details>
-          <summary>{s.lines.length} partidas · Ver productos</summary>
-          <ul className="shipment-lines">
-            {s.lines.map((line) => (
-              <li key={line.moveId}>
-                <span>
-                  {line.name}
-                  {line.pickerNote && (
-                    <small className="picker-note">{line.pickerNote}</small>
-                  )}
-                </span>
-                <strong>
-                  {line.quantity} {line.unit}
-                </strong>
-              </li>
-            ))}
-          </ul>
-        </details>
+        <div className="shipment-overview">
+          <div className="shipment-tags">
+            <span className="badge">
+              {s.window_start
+                ? `${s.window_start}–${s.window_end}`
+                : "Sin horario registrado"}
+            </span>
+            <span className="badge">
+              {s.high_priority === null
+                ? "Prioridad pendiente"
+                : s.high_priority
+                  ? "Prioridad alta"
+                  : "Respetar ventana"}
+            </span>
+          </div>
+          <details>
+            <summary>{s.lines.length} partidas · Ver productos</summary>
+            <ul className="shipment-lines">
+              {s.lines.map((line) => (
+                <li key={line.moveId}>
+                  <span>
+                    {line.name}
+                    {line.pickerNote && (
+                      <small className="picker-note">{line.pickerNote}</small>
+                    )}
+                  </span>
+                  <strong>
+                    {line.quantity} {line.unit}
+                  </strong>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </div>
         <div className="shipment-controls">
           <label>
             <span className="sr-only">

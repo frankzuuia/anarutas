@@ -17,6 +17,10 @@ scroll independiente, mapa de entregas y notas picker sin modificar Five/V3/Luna
 - En escritorio de 768 px de alto el inicio de las columnas queda antes de 180 px y
   se muestran al menos tres tarjetas completas cerradas. Abrir productos puede crecer
   una tarjeta deliberadamente; el desplazamiento continúa aislado dentro de su lista.
+- Las tarjetas usan composición adaptable sin ocultar datos: folio/dirección y
+  preferencias/productos comparten renglón cuando el carril tiene espacio y se
+  envuelven en carriles angostos. En puntero preciso los controles bajan a 28 px;
+  móvil y dispositivos táctiles conservan objetivos de 44 px.
 - Mapa modal de pantalla completa, Escape, foco restaurado, filtros por camioneta,
   números de parada y agrupación visual de pedidos en coordenadas idénticas.
   Direcciones vacías, ambiguas y fallidas se señalan sin inventar coordenadas.
@@ -60,7 +64,8 @@ E2E usa PostgreSQL real y navegador; no simula Google. Escenarios de 7 camioneta
 25 pedidos, tamaños 375/768/1024/1440/1920, scroll local, menú, notas escapadas,
 modal sin configuración, autenticación, concurrencia y regresión de flota/cuentas.
 La prueba de densidad usa 768 px de alto, exige documento sin scroll, columnas antes
-de 180 px, más de 250 px útiles por carril y al menos tres pedidos completos visibles.
+de 180 px, más de 250 px útiles por carril, al menos tres pedidos completos visibles
+y tarjetas cerradas de hasta 132 px en el escenario angosto.
 
 Activación Google pendiente: configurar claves propias; probar puntos, permiso denegado,
 dirección ambigua, duplicadas, filtros, cierre y reapertura, CSP y cuota con Google real.
@@ -71,7 +76,7 @@ dirección ambigua, duplicadas, filtros, cierre y reapertura, CSP y cuota con Go
   91.93%, funciones 96.58%, líneas 97.07%. Adaptador Odoo validado live y por AST.
 - Mutación de notas y configuración pública: 87 eliminados / 87, 100%, sin sobrevivientes.
 - Build Next, tipos y lint verdes. npm audit de dependencias productivas: 0 vulnerabilidades.
-- E2E navegador + PostgreSQL: 1 recorrido completo verde, 21.2 s incluyendo arranque.
+- E2E navegador + PostgreSQL: 1 recorrido completo verde, 22.9 s incluyendo arranque.
   Capturas reports/screenshots/planner-seven-{768,1024,1440,1920}.png y móvil 375.
 - Segunda pasada de densidad: formulario trasladado a modal, controles superiores en
   una fila, encabezado/toolbar reducidos, avisos fuera del flujo y tarjetas cerradas

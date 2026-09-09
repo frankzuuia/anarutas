@@ -167,6 +167,8 @@ Feature: Ana Rutas independiente y portable
     Then el tablero usa todo el ancho disponible
     And crear un borrador abre un modal en vez de reservar una franja permanente
     And a 768 píxeles de alto comienzan a verse al menos tres pedidos completos
+    And las tarjetas reagrupan folio, dirección, preferencias y productos cuando existe ancho
+    And en columnas angostas no superan 132 píxeles con los productos cerrados
     And cada lista permite bajar sus pedidos sin desplazar el documento en escritorio
     And las camionetas restantes son accesibles por desplazamiento horizontal
 

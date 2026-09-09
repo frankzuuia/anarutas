@@ -5,6 +5,7 @@
 - Implementados menú plegable, borradores compactos, columnas acotadas y scroll propio.
 - Segunda compactación: alta de borrador en modal, barra de trabajo única, avisos
   flotantes y tres pedidos completos visibles a 768 px de alto.
+- Tarjetas adaptables más densas, sin truncar datos y conservando 44 px en táctil.
 - Modal Google preparado; integración live pendiente de configuración del propietario.
 - Notas Studio por contrato QR verificado mediante lectura; sin cambios en Five.
 - Evidencia y límites en BLOQUE-3B-PLANIFICADOR.md.

@@ -1254,36 +1254,64 @@ tr:last-child td {
   scrollbar-gutter: stable;
   min-height: 0;
   flex: 1;
-  padding: 5px;
-  gap: 4px;
+  padding: 4px;
+  gap: 3px;
 }
 .shipment-card {
   flex-shrink: 0;
-  padding: 6px;
+  padding: 5px;
 }
 .shipment-heading strong {
   font-size: 12px;
 }
 .shipment-card p {
-  margin: 2px 0;
-  line-height: 1.25;
+  margin: 1px 0;
+  line-height: 1.2;
 }
 .shipment-card .badge {
   font-size: 9px;
   padding: 1px 4px;
 }
+.shipment-reference {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 1px 7px;
+  min-width: 0;
+}
+.shipment-reference .shipment-folio {
+  flex: 0 0 auto;
+}
+.shipment-reference .shipment-address {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.shipment-overview {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 7px;
+  margin-top: 2px;
+}
 .shipment-card .shipment-tags {
+  display: flex;
   flex-wrap: nowrap;
   gap: 3px;
-  margin-top: 3px;
+  margin: 0;
 }
-.shipment-card details {
-  margin-top: 4px;
+.shipment-card .shipment-overview details {
+  margin: 0;
+}
+.shipment-card .shipment-overview details[open] {
+  flex-basis: 100%;
+}
+.shipment-card summary {
+  white-space: nowrap;
 }
 .shipment-card .shipment-controls {
   flex-wrap: nowrap;
   gap: 4px;
-  margin-top: 4px;
+  margin-top: 3px;
 }
 .shipment-card .shipment-controls label {
   flex: 1 1 0;
@@ -1291,10 +1319,10 @@ tr:last-child td {
 }
 .shipment-card .shipment-controls select {
   font-size: 11px;
-  padding: 3px 5px;
+  padding: 2px 4px;
 }
 .shipment-card .shipment-controls .quiet {
-  padding: 3px 5px;
+  padding: 2px 4px;
 }
 .lane-empty {
   min-height: 34px;
@@ -1432,10 +1460,6 @@ tr:last-child td {
     padding: 3px 12px;
     flex-shrink: 0;
   }
-  .shipment-card .shipment-controls select,
-  .shipment-card .shipment-controls .quiet {
-    min-height: 30px;
-  }
   .planner-main {
     flex: 1;
     display: flex;
@@ -1448,6 +1472,12 @@ tr:last-child td {
   .planner-main > .page-heading,
   .planner-main > .notice {
     flex-shrink: 0;
+  }
+}
+@media (min-width: 721px) and (pointer: fine) {
+  .shipment-card .shipment-controls select,
+  .shipment-card .shipment-controls .quiet {
+    min-height: 28px;
   }
 }
 @media (max-width: 720px) {

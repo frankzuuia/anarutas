@@ -574,10 +574,16 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
         const listBox = list.getBoundingClientRect();
         return cardBox.top >= listBox.top && cardBox.bottom <= listBox.bottom;
       }).length;
+      const maxCardHeight = Math.max(
+        ...Array.from(list.querySelectorAll<HTMLElement>(".shipment-card"))
+          .slice(0, 4)
+          .map((card) => card.getBoundingClientRect().height),
+      );
       const oldY = window.scrollY;
       list.scrollTop = 350;
       return {
         visibleCards,
+        maxCardHeight,
         listScroll: list.scrollTop,
         pageY: window.scrollY - oldY,
         pageHeight: document.documentElement.scrollHeight,
@@ -592,6 +598,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     expect(dimensions.lanesHeight).toBeGreaterThan(250);
     expect(dimensions.lanesTop).toBeLessThan(180);
     expect(dimensions.visibleCards).toBeGreaterThanOrEqual(3);
+    expect(dimensions.maxCardHeight).toBeLessThanOrEqual(132);
     await page.screenshot({
       path: `reports/screenshots/planner-seven-${width}.png`,
       fullPage: true,
