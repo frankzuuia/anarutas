@@ -1117,18 +1117,28 @@ tr:last-child td {
 .planner-main {
   max-width: none;
   margin: 0;
-  padding: 12px 16px;
+  padding: 8px 12px;
 }
-.planner-main .page-heading {
-  margin-bottom: 10px;
+.planner-command-bar {
+  display: flex;
   align-items: center;
+  gap: 8px;
+  min-height: 34px;
 }
-.planner-main .page-heading .eyebrow,
-.planner-main .page-heading p {
-  display: none;
+.planner-command-bar h1 {
+  font-size: 18px;
+  margin-right: 6px;
+  white-space: nowrap;
 }
-.planner-main h1 {
-  font-size: 21px;
+.planner-selector {
+  flex: 1;
+  max-width: 390px;
+}
+.planner-command-bar .planner-timezone {
+  margin-left: auto;
+}
+.planner-command-bar .planner-refresh {
+  padding-inline: 8px;
 }
 .planner-grid {
   display: flex;
@@ -1138,30 +1148,10 @@ tr:last-child td {
 .planner-workspace {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   width: 100%;
   min-width: 0;
   min-height: 0;
-}
-.planner-select-row {
-  display: flex;
-  gap: 10px;
-  padding: 8px 12px;
-  align-items: end;
-}
-.planner-select-row label {
-  flex: 1;
-  max-width: 420px;
-}
-.planner-select-row .planner-timezone {
-  margin: auto 0 auto auto;
-}
-.planner-controls {
-  flex-shrink: 0;
-}
-.planner-controls .panel-body {
-  padding: 8px 12px 12px;
-  border-top: 1px solid var(--line);
 }
 .planner-board-panel {
   display: flex;
@@ -1170,10 +1160,29 @@ tr:last-child td {
   flex: 1;
 }
 .planner-board-panel .panel-header {
-  padding: 8px 12px;
+  padding: 5px 10px;
 }
 .planner-board-panel .draft-details {
-  padding: 4px 12px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.draft-heading {
+  min-height: 34px;
+  flex-wrap: nowrap;
+}
+.draft-title {
+  flex: 1;
+  flex-wrap: nowrap;
+}
+.draft-title h2 {
+  font-size: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.draft-title small {
+  color: var(--muted);
+  white-space: nowrap;
 }
 .planner-board-panel .note-line {
   padding: 6px 12px;
@@ -1190,7 +1199,7 @@ tr:last-child td {
   flex: 1;
 }
 .orders-toolbar {
-  padding: 7px 12px;
+  padding: 2px 8px;
   flex-shrink: 0;
 }
 .orders-toolbar-actions {
@@ -1200,8 +1209,14 @@ tr:last-child td {
 }
 .orders-section .notice {
   padding: 6px 12px;
-  margin: 0 0 6px;
-  flex-shrink: 0;
+  margin: 0;
+  position: fixed;
+  z-index: 50;
+  bottom: 42px;
+  right: 12px;
+  max-width: min(520px, calc(100vw - 24px));
+  box-shadow: 0 12px 36px #000a;
+  pointer-events: none;
 }
 .orders-lanes {
   flex: 1;
@@ -1218,8 +1233,8 @@ tr:last-child td {
   min-height: 0;
 }
 .order-lane > header {
-  padding: 9px 10px;
-  min-height: 62px;
+  padding: 4px 8px;
+  min-height: 40px;
   flex-shrink: 0;
   align-content: center;
 }
@@ -1239,22 +1254,36 @@ tr:last-child td {
   scrollbar-gutter: stable;
   min-height: 0;
   flex: 1;
-  padding: 6px;
-  gap: 6px;
+  padding: 5px;
+  gap: 4px;
 }
 .shipment-card {
   flex-shrink: 0;
-  padding: 8px;
+  padding: 6px;
 }
 .shipment-heading strong {
   font-size: 12px;
 }
+.shipment-card p {
+  margin: 2px 0;
+  line-height: 1.25;
+}
 .shipment-card .badge {
-  font-size: 10px;
-  padding: 2px 5px;
+  font-size: 9px;
+  padding: 1px 4px;
+}
+.shipment-card .shipment-tags {
+  flex-wrap: nowrap;
+  gap: 3px;
+  margin-top: 3px;
+}
+.shipment-card details {
+  margin-top: 4px;
 }
 .shipment-card .shipment-controls {
   flex-wrap: nowrap;
+  gap: 4px;
+  margin-top: 4px;
 }
 .shipment-card .shipment-controls label {
   flex: 1 1 0;
@@ -1262,14 +1291,30 @@ tr:last-child td {
 }
 .shipment-card .shipment-controls select {
   font-size: 11px;
-  padding: 5px 6px;
+  padding: 3px 5px;
 }
 .shipment-card .shipment-controls .quiet {
-  padding: 5px 6px;
+  padding: 3px 5px;
 }
 .lane-empty {
-  min-height: 70px;
+  min-height: 34px;
   margin: 0;
+}
+.lane-empty {
+  border: 0;
+  justify-content: start;
+}
+.planner-toast {
+  position: fixed;
+  z-index: 50;
+  top: 56px;
+  right: 12px;
+  max-width: min(460px, calc(100vw - 24px));
+  box-shadow: 0 12px 36px #000a;
+  pointer-events: none;
+}
+.create-plan-dialog {
+  width: min(430px, calc(100vw - 24px));
 }
 .picker-note {
   display: block;
@@ -1383,9 +1428,13 @@ tr:last-child td {
     min-height: 0;
   }
   .planner-app .topbar {
-    min-height: 48px;
-    padding: 6px 16px;
+    min-height: 42px;
+    padding: 3px 12px;
     flex-shrink: 0;
+  }
+  .shipment-card .shipment-controls select,
+  .shipment-card .shipment-controls .quiet {
+    min-height: 30px;
   }
   .planner-main {
     flex: 1;
@@ -1402,16 +1451,19 @@ tr:last-child td {
   }
 }
 @media (max-width: 720px) {
-  .planner-select-row {
+  .planner-command-bar {
     flex-wrap: wrap;
   }
-  .planner-select-row label {
+  .planner-command-bar h1 {
+    flex: 1;
+  }
+  .planner-selector {
+    order: 5;
     flex-basis: 100%;
     max-width: none;
   }
-  .planner-select-row .planner-timezone {
-    margin-left: 0;
-    margin-right: auto;
+  .planner-command-bar .planner-timezone {
+    display: none;
   }
   .orders-lanes {
     height: 65dvh;

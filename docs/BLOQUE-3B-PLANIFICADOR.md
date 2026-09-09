@@ -10,6 +10,13 @@ scroll independiente, mapa de entregas y notas picker sin modificar Five/V3/Luna
   horizontalmente sin comprimir sus tarjetas hasta hacerlas ilegibles.
 - Selector de borradores sustituye la columna lateral. Nuevo borrador abre el mismo
   formulario y mantiene API, idempotencia y versión. Menú con aria-expanded.
+- La barra de trabajo agrupa título, selector, zona horaria, alta y actualización en
+  una sola fila. Fecha y nombre del plan comparten encabezado; el formulario de alta
+  sólo ocupa espacio mientras su modal está abierto. Confirmaciones son flotantes y
+  se retiran automáticamente, por lo que no desplazan pedidos ni camionetas.
+- En escritorio de 768 px de alto el inicio de las columnas queda antes de 180 px y
+  se muestran al menos tres tarjetas completas cerradas. Abrir productos puede crecer
+  una tarjeta deliberadamente; el desplazamiento continúa aislado dentro de su lista.
 - Mapa modal de pantalla completa, Escape, foco restaurado, filtros por camioneta,
   números de parada y agrupación visual de pedidos en coordenadas idénticas.
   Direcciones vacías, ambiguas y fallidas se señalan sin inventar coordenadas.
@@ -52,6 +59,8 @@ No se modificó Odoo ni el flujo que escribe cotizaciones/QR.
 E2E usa PostgreSQL real y navegador; no simula Google. Escenarios de 7 camionetas y
 25 pedidos, tamaños 375/768/1024/1440/1920, scroll local, menú, notas escapadas,
 modal sin configuración, autenticación, concurrencia y regresión de flota/cuentas.
+La prueba de densidad usa 768 px de alto, exige documento sin scroll, columnas antes
+de 180 px, más de 250 px útiles por carril y al menos tres pedidos completos visibles.
 
 Activación Google pendiente: configurar claves propias; probar puntos, permiso denegado,
 dirección ambigua, duplicadas, filtros, cierre y reapertura, CSP y cuota con Google real.
@@ -59,11 +68,14 @@ dirección ambigua, duplicadas, filtros, cierre y reapertura, CSP y cuota con Go
 ## Evidencia de ejecución 2026-09-09
 
 - 100 pruebas / 11 archivos verdes. Cobertura core: statements 95.66%, branches
-  91.95%, funciones 96.58%, líneas 97.03%. Adaptador Odoo validado live y por AST.
+  91.93%, funciones 96.58%, líneas 97.07%. Adaptador Odoo validado live y por AST.
 - Mutación de notas y configuración pública: 87 eliminados / 87, 100%, sin sobrevivientes.
 - Build Next, tipos y lint verdes. npm audit de dependencias productivas: 0 vulnerabilidades.
-- E2E navegador + PostgreSQL: 1 recorrido completo verde, 22.2 s incluyendo arranque.
+- E2E navegador + PostgreSQL: 1 recorrido completo verde, 21.2 s incluyendo arranque.
   Capturas reports/screenshots/planner-seven-{768,1024,1440,1920}.png y móvil 375.
+- Segunda pasada de densidad: formulario trasladado a modal, controles superiores en
+  una fila, encabezado/toolbar reducidos, avisos fuera del flujo y tarjetas cerradas
+  de 138.5 px en la prueba de 768 px. Resultado: 3 completas y parte de la siguiente.
 - Regresión real detectada y corregida: etiquetas sr-only absolutas causaban overflow
   del documento; se contienen en la lista con position:relative, conservando accesibilidad.
 - Lectura Odoo real posterior al cambio: 7 pedidos, 27 partidas, 0 notas. Sin escrituras.

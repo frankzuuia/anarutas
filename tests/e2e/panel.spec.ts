@@ -148,6 +148,12 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(
     other.getByRole("heading", { name: "Planificar rutas", exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Nuevo borrador", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Nuevo borrador" }),
+  ).toBeVisible();
   await page.getByLabel("Fecha de operación").fill("2026-10-10");
   await page
     .getByLabel("Nombre del plan", { exact: true })
@@ -312,13 +318,13 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     const controlHeight = (await createButton.boundingBox())!.height;
     expect(controlHeight).toBeGreaterThanOrEqual(width <= 720 ? 44 : 34);
     expect(controlHeight).toBeLessThanOrEqual(width <= 720 ? 48 : 36);
-    await expect(page.locator(".page-heading h1")).toHaveCSS(
+    await expect(page.locator(".planner-command-bar h1")).toHaveCSS(
       "font-size",
-      "21px",
+      "18px",
     );
     await expect(page.locator(".draft-title h2")).toHaveCSS(
       "font-size",
-      "16px",
+      "14px",
     );
     await expect(page.locator(".panel").first()).toHaveCSS(
       "border-radius",
@@ -546,28 +552,46 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(page.locator(".order-lane")).toHaveCount(8);
   await page.getByRole("button", { name: "Cerrar menú", exact: true }).click();
   await expect(page.locator(".sidebar")).toBeHidden();
+  await page.locator(".shipment-card details[open]").evaluateAll((details) => {
+    for (const detail of details) detail.removeAttribute("open");
+  });
   for (const width of [768, 1024, 1440, 1920]) {
-    await page.setViewportSize({ width, height: 900 });
+    await page.setViewportSize({ width, height: 768 });
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollHeight))
-      .toBeLessThanOrEqual(900);
-    const dimensions = await page.evaluate(() => {
+      .toBeLessThanOrEqual(768);
+    const dimensions = await page.evaluate(async () => {
       const list = document.querySelector<HTMLElement>(".shipment-list")!;
       const lanes = document.querySelector<HTMLElement>(".orders-lanes")!;
+      list.scrollTop = 0;
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+      const visibleCards = Array.from(
+        list.querySelectorAll<HTMLElement>(".shipment-card"),
+      ).filter((card) => {
+        const cardBox = card.getBoundingClientRect();
+        const listBox = list.getBoundingClientRect();
+        return cardBox.top >= listBox.top && cardBox.bottom <= listBox.bottom;
+      }).length;
       const oldY = window.scrollY;
       list.scrollTop = 350;
       return {
+        visibleCards,
         listScroll: list.scrollTop,
         pageY: window.scrollY - oldY,
         pageHeight: document.documentElement.scrollHeight,
         height: window.innerHeight,
         lanesHeight: lanes.getBoundingClientRect().height,
+        lanesTop: lanes.getBoundingClientRect().top,
       };
     });
     expect(dimensions.listScroll).toBeGreaterThan(0);
     expect(dimensions.pageY).toBe(0);
     expect(dimensions.pageHeight).toBeLessThanOrEqual(dimensions.height);
     expect(dimensions.lanesHeight).toBeGreaterThan(250);
+    expect(dimensions.lanesTop).toBeLessThan(180);
+    expect(dimensions.visibleCards).toBeGreaterThanOrEqual(3);
     await page.screenshot({
       path: `reports/screenshots/planner-seven-${width}.png`,
       fullPage: true,

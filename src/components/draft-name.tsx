@@ -26,6 +26,7 @@ export function DraftName({
       <div className="panel-header draft-heading">
         <div className="draft-title">
           <h2>{plan.label}</h2>
+          <small>{plan.service_date}</small>
           <button
             ref={action}
             className="quiet rename-action"
@@ -41,7 +42,7 @@ export function DraftName({
         </div>
         <span className="badge amber">Borrador · v{plan.version}</span>
       </div>
-      <div className="panel-body draft-details">
+      <div className="panel-body draft-details" hidden={!editing}>
         <div id={editorId} hidden={!editing}>
           {editing && (
             <form
@@ -87,7 +88,6 @@ export function DraftName({
             </form>
           )}
         </div>
-        <small>Fecha: {plan.service_date} · Aún no publicado</small>
       </div>
     </>
   );

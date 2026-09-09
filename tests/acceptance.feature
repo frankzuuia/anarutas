@@ -165,6 +165,8 @@ Feature: Ana Rutas independiente y portable
     Given un plan con siete camionetas y veinticinco pedidos
     When el administrador cierra el menú con el botón de tres líneas
     Then el tablero usa todo el ancho disponible
+    And crear un borrador abre un modal en vez de reservar una franja permanente
+    And a 768 píxeles de alto comienzan a verse al menos tres pedidos completos
     And cada lista permite bajar sus pedidos sin desplazar el documento en escritorio
     And las camionetas restantes son accesibles por desplazamiento horizontal
 

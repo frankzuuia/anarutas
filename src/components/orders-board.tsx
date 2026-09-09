@@ -243,6 +243,11 @@ export function OrdersBoard({
       current = false;
     };
   }, [endpoint, revision, plan.version, update]);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 5000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   function working(value: boolean) {
     setBusy(value);
     onBusy(value);
