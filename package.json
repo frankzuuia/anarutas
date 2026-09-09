@@ -22,12 +22,12 @@
     "preview:local": "tsx scripts/local-preview.ts"
   },
   "dependencies": {
-    "sharp": "0.35.4",
+    "lucide-react": "1.43.0",
     "next": "16.3.4",
+    "pg": "8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "pg": "8.23.0",
-    "lucide-react": "1.43.0"
+    "sharp": "0.35.4"
   },
   "overrides": {
     "typed-rest-client": {
@@ -35,21 +35,22 @@
     }
   },
   "devDependencies": {
-    "@types/node": "^24",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@types/pg": "^8",
-    "typescript": "^5.9",
-    "tsx": "4.23.13",
-    "eslint": "^9",
-    "eslint-config-next": "16.3.4",
-    "prettier": "3.9.6",
-    "esbuild": "0.28.2",
-    "vitest": "4.1.11",
-    "@vitest/coverage-v8": "4.1.11",
     "@playwright/test": "1.63.0",
     "@stryker-mutator/core": "10.0.0",
     "@stryker-mutator/vitest-runner": "10.0.0",
-    "embedded-postgres": "17.10.0-beta.17"
+    "@types/google.maps": "^3.66.2",
+    "@types/node": "^24",
+    "@types/pg": "^8",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "4.1.11",
+    "embedded-postgres": "17.10.0-beta.17",
+    "esbuild": "0.28.2",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.4",
+    "prettier": "3.9.6",
+    "tsx": "4.23.13",
+    "typescript": "^5.9",
+    "vitest": "4.1.11"
   }
 }

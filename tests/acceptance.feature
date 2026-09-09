@@ -160,3 +160,28 @@ Feature: Ana Rutas independiente y portable
     Then Google asigna los pedidos a las camionetas y ordena sus paradas usando la red vial real
     And el resultado guarda su versión, métricas y pedidos no asignables para revisión
     And el administrador puede mover pedidos manualmente después de la propuesta
+
+  Scenario: Siete camionetas y muchos pedidos ocupan el espacio del planificador
+    Given un plan con siete camionetas y veinticinco pedidos
+    When el administrador cierra el menú con el botón de tres líneas
+    Then el tablero usa todo el ancho disponible
+    And cada lista permite bajar sus pedidos sin desplazar el documento en escritorio
+    And las camionetas restantes son accesibles por desplazamiento horizontal
+
+  Scenario: Mapa pendiente de configurar
+    Given Google Maps todavía no está configurado
+    When el administrador pulsa Ver mapa de rutas
+    Then un modal informa Mapa pendiente de activar sin coordenadas inventadas
+    And Escape cierra el modal y devuelve el foco al botón
+
+  Scenario: Nota de producto procedente de Odoo Studio
+    Given existe un único campo de texto Nota para picker en sale.order.line
+    When se carga un surtido cuyo producto tiene esa nota
+    Then se conserva en la misma partida y se muestra debajo del producto como texto
+    And no se ejecuta HTML contenido en la nota
+
+  Scenario: Campo de nota ambiguo
+    Given Odoo devuelve dos campos de texto rotulados Nota para picker
+    When se intenta cargar un lote
+    Then se informa la ambigüedad sin escoger una columna arbitraria
+    And los lotes anteriores permanecen guardados

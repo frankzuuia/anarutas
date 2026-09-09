@@ -7,6 +7,7 @@ import {
   GripVertical,
   ArrowUp,
   ArrowDown,
+  Map,
 } from "lucide-react";
 import type { Plan } from "@/core/plans";
 import type { Vehicle } from "@/core/fleet-contract";
@@ -16,6 +17,7 @@ import type {
   Shipment,
 } from "@/core/orders-contract";
 import { api } from "./api";
+import { RouteMapDialog } from "./route-map-dialog";
 
 function previousDay(date: string) {
   const d = new Date(`${date}T00:00:00Z`);
@@ -212,6 +214,7 @@ export function OrdersBoard({
 }) {
   const [board, setBoard] = useState<OrderBoard | null>(null);
   const [modal, setModal] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -385,7 +388,12 @@ export function OrdersBoard({
           <ul className="shipment-lines">
             {s.lines.map((line) => (
               <li key={line.moveId}>
-                {line.name}
+                <span>
+                  {line.name}
+                  {line.pickerNote && (
+                    <small className="picker-note">{line.pickerNote}</small>
+                  )}
+                </span>
                 <strong>
                   {line.quantity} {line.unit}
                 </strong>
@@ -441,14 +449,24 @@ export function OrdersBoard({
             ? `${board.shipments.length} pedidos · ${board.vehicles.length} camionetas`
             : "Cargando tablero…"}
         </span>
-        <button
-          className="primary"
-          disabled={busy || !board}
-          onClick={() => setModal(true)}
-        >
-          <Download size={16} />
-          Cargar pedidos de Odoo
-        </button>
+        <div className="orders-toolbar-actions">
+          <button
+            className="quiet"
+            disabled={!board || busy || !board.shipments.length}
+            onClick={() => setMapOpen(true)}
+          >
+            <Map size={16} />
+            Ver mapa de rutas
+          </button>
+          <button
+            className="primary"
+            disabled={busy || !board}
+            onClick={() => setModal(true)}
+          >
+            <Download size={16} />
+            Cargar pedidos de Odoo
+          </button>
+        </div>
       </div>
       {error && (
         <p className="notice error" role="alert">
@@ -461,7 +479,12 @@ export function OrdersBoard({
         </p>
       )}
       {board && (
-        <div className="orders-lanes">
+        <div
+          className="orders-lanes"
+          role="region"
+          aria-label="Camionetas del plan; desplaza horizontalmente para ver más"
+          tabIndex={0}
+        >
           {[
             { id: null, name: "Pedidos sin asignar", driver_name: null },
             ...board.vehicles,
@@ -489,13 +512,20 @@ export function OrdersBoard({
                     <small>{v.driver_name || "Sin chofer asignado"}</small>
                   )}
                 </header>
-                <div className="shipment-list">
+                <div
+                  className="shipment-list"
+                  role="region"
+                  aria-label={`Pedidos de ${v.name}`}
+                  tabIndex={0}
+                >
                   {lane.map((s, i) => card(s, lane, i))}
                   {!lane.length && (
                     <p className="muted lane-empty">
                       {v.id
                         ? "Arrastra un pedido aquí"
-                        : "Sin pedidos cargados"}
+                        : board.shipments.length
+                          ? "Todos los pedidos asignados"
+                          : "Sin pedidos cargados"}
                     </p>
                   )}
                 </div>
@@ -512,6 +542,9 @@ export function OrdersBoard({
           onClose={() => setModal(false)}
           onSubmit={load}
         />
+      )}
+      {mapOpen && board && (
+        <RouteMapDialog board={board} onClose={() => setMapOpen(false)} />
       )}
     </div>
   );

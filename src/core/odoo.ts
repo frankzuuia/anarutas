@@ -3,6 +3,7 @@ import { readOdooConfig } from "./config";
 import { AppError } from "./errors";
 import type { ImportPage, SourceShipment } from "./orders-contract";
 import { integer } from "./orders-validation";
+import { pickerNoteField, pickerNoteValue } from "./picker-notes";
 
 type OdooConfig = ReturnType<typeof readOdooConfig>;
 // Not exported: callers cannot select arbitrary models, methods, hosts or credentials.
@@ -310,10 +311,22 @@ export async function readFulfilledPage(
       unitField,
     ],
   );
+  const saleMetadata = await rpc(config, "object", "execute_kw", [
+    ...prefix,
+    "sale.order.line",
+    "fields_get",
+    [],
+    { attributes: ["type", "string"], context },
+  ]);
+  const noteField = pickerNoteField(
+    saleMetadata,
+    config.pickerNoteField,
+    config.pickerNoteLabel,
+  );
   const saleLines = await byIds(
     "sale.order.line",
     moves.map((m) => relation(m.sale_line_id)[0]),
-    ["id", "order_id"],
+    ["id", "order_id", ...(noteField ? [noteField] : [])],
   );
   const sales = await byIds(
     "sale.order",
@@ -396,15 +409,15 @@ export async function readFulfilledPage(
         quantity <= 0
       )
         throw new AppError("ODOO_INVALID_RESPONSE", 502);
-      groups
-        .get(orderId)!
-        .lines.push({
-          moveId: Number(move.id),
-          productId: relation(move.product_id)[0],
-          name: relation(move.product_id)[1],
-          quantity,
-          unit: relation(move[unitField])[1],
-        });
+      const note = noteField ? pickerNoteValue(saleLine[noteField]) : undefined;
+      groups.get(orderId)!.lines.push({
+        moveId: Number(move.id),
+        productId: relation(move.product_id)[0],
+        name: relation(move.product_id)[1],
+        quantity,
+        unit: relation(move[unitField])[1],
+        ...(note ? { pickerNote: note } : {}),
+      });
     }
     shipments.push(...groups.values());
   }

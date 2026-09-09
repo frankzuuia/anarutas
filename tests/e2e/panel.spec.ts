@@ -4,7 +4,12 @@ import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { startPostgres, freePort } from "../helpers/postgres";
 import { fleetFlow } from "./fleet-flow";
-import { persistImportPage } from "../../src/core/orders";
+import {
+  persistImportPage,
+  orderBoard,
+  selectPlanVehicles,
+} from "../../src/core/orders";
+import { createVehicle } from "../../src/core/fleet";
 
 let db: Awaited<ReturnType<typeof startPostgres>>;
 let child: ChildProcess;
@@ -86,6 +91,9 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(page).toHaveURL(`${origin}/login`);
   const denied = await first.request.get(`${origin}/api/plans`);
   expect(denied.status()).toBe(401);
+  expect((await first.request.get(`${origin}/api/maps/config`)).status()).toBe(
+    401,
+  );
   const csrf = await first.request.post(`${origin}/api/setup`, {
     data: {},
     headers: { Origin: "https://another.example" },
@@ -152,9 +160,9 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     page.getByText("Sin pedidos cargados", { exact: true }),
   ).toBeVisible();
   await other.getByRole("button", { name: "Actualizar", exact: true }).click();
-  await expect(
-    other.getByRole("button", { name: /Plan de validación/ }),
-  ).toBeVisible();
+  await expect(other.getByLabel("Abrir borrador")).toContainText(
+    "Plan de validación",
+  );
   const plansBefore = await (
     await first.request.get(`${origin}/api/plans`)
   ).json();
@@ -226,7 +234,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   });
 
   // The second browser still has the previous version: exercise a real 409, no request mocks.
-  await other.getByRole("button", { name: /Plan de validación/ }).click();
+  await other.getByLabel("Abrir borrador").selectOption(savedPlan.id);
   await other
     .getByRole("button", { name: "Cambiar nombre", exact: true })
     .click();
@@ -266,11 +274,14 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   );
   await other.getByRole("button", { name: "Cancelar", exact: true }).click();
   await other.getByRole("button", { name: "Actualizar", exact: true }).click();
-  await other.getByRole("button", { name: /Reparto del martes/ }).click();
+  await other.getByLabel("Abrir borrador").selectOption(savedPlan.id);
   await expect(
     other.getByRole("heading", { name: "Reparto del martes", exact: true }),
   ).toBeVisible();
 
+  await page
+    .getByRole("button", { name: "Nuevo borrador", exact: true })
+    .click();
   await page.getByLabel("Fecha de operación").fill("2026-10-11");
   await page.getByLabel("Nombre del plan", { exact: true }).fill("Otro día QA");
   await page
@@ -281,7 +292,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   ).toBeVisible();
   await rename.click();
   await nameInput.fill("No trasladar a otro borrador");
-  await page.getByRole("button", { name: /Reparto del martes/ }).click();
+  await page.getByLabel("Abrir borrador").selectOption(savedPlan.id);
   await expect(nameInput).toHaveCount(0);
   await rename.click();
   await expect(nameInput).toHaveValue("Reparto del martes");
@@ -295,7 +306,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   for (const width of [375, 768, 940, 1024, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     const createButton = page.getByRole("button", {
-      name: "Crear borrador",
+      name: "Nuevo borrador",
       exact: true,
     });
     const controlHeight = (await createButton.boundingBox())!.height;
@@ -303,7 +314,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     expect(controlHeight).toBeLessThanOrEqual(width <= 720 ? 48 : 36);
     await expect(page.locator(".page-heading h1")).toHaveCSS(
       "font-size",
-      "24px",
+      "21px",
     );
     await expect(page.locator(".draft-title h2")).toHaveCSS(
       "font-size",
@@ -408,7 +419,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await page
     .getByRole("button", { name: "Planificar rutas", exact: true })
     .click();
-  await page.getByRole("button", { name: /Reparto del martes/ }).click();
+  await page.getByLabel("Abrir borrador").selectOption(savedPlan.id);
   await page
     .getByRole("button", { name: "Cargar pedidos de Odoo", exact: true })
     .click();
@@ -449,6 +460,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
             name: "Producto de validación",
             quantity: 4,
             unit: "kg",
+            pickerNote: "Maduro; separar bolsas <b>sin interpretar HTML</b>",
           },
         ],
       },
@@ -461,6 +473,24 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   });
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(page.getByText("Fonda Martha", { exact: true })).toBeVisible();
+  await page.locator(".shipment-card summary").click();
+  await expect(page.locator(".picker-note")).toHaveText(
+    "Maduro; separar bolsas <b>sin interpretar HTML</b>",
+  );
+  await expect(page.locator(".picker-note b")).toHaveCount(0);
+  const openMap = page.getByRole("button", {
+    name: "Ver mapa de rutas",
+    exact: true,
+  });
+  await openMap.click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Mapa pendiente de activar",
+  );
+  await page.keyboard.press("Escape");
+  await expect(openMap).toBeFocused();
+  expect(
+    await (await first.request.get(`${origin}/api/maps/config`)).json(),
+  ).toEqual({ configured: false });
   await expect(
     page.getByText("Sin horario registrado", { exact: true }),
   ).toBeVisible();
@@ -471,6 +501,78 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     "Asignación y orden guardados",
   );
   await expect(page.getByText("Fonda Martha", { exact: true })).toBeVisible();
+  const initialBoard = await orderBoard(db.pool, savedPlan.id);
+  const chosenVehicles = [...initialBoard.vehicles.map((v) => v.id)];
+  for (let i = 2; i <= 7; i++) {
+    const vehicle = await createVehicle(db.pool, actorId, {
+      id: randomUUID(),
+      name: `Camioneta de prueba ${i}`,
+      brand: "QA",
+      model: "2026",
+      plate: `QA-STRESS-${i}`,
+      mileage: 0,
+      fuel: "Diésel",
+      available: true,
+    });
+    chosenVehicles.push(vehicle.id);
+  }
+  await selectPlanVehicles(db.pool, actorId, savedPlan.id, {
+    vehicleIds: chosenVehicles,
+    expectedVersion: initialBoard.plan.version,
+  });
+  const exemplar = initialBoard.shipments[0];
+  await persistImportPage(db.pool, actorId, savedPlan.id, {
+    fingerprint: "e2e-source",
+    shipments: Array.from({ length: 24 }, (_, i) => ({
+      pickingId: 600 + i,
+      pickingName: `WH/OUT/${600 + i}`,
+      orderId: 600 + i,
+      orderName: `S${600 + i}`,
+      partnerId: 11,
+      customerName: `Pedido QA ${i + 1}`,
+      address: exemplar.address,
+      validatedAt: exemplar.validatedAt,
+      promisedAt: null,
+      backorderId: null,
+      lines: exemplar.lines,
+    })),
+    nextCursor: 624,
+    ceiling: 624,
+    hasMore: false,
+    inspected: 24,
+    excluded: 0,
+  });
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(page.locator(".order-lane")).toHaveCount(8);
+  await page.getByRole("button", { name: "Cerrar menú", exact: true }).click();
+  await expect(page.locator(".sidebar")).toBeHidden();
+  for (const width of [768, 1024, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollHeight))
+      .toBeLessThanOrEqual(900);
+    const dimensions = await page.evaluate(() => {
+      const list = document.querySelector<HTMLElement>(".shipment-list")!;
+      const lanes = document.querySelector<HTMLElement>(".orders-lanes")!;
+      const oldY = window.scrollY;
+      list.scrollTop = 350;
+      return {
+        listScroll: list.scrollTop,
+        pageY: window.scrollY - oldY,
+        pageHeight: document.documentElement.scrollHeight,
+        height: window.innerHeight,
+        lanesHeight: lanes.getBoundingClientRect().height,
+      };
+    });
+    expect(dimensions.listScroll).toBeGreaterThan(0);
+    expect(dimensions.pageY).toBe(0);
+    expect(dimensions.pageHeight).toBeLessThanOrEqual(dimensions.height);
+    expect(dimensions.lanesHeight).toBeGreaterThan(250);
+    await page.screenshot({
+      path: `reports/screenshots/planner-seven-${width}.png`,
+      fullPage: true,
+    });
+  }
   for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.screenshot({
@@ -483,6 +585,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
       ),
     ).toBe(true);
   }
+  await page.getByRole("button", { name: "Abrir menú", exact: true }).click();
   await page.getByRole("button", { name: "Auditoría", exact: true }).click();
   await expect(
     page.getByRole("cell", { name: "Creó un borrador", exact: true }),
@@ -502,9 +605,9 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(
     other.getByRole("heading", { name: "Planificar rutas", exact: true }),
   ).toBeVisible();
-  await expect(
-    other.getByRole("button", { name: /Reparto del martes/ }),
-  ).toBeVisible();
+  await expect(other.getByLabel("Abrir borrador")).toContainText(
+    "Reparto del martes",
+  );
   expect(pageErrors).toEqual([]);
   await first.close();
   await second.close();

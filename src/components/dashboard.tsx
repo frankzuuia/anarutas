@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Truck,
   Info,
+  Menu,
 } from "lucide-react";
 import type { User } from "@/core/auth";
 import type { Plan } from "@/core/plans";
@@ -67,6 +68,8 @@ export function Dashboard({
   timezone: string;
 }) {
   const [section, setSection] = useState<Section>("plans");
+  const [menuClosed, setMenuClosed] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [fleetRevision, setFleetRevision] = useState(0);
   const [boardRevision, setBoardRevision] = useState(0);
   const [plans, setPlans] = useState<Plan[]>([]),
@@ -144,6 +147,7 @@ export function Dashboard({
     void perform(async () => {
       const plan = await api<Plan>("/api/plans", "POST", input);
       setSelected(plan);
+      setCreateOpen(false);
       await refresh();
       setNotice(
         "Borrador guardado. Si el día ya existía, abrimos ese mismo plan.",
@@ -177,8 +181,10 @@ export function Dashboard({
   }
   const title = sections.find((item) => item.id === section)!.label;
   return (
-    <div className="app">
-      <aside className="sidebar">
+    <div
+      className={`app ${menuClosed ? "menu-closed" : ""} ${section === "plans" ? "planner-app" : ""}`}
+    >
+      <aside className="sidebar" id="app-navigation" hidden={menuClosed}>
         <div className="brand">
           <Route size={30} />
           <div>
@@ -214,9 +220,20 @@ export function Dashboard({
       </aside>
       <div className="content">
         <header className="topbar">
-          <span className="small">
-            {displayName} <span aria-hidden="true"> / </span> Administración
-          </span>
+          <div className="row">
+            <button
+              className="quiet"
+              aria-label={menuClosed ? "Abrir menú" : "Cerrar menú"}
+              aria-expanded={!menuClosed}
+              aria-controls="app-navigation"
+              onClick={() => setMenuClosed((value) => !value)}
+            >
+              <Menu size={19} />
+            </button>
+            <span className="small">
+              {displayName} <span aria-hidden="true"> / </span> Administración
+            </span>
+          </div>
           <div className="row">
             <div className="avatar" aria-hidden="true">
               {user.name.charAt(0).toUpperCase()}
@@ -237,7 +254,7 @@ export function Dashboard({
             </button>
           </div>
         </header>
-        <main className="main">
+        <main className={`main ${section === "plans" ? "planner-main" : ""}`}>
           <header className="page-heading">
             <div>
               <span className="eyebrow">
@@ -284,43 +301,77 @@ export function Dashboard({
           )}
           {section === "plans" && (
             <div className="planner-grid">
-              <div className="stack">
-                <section className="panel">
-                  <div className="panel-header">
-                    <h2>Preparar un día</h2>
-                    <span className="badge">
+              <div className="planner-workspace">
+                <section className="panel planner-controls">
+                  <div className="planner-select-row">
+                    <label>
+                      Abrir borrador
+                      <select
+                        aria-label="Abrir borrador"
+                        disabled={busy || loading}
+                        value={selected?.id || ""}
+                        onChange={(e) =>
+                          setSelected(
+                            plans.find((p) => p.id === e.target.value) || null,
+                          )
+                        }
+                      >
+                        <option value="">Seleccionar día…</option>
+                        {plans.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.label} · {p.service_date}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <span className="badge planner-timezone">
                       <CalendarDays size={13} />
                       {timezone}
                     </span>
+                    <button
+                      className="quiet"
+                      aria-expanded={createOpen || !plans.length}
+                      aria-controls="create-plan-fields"
+                      onClick={() => setCreateOpen((v) => !v)}
+                      disabled={busy}
+                    >
+                      <Plus size={16} />
+                      Nuevo borrador
+                    </button>
                   </div>
-                  <div className="panel-body">
-                    <form className="form-row" onSubmit={createDraft}>
-                      <label className="date">
-                        Fecha de operación
-                        <input
-                          type="date"
-                          name="date"
-                          defaultValue={today}
-                          required
-                        />
-                      </label>
-                      <label>
-                        Nombre del plan
-                        <input
-                          name="label"
-                          placeholder="Ej. Entregas del día"
-                          maxLength={120}
-                          required
-                        />
-                      </label>
-                      <button className="primary" disabled={busy}>
-                        <Plus size={17} />
-                        Crear borrador
-                      </button>
-                    </form>
+                  <div
+                    id="create-plan-fields"
+                    hidden={!createOpen && !!plans.length}
+                  >
+                    <div className="panel-body">
+                      <form className="form-row" onSubmit={createDraft}>
+                        <label className="date">
+                          Fecha de operación
+                          <input
+                            type="date"
+                            name="date"
+                            defaultValue={today}
+                            required
+                          />
+                        </label>
+                        <label>
+                          Nombre del plan
+                          <input
+                            name="label"
+                            placeholder="Ej. Entregas del día"
+                            maxLength={120}
+                            required
+                          />
+                        </label>
+                        <button className="primary" disabled={busy}>
+                          <Plus size={17} />
+                          Crear borrador
+                        </button>
+                      </form>
+                    </div>
                   </div>
                 </section>
-                <section className="panel">
+                <section className="panel planner-board-panel">
                   {selected ? (
                     <>
                       <DraftName
@@ -363,37 +414,6 @@ export function Dashboard({
                   </div>
                 </section>
               </div>
-              <aside className="panel">
-                <div className="panel-header">
-                  <h2>Borradores</h2>
-                  <span className="badge">{plans.length}</span>
-                </div>
-                <div className="panel-body">
-                  {loading ? (
-                    <p className="muted" role="status">
-                      Cargando…
-                    </p>
-                  ) : plans.length ? (
-                    <div className="plan-list">
-                      {plans.map((plan) => (
-                        <button
-                          key={plan.id}
-                          className={`plan-choice ${selected?.id === plan.id ? "selected" : ""}`}
-                          disabled={busy}
-                          onClick={() => setSelected(plan)}
-                        >
-                          <strong>{plan.label}</strong>
-                          <span className="small">
-                            {plan.service_date} · Versión {plan.version}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="small">Aún no hay borradores guardados.</p>
-                  )}
-                </div>
-              </aside>
             </div>
           )}
           {section === "users" && (

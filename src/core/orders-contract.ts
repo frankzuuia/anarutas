@@ -7,6 +7,7 @@ export type ShipmentLine = {
   name: string;
   quantity: number;
   unit: string;
+  pickerNote?: string;
 };
 export type SourceShipment = {
   pickingId: number;

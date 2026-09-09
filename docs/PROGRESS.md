@@ -1,5 +1,12 @@
 # Progreso — bloque 1
 
+## Bloque 3B — planificador compacto, mapa y notas
+
+- Implementados menú plegable, borradores compactos, columnas acotadas y scroll propio.
+- Modal Google preparado; integración live pendiente de configuración del propietario.
+- Notas Studio por contrato QR verificado mediante lectura; sin cambios en Five.
+- Evidencia y límites en BLOQUE-3B-PLANIFICADOR.md.
+
 ## Bloque 3A autorizado — BLOQUE-3-PEDIDOS.md
 
 - [x] O-T01: esquema v3, identidad/envíos/flota por día e integridad concurrente.

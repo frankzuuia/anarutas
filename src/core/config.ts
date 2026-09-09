@@ -95,5 +95,8 @@ export function readOdooConfig(env: Env = process.env) {
     companyId,
     fingerprint,
     timeoutMs: positive(env, "RUTAS_ODOO_TIMEOUT_MS", 15000),
+    pickerNoteField: env.ODOO_SALE_ORDER_LINE_PICKER_NOTE_FIELD?.trim() || "",
+    pickerNoteLabel:
+      env.ODOO_PICKER_NOTE_FIELD_LABEL?.trim() || "Nota para picker",
   };
 }

@@ -38,6 +38,7 @@ it("Odoo exposes no generic executor and permits only fixed read operations", as
     ["search_read"],
     ["stock.move", "fields_get"],
     ["stock.picking", "search_read"],
+    ["sale.order.line", "fields_get"],
   ]);
   const exported = ast.statements
     .filter(ts.isFunctionDeclaration)
