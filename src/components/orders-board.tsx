@@ -17,20 +17,17 @@ import type {
   OrderBoard,
   Shipment,
 } from "@/core/orders-contract";
+import { todayInTimezone } from "@/core/local-date";
 import { api } from "./api";
 import { RouteMapDialog } from "./route-map-dialog";
 
-function previousDay(date: string) {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
 function LoadDialog({
   board,
   timezone,
   busy,
   onClose,
   onSubmit,
+  onManualSubmit,
 }: {
   board: OrderBoard;
   timezone: string;
@@ -38,10 +35,10 @@ function LoadDialog({
   onClose: () => void;
   onSubmit: (
     vehicleIds: string[],
-    from: string,
-    to: string,
+    validationDate: string,
     load: boolean,
   ) => Promise<void>;
+  onManualSubmit: (vehicleIds: string[], orderNames: string[]) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useId();
@@ -49,8 +46,11 @@ function LoadDialog({
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [chosen, setChosen] = useState(board.vehicles.map((v) => v.id));
-  const [from, setFrom] = useState(previousDay(board.plan.service_date));
-  const [to, setTo] = useState(previousDay(board.plan.service_date));
+  const [validationDate, setValidationDate] = useState(() =>
+    todayInTimezone(timezone),
+  );
+  const nextManualId = useRef(2);
+  const [manualRows, setManualRows] = useState([{ id: 1, suffix: "" }]);
   useEffect(() => {
     const element = dialog.current;
     const previous = document.activeElement as HTMLElement;
@@ -75,11 +75,35 @@ function LoadDialog({
   const submit = async (load: boolean) => {
     setError("");
     try {
-      await onSubmit(chosen, from, to, load);
+      await onSubmit(chosen, validationDate, load);
     } catch (e) {
       setError((e as Error).message);
     }
   };
+  const submitManual = async () => {
+    setError("");
+    try {
+      await onManualSubmit(
+        chosen,
+        manualRows.map((row) => `S${row.suffix}`),
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const updateManualRow = (id: number, value: string) => {
+    const normalized = value.trim().toUpperCase();
+    const suffix = normalized.startsWith("S")
+      ? normalized.slice(1)
+      : normalized;
+    if (![...suffix].every((character) => "0123456789".includes(character)))
+      return;
+    setManualRows((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, suffix } : row)),
+    );
+  };
+  const manualReady =
+    manualRows.length > 0 && manualRows.every((row) => row.suffix.length > 0);
   return (
     <dialog
       className="fleet-dialog"
@@ -147,33 +171,20 @@ function LoadDialog({
           )}
         </fieldset>
         <fieldset disabled={busy} className="vehicle-choice">
-          <legend>Fecha de validación del surtido</legend>
-          <div className="form-row">
-            <label>
-              Desde
-              <input
-                type="date"
-                value={from}
-                max={to}
-                onChange={(e) => setFrom(e.target.value)}
-                required
-              />
-            </label>
-            <label>
-              Hasta
-              <input
-                type="date"
-                value={to}
-                min={from}
-                max={board.plan.service_date}
-                onChange={(e) => setTo(e.target.value)}
-                required
-              />
-            </label>
-          </div>
+          <legend>Fecha de validación de pedidos</legend>
+          <label className="validation-date-field">
+            <span className="sr-only">Fecha de validación de pedidos</span>
+            <input
+              aria-label="Fecha de validación de pedidos"
+              type="date"
+              value={validationDate}
+              max={board.plan.service_date}
+              onChange={(e) => setValidationDate(e.target.value)}
+              required
+            />
+          </label>
           <p className="muted">
-            {timezone} · Se propone el día anterior al plan. Ajusta el rango
-            para recuperar pendientes.
+            {timezone} · La fecha seleccionada traerá los pedidos validados.
           </p>
         </fieldset>
         <div className="order-actions">
@@ -187,7 +198,11 @@ function LoadDialog({
           <button
             className="primary"
             disabled={
-              busy || !loaded || !chosen.length || !from || !to || from > to
+              busy ||
+              !loaded ||
+              !chosen.length ||
+              !validationDate ||
+              validationDate > board.plan.service_date
             }
             onClick={() => void submit(true)}
           >
@@ -195,6 +210,74 @@ function LoadDialog({
             {busy ? "Cargando…" : "Cargar pedidos"}
           </button>
         </div>
+        <fieldset disabled={busy} className="vehicle-choice manual-order-box">
+          <legend>Cargar pedido manual fuera de fecha</legend>
+          <p className="muted">
+            Escribe los folios exactos. Sólo se cargarán surtidos validados de
+            la empresa configurada.
+          </p>
+          <div className="manual-order-list">
+            {manualRows.map((row, index) => (
+              <div className="manual-order-row" key={row.id}>
+                <label>
+                  <span className="sr-only">Folio del pedido {index + 1}</span>
+                  <span className="manual-order-input">
+                    <span className="manual-order-prefix" aria-hidden="true">
+                      S
+                    </span>
+                    <input
+                      aria-label={`Número del folio S, pedido ${index + 1}`}
+                      inputMode="numeric"
+                      maxLength={20}
+                      placeholder="00001"
+                      value={row.suffix}
+                      onChange={(event) =>
+                        updateManualRow(row.id, event.target.value)
+                      }
+                    />
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  className="quiet manual-row-remove"
+                  aria-label={`Quitar folio ${index + 1}`}
+                  disabled={manualRows.length === 1}
+                  onClick={() =>
+                    setManualRows((rows) =>
+                      rows.filter((candidate) => candidate.id !== row.id),
+                    )
+                  }
+                >
+                  <X size={15} aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="order-actions manual-order-actions">
+            <button
+              type="button"
+              className="quiet"
+              disabled={manualRows.length >= 50}
+              onClick={() =>
+                setManualRows((rows) => [
+                  ...rows,
+                  { id: nextManualId.current++, suffix: "" },
+                ])
+              }
+            >
+              + Agregar pedido
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={!loaded || !chosen.length || !manualReady}
+              onClick={() => void submitManual()}
+            >
+              <Download size={16} aria-hidden="true" />
+              {busy ? "Cargando…" : "Confirmar pedidos"}
+            </button>
+          </div>
+        </fieldset>
       </div>
     </dialog>
   );
@@ -437,6 +520,85 @@ function RemoveVehicleDialog({
   );
 }
 
+function RemoveShipmentDialog({
+  shipment,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  shipment: Shipment;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const title = useId();
+  const description = useId();
+
+  useEffect(() => {
+    const element = dialog.current;
+    const previous = document.activeElement as HTMLElement;
+    element?.showModal();
+    return () => {
+      element?.close();
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
+
+  return (
+    <dialog
+      className="fleet-dialog remove-vehicle-dialog"
+      ref={dialog}
+      aria-labelledby={title}
+      aria-describedby={description}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <header className="panel-header">
+        <h2 id={title}>Eliminar pedido del ruteo</h2>
+        <button
+          className="quiet"
+          aria-label="Cerrar confirmación"
+          disabled={busy}
+          onClick={onClose}
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
+      </header>
+      <div className="panel-body stack">
+        <div id={description}>
+          <p>¿Desea eliminar este pedido del ruteo?</p>
+          <p className="removal-impact">
+            <strong>{shipment.orderName}</strong> · Surtido{" "}
+            {shipment.pickingName}
+            <br />
+            {shipment.customerName}
+          </p>
+        </div>
+        <p className="muted">
+          Sólo se quitará de este borrador. Odoo no se modifica y podrás
+          recuperarlo volviendo a cargar pedidos.
+        </p>
+        <div className="order-actions">
+          <button className="quiet" disabled={busy} onClick={onClose}>
+            Cancelar
+          </button>
+          <button
+            className="danger"
+            disabled={busy}
+            onClick={() => void onConfirm()}
+          >
+            <Trash2 size={16} aria-hidden="true" />
+            {busy ? "Eliminando…" : "Aceptar y eliminar"}
+          </button>
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
 export function OrdersBoard({
   plan,
   timezone,
@@ -458,6 +620,8 @@ export function OrdersBoard({
     name: string;
     shipmentCount: number;
   } | null>(null);
+  const [removeShipmentTarget, setRemoveShipmentTarget] =
+    useState<Shipment | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -501,8 +665,7 @@ export function OrdersBoard({
   }
   async function load(
     vehicleIds: string[],
-    from: string,
-    to: string,
+    validationDate: string,
     importOrders: boolean,
   ) {
     if (!board) return;
@@ -528,8 +691,8 @@ export function OrdersBoard({
         };
         while (true) {
           const page = await api<ImportResult>(endpoint, "POST", {
-            from,
-            to,
+            from: validationDate,
+            to: validationDate,
             cursor,
             ceiling,
           });
@@ -583,6 +746,34 @@ export function OrdersBoard({
       working(false);
     }
   }
+  async function loadManual(vehicleIds: string[], orderNames: string[]) {
+    if (!board) return;
+    working(true);
+    setError("");
+    setNotice("");
+    try {
+      update(
+        await api<OrderBoard>(`/api/plans/${plan.id}/vehicles`, "PUT", {
+          vehicleIds,
+          expectedVersion: board.plan.version,
+        }),
+      );
+      const result = await api<ImportResult>(`${endpoint}/manual`, "POST", {
+        orderNames,
+      });
+      setNotice(
+        `${result.inserted} pedidos nuevos · ${result.existing} ya cargados · ${result.otherPlan} en otro plan.`,
+      );
+      setModal(false);
+    } catch (error) {
+      throw new Error(
+        `${(error as Error).message} No se cargó parcialmente el lote manual.`,
+      );
+    } finally {
+      await refresh().catch((error) => setError(error.message));
+      working(false);
+    }
+  }
   async function removeVehicle() {
     if (!board || !removeTarget) return;
     const target = removeTarget;
@@ -605,6 +796,31 @@ export function OrdersBoard({
     } catch (e) {
       setRemoveTarget(null);
       setError((e as Error).message);
+      await refresh().catch(() => {});
+    } finally {
+      working(false);
+    }
+  }
+  async function removeOrder() {
+    if (!board || !removeShipmentTarget) return;
+    const target = removeShipmentTarget;
+    working(true);
+    setError("");
+    setNotice("");
+    try {
+      update(
+        await api<OrderBoard>(endpoint, "DELETE", {
+          shipmentId: target.id,
+          expectedVersion: board.plan.version,
+        }),
+      );
+      setNotice(
+        `${target.orderName} se eliminó del ruteo. Puedes recuperarlo volviendo a cargar desde Odoo.`,
+      );
+      setRemoveShipmentTarget(null);
+    } catch (error) {
+      setRemoveShipmentTarget(null);
+      setError((error as Error).message);
       await refresh().catch(() => {});
     } finally {
       working(false);
@@ -662,43 +878,55 @@ export function OrdersBoard({
           if (id) void move(id, s.vehicle_id, s.id);
         }}
       >
-        <button
-          type="button"
-          className="shipment-toggle"
-          aria-expanded={expanded}
-          aria-controls={detailId}
-          aria-label={`${expanded ? "Ocultar" : "Mostrar"} detalles de ${s.customerName} ${s.orderName}`}
-          onClick={() => toggleShipment(s.id)}
-        >
-          <span className="shipment-stop-index" aria-hidden="true">
-            {s.vehicle_id ? index + 1 : "—"}
-          </span>
-          <span className="shipment-summary">
-            <strong>{s.customerName}</strong>
-            <small>
-              Pedido {s.orderName} · {s.lines.length} partidas
-            </small>
-            <span className="shipment-tags">
-              <span className="badge">
-                {s.window_start
-                  ? `${s.window_start}–${s.window_end}`
-                  : "Sin horario"}
-              </span>
-              <span className="badge">
-                {s.high_priority === null
-                  ? "Prioridad pendiente"
-                  : s.high_priority
-                    ? "Prioridad alta"
-                    : "Prioridad normal"}
+        <div className="shipment-card-head">
+          <button
+            type="button"
+            className="shipment-toggle"
+            aria-expanded={expanded}
+            aria-controls={detailId}
+            aria-label={`${expanded ? "Ocultar" : "Mostrar"} detalles de ${s.customerName} ${s.orderName}`}
+            onClick={() => toggleShipment(s.id)}
+          >
+            <span className="shipment-stop-index" aria-hidden="true">
+              {s.vehicle_id ? index + 1 : "—"}
+            </span>
+            <span className="shipment-summary">
+              <strong>{s.customerName}</strong>
+              <small>
+                Pedido {s.orderName} · {s.lines.length} partidas
+              </small>
+              <span className="shipment-tags">
+                <span className="badge">
+                  {s.window_start
+                    ? `${s.window_start}–${s.window_end}`
+                    : "Sin horario"}
+                </span>
+                <span className="badge">
+                  {s.high_priority === null
+                    ? "Prioridad pendiente"
+                    : s.high_priority
+                      ? "Prioridad alta"
+                      : "Prioridad normal"}
+                </span>
               </span>
             </span>
-          </span>
-          <ChevronDown
-            className="shipment-chevron"
-            size={14}
-            aria-hidden="true"
-          />
-        </button>
+            <ChevronDown
+              className="shipment-chevron"
+              size={14}
+              aria-hidden="true"
+            />
+          </button>
+          <button
+            type="button"
+            className="shipment-remove"
+            draggable={false}
+            disabled={busy}
+            aria-label={`Eliminar pedido ${s.orderName} del ruteo`}
+            onClick={() => setRemoveShipmentTarget(s)}
+          >
+            <Trash2 size={14} aria-hidden="true" />
+          </button>
+        </div>
         {expanded && (
           <div className="shipment-expanded" id={detailId}>
             <div className="shipment-reference">
@@ -903,6 +1131,7 @@ export function OrdersBoard({
           busy={busy}
           onClose={() => setModal(false)}
           onSubmit={load}
+          onManualSubmit={loadManual}
         />
       )}
       {addVehiclesOpen && board && (
@@ -920,6 +1149,14 @@ export function OrdersBoard({
           busy={busy}
           onClose={() => setRemoveTarget(null)}
           onConfirm={removeVehicle}
+        />
+      )}
+      {removeShipmentTarget && (
+        <RemoveShipmentDialog
+          shipment={removeShipmentTarget}
+          busy={busy}
+          onClose={() => setRemoveShipmentTarget(null)}
+          onConfirm={removeOrder}
         />
       )}
       {mapOpen && board && (

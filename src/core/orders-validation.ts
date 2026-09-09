@@ -70,3 +70,30 @@ export function vehicleIds(value: unknown): string[] {
   if (new Set(ids).size !== ids.length) throw new AppError("INVALID_INPUT");
   return ids;
 }
+
+export const maxManualOrderNames = 50;
+
+export function orderNames(value: unknown): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > maxManualOrderNames
+  )
+    throw new AppError("MANUAL_ORDERS_INVALID");
+  const names = value.map((entry) => {
+    if (typeof entry !== "string") throw new AppError("MANUAL_ORDERS_INVALID");
+    const name = entry.trim().toUpperCase();
+    const suffix = name.slice(1);
+    if (
+      name[0] !== "S" ||
+      suffix.length === 0 ||
+      suffix.length > 20 ||
+      ![...suffix].every((character) => "0123456789".includes(character))
+    )
+      throw new AppError("MANUAL_ORDERS_INVALID");
+    return name;
+  });
+  if (new Set(names).size !== names.length)
+    throw new AppError("MANUAL_ORDERS_DUPLICATED");
+  return names;
+}

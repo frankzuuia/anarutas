@@ -320,3 +320,46 @@ export async function moveShipment(
     });
   });
 }
+
+export async function removeShipment(
+  pool: Pool,
+  actor: string,
+  id: string,
+  input: Record<string, unknown>,
+) {
+  const shipmentId = uuid(input.shipmentId);
+  const expected = integer(input.expectedVersion, 1);
+  await transaction(pool, async (sql) => {
+    await assertActiveActor(sql, actor);
+    const plan = await planRow(sql, id, "UPDATE");
+    if (plan.version !== expected) throw new AppError("VERSION_CONFLICT", 409);
+    const { rows } = await sql.query(
+      `SELECT id,vehicle_id,position,snapshot FROM route_shipments
+       WHERE plan_id=$1 AND id=$2 FOR UPDATE`,
+      [id, shipmentId],
+    );
+    if (!rows.length) throw new AppError("NOT_FOUND", 404);
+    await sql.query("DELETE FROM route_shipments WHERE plan_id=$1 AND id=$2", [
+      id,
+      shipmentId,
+    ]);
+    const remaining = await sql.query(
+      "SELECT id FROM route_shipments WHERE plan_id=$1 ORDER BY position,id",
+      [id],
+    );
+    await sql.query(
+      `UPDATE route_shipments s SET position=o.position
+       FROM unnest($1::uuid[]) WITH ORDINALITY AS o(id,position)
+       WHERE s.id=o.id AND s.plan_id=$2 AND s.position<>o.position`,
+      [remaining.rows.map((row) => row.id), id],
+    );
+    await bump(sql, id, actor);
+    const snapshot = rows[0].snapshot as Record<string, unknown>;
+    await audit(sql, actor, "shipment.removed", shipmentId, {
+      planId: id,
+      orderId: snapshot.orderId,
+      pickingId: snapshot.pickingId,
+      vehicleId: rows[0].vehicle_id,
+    });
+  });
+}

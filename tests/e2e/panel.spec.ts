@@ -433,7 +433,55 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     name: "Cargar pedidos de Odoo",
   });
   await expect(loadDialog.getByText("2 camionetas disponibles")).toBeVisible();
+  await expect(
+    loadDialog.getByText(
+      "La fecha seleccionada traerá los pedidos validados.",
+      { exact: false },
+    ),
+  ).toBeVisible();
+  const validationDate = loadDialog.getByLabel(
+    "Fecha de validación de pedidos",
+    { exact: true },
+  );
+  await expect(validationDate).toHaveCount(1);
+  await expect(validationDate).toHaveValue(
+    new Date().toISOString().slice(0, 10),
+  );
+  await expect(loadDialog.getByLabel("Desde", { exact: true })).toHaveCount(0);
+  await expect(loadDialog.getByLabel("Hasta", { exact: true })).toHaveCount(0);
+  await expect(
+    loadDialog.getByText("Cargar pedido manual fuera de fecha", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  const firstManualOrder = loadDialog.getByLabel(
+    "Número del folio S, pedido 1",
+    { exact: true },
+  );
+  await firstManualOrder.fill("00001");
+  await loadDialog
+    .getByRole("button", { name: "+ Agregar pedido", exact: true })
+    .click();
+  const secondManualOrder = loadDialog.getByLabel(
+    "Número del folio S, pedido 2",
+    { exact: true },
+  );
+  await secondManualOrder.fill("S00003");
+  await expect(firstManualOrder).toHaveValue("00001");
+  await expect(secondManualOrder).toHaveValue("00003");
+  await page.screenshot({
+    path: "reports/screenshots/load-orders-single-date.png",
+    fullPage: true,
+  });
+  await validationDate.fill(savedPlan.service_date);
+  await expect(validationDate).toHaveValue(savedPlan.service_date);
   await loadDialog.getByRole("checkbox").first().check();
+  await expect(
+    loadDialog.getByRole("button", {
+      name: "Confirmar pedidos",
+      exact: true,
+    }),
+  ).toBeEnabled();
   await loadDialog
     .getByRole("button", { name: "Guardar camionetas", exact: true })
     .click();
@@ -483,7 +531,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
       userLogin,
     ])
   ).rows[0].id;
-  await persistImportPage(db.pool, actorId, savedPlan.id, {
+  const recoverableOrderPage = {
     fingerprint: "e2e-source",
     shipments: [
       {
@@ -514,7 +562,8 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     hasMore: false,
     inspected: 1,
     excluded: 0,
-  });
+  };
+  await persistImportPage(db.pool, actorId, savedPlan.id, recoverableOrderPage);
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(page.getByText("Fonda Martha", { exact: true })).toBeVisible();
   const fondaCard = page.locator(".shipment-card").filter({
@@ -558,6 +607,61 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     "Asignación y orden guardados",
   );
   await expect(page.getByText("Fonda Martha", { exact: true })).toBeVisible();
+  await fondaCard
+    .getByRole("button", {
+      name: "Ocultar detalles de Fonda Martha S00500",
+      exact: true,
+    })
+    .click();
+  const removeOrder = fondaCard.getByRole("button", {
+    name: "Eliminar pedido S00500 del ruteo",
+    exact: true,
+  });
+  await removeOrder.click();
+  const removeOrderDialog = page.getByRole("dialog", {
+    name: "Eliminar pedido del ruteo",
+  });
+  await expect(removeOrderDialog).toContainText(
+    "¿Desea eliminar este pedido del ruteo?",
+  );
+  await expect(removeOrderDialog).toContainText(
+    "S00500 · Surtido WH/OUT/00500",
+  );
+  await page.screenshot({
+    path: "reports/screenshots/remove-order-confirmation.png",
+    fullPage: true,
+  });
+  await page.keyboard.press("Escape");
+  await expect(removeOrderDialog).toHaveCount(0);
+  await expect(removeOrder).toBeFocused();
+  await removeOrder.click();
+  await removeOrderDialog
+    .getByRole("button", { name: "Cancelar", exact: true })
+    .click();
+  await expect(removeOrder).toBeFocused();
+  await removeOrder.click();
+  await removeOrderDialog
+    .getByRole("button", { name: "Aceptar y eliminar", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText(
+    "S00500 se eliminó del ruteo",
+  );
+  await expect(fondaCard).toHaveCount(0);
+  await persistImportPage(db.pool, actorId, savedPlan.id, recoverableOrderPage);
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(page.getByText("Fonda Martha", { exact: true })).toBeVisible();
+  await fondaCard
+    .getByRole("button", {
+      name: "Mostrar detalles de Fonda Martha S00500",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByLabel("Camioneta para S00500 WH/OUT/00500")
+    .selectOption({ label: "Unidad QA 1" });
+  await expect(page.getByRole("status")).toContainText(
+    "Asignación y orden guardados",
+  );
   await fondaCard
     .getByRole("button", {
       name: "Ocultar detalles de Fonda Martha S00500",

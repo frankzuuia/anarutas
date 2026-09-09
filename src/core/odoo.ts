@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { readOdooConfig } from "./config";
 import { AppError } from "./errors";
 import type { ImportPage, SourceShipment } from "./orders-contract";
-import { integer } from "./orders-validation";
+import { integer, orderNames as validateOrderNames } from "./orders-validation";
+import { stockMoveCapabilities } from "./odoo-capabilities";
 import { pickerNoteField, pickerNoteValue } from "./picker-notes";
 
 type OdooConfig = ReturnType<typeof readOdooConfig>;
@@ -141,15 +142,32 @@ function odooDate(value: unknown): string {
   return parsed.toISOString();
 }
 
-/** One bounded picking page; credentials, company, language and allowed models are server owned. */
-export async function readFulfilledPage(
-  range: { start: string; end: string },
-  cursor = 0,
-  ceiling?: number,
-  config = readOdooConfig(),
-): Promise<ImportPage> {
-  integer(cursor);
-  if (ceiling !== undefined) integer(ceiling);
+type ReadSession = {
+  config: OdooConfig;
+  quantityField: string;
+  unitField: string;
+  noteField: string | null;
+  latestPickingId: (domain: unknown[]) => Promise<number>;
+  search: (
+    model: ReadModel,
+    domain: unknown[],
+    fields: string[],
+    limit: number,
+  ) => Promise<Row[]>;
+  all: (
+    model: ReadModel,
+    domain: unknown[],
+    fields: string[],
+  ) => Promise<Row[]>;
+  byIds: (
+    model: ReadModel,
+    ids: number[],
+    fields: string[],
+    scoped?: boolean,
+  ) => Promise<Map<number, Row>>;
+};
+
+async function openReadSession(config: OdooConfig): Promise<ReadSession> {
   const uid = await rpc(config, "common", "authenticate", [
     config.database,
     config.username,
@@ -177,7 +195,7 @@ export async function readFulfilledPage(
     allowed_company_ids: [config.companyId],
     ...(typeof users[0].lang === "string" ? { lang: users[0].lang } : {}),
   };
-  // These are the only two generic read methods, private to this closed domain service.
+  // This is the only generic record reader and it remains private to this closed domain service.
   const search = async (
     model: ReadModel,
     domain: unknown[],
@@ -193,60 +211,6 @@ export async function readFulfilledPage(
         { fields, limit, order: "id asc", context },
       ]),
     );
-  const fields = await rpc(config, "object", "execute_kw", [
-    ...prefix,
-    "stock.move",
-    "fields_get",
-    [],
-    { attributes: ["type", "relation"], context },
-  ]);
-  const quantityField = ["quantity", "quantity_done"].find(
-    (k) => fields?.[k]?.type === "float",
-  );
-  const unitField = ["uom_id", "product_uom"].find(
-    (k) => fields?.[k]?.relation === "uom.uom",
-  );
-  if (!quantityField || !unitField)
-    throw new AppError("ODOO_SCHEMA_UNSUPPORTED", 502);
-  const base: unknown[] = [
-    ["company_id", "=", config.companyId],
-    ["state", "=", "done"],
-    ["picking_type_code", "=", "outgoing"],
-    ["location_dest_id.usage", "=", "customer"],
-    ["date_done", ">=", range.start],
-    ["date_done", "<", range.end],
-  ];
-  if (ceiling === undefined) {
-    const highest = records(
-      await rpc(config, "object", "execute_kw", [
-        ...prefix,
-        "stock.picking",
-        "search_read",
-        [base],
-        { fields: ["id"], limit: 1, order: "id desc", context },
-      ]),
-    );
-    ceiling = highest.length ? Number(highest[0].id) : 0;
-  }
-  const pickings = await search(
-    "stock.picking",
-    [...base, ["id", ">", cursor], ["id", "<=", ceiling]],
-    ["id", "name", "company_id", "partner_id", "date_done", "backorder_id"],
-    50,
-  );
-  const nextCursor = pickings.length
-    ? Number(pickings[pickings.length - 1].id)
-    : cursor;
-  if (!pickings.length)
-    return {
-      fingerprint: config.fingerprint,
-      shipments: [],
-      inspected: 0,
-      excluded: 0,
-      nextCursor,
-      ceiling,
-      hasMore: false,
-    };
   async function all(
     model: ReadModel,
     domain: unknown[],
@@ -292,6 +256,62 @@ export async function readFulfilledPage(
     }
     return new Map(result.map((row) => [Number(row.id), row]));
   }
+  const fields = await rpc(config, "object", "execute_kw", [
+    ...prefix,
+    "stock.move",
+    "fields_get",
+    [],
+    { attributes: ["type", "relation"], context },
+  ]);
+  const { quantityField, unitField } = stockMoveCapabilities(fields);
+  const saleMetadata = await rpc(config, "object", "execute_kw", [
+    ...prefix,
+    "sale.order.line",
+    "fields_get",
+    [],
+    { attributes: ["type", "string"], context },
+  ]);
+  const noteField = pickerNoteField(
+    saleMetadata,
+    config.pickerNoteField,
+    config.pickerNoteLabel,
+  );
+  const latestPickingId = async (domain: unknown[]) => {
+    const rows = records(
+      await rpc(config, "object", "execute_kw", [
+        ...prefix,
+        "stock.picking",
+        "search_read",
+        [domain],
+        { fields: ["id"], limit: 1, order: "id desc", context },
+      ]),
+    );
+    return rows.length ? Number(rows[0].id) : 0;
+  };
+  return {
+    config,
+    quantityField,
+    unitField,
+    noteField,
+    latestPickingId,
+    search,
+    all,
+    byIds,
+  };
+}
+
+const pickingFields = [
+  "id",
+  "name",
+  "company_id",
+  "partner_id",
+  "date_done",
+  "backorder_id",
+];
+
+async function hydratePickings(session: ReadSession, pickings: Row[]) {
+  const { config, quantityField, unitField, noteField, all, byIds } = session;
+  if (!pickings.length) return [];
   const moves = await all(
     "stock.move",
     [
@@ -311,26 +331,14 @@ export async function readFulfilledPage(
       unitField,
     ],
   );
-  const saleMetadata = await rpc(config, "object", "execute_kw", [
-    ...prefix,
-    "sale.order.line",
-    "fields_get",
-    [],
-    { attributes: ["type", "string"], context },
-  ]);
-  const noteField = pickerNoteField(
-    saleMetadata,
-    config.pickerNoteField,
-    config.pickerNoteLabel,
-  );
   const saleLines = await byIds(
     "sale.order.line",
-    moves.map((m) => relation(m.sale_line_id)[0]),
+    moves.map((move) => relation(move.sale_line_id)[0]),
     ["id", "order_id", ...(noteField ? [noteField] : [])],
   );
   const sales = await byIds(
     "sale.order",
-    [...saleLines.values()].map((l) => relation(l.order_id)[0]),
+    [...saleLines.values()].map((line) => relation(line.order_id)[0]),
     [
       "id",
       "name",
@@ -341,10 +349,10 @@ export async function readFulfilledPage(
     ],
   );
   const partnerIds = pickings
-    .filter((p) => p.partner_id)
-    .map((p) => relation(p.partner_id)[0]);
+    .filter((picking) => picking.partner_id)
+    .map((picking) => relation(picking.partner_id)[0]);
   partnerIds.push(
-    ...[...sales.values()].map((s) => relation(s.partner_shipping_id)[0]),
+    ...[...sales.values()].map((sale) => relation(sale.partner_shipping_id)[0]),
   );
   const partners = await byIds(
     "res.partner",
@@ -365,7 +373,7 @@ export async function readFulfilledPage(
   for (const picking of pickings) {
     const groups = new Map<number, SourceShipment>();
     for (const move of moves.filter(
-      (m) => relation(m.picking_id)[0] === picking.id,
+      (record) => relation(record.picking_id)[0] === picking.id,
     )) {
       const saleLine = saleLines.get(relation(move.sale_line_id)[0])!;
       const orderId = relation(saleLine.order_id)[0];
@@ -391,7 +399,7 @@ export async function readFulfilledPage(
             partner.zip,
             partner.country_id && relation(partner.country_id)[1],
           ]
-            .filter((x) => typeof x === "string" && x.trim())
+            .filter((value) => typeof value === "string" && value.trim())
             .join(", "),
           validatedAt: odooDate(picking.date_done),
           promisedAt: sale.commitment_date
@@ -421,13 +429,143 @@ export async function readFulfilledPage(
     }
     shipments.push(...groups.values());
   }
+  return shipments;
+}
+
+/** One bounded picking page; credentials, company, language and allowed models are server owned. */
+export async function readFulfilledPage(
+  range: { start: string; end: string },
+  cursor = 0,
+  ceiling?: number,
+  config = readOdooConfig(),
+): Promise<ImportPage> {
+  integer(cursor);
+  if (ceiling !== undefined) integer(ceiling);
+  const session = await openReadSession(config);
+  const base: unknown[] = [
+    ["company_id", "=", config.companyId],
+    ["state", "=", "done"],
+    ["picking_type_code", "=", "outgoing"],
+    ["location_dest_id.usage", "=", "customer"],
+    ["date_done", ">=", range.start],
+    ["date_done", "<", range.end],
+  ];
+  let pageCeiling = ceiling;
+  if (pageCeiling === undefined)
+    pageCeiling = await session.latestPickingId(base);
+  const pickings = await session.search(
+    "stock.picking",
+    [...base, ["id", ">", cursor], ["id", "<=", pageCeiling]],
+    pickingFields,
+    50,
+  );
+  const nextCursor = pickings.length
+    ? Number(pickings[pickings.length - 1].id)
+    : cursor;
+  if (!pickings.length)
+    return {
+      fingerprint: config.fingerprint,
+      shipments: [],
+      inspected: 0,
+      excluded: 0,
+      nextCursor,
+      ceiling: pageCeiling,
+      hasMore: false,
+    };
+  const shipments = await hydratePickings(session, pickings);
   return {
     fingerprint: config.fingerprint,
     shipments,
     inspected: pickings.length,
     excluded: pickings.length - new Set(shipments.map((s) => s.pickingId)).size,
     nextCursor,
-    ceiling,
-    hasMore: pickings.length === 50 && nextCursor < ceiling,
+    ceiling: pageCeiling,
+    hasMore: pickings.length === 50 && nextCursor < pageCeiling,
+  };
+}
+
+/** Exact sale folios; the date is deliberately absent while every other fulfillment rule remains. */
+export async function readFulfilledByOrderNames(
+  requested: unknown,
+  config = readOdooConfig(),
+): Promise<ImportPage> {
+  const names = validateOrderNames(requested);
+  const session = await openReadSession(config);
+  const sales = await session.all(
+    "sale.order",
+    [
+      ["company_id", "=", config.companyId],
+      ["name", "in", names],
+      ["state", "in", ["sale", "done"]],
+    ],
+    ["id", "name"],
+  );
+  const counts = new Map<string, number>();
+  for (const sale of sales) {
+    const name = String(sale.name);
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const initiallyUnavailable = names.filter((name) => counts.get(name) !== 1);
+  if (initiallyUnavailable.length)
+    throw new AppError("MANUAL_ORDERS_UNAVAILABLE", 422, {
+      unavailableFolios: initiallyUnavailable,
+    });
+  const lines = await session.all(
+    "sale.order.line",
+    [["order_id", "in", sales.map((sale) => sale.id)]],
+    ["id"],
+  );
+  const moves = lines.length
+    ? await session.all(
+        "stock.move",
+        [
+          ["company_id", "=", config.companyId],
+          ["sale_line_id", "in", lines.map((line) => line.id)],
+          ["state", "=", "done"],
+          ["picking_id", "!=", false],
+          ["origin_returned_move_id", "=", false],
+          [session.quantityField, ">", 0],
+        ],
+        ["id", "picking_id"],
+      )
+    : [];
+  const pickingIds = [
+    ...new Set(moves.map((move) => relation(move.picking_id)[0])),
+  ];
+  if (pickingIds.length > 500) throw new AppError("MANUAL_ORDERS_LIMIT", 422);
+  const pickings = pickingIds.length
+    ? await session.search(
+        "stock.picking",
+        [
+          ["company_id", "=", config.companyId],
+          ["id", "in", pickingIds],
+          ["state", "=", "done"],
+          ["picking_type_code", "=", "outgoing"],
+          ["location_dest_id.usage", "=", "customer"],
+        ],
+        pickingFields,
+        501,
+      )
+    : [];
+  const requestedSet = new Set(names);
+  const shipments = (await hydratePickings(session, pickings)).filter(
+    (shipment) => requestedSet.has(shipment.orderName),
+  );
+  const eligible = new Set(shipments.map((shipment) => shipment.orderName));
+  const unavailable = names.filter((name) => !eligible.has(name));
+  if (unavailable.length)
+    throw new AppError("MANUAL_ORDERS_UNAVAILABLE", 422, {
+      unavailableFolios: unavailable,
+    });
+  return {
+    fingerprint: config.fingerprint,
+    shipments,
+    inspected: pickings.length,
+    excluded:
+      pickings.length -
+      new Set(shipments.map((shipment) => shipment.pickingId)).size,
+    nextCursor: 0,
+    ceiling: 0,
+    hasMore: false,
   };
 }

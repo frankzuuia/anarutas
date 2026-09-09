@@ -37,8 +37,8 @@ it("Odoo exposes no generic executor and permits only fixed read operations", as
     ["res.users", "read"],
     ["search_read"],
     ["stock.move", "fields_get"],
-    ["stock.picking", "search_read"],
     ["sale.order.line", "fields_get"],
+    ["stock.picking", "search_read"],
   ]);
   const exported = ast.statements
     .filter(ts.isFunctionDeclaration)
@@ -50,6 +50,7 @@ it("Odoo exposes no generic executor and permits only fixed read operations", as
     "odooPublicStatus",
     "diagnoseOdoo",
     "readFulfilledPage",
+    "readFulfilledByOrderNames",
   ]);
   expect(source).not.toMatch(/"(write|create|unlink)"/);
 });

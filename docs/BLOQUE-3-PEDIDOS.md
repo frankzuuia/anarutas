@@ -18,14 +18,24 @@ promoción/deploy requiere autorización. Odoo sólo lectura.
   flota/asignación usan versión; eliminación devuelve sus pedidos a sin asignar.
 - BL-014: ventanas y prioridad nullable pendientes, nunca inferidas ni tomadas de
   la prioridad de almacén. Futuro archivo vinculado por ID de destinatario/origen.
+- BL-015: el administrador puede solicitar uno o varios folios de venta exactos
+  con prefijo `S` para recuperar sus surtidos validados aunque `date_done` quede
+  fuera de la fecha seleccionada. La excepción omite únicamente la fecha: conserva
+  empresa, estado done, salida a cliente, cantidades positivas y exclusión de
+  devoluciones. El lote se valida completo antes de persistir y nunca escribe Odoo.
+- BL-016: el administrador puede quitar una tarjeta del borrador después de una
+  confirmación explícita. La eliminación es local, versionada, transaccional y
+  auditada; no elimina ni modifica la venta o el surtido en Odoo. Una carga posterior
+  normal o manual puede recuperar el pedido, funcionando como reversión operacional.
 
 ## Fechas y alcance
 
-El modal propone el día natural anterior al plan como fecha de validación, permite
-rango explícito y muestra zona horaria de instalación. El rango es inclusivo en
-fechas locales y se convierte a límites UTC [inicio, día posterior al fin).
+El modal muestra una sola Fecha de validación de pedidos, propone por defecto el
+día local actual de la zona horaria de instalación y permite modificarlo. El cliente
+envía esa fecha como inicio y fin del mismo día; el servidor la convierte a límites
+UTC [inicio, día posterior) y no acepta fechas posteriores al día del plan.
 No hay calendario laboral/corte acordado: no se inventan feriados o aplazamientos.
-El rango explícito evita incorporar todo el histórico al arrancar. Fechas prometidas
+La fecha explícita evita incorporar todo el histórico al arrancar. Fechas prometidas
 se muestran para revisión: aún no hay despacho ni optimización automática.
 
 ## Contratos e integridad
@@ -39,10 +49,20 @@ acotan lectura, nunca controlan modelo/credenciales. El navegador recorre lotes 
 reintenta desde cero después de fallo; restricciones DB impiden duplicación.
 PUT /api/plans/[id]/vehicles selecciona flota con expectedVersion.
 PATCH /api/plans/[id]/orders mueve un envío con expectedVersion y vehículo elegido.
+POST /api/plans/[id]/orders/manual consulta un lote acotado de folios exactos y sólo
+lo incorpora cuando todos tienen al menos un surtido elegible. DELETE
+/api/plans/[id]/orders retira una tarjeta concreta con expectedVersion; normaliza el
+orden restante y permite que una importación posterior vuelva a incorporarla.
 Cookies/autorización/CSRF/JSON/SQL parametrizado heredan controles existentes.
 Se revalida actor activo en transacción y company/lang desde cuenta Odoo.
 Cambios detectados en un surtido ya importado se reportan para revisión, conservando
 su contenido y asignación. No se interpreta cancelación o devolución como reenvío.
+
+## Extensión 3C — evidencia local
+
+La carga manual por folio y el retiro recuperable están implementados y validados
+localmente. Resultados, métricas, capturas y puerta Odoo live pendiente se registran
+en `QA-BLOQUE-3C-PEDIDOS-MANUALES.md`.
 
 ## Escenarios / tareas O-T01..05
 
@@ -59,6 +79,9 @@ su contenido y asignación. No se interpreta cancelación o devolución como ree
 | O09 sin sesión/CSRF                           | 401/403, integración HTTP real                      |
 | O10 DST/límites de día/rango inválido         | Unidades y fronteras UTC                            |
 | O11 esquema incompatible/respuesta incompleta | Error explícito, lote no guardado                   |
+| O12 folios exactos fuera de fecha             | Lote completo, sólo elegibles y sin duplicación     |
+| O13 folio inexistente o sin surtido válido    | Rechazo total identificado; cero inserciones        |
+| O14 quitar, cancelar y recargar pedido        | Borrado local recuperable mediante nueva carga      |
 | O12 fuente corregida después de importar      | Detectar diferencia, no sobrescribir operación      |
 | O13 migrar v1/v2                              | Conserva cuentas/flota/planes; PostgreSQL real      |
 | O14 varios navegadores/refresh                | Lectura de tablero con versión coherente, E2E       |

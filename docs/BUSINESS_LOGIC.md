@@ -23,7 +23,7 @@ Bloque 2A autorizado: BL-007..010 (camionetas, choferes, asignación actual y do
 
 ## Decisiones pendientes que no se inventan
 
-- Captura acordada: fecha de validación del surtido, con rango local explícito; corte, días laborables/feriados todavía pendientes.
+- Captura acordada: una sola fecha de validación de pedidos, inicializada con el día civil actual de la instalación y editable hasta la fecha del plan. La carga manual por folio puede recuperar surtidos validados fuera de esa fecha; corte, días laborables/feriados todavía pendientes.
 - Depósito y horario de salida; política exacta de prioridad alta frente a ventanas incompatibles.
 - Proyecto/clave Google habilitados; cuenta/modelo del agente y permisos de integración.
 - Procedimiento real de devoluciones/contabilidad: no hay autorización de escrituras Odoo para ese alcance.

@@ -55,6 +55,7 @@ const events: Record<string, string> = {
   "orders.imported": "Cargó surtidos desde Odoo",
   "plan.vehicles.selected": "Seleccionó camionetas del día",
   "shipment.moved": "Movió un pedido en el plan",
+  "shipment.removed": "Quitó un pedido del plan",
 };
 
 export function Dashboard({

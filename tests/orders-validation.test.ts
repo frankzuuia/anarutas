@@ -4,11 +4,19 @@ import {
   importRange,
   integer,
   localMidnight,
+  maxManualOrderNames,
+  orderNames,
   uuid,
   vehicleIds,
 } from "../src/core/orders-validation";
+import { todayInTimezone } from "../src/core/local-date";
 
 describe("order import boundaries", () => {
+  it("uses today's civil date in the configured timezone", () => {
+    const instant = new Date("2026-09-10T05:30:00.000Z");
+    expect(todayInTimezone("America/Mexico_City", instant)).toBe("2026-09-09");
+    expect(todayInTimezone("UTC", instant)).toBe("2026-09-10");
+  });
   it("converts local Mexico dates to UTC half-open boundaries", () => {
     expect(localMidnight("2026-09-08", "America/Mexico_City")).toBe(
       "2026-09-08 06:00:00",
@@ -65,5 +73,29 @@ describe("order import boundaries", () => {
       "a0000000_0000-4000-8000-000000000001",
     ])
       expect(() => uuid(value)).toThrow("INVALID_INPUT");
+  });
+  it("normalizes bounded exact S folios and rejects ambiguity", () => {
+    expect(orderNames([" s00001 ", "S123456"])).toEqual(["S00001", "S123456"]);
+    expect(
+      orderNames(
+        Array.from({ length: maxManualOrderNames }, (_, i) => `S${i}`),
+      ),
+    ).toHaveLength(maxManualOrderNames);
+    expect(orderNames([`S${"1".repeat(20)}`])).toEqual([`S${"1".repeat(20)}`]);
+    for (const value of [
+      [],
+      "S00001",
+      [1],
+      [""],
+      ["S"],
+      ["00001"],
+      ["S1A"],
+      [`S${"1".repeat(21)}`],
+      Array.from({ length: maxManualOrderNames + 1 }, (_, i) => `S${i}`),
+    ])
+      expect(() => orderNames(value)).toThrow("MANUAL_ORDERS_INVALID");
+    expect(() => orderNames(["S00001", "s00001"])).toThrow(
+      "MANUAL_ORDERS_DUPLICATED",
+    );
   });
 });

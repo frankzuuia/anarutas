@@ -656,6 +656,59 @@ small,
   color: var(--muted);
   font-size: 12px;
 }
+.validation-date-field {
+  width: min(100%, 260px);
+}
+.manual-order-box {
+  display: grid;
+  gap: 8px;
+}
+.manual-order-box > p {
+  margin: 0;
+}
+.manual-order-list {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+.manual-order-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+  align-items: center;
+}
+.manual-order-input {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  border: 1px solid #3b4b40;
+  border-radius: 7px;
+  background: #0b120e;
+}
+.manual-order-input:focus-within {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+.manual-order-prefix {
+  padding-left: 10px;
+  color: #c9f8d9;
+  font-weight: 750;
+}
+.manual-order-input input {
+  min-height: 34px;
+  border: 0;
+  outline: 0;
+}
+.app button.manual-row-remove {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+.manual-order-actions {
+  padding-top: 2px;
+}
 .vehicle-option {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -974,6 +1027,11 @@ tr:last-child td {
   .app select {
     font-size: 16px;
   }
+  .app button.manual-row-remove,
+  .app button.shipment-remove {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 @media (max-width: 1100px) {
   .app {
@@ -1287,6 +1345,10 @@ button.lane-remove:hover:not(:disabled) {
   padding: 0;
   overflow: hidden;
 }
+.shipment-card-head {
+  display: flex;
+  align-items: stretch;
+}
 .shipment-toggle {
   display: grid;
   grid-template-columns: 27px minmax(0, 1fr) 14px;
@@ -1300,6 +1362,8 @@ button.lane-remove:hover:not(:disabled) {
   background: transparent;
   color: var(--ink);
   text-align: left;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .shipment-toggle:hover {
   background: #16231a;
@@ -1345,6 +1409,23 @@ button.lane-remove:hover:not(:disabled) {
 }
 .shipment-toggle[aria-expanded="true"] .shipment-chevron {
   transform: rotate(180deg);
+}
+button.shipment-remove {
+  align-self: center;
+  flex: 0 0 30px;
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  margin-right: 5px;
+  padding: 0;
+  border-color: #762b32;
+  background: #3a1519;
+  color: #ff9ca4;
+}
+button.shipment-remove:hover:not(:disabled) {
+  border-color: #e04f59;
+  background: #b4232e;
+  color: #fff;
 }
 .shipment-expanded {
   padding: 5px 8px 8px;

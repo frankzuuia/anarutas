@@ -88,8 +88,8 @@ dirección ambigua, duplicadas, filtros, cierre y reapertura, CSP y cuota con Go
 
 ## Evidencia de ejecución 2026-09-09
 
-- 101 pruebas / 11 archivos verdes. Cobertura core: statements 96.08%, branches
-  91.96%, funciones 96.72%, líneas 97.43%. Adaptador Odoo validado live y por AST.
+- 102 pruebas / 11 archivos verdes. Cobertura core: statements 96.10%, branches
+  91.98%, funciones 96.77%, líneas 97.44%. Adaptador Odoo validado live y por AST.
 - Mutación de notas y configuración pública: 87 eliminados / 87, 100%, sin sobrevivientes.
 - Mutación del retiro transaccional: 20 eliminados / 20, 100%, sin sobrevivientes.
 - Build Next, tipos y lint verdes. npm audit de dependencias productivas: 0 vulnerabilidades.

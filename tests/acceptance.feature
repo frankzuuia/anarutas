@@ -141,6 +141,8 @@ Feature: Ana Rutas independiente y portable
     Given existen camionetas disponibles en la flota
     When el administrador abre Cargar pedidos de Odoo
     Then el modal muestra el número real de camionetas disponibles y permite seleccionarlas
+    And muestra una sola Fecha de validación de pedidos editable con el día local actual por defecto
+    And explica que la fecha seleccionada traerá los pedidos validados
     And las no disponibles permanecen visibles sin poder seleccionarse
 
   Scenario: Añadir camionetas conserva el trabajo del borrador
@@ -219,3 +221,32 @@ Feature: Ana Rutas independiente y portable
     When se intenta cargar un lote
     Then se informa la ambigüedad sin escoger una columna arbitraria
     And los lotes anteriores permanecen guardados
+
+  Scenario: Cargar varios pedidos validados fuera de la fecha
+    Given el administrador añadió los folios S00001 y S00003 en la carga manual
+    And ambos tienen al menos un surtido validado de cliente en la empresa configurada
+    When confirma el lote para el borrador
+    Then se incorporan todos sus surtidos elegibles aunque se validaron en otra fecha
+    And repetir la carga no duplica tarjetas ni cambia sus asignaciones
+    And Odoo no recibe escrituras
+
+  Scenario: Un lote manual inválido no se carga parcialmente
+    Given el administrador añadió varios folios manuales
+    And uno no existe o no tiene ningún surtido validado elegible
+    When confirma el lote
+    Then se identifican los folios no disponibles
+    And ninguno de los folios del lote se incorpora al borrador
+
+  Scenario: Quitar y recuperar un pedido del ruteo
+    Given un pedido de Odoo está cargado y puede estar asignado a una camioneta
+    When el administrador pulsa su bote rojo y acepta la confirmación
+    Then sólo se elimina la tarjeta de Ana Rutas y se conserva Odoo sin cambios
+    And el orden restante se normaliza en una transacción versionada y auditada
+    When vuelve a cargar desde Odoo una consulta que contiene ese pedido
+    Then la tarjeta puede incorporarse nuevamente sin duplicarse
+
+  Scenario: Cancelar el retiro de un pedido
+    Given está abierto el modal para eliminar un pedido del ruteo
+    When el administrador pulsa Cancelar o Escape
+    Then no cambia el borrador ni aumenta su versión
+    And el foco regresa al bote del pedido

@@ -11,6 +11,7 @@ import {
   orderBoard,
   persistImportPage,
   removePlanVehicle,
+  removeShipment,
   selectPlanVehicles,
 } from "../src/core/orders";
 import type { ImportPage, SourceShipment } from "../src/core/orders-contract";
@@ -346,5 +347,101 @@ describe("fulfilled orders / real PostgreSQL", () => {
         createHash("sha256").update("other-odoo").digest("hex"),
       ),
     ).rejects.toThrow("ODOO_SOURCE_CHANGED");
+  });
+
+  it("removes a shipment atomically and allows a later Odoo reload to recover it", async () => {
+    const plan = await createPlan(db.pool, actor, {
+      date: "2026-09-14",
+      label: "Retiro recuperable QA",
+    });
+    const vehicle = await createVehicle(db.pool, actor, {
+      id: randomUUID(),
+      name: "Camioneta retiro QA",
+      brand: "Ford",
+      model: "2026",
+      plate: randomUUID().slice(0, 8),
+      mileage: 1,
+      fuel: "Gasolina",
+      available: true,
+    });
+    await selectPlanVehicles(db.pool, actor, plan.id, {
+      vehicleIds: [vehicle.id],
+      expectedVersion: plan.version,
+    });
+    await persistImportPage(
+      db.pool,
+      actor,
+      plan.id,
+      page([shipment(61, 61), shipment(62, 62), shipment(63, 63)]),
+    );
+    let board = await orderBoard(db.pool, plan.id);
+    const removed = board.shipments[1];
+    await moveShipment(db.pool, actor, plan.id, {
+      shipmentId: removed.id,
+      vehicleId: vehicle.id,
+      beforeId: null,
+      expectedVersion: board.plan.version,
+    });
+    await persistImportPage(db.pool, actor, plan.id, page([shipment(64, 64)]));
+    board = await orderBoard(db.pool, plan.id);
+    await removeShipment(db.pool, actor, plan.id, {
+      shipmentId: removed.id,
+      expectedVersion: board.plan.version,
+    });
+    board = await orderBoard(db.pool, plan.id);
+    expect(board.shipments.map((item) => item.pickingId)).toEqual([61, 63, 64]);
+    expect(board.shipments.map((item) => item.position)).toEqual([1, 2, 3]);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT details FROM route_audit WHERE action='shipment.removed' AND entity_id=$1",
+          [removed.id],
+        )
+      ).rows[0].details,
+    ).toEqual({
+      orderId: 62,
+      pickingId: 62,
+      planId: plan.id,
+      vehicleId: vehicle.id,
+    });
+    await expect(
+      removeShipment(db.pool, actor, plan.id, {
+        shipmentId: removed.id,
+        expectedVersion: board.plan.version,
+      }),
+    ).rejects.toThrow("NOT_FOUND");
+    const reload = await persistImportPage(
+      db.pool,
+      actor,
+      plan.id,
+      page([shipment(62, 62)]),
+    );
+    expect(reload).toMatchObject({ inserted: 1, existing: 0 });
+    board = await orderBoard(db.pool, plan.id);
+    expect(board.shipments.map((item) => item.pickingId)).toEqual([
+      61, 63, 64, 62,
+    ]);
+    const concurrent = await Promise.allSettled(
+      board.shipments.slice(0, 2).map((item) =>
+        removeShipment(db.pool, actor, plan.id, {
+          shipmentId: item.id,
+          expectedVersion: board.plan.version,
+        }),
+      ),
+    );
+    expect(
+      concurrent.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      concurrent.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+    expect(
+      (
+        concurrent.find(
+          (result) => result.status === "rejected",
+        ) as PromiseRejectedResult
+      ).reason,
+    ).toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
+    expect((await orderBoard(db.pool, plan.id)).shipments).toHaveLength(3);
   });
 });

@@ -39,6 +39,16 @@ No se incluyen cambios a repositorio five, sus entornos, vendedores, precios o V
 
 - [x] T10 (BL002 / S20): mínimo 6 caracteres sincronizado en servidor, formularios y mensajes; mantener altas por administradores, comprobar límites, API, login, cobertura y mutación. No cambiar cuentas existentes. Evidencia en QA-CONTRASENA.md.
 
+## Ajuste de interfaz solicitado: fecha de validación
+
+- [x] T14 (BL011, BL006 / S24): carga Odoo con una sola Fecha de validación de pedidos, editable e inicializada con el día civil actual de la zona horaria; el cliente conserva el contrato enviando el mismo día como inicio/fin y el servidor mantiene límites y protección del plan.
+
+## Bloque 3C autorizado — carga manual y retiro recuperable
+
+- [x] T15 (BL015 / S25): carga manual atómica de hasta 50 folios `S` exactos fuera de fecha, reutilizando el adaptador Odoo sólo lectura y compatible por capacidades.
+- [x] T16 (BL016 / S26): bote por pedido, confirmación accesible y DELETE transaccional versionado; una recarga Odoo puede recuperar el pedido.
+- [ ] T17 (BL015-016 / S25-26): unidades, PostgreSQL real, contrato estático Odoo, E2E, Gherkin, cobertura, mutación y seguridad verdes; falta smoke read-only de la ruta manual contra develop 19.4 y preflight de producción 17. Evidencia local en `QA-BLOQUE-3C-PEDIDOS-MANUALES.md`.
+
 ## Ajuste de interfaz solicitado: nombre del borrador
 
 - [x] T13 (BL003, BL006 / S23): bote rojo por carril con modal de confirmación; DELETE transaccional retira sólo la camioneta del borrador y regresa sus pedidos a Sin asignar, conservando datos, orden, flota y Odoo; versión, auditoría, concurrencia, foco y E2E.

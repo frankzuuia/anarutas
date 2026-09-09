@@ -1,4 +1,11 @@
 export const errors: Record<string, string> = {
+  MANUAL_ORDERS_INVALID:
+    "Agrega entre 1 y 50 folios con el formato S seguido de números.",
+  MANUAL_ORDERS_DUPLICATED: "Quita los folios repetidos antes de continuar.",
+  MANUAL_ORDERS_UNAVAILABLE:
+    "Estos folios no tienen un surtido validado elegible en la empresa configurada",
+  MANUAL_ORDERS_LIMIT:
+    "El lote contiene demasiados surtidos. Divídelo en consultas más pequeñas.",
   ODOO_PICKER_FIELD_INVALID:
     "El campo configurado para la nota del picker no existe o no es de texto en este Odoo.",
   ODOO_PICKER_FIELD_AMBIGUOUS:
@@ -84,9 +91,16 @@ export async function api<T>(
   if (!response.ok) {
     if (response.status === 401 && path !== "/api/session")
       navigateAfterAuth("/login");
-    throw new Error(
+    const base =
       errors[result.error] ||
-        "No se pudo completar la operación. Inténtalo nuevamente.",
+      "No se pudo completar la operación. Inténtalo nuevamente.";
+    const unavailable = Array.isArray(result.unavailableFolios)
+      ? result.unavailableFolios.filter(
+          (value: unknown): value is string => typeof value === "string",
+        )
+      : [];
+    throw new Error(
+      unavailable.length ? `${base}: ${unavailable.join(", ")}.` : base,
     );
   }
   return result as T;

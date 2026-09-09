@@ -19,6 +19,8 @@ El despliegue usa una imagen Docker standalone con configuración runtime. No ex
 - `/api/setup`: POST primera cuenta, una sola vez.
 - `/api/users`: GET y POST para administradores. `/api/users/[id]`: PATCH activar/desactivar; prohibido desactivar la propia cuenta, evitando dejarse fuera. Cuenta inactiva invalida sus sesiones.
 - `/api/plans`: GET/POST borradores por fecha. `/api/plans/[id]`: PATCH etiqueta con expectedVersion. Conflicto 409 no destruye cambios ajenos.
+- `/api/plans/[id]/orders/manual`: POST de folios exactos, empresa y credenciales siempre tomadas del servidor. La ausencia de fecha no relaja los demás criterios de elegibilidad.
+- `/api/plans/[id]/orders`: DELETE retira un surtido del borrador con expectedVersion; no escribe Odoo y una sincronización posterior puede recuperarlo.
 - `/api/odoo`: GET configuración pública mínima, POST diagnóstico real de sólo lectura. Ninguna entrada del cliente decide host, credencial, compañía ni modelo RPC.
 - `/api/audit`: GET últimos eventos con autor; no contraseñas, tokens ni respuestas completas externas.
 - `/api/health`: liveness mínimo sin datos; `/api/ready` consulta marca de instalación, 503 en error sin detalles sensibles.
@@ -70,6 +72,31 @@ reciben host, base, compañía o credenciales desde el cliente.
 Validación S21: la navegación no contiene «Conexión con Odoo» y el endpoint
 autenticado continúa respondiendo desde la configuración del proceso. No se
 modifican Odoo, credenciales, datos de negocio, V3, vendedores o precios.
+
+### S25: carga manual por folio fuera de fecha (BL-005, BL-011, BL-012, BL-015)
+
+El modal de carga incluye una sección compacta independiente de la fecha. El prefijo
+`S` es fijo y cada renglón captura su parte numérica, con `00001` como ejemplo visual,
+no como pedido seleccionado. El operador puede añadir hasta 50 folios únicos y
+confirmarlos como un solo lote. El servidor normaliza y valida el formato; consulta
+únicamente la empresa configurada y exige ventas sale/done con surtidos done,
+outgoing, destino customer, cantidades positivas y sin devoluciones. Todos los folios
+deben producir al menos un surtido elegible antes de persistir cualquiera. Un folio
+puede producir varios surtidos y cada combinación surtido+venta conserva su identidad.
+
+La implementación comparte autenticación, negociación de campos e hidratación con la
+carga por fecha. No ramifica por número de versión Odoo: detecta campos disponibles
+mediante `fields_get` y usa el enlace stock.move.sale_line_id → sale.order.line.order_id.
+El cliente nunca envía URL, base, empresa, credenciales, modelos o dominios libres.
+
+### S26: retiro recuperable de pedidos (BL-003, BL-012, BL-016)
+
+Cada tarjeta tiene un bote rojo accesible separado de la acción de expandir. Al
+activarlo se abre un modal que identifica pedido y surtido. Cancelar, Escape o cerrar
+no escriben; aceptar envía el ID interno y expectedVersion. En una sola transacción se
+revalida actor, bloquea plan y tarjeta, comprueba versión, elimina la copia de Ana
+Rutas, normaliza posiciones, incrementa versión y audita. No existe exclusión
+permanente: volver a cargar desde Odoo puede recuperar la tarjeta eliminada.
 
 ### S19: densidad compacta del panel (BL-006)
 

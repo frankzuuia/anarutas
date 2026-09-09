@@ -53,7 +53,14 @@ export async function endpoint(action: () => Promise<NextResponse>) {
         durationMs: Math.round(performance.now() - started),
       }),
     );
-    return json({ error: code, requestId }, status);
+    return json(
+      {
+        error: code,
+        requestId,
+        ...(error instanceof AppError && error.details ? error.details : {}),
+      },
+      status,
+    );
   }
 }
 export async function body(request: Request) {

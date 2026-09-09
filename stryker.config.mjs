@@ -1,5 +1,10 @@
 const config = {
-  mutate: ["src/core/policy.ts", "src/core/orders-validation.ts"],
+  mutate: [
+    "src/core/policy.ts",
+    "src/core/orders-validation.ts",
+    "src/core/local-date.ts",
+    "src/core/odoo-capabilities.ts",
+  ],
   testRunner: "vitest",
   vitest: { configFile: "vitest.unit.config.ts" },
   reporters: ["clear-text", "html", "json"],
