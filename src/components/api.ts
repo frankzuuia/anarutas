@@ -27,6 +27,8 @@ export const errors: Record<string, string> = {
     "Ese chofer ya está asignado a otra camioneta. Quita esa asignación primero.",
   FLEET_UNAVAILABLE:
     "La camioneta debe estar disponible y el chofer activo para asignarlos.",
+  PLAN_VEHICLE_NOT_FOUND:
+    "La camioneta ya no pertenece a este borrador. La lista fue actualizada.",
   DOCUMENT_INVALID:
     "Sube una foto válida JPG, PNG o WebP, sin animación y de hasta 20 megapíxeles.",
   DOCUMENT_TOO_LARGE: "El archivo excede el máximo de 8 MB o está vacío.",

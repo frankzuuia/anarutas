@@ -76,6 +76,15 @@ button.primary {
 button.primary:hover {
   background: #68eba9;
 }
+button.danger {
+  background: #b4232e;
+  color: #fff;
+  border-color: #e04f59;
+  font-weight: 650;
+}
+button.danger:hover:not(:disabled) {
+  background: #cf303d;
+}
 button.quiet {
   background: transparent;
 }
@@ -1226,6 +1235,7 @@ tr:last-child td {
   min-height: 0;
 }
 .order-lane > header {
+  grid-template-columns: minmax(0, 1fr) auto auto;
   padding: 4px 8px;
   min-height: 40px;
   flex-shrink: 0;
@@ -1236,7 +1246,29 @@ tr:last-child td {
   font-size: 12px;
 }
 .order-lane > header small {
+  grid-column: 1 / -1;
   font-size: 11px;
+}
+button.lane-remove {
+  width: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  color: #ff7d86;
+  background: #3a1519;
+  border-color: #762b32;
+}
+button.lane-remove:hover:not(:disabled) {
+  color: #fff;
+  background: #b4232e;
+  border-color: #e04f59;
+}
+.remove-vehicle-dialog {
+  max-width: 500px;
+}
+.removal-impact {
+  margin-top: 10px;
+  color: #ffd0d3;
 }
 .shipment-list {
   display: flex;
@@ -1547,6 +1579,11 @@ tr:last-child td {
   }
   .orders-toolbar-actions {
     width: 100%;
+  }
+  button.lane-remove {
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
   .route-map-dialog {
     width: 100vw;

@@ -10,6 +10,7 @@ import {
   moveShipment,
   orderBoard,
   persistImportPage,
+  removePlanVehicle,
   selectPlanVehicles,
 } from "../src/core/orders";
 import type { ImportPage, SourceShipment } from "../src/core/orders-contract";
@@ -172,7 +173,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     ).toBe(true);
   });
 
-  it("adds plan vehicles without removing lanes or existing assignments", async () => {
+  it("adds and removes plan vehicles without losing orders", async () => {
     const plan = await createPlan(db.pool, actor, {
       date: "2026-09-13",
       label: "Adición de flota QA",
@@ -280,6 +281,48 @@ describe("fulfilled orders / real PostgreSQL", () => {
       }),
     ).rejects.toThrow("SELECT_VEHICLES");
     expect((await orderBoard(db.pool, plan.id)).vehicles).toHaveLength(3);
+
+    await removePlanVehicle(db.pool, actor, plan.id, {
+      vehicleId: vehicles[0].id,
+      expectedVersion: board.plan.version,
+    });
+    board = await orderBoard(db.pool, plan.id);
+    expect(board.vehicles).toHaveLength(2);
+    expect(board.shipments[0].vehicle_id).toBeNull();
+    expect(
+      (
+        await db.pool.query(
+          "SELECT details FROM route_audit WHERE action='plan.vehicle.removed' AND entity_id=$1 ORDER BY id DESC LIMIT 1",
+          [plan.id],
+        )
+      ).rows[0].details,
+    ).toEqual({ vehicleId: vehicles[0].id, unassigned: 1 });
+    await expect(
+      removePlanVehicle(db.pool, actor, plan.id, {
+        vehicleId: vehicles[0].id,
+        expectedVersion: board.plan.version,
+      }),
+    ).rejects.toThrow("PLAN_VEHICLE_NOT_FOUND");
+
+    const removals = await Promise.allSettled(
+      board.vehicles.map((vehicle) =>
+        removePlanVehicle(db.pool, actor, plan.id, {
+          vehicleId: vehicle.id,
+          expectedVersion: board.plan.version,
+        }),
+      ),
+    );
+    expect(
+      removals.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      (
+        removals.find(
+          (result) => result.status === "rejected",
+        ) as PromiseRejectedResult
+      ).reason,
+    ).toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
+    expect((await orderBoard(db.pool, plan.id)).vehicles).toHaveLength(1);
   });
 
   it("allows only one plan to claim the same Odoo shipment under concurrent imports", async () => {

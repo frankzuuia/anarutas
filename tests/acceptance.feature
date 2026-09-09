@@ -157,6 +157,21 @@ Feature: Ana Rutas independiente y portable
     Then el modal explica que no hay camionetas disponibles para agregar
     And no permite confirmar una selección vacía
 
+  Scenario: Quitar una camioneta con pedidos asignados
+    Given una camioneta del borrador tiene uno o más pedidos asignados
+    When el administrador pulsa su bote rojo y confirma Quitar camioneta
+    Then la camioneta se retira únicamente de ese borrador
+    And todos sus pedidos pasan a Pedidos sin asignar conservando datos y orden relativo
+    And la camioneta permanece registrada en la flota
+    And Odoo no recibe escrituras ni se vuelve a consultar
+    And la operación guarda versión y auditoría en una sola transacción
+
+  Scenario: Cancelar el retiro de una camioneta
+    Given está abierto el modal Quitar camioneta del plan
+    When el administrador pulsa Cancelar o Escape
+    Then no cambia el borrador ni sus pedidos
+    And el foco regresa al bote de la camioneta
+
   Scenario: Cambios manuales permanecen seguros entre administradores
     Given un pedido cargado y camionetas seleccionadas para el día
     When se arrastra o selecciona otra camioneta desde una versión vigente

@@ -148,6 +148,38 @@ export async function addPlanVehicles(
     await audit(sql, actor, "plan.vehicles.added", id, { count: added });
   });
 }
+export async function removePlanVehicle(
+  pool: Pool,
+  actor: string,
+  id: string,
+  input: Record<string, unknown>,
+) {
+  const vehicleId = uuid(input.vehicleId);
+  const expected = integer(input.expectedVersion, 1);
+  await transaction(pool, async (sql) => {
+    await assertActiveActor(sql, actor);
+    const plan = await planRow(sql, id, "UPDATE");
+    if (plan.version !== expected) throw new AppError("VERSION_CONFLICT", 409);
+    const membership = await sql.query(
+      "SELECT vehicle_id FROM route_plan_vehicles WHERE plan_id=$1 AND vehicle_id=$2 FOR UPDATE",
+      [id, vehicleId],
+    );
+    if (!membership.rowCount) throw new AppError("PLAN_VEHICLE_NOT_FOUND", 404);
+    const unassigned = await sql.query(
+      "UPDATE route_shipments SET vehicle_id=NULL WHERE plan_id=$1 AND vehicle_id=$2 RETURNING id",
+      [id, vehicleId],
+    );
+    await sql.query(
+      "DELETE FROM route_plan_vehicles WHERE plan_id=$1 AND vehicle_id=$2",
+      [id, vehicleId],
+    );
+    await bump(sql, id, actor);
+    await audit(sql, actor, "plan.vehicle.removed", id, {
+      vehicleId,
+      unassigned: unassigned.rowCount ?? 0,
+    });
+  });
+}
 export async function assertOrderSource(pool: Pool, fingerprint: string) {
   const { rows } = await pool.query(
     "SELECT fingerprint FROM route_order_source",

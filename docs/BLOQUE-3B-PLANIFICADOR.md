@@ -29,6 +29,12 @@ scroll independiente, mapa de entregas y notas picker sin modificar Five/V3/Luna
   resultado. No elimina carriles, no desasigna pedidos y no consulta Odoo. El modal
   excluye las unidades ya presentes, bloquea las no disponibles, admite selección
   múltiple y explica cuando no quedan opciones elegibles.
+- Cada carril de camioneta muestra un bote rojo con nombre accesible y confirmación
+  previa. `DELETE /api/plans/[id]/vehicles` bloquea la versión del borrador,
+  regresa a `vehicle_id = null` todos los pedidos de ese carril, elimina únicamente
+  la relación de la camioneta con el plan, incrementa versión y audita la cantidad
+  desasignada dentro de una transacción. La unidad sigue en la flota y no se consulta
+  ni modifica Odoo. Cancelar o Escape no escribe y restaura el foco al disparador.
 - Mapa modal de pantalla completa, Escape, foco restaurado, filtros por camioneta,
   números de parada y agrupación visual de pedidos en coordenadas idénticas.
   Direcciones vacías, ambiguas y fallidas se señalan sin inventar coordenadas.
@@ -67,7 +73,8 @@ No se modificó Odoo ni el flujo que escribe cotizaciones/QR.
 ## QA reproducible
 
 `npm run typecheck`, `npm run lint`, `npm run build`, `npm run test:coverage`,
-`npx stryker run stryker.planner.config.mjs`, `npm run test:e2e`.
+`npx stryker run stryker.planner.config.mjs`,
+`npm run test:mutation:vehicle-removal`, `npm run test:e2e`.
 E2E usa PostgreSQL real y navegador; no simula Google. Escenarios de 7 camionetas y
 25 pedidos, tamaños 375/768/1024/1440/1920, scroll local, menú, notas escapadas,
 modal sin configuración, autenticación, concurrencia y regresión de flota/cuentas.
@@ -81,11 +88,12 @@ dirección ambigua, duplicadas, filtros, cierre y reapertura, CSP y cuota con Go
 
 ## Evidencia de ejecución 2026-09-09
 
-- 101 pruebas / 11 archivos verdes. Cobertura core: statements 96%, branches
-  92.11%, funciones 96.66%, líneas 97.37%. Adaptador Odoo validado live y por AST.
+- 101 pruebas / 11 archivos verdes. Cobertura core: statements 96.08%, branches
+  91.96%, funciones 96.72%, líneas 97.43%. Adaptador Odoo validado live y por AST.
 - Mutación de notas y configuración pública: 87 eliminados / 87, 100%, sin sobrevivientes.
+- Mutación del retiro transaccional: 20 eliminados / 20, 100%, sin sobrevivientes.
 - Build Next, tipos y lint verdes. npm audit de dependencias productivas: 0 vulnerabilidades.
-- E2E navegador + PostgreSQL: 1 recorrido completo verde, 22.1 s incluyendo arranque.
+- E2E navegador + PostgreSQL: 1 recorrido completo verde, 22.3 s incluyendo arranque.
   Capturas reports/screenshots/planner-seven-{768,1024,1440,1920}.png y móvil 375.
 - Tercera pasada de densidad: las tarjetas cerradas usan divulgación progresiva y
   miden menos de 80 px en la prueba de 768 px. Resultado: 8 visibles en las capturas

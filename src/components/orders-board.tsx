@@ -8,6 +8,7 @@ import {
   ArrowDown,
   Map,
   ChevronDown,
+  Trash2,
 } from "lucide-react";
 import type { Plan } from "@/core/plans";
 import type { Vehicle } from "@/core/fleet-contract";
@@ -346,6 +347,96 @@ function AddVehiclesDialog({
   );
 }
 
+function RemoveVehicleDialog({
+  vehicle,
+  shipmentCount,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  vehicle: { id: string; name: string };
+  shipmentCount: number;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const title = useId();
+  const description = useId();
+
+  useEffect(() => {
+    const element = dialog.current;
+    const previous = document.activeElement as HTMLElement;
+    element?.showModal();
+    return () => {
+      element?.close();
+      previous?.focus();
+    };
+  }, []);
+
+  return (
+    <dialog
+      className="fleet-dialog remove-vehicle-dialog"
+      ref={dialog}
+      aria-labelledby={title}
+      aria-describedby={description}
+      onCancel={(e) => {
+        e.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <header className="panel-header">
+        <h2 id={title}>Quitar camioneta del plan</h2>
+        <button
+          className="quiet"
+          aria-label="Cerrar confirmación"
+          disabled={busy}
+          onClick={onClose}
+        >
+          <X size={16} />
+        </button>
+      </header>
+      <div className="panel-body stack">
+        <div id={description}>
+          <p>
+            ¿Quieres quitar <strong>{vehicle.name}</strong> de este borrador?
+          </p>
+          {shipmentCount > 0 ? (
+            <p className="removal-impact">
+              {shipmentCount === 1
+                ? "Su pedido pasará"
+                : `Sus ${shipmentCount} pedidos pasarán`}{" "}
+              a <strong>Pedidos sin asignar</strong> y conservará
+              {shipmentCount === 1 ? "" : "n"} todos sus datos.
+            </p>
+          ) : (
+            <p className="muted">
+              Esta camioneta no tiene pedidos asignados en el borrador.
+            </p>
+          )}
+        </div>
+        <p className="muted">
+          La camioneta seguirá registrada en la flota y podrás volver a añadirla
+          después. Odoo no se modifica.
+        </p>
+        <div className="order-actions">
+          <button className="quiet" disabled={busy} onClick={onClose}>
+            Cancelar
+          </button>
+          <button
+            className="danger"
+            disabled={busy}
+            onClick={() => void onConfirm()}
+          >
+            <Trash2 size={16} />
+            {busy ? "Quitando…" : "Quitar camioneta"}
+          </button>
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
 export function OrdersBoard({
   plan,
   timezone,
@@ -362,6 +453,11 @@ export function OrdersBoard({
   const [board, setBoard] = useState<OrderBoard | null>(null);
   const [modal, setModal] = useState(false);
   const [addVehiclesOpen, setAddVehiclesOpen] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<{
+    id: string;
+    name: string;
+    shipmentCount: number;
+  } | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -483,6 +579,33 @@ export function OrdersBoard({
     } catch (e) {
       await refresh().catch(() => {});
       throw e;
+    } finally {
+      working(false);
+    }
+  }
+  async function removeVehicle() {
+    if (!board || !removeTarget) return;
+    const target = removeTarget;
+    working(true);
+    setError("");
+    setNotice("");
+    try {
+      update(
+        await api<OrderBoard>(`/api/plans/${plan.id}/vehicles`, "DELETE", {
+          vehicleId: target.id,
+          expectedVersion: board.plan.version,
+        }),
+      );
+      setNotice(
+        target.shipmentCount > 0
+          ? `${target.name} se quitó del plan · ${target.shipmentCount} ${target.shipmentCount === 1 ? "pedido pasó" : "pedidos pasaron"} a Sin asignar.`
+          : `${target.name} se quitó del plan.`,
+      );
+      setRemoveTarget(null);
+    } catch (e) {
+      setRemoveTarget(null);
+      setError((e as Error).message);
+      await refresh().catch(() => {});
     } finally {
       working(false);
     }
@@ -732,6 +855,22 @@ export function OrdersBoard({
                   </span>
                   <span className="badge">{lane.length}</span>
                   {v.id && (
+                    <button
+                      className="lane-remove"
+                      disabled={busy}
+                      aria-label={`Quitar ${v.name} del plan`}
+                      onClick={() =>
+                        setRemoveTarget({
+                          id: v.id,
+                          name: v.name,
+                          shipmentCount: lane.length,
+                        })
+                      }
+                    >
+                      <Trash2 size={14} aria-hidden="true" />
+                    </button>
+                  )}
+                  {v.id && (
                     <small>{v.driver_name || "Sin chofer asignado"}</small>
                   )}
                 </header>
@@ -772,6 +911,15 @@ export function OrdersBoard({
           busy={busy}
           onClose={() => setAddVehiclesOpen(false)}
           onSubmit={addVehicles}
+        />
+      )}
+      {removeTarget && (
+        <RemoveVehicleDialog
+          vehicle={removeTarget}
+          shipmentCount={removeTarget.shipmentCount}
+          busy={busy}
+          onClose={() => setRemoveTarget(null)}
+          onConfirm={removeVehicle}
         />
       )}
       {mapOpen && board && (

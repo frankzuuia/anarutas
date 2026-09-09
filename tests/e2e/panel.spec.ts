@@ -564,9 +564,40 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
       exact: true,
     })
     .click();
-  await fondaCard.dragTo(page.locator(".shipment-list").first());
+  const removeUnit = page.getByRole("button", {
+    name: "Quitar Unidad QA 1 del plan",
+    exact: true,
+  });
+  await removeUnit.click();
+  const removeDialog = page.getByRole("dialog", {
+    name: "Quitar camioneta del plan",
+  });
+  await expect(removeDialog).toContainText("Su pedido pasará a");
+  await expect(removeDialog).toContainText("Pedidos sin asignar");
+  await page.screenshot({
+    path: "reports/screenshots/remove-vehicle-confirmation.png",
+    fullPage: true,
+  });
+  await page.keyboard.press("Escape");
+  await expect(removeDialog).toHaveCount(0);
+  await expect(removeUnit).toBeFocused();
+  await removeUnit.click();
+  await removeDialog
+    .getByRole("button", { name: "Cancelar", exact: true })
+    .click();
+  await expect(removeUnit).toBeFocused();
+  await expect(removeUnit).toBeVisible();
+  await removeUnit.click();
+  await removeDialog
+    .getByRole("button", { name: "Quitar camioneta", exact: true })
+    .click();
+  await expect(removeDialog).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText(
-    "Asignación y orden guardados",
+    "1 pedido pasó a Sin asignar",
+  );
+  await expect(removeUnit).toHaveCount(0);
+  await expect(page.locator(".shipment-list").first()).toContainText(
+    "Fonda Martha",
   );
   await expect
     .poll(async () => {
@@ -578,7 +609,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     .toBeNull();
   const initialBoard = await orderBoard(db.pool, savedPlan.id);
   const chosenVehicles = [...initialBoard.vehicles.map((v) => v.id)];
-  for (let i = 3; i <= 7; i++) {
+  for (let i = 2; i <= 7; i++) {
     const vehicle = await createVehicle(db.pool, actorId, {
       id: randomUUID(),
       name: `Camioneta de prueba ${i}`,
