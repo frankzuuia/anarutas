@@ -1,5 +1,5 @@
 const config = {
-  mutate: ["src/core/policy.ts"],
+  mutate: ["src/core/policy.ts", "src/core/orders-validation.ts"],
   testRunner: "vitest",
   vitest: { configFile: "vitest.unit.config.ts" },
   reporters: ["clear-text", "html", "json"],

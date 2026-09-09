@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { startPostgres, freePort } from "../helpers/postgres";
 import { fleetFlow } from "./fleet-flow";
+import { persistImportPage } from "../../src/core/orders";
 
 let db: Awaited<ReturnType<typeof startPostgres>>;
 let child: ChildProcess;
@@ -232,6 +233,20 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await other
     .getByLabel("Nombre del borrador")
     .fill("No sobrescribir la otra sesión");
+  const currentPlan = (
+    await (await first.request.get(`${origin}/api/plans`)).json()
+  ).find((plan: { id: string }) => plan.id === savedPlan.id);
+  const concurrent = await first.request.patch(
+    `${origin}/api/plans/${savedPlan.id}`,
+    {
+      headers: { Origin: origin },
+      data: {
+        label: "Reparto del martes",
+        expectedVersion: currentPlan.version,
+      },
+    },
+  );
+  expect(concurrent.status()).toBe(200);
   const conflict = other.waitForResponse(
     (response) =>
       response.request().method() === "PATCH" &&
@@ -390,13 +405,91 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(page.getByRole("status")).toContainText("sesiones revocadas");
   expect((await third.request.get(`${origin}/api/plans`)).status()).toBe(401);
   const fleet = await fleetFlow(page, first, second, origin);
+  await page
+    .getByRole("button", { name: "Planificar rutas", exact: true })
+    .click();
+  await page.getByRole("button", { name: /Reparto del martes/ }).click();
+  await page
+    .getByRole("button", { name: "Cargar pedidos de Odoo", exact: true })
+    .click();
+  const loadDialog = page.getByRole("dialog", {
+    name: "Cargar pedidos de Odoo",
+  });
+  await expect(loadDialog.getByText("2 camionetas disponibles")).toBeVisible();
+  await loadDialog.getByRole("checkbox").first().check();
+  await loadDialog
+    .getByRole("button", { name: "Guardar camionetas", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText(
+    "Camionetas del día guardadas",
+  );
+  const actorId = (
+    await db.pool.query("SELECT id FROM route_users WHERE login=$1", [
+      userLogin,
+    ])
+  ).rows[0].id;
+  await persistImportPage(db.pool, actorId, savedPlan.id, {
+    fingerprint: "e2e-source",
+    shipments: [
+      {
+        pickingId: 500,
+        pickingName: "WH/OUT/00500",
+        orderId: 500,
+        orderName: "S00500",
+        partnerId: 11,
+        customerName: "Fonda Martha",
+        address: "Av. Guadalupe 851, Guadalajara",
+        validatedAt: "2026-10-09T18:00:00.000Z",
+        promisedAt: null,
+        backorderId: null,
+        lines: [
+          {
+            moveId: 5000,
+            productId: 260,
+            name: "Producto de validación",
+            quantity: 4,
+            unit: "kg",
+          },
+        ],
+      },
+    ],
+    nextCursor: 500,
+    ceiling: 500,
+    hasMore: false,
+    inspected: 1,
+    excluded: 0,
+  });
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(page.getByText("Fonda Martha", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Sin horario registrado", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Camioneta para S00500 WH/OUT/00500")
+    .selectOption({ label: "Unidad QA 1" });
+  await expect(page.getByRole("status")).toContainText(
+    "Asignación y orden guardados",
+  );
+  await expect(page.getByText("Fonda Martha", { exact: true })).toBeVisible();
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.screenshot({
+      path: `reports/screenshots/orders-board-${width}.png`,
+      fullPage: true,
+    });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  }
   await page.getByRole("button", { name: "Auditoría", exact: true }).click();
   await expect(
     page.getByRole("cell", { name: "Creó un borrador", exact: true }),
   ).toHaveCount(2);
   await expect(
     page.getByRole("cell", { name: "Modificó un borrador", exact: true }),
-  ).toHaveCount(1);
+  ).toHaveCount(2);
   await page.getByRole("button", { name: "Cerrar sesión" }).click();
   await expect(page).toHaveURL(`${origin}/login`);
   expect((await second.request.get(`${origin}/api/plans`)).status()).toBe(200);

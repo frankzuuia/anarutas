@@ -1,4 +1,16 @@
 export const errors: Record<string, string> = {
+  SELECT_VEHICLES: "Selecciona al menos una camioneta para cargar los pedidos.",
+  ODOO_SOURCE_CHANGED:
+    "La conexión de Odoo cambió respecto a los pedidos guardados. Requiere revisión del administrador de la instalación.",
+  ODOO_SCHEMA_UNSUPPORTED:
+    "Esta versión de Odoo requiere revisar los campos de surtido antes de cargar pedidos.",
+  ODOO_INCOMPLETE_READ:
+    "Odoo no permitió leer todos los datos del lote. Revisa los permisos de la cuenta de integración.",
+  ODOO_INVALID_RESPONSE:
+    "Odoo devolvió datos incompletos. Vuelve a intentar la consulta.",
+  DATE_BOUNDARY_UNSUPPORTED:
+    "La zona horaria no permite resolver el inicio de esa fecha. Revisa el rango.",
+  NOT_FOUND: "No se encontró el plan o pedido solicitado.",
   FLEET_INVALID:
     "Revisa los datos de la ficha: campos requeridos, kilometraje y opciones seleccionadas.",
   FLEET_NOT_FOUND: "No se encontró esa ficha o documento en esta instalación.",

@@ -9,7 +9,6 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
-  PackageOpen,
   Truck,
   Info,
 } from "lucide-react";
@@ -18,6 +17,7 @@ import type { Plan } from "@/core/plans";
 import { api, navigateAfterAuth } from "./api";
 import { DraftName } from "./draft-name";
 import { FleetPanel } from "./fleet-panel";
+import { OrdersBoard } from "./orders-board";
 
 type Section = "plans" | "vehicles" | "drivers" | "users" | "audit";
 const sections = [
@@ -50,6 +50,9 @@ const events: Record<string, string> = {
   "driver.updated": "Modificó un chofer",
   "driver.document.saved": "Guardó un documento de chofer",
   "odoo.connection.checked": "Verificó la conexión Odoo",
+  "orders.imported": "Cargó surtidos desde Odoo",
+  "plan.vehicles.selected": "Seleccionó camionetas del día",
+  "shipment.moved": "Movió un pedido en el plan",
 };
 
 export function Dashboard({
@@ -65,10 +68,15 @@ export function Dashboard({
 }) {
   const [section, setSection] = useState<Section>("plans");
   const [fleetRevision, setFleetRevision] = useState(0);
+  const [boardRevision, setBoardRevision] = useState(0);
   const [plans, setPlans] = useState<Plan[]>([]),
     [users, setUsers] = useState<User[]>([]),
     [audit, setAudit] = useState<AuditRow[]>([]);
   const [selected, setSelected] = useState<Plan | null>(null);
+  const adoptPlan = useCallback((plan: Plan) => {
+    setSelected(plan);
+    setPlans((previous) => previous.map((p) => (p.id === plan.id ? plan : p)));
+  }, []);
   const [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [loading, setLoading] = useState(true),
@@ -77,7 +85,10 @@ export function Dashboard({
     try {
       if (section === "vehicles" || section === "drivers")
         setFleetRevision((value) => value + 1);
-      if (section === "plans") setPlans(await api<Plan[]>("/api/plans"));
+      if (section === "plans") {
+        setPlans(await api<Plan[]>("/api/plans"));
+        setBoardRevision((value) => value + 1);
+      }
       if (section === "users") setUsers(await api<User[]>("/api/users"));
       if (section === "audit") setAudit(await api<AuditRow[]>("/api/audit"));
     } catch (e) {
@@ -318,37 +329,14 @@ export function Dashboard({
                         busy={busy}
                         onSubmit={saveDraft}
                       />
-                      <div className="board">
-                        <div className="lane">
-                          <header>Pedidos sin asignar</header>
-                          <div className="empty">
-                            <PackageOpen size={32} />
-                            <h3>Sin pedidos cargados</h3>
-                            <p>
-                              La carga desde Odoo se conectará en el bloque de
-                              pedidos.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="lane">
-                          <header>Camionetas del día</header>
-                          <div className="empty">
-                            <Truck size={32} />
-                            <h3>Administra tu flota</h3>
-                            <p>
-                              Registra camionetas y asigna sus choferes. La
-                              selección por día se conectará con los pedidos.
-                            </p>
-                            <button
-                              className="quiet"
-                              style={{ marginTop: 10 }}
-                              onClick={() => setSection("vehicles")}
-                            >
-                              Ver camionetas
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                      <OrdersBoard
+                        key={selected.id}
+                        plan={selected}
+                        timezone={timezone}
+                        revision={boardRevision}
+                        onPlan={adoptPlan}
+                        onBusy={setBusy}
+                      />
                     </>
                   ) : (
                     <>
@@ -370,8 +358,8 @@ export function Dashboard({
                   )}
                   <div className="note-line">
                     <Info size={17} style={{ flexShrink: 0 }} />
-                    Este bloque guarda borradores. Todavía no carga pedidos,
-                    optimiza rutas ni envía instrucciones a choferes.
+                    Los cambios se guardan en el borrador. La optimización y el
+                    envío a choferes se incorporarán después.
                   </div>
                 </section>
               </div>

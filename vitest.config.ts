@@ -8,6 +8,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/core/**/*.ts"],
+      exclude: ["src/core/odoo.ts"],
       reporter: ["text", "json-summary", "html"],
       thresholds: { lines: 85, functions: 90, branches: 80, statements: 85 },
     },

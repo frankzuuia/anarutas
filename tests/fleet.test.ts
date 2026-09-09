@@ -66,7 +66,7 @@ describe("fleet / real PostgreSQL", () => {
   it("upgrades actual v1 structure while preserving preexisting account and plan", async () => {
     // Only this isolated QA cluster: remove empty v2 tables to reproduce original v1 state.
     await db.pool.query(
-      "DROP TABLE route_driver_documents,route_vehicles,route_drivers; UPDATE rutas_installation SET schema_version=1",
+      "DROP TABLE route_shipments,route_plan_vehicles,route_order_source,route_driver_documents,route_vehicles,route_drivers; UPDATE rutas_installation SET schema_version=1",
     );
     const id = randomUUID();
     await db.pool.query(
@@ -82,7 +82,7 @@ describe("fleet / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(2);
+    ).toBe(3);
     expect((await db.pool.query("SELECT * FROM route_users")).rows).toEqual(
       users,
     );

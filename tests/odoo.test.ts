@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { expect, it } from "vitest";
 import ts from "typescript";
 import { odooPublicStatus } from "../src/core/odoo";
-it("Odoo exposes no generic executor and calls only its three fixed read operations", async () => {
+it("Odoo exposes no generic executor and permits only fixed read operations", async () => {
   const source = await readFile("src/core/odoo.ts", "utf8");
   const ast = ts.createSourceFile(
     "odoo.ts",
@@ -33,6 +33,11 @@ it("Odoo exposes no generic executor and calls only its three fixed read operati
     ["common", "authenticate"],
     ["res.users", "read"],
     ["res.company", "read"],
+    ["common", "authenticate"],
+    ["res.users", "read"],
+    ["search_read"],
+    ["stock.move", "fields_get"],
+    ["stock.picking", "search_read"],
   ]);
   const exported = ast.statements
     .filter(ts.isFunctionDeclaration)
@@ -40,7 +45,12 @@ it("Odoo exposes no generic executor and calls only its three fixed read operati
       node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword),
     )
     .map((node) => node.name?.text);
-  expect(exported).toEqual(["odooPublicStatus", "diagnoseOdoo"]);
+  expect(exported).toEqual([
+    "odooPublicStatus",
+    "diagnoseOdoo",
+    "readFulfilledPage",
+  ]);
+  expect(source).not.toMatch(/"(write|create|unlink)"/);
 });
 it("missing connection returns no invented connected state or secrets", () => {
   expect(odooPublicStatus()).toEqual({ configured: false, mode: "read-only" });

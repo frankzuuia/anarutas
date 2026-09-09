@@ -2,6 +2,10 @@
 
 ## Límites
 
+Extensión autorizada 3A: BL-011..014/O01..14, contratos y migración v3 en
+BLOQUE-3-PEDIDOS.md. La elegibilidad se basa en surtidos validados; no en fecha
+de creación de la venta. Ventanas y prioridad pueden permanecer pendientes.
+
 Extensión autorizada 2A: ver BLOQUE-2-FLOTA.md para BL-007..010 y F01..10. Nueva migración aditiva v2; no reemplaza ni elimina los contratos v1.
 
 Aplicación Next.js/React/TypeScript nueva con API de rutas del mismo origen. PostgreSQL dedicado a Ana Rutas. Sin imports, redirecciones, proxies, migraciones ni cambios a five. Redis/worker se incorporarán con los trabajos durables en su bloque; no se requieren para autenticación y borradores persistidos.

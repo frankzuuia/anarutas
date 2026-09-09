@@ -1,5 +1,13 @@
 # Progreso — bloque 1
 
+## Bloque 3A autorizado — BLOQUE-3-PEDIDOS.md
+
+- [x] O-T01: esquema v3, identidad/envíos/flota por día e integridad concurrente.
+- [x] O-T02: lectura real Odoo, contratos de esquema, idioma y fechas locales.
+- [x] O-T03: API, modal de carga y tablero persistente con asignación.
+- [x] O-T04: QA real, Gherkin, regresión, cobertura y mutación crítica.
+- [x] O-T05: evidencia en QA-BLOQUE-3A-PEDIDOS.md; sin promoción implícita.
+
 ## Bloque 2A autorizado — BLOQUE-2-FLOTA.md
 
 - [x] F-T01 (F01): migración aditiva e integridad de datos anteriores.

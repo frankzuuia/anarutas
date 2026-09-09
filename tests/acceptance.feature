@@ -78,11 +78,11 @@ Feature: Ana Rutas independiente y portable
     And el panel no muestra una pestaña de conexión, credenciales o separación de entornos
     And no se escriben pedidos, contactos, inventario o precios
 
-  Scenario: No simular ruteo todavía no conectado
+  Scenario: Carga real sin simular optimización todavía no conectada
     Given un borrador nuevo
     When el administrador lo abre
-    Then el tablero indica que pedidos y unidades están pendientes de su bloque
-    And no muestra rutas, clientes o choferes inventados
+    Then puede seleccionar camionetas y cargar surtidos validados desde Odoo
+    And no muestra una ruta optimizada hasta recibir un resultado real de Google
 
   Scenario: Migración aditiva de flota conserva la instalación existente
     Given una instalación propia en esquema v1 con cuentas, sesiones y borradores
@@ -124,3 +124,39 @@ Feature: Ana Rutas independiente y portable
     When el proceso se reinicia y el administrador vuelve al panel
     Then las fichas, asignación y documentos continúan disponibles
     And los formularios permiten alta, edición, cancelación y teclado sin desbordamiento horizontal a 375, 940 y 1440 píxeles
+
+  Scenario: La fecha de surtido decide qué pedidos se incorporan
+    Given una venta creada antes y un surtido de cliente validado dentro del rango elegido
+    When el administrador carga pedidos para un plan con camionetas seleccionadas
+    Then se incorpora el surtido por su fecha de validación y no por la creación de la venta
+    And la consulta no escribe ventas, entregas, contactos, productos ni precios en Odoo
+
+  Scenario: Varios pedidos del mismo cliente conservan su identidad
+    Given un cliente con varios pedidos o surtidos independientes durante el mismo día
+    When se cargan al borrador
+    Then cada combinación de surtido y pedido aparece por separado con sus propias partidas
+    And repetir la carga no duplica tarjetas ni borra asignaciones manuales
+
+  Scenario: Las camionetas del día se eligen antes de cargar
+    Given existen camionetas disponibles en la flota
+    When el administrador abre Cargar pedidos de Odoo
+    Then el modal muestra el número real de camionetas disponibles y permite seleccionarlas
+    And las no disponibles permanecen visibles sin poder seleccionarse
+
+  Scenario: Cambios manuales permanecen seguros entre administradores
+    Given un pedido cargado y camionetas seleccionadas para el día
+    When se arrastra o selecciona otra camioneta desde una versión vigente
+    Then se guardan la asignación y el orden en PostgreSQL con auditoría
+    And una versión obsoleta recibe conflicto y debe actualizar antes de decidir nuevamente
+
+  Scenario: Ventanas y prioridad todavía no entregadas
+    Given el cliente aún no tiene importada su ventana o preferencia alta
+    Then su tarjeta muestra Sin horario registrado y Prioridad pendiente
+    And ningún proceso inventa un horario o una prioridad predeterminada
+
+  Scenario: La IA arma y distribuye la ruta con datos reales de Google
+    Given pedidos cargados, camionetas del día, punto de salida y Google Route Optimization configurado
+    When el administrador pulsa Armar ruta con IA
+    Then Google asigna los pedidos a las camionetas y ordena sus paradas usando la red vial real
+    And el resultado guarda su versión, métricas y pedidos no asignables para revisión
+    And el administrador puede mover pedidos manualmente después de la propuesta
