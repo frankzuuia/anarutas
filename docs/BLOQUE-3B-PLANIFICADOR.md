@@ -15,12 +15,14 @@ scroll independiente, mapa de entregas y notas picker sin modificar Five/V3/Luna
   sólo ocupa espacio mientras su modal está abierto. Confirmaciones son flotantes y
   se retiran automáticamente, por lo que no desplazan pedidos ni camionetas.
 - En escritorio de 768 px de alto el inicio de las columnas queda antes de 180 px y
-  se muestran al menos tres tarjetas completas cerradas. Abrir productos puede crecer
-  una tarjeta deliberadamente; el desplazamiento continúa aislado dentro de su lista.
-- Las tarjetas usan composición adaptable sin ocultar datos: folio/dirección y
-  preferencias/productos comparten renglón cuando el carril tiene espacio y se
-  envuelven en carriles angostos. En puntero preciso los controles bajan a 28 px;
-  móvil y dispositivos táctiles conservan objetivos de 44 px.
+  se muestran al menos seis tarjetas completas cerradas, cada una de hasta 80 px.
+  Abrir una tarjeta puede hacerla crecer deliberadamente; el desplazamiento continúa
+  aislado dentro de su lista.
+- Las tarjetas aplican divulgación progresiva. Cerradas enseñan únicamente número de
+  parada, cliente, pedido, cantidad de partidas, horario y prioridad. Al expandir
+  conservan dirección, referencia de surtido, promesa, productos, notas picker,
+  selector de camioneta y controles de orden. En puntero preciso esos controles bajan
+  a 28 px; móvil y dispositivos táctiles conservan objetivos de 44 px.
 - Mapa modal de pantalla completa, Escape, foco restaurado, filtros por camioneta,
   números de parada y agrupación visual de pedidos en coordenadas idénticas.
   Direcciones vacías, ambiguas y fallidas se señalan sin inventar coordenadas.
@@ -64,8 +66,9 @@ E2E usa PostgreSQL real y navegador; no simula Google. Escenarios de 7 camioneta
 25 pedidos, tamaños 375/768/1024/1440/1920, scroll local, menú, notas escapadas,
 modal sin configuración, autenticación, concurrencia y regresión de flota/cuentas.
 La prueba de densidad usa 768 px de alto, exige documento sin scroll, columnas antes
-de 180 px, más de 250 px útiles por carril, al menos tres pedidos completos visibles
-y tarjetas cerradas de hasta 132 px en el escenario angosto.
+de 180 px, más de 250 px útiles por carril, al menos seis pedidos completos visibles
+y tarjetas cerradas de hasta 80 px. También abre y cierra una tarjeta real y verifica
+dirección, productos, nota picker escapada y reasignación mediante el contrato existente.
 
 Activación Google pendiente: configurar claves propias; probar puntos, permiso denegado,
 dirección ambigua, duplicadas, filtros, cierre y reapertura, CSP y cuota con Google real.
@@ -78,9 +81,9 @@ dirección ambigua, duplicadas, filtros, cierre y reapertura, CSP y cuota con Go
 - Build Next, tipos y lint verdes. npm audit de dependencias productivas: 0 vulnerabilidades.
 - E2E navegador + PostgreSQL: 1 recorrido completo verde, 22.9 s incluyendo arranque.
   Capturas reports/screenshots/planner-seven-{768,1024,1440,1920}.png y móvil 375.
-- Segunda pasada de densidad: formulario trasladado a modal, controles superiores en
-  una fila, encabezado/toolbar reducidos, avisos fuera del flujo y tarjetas cerradas
-  de 138.5 px en la prueba de 768 px. Resultado: 3 completas y parte de la siguiente.
+- Tercera pasada de densidad: las tarjetas cerradas usan divulgación progresiva y
+  miden menos de 80 px en la prueba de 768 px. Resultado: 8 visibles en las capturas
+  de 768 y 1440 px, conservando todos los detalles y controles al expandir.
 - Regresión real detectada y corregida: etiquetas sr-only absolutas causaban overflow
   del documento; se contienen en la lista con position:relative, conservando accesibilidad.
 - Lectura Odoo real posterior al cambio: 7 pedidos, 27 partidas, 0 notas. Sin escrituras.

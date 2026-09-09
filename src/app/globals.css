@@ -575,13 +575,6 @@ small,
 .shipment-card:active {
   cursor: grabbing;
 }
-.shipment-heading {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 5px;
-}
-.shipment-heading strong,
 .shipment-card p {
   overflow-wrap: anywhere;
 }
@@ -1259,10 +1252,71 @@ tr:last-child td {
 }
 .shipment-card {
   flex-shrink: 0;
-  padding: 5px;
+  padding: 0;
+  overflow: hidden;
 }
-.shipment-heading strong {
+.shipment-toggle {
+  display: grid;
+  grid-template-columns: 27px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+.shipment-toggle:hover {
+  background: #16231a;
+}
+.shipment-stop-index {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  border-radius: 7px;
+  background: #dcffe9;
+  color: #0a4729;
   font-size: 12px;
+  font-weight: 800;
+}
+.shipment-summary {
+  display: block;
+  min-width: 0;
+}
+.shipment-summary strong,
+.shipment-summary small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shipment-summary strong {
+  font-size: 12px;
+  line-height: 1.2;
+}
+.shipment-summary small {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.2;
+}
+.shipment-summary .shipment-tags {
+  margin-top: 4px;
+}
+.shipment-chevron {
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+.shipment-toggle[aria-expanded="true"] .shipment-chevron {
+  transform: rotate(180deg);
+}
+.shipment-expanded {
+  padding: 5px 8px 8px;
+  border-top: 1px solid #223326;
 }
 .shipment-card p {
   margin: 1px 0;
@@ -1286,24 +1340,11 @@ tr:last-child td {
   flex: 1 1 240px;
   min-width: 0;
 }
-.shipment-overview {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 2px 7px;
-  margin-top: 2px;
-}
 .shipment-card .shipment-tags {
   display: flex;
   flex-wrap: nowrap;
   gap: 3px;
   margin: 0;
-}
-.shipment-card .shipment-overview details {
-  margin: 0;
-}
-.shipment-card .shipment-overview details[open] {
-  flex-basis: 100%;
 }
 .shipment-card summary {
   white-space: nowrap;
@@ -1475,6 +1516,9 @@ tr:last-child td {
   }
 }
 @media (min-width: 721px) and (pointer: fine) {
+  .shipment-card .shipment-toggle {
+    min-height: 0;
+  }
   .shipment-card .shipment-controls select,
   .shipment-card .shipment-controls .quiet {
     min-height: 28px;

@@ -479,6 +479,21 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   });
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(page.getByText("Fonda Martha", { exact: true })).toBeVisible();
+  const fondaCard = page.locator(".shipment-card").filter({
+    has: page.getByText("Fonda Martha", { exact: true }),
+  });
+  await expect(
+    fondaCard.getByText("Av. Guadalupe 851, Guadalajara"),
+  ).toHaveCount(0);
+  await fondaCard
+    .getByRole("button", {
+      name: "Mostrar detalles de Fonda Martha S00500",
+      exact: true,
+    })
+    .click();
+  await expect(
+    fondaCard.getByText("Av. Guadalupe 851, Guadalajara"),
+  ).toBeVisible();
   await page.locator(".shipment-card summary").click();
   await expect(page.locator(".picker-note")).toHaveText(
     "Maduro; separar bolsas <b>sin interpretar HTML</b>",
@@ -497,9 +512,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   expect(
     await (await first.request.get(`${origin}/api/maps/config`)).json(),
   ).toEqual({ configured: false });
-  await expect(
-    page.getByText("Sin horario registrado", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Sin horario", { exact: true })).toBeVisible();
   await page
     .getByLabel("Camioneta para S00500 WH/OUT/00500")
     .selectOption({ label: "Unidad QA 1" });
@@ -507,6 +520,24 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     "Asignación y orden guardados",
   );
   await expect(page.getByText("Fonda Martha", { exact: true })).toBeVisible();
+  await fondaCard
+    .getByRole("button", {
+      name: "Ocultar detalles de Fonda Martha S00500",
+      exact: true,
+    })
+    .click();
+  await fondaCard.dragTo(page.locator(".shipment-list").first());
+  await expect(page.getByRole("status")).toContainText(
+    "Asignación y orden guardados",
+  );
+  await expect
+    .poll(async () => {
+      const current = await orderBoard(db.pool, savedPlan.id);
+      return current.shipments.find(
+        (shipment) => shipment.orderName === "S00500",
+      )?.vehicle_id;
+    })
+    .toBeNull();
   const initialBoard = await orderBoard(db.pool, savedPlan.id);
   const chosenVehicles = [...initialBoard.vehicles.map((v) => v.id)];
   for (let i = 2; i <= 7; i++) {
@@ -597,8 +628,8 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     expect(dimensions.pageHeight).toBeLessThanOrEqual(dimensions.height);
     expect(dimensions.lanesHeight).toBeGreaterThan(250);
     expect(dimensions.lanesTop).toBeLessThan(180);
-    expect(dimensions.visibleCards).toBeGreaterThanOrEqual(3);
-    expect(dimensions.maxCardHeight).toBeLessThanOrEqual(132);
+    expect(dimensions.visibleCards).toBeGreaterThanOrEqual(6);
+    expect(dimensions.maxCardHeight).toBeLessThanOrEqual(80);
     await page.screenshot({
       path: `reports/screenshots/planner-seven-${width}.png`,
       fullPage: true,

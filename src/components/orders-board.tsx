@@ -4,10 +4,10 @@ import {
   Download,
   Truck,
   X,
-  GripVertical,
   ArrowUp,
   ArrowDown,
   Map,
+  ChevronDown,
 } from "lucide-react";
 import type { Plan } from "@/core/plans";
 import type { Vehicle } from "@/core/fleet-contract";
@@ -218,6 +218,9 @@ export function OrdersBoard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [expandedShipments, setExpandedShipments] = useState<Set<string>>(
+    () => new Set(),
+  );
   const endpoint = `/api/plans/${plan.id}/orders`;
   const update = useCallback(
     (data: OrderBoard) => {
@@ -338,10 +341,20 @@ export function OrdersBoard({
       working(false);
     }
   }
+  function toggleShipment(id: string) {
+    setExpandedShipments((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   function card(s: Shipment, lane: Shipment[], index: number) {
+    const expanded = expandedShipments.has(s.id);
+    const detailId = `shipment-detail-${s.id}`;
     return (
       <article
-        className="shipment-card"
+        className={`shipment-card ${expanded ? "is-expanded" : ""}`}
         key={s.id}
         draggable={!busy}
         onDragStart={(e) =>
@@ -355,98 +368,120 @@ export function OrdersBoard({
           if (id) void move(id, s.vehicle_id, s.id);
         }}
       >
-        <div className="shipment-heading">
-          <GripVertical size={15} aria-hidden="true" />
-          <strong>{s.customerName}</strong>
-          <span className="badge">{index + 1}</span>
-        </div>
-        <div className="shipment-reference">
-          <p className="shipment-folio">
-            {s.orderName} · {s.pickingName}
-          </p>
-          <p className={`shipment-address ${!s.address ? "warning" : "muted"}`}>
-            {s.address || "Dirección pendiente"}
-          </p>
-        </div>
-        {s.promisedAt && (
-          <p className="muted">
-            Promesa Odoo:{" "}
-            {new Date(s.promisedAt).toLocaleString("es-MX", {
-              timeZone: timezone,
-            })}
-          </p>
-        )}
-        <div className="shipment-overview">
-          <div className="shipment-tags">
-            <span className="badge">
-              {s.window_start
-                ? `${s.window_start}–${s.window_end}`
-                : "Sin horario registrado"}
+        <button
+          type="button"
+          className="shipment-toggle"
+          aria-expanded={expanded}
+          aria-controls={detailId}
+          aria-label={`${expanded ? "Ocultar" : "Mostrar"} detalles de ${s.customerName} ${s.orderName}`}
+          onClick={() => toggleShipment(s.id)}
+        >
+          <span className="shipment-stop-index" aria-hidden="true">
+            {s.vehicle_id ? index + 1 : "—"}
+          </span>
+          <span className="shipment-summary">
+            <strong>{s.customerName}</strong>
+            <small>
+              Pedido {s.orderName} · {s.lines.length} partidas
+            </small>
+            <span className="shipment-tags">
+              <span className="badge">
+                {s.window_start
+                  ? `${s.window_start}–${s.window_end}`
+                  : "Sin horario"}
+              </span>
+              <span className="badge">
+                {s.high_priority === null
+                  ? "Prioridad pendiente"
+                  : s.high_priority
+                    ? "Prioridad alta"
+                    : "Prioridad normal"}
+              </span>
             </span>
-            <span className="badge">
-              {s.high_priority === null
-                ? "Prioridad pendiente"
-                : s.high_priority
-                  ? "Prioridad alta"
-                  : "Respetar ventana"}
-            </span>
+          </span>
+          <ChevronDown
+            className="shipment-chevron"
+            size={14}
+            aria-hidden="true"
+          />
+        </button>
+        {expanded && (
+          <div className="shipment-expanded" id={detailId}>
+            <div className="shipment-reference">
+              <p className="shipment-folio">Surtido {s.pickingName}</p>
+              <p
+                className={`shipment-address ${!s.address ? "warning" : "muted"}`}
+              >
+                {s.address || "Dirección pendiente"}
+              </p>
+            </div>
+            {s.promisedAt && (
+              <p className="muted">
+                Promesa Odoo:{" "}
+                {new Date(s.promisedAt).toLocaleString("es-MX", {
+                  timeZone: timezone,
+                })}
+              </p>
+            )}
+            <details>
+              <summary>{s.lines.length} partidas · Ver productos</summary>
+              <ul className="shipment-lines">
+                {s.lines.map((line) => (
+                  <li key={line.moveId}>
+                    <span>
+                      {line.name}
+                      {line.pickerNote && (
+                        <small className="picker-note">{line.pickerNote}</small>
+                      )}
+                    </span>
+                    <strong>
+                      {line.quantity} {line.unit}
+                    </strong>
+                  </li>
+                ))}
+              </ul>
+            </details>
+            <div className="shipment-controls">
+              <label>
+                <span className="sr-only">
+                  Camioneta para {s.orderName} {s.pickingName}
+                </span>
+                <select
+                  disabled={busy}
+                  value={s.vehicle_id || ""}
+                  onChange={(e) => void move(s.id, e.target.value || null)}
+                >
+                  <option value="">Sin asignar</option>
+                  {board?.vehicles.map((v) => (
+                    <option value={v.id} key={v.id} disabled={!v.available}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="quiet"
+                disabled={busy || index === 0}
+                aria-label={`Subir ${s.orderName}`}
+                onClick={() =>
+                  void move(s.id, s.vehicle_id, lane[index - 1].id)
+                }
+              >
+                <ArrowUp size={14} />
+              </button>
+              <button
+                className="quiet"
+                disabled={busy || index === lane.length - 1}
+                aria-label={`Bajar ${s.orderName}`}
+                onClick={() =>
+                  void move(s.id, s.vehicle_id, lane[index + 2]?.id ?? null)
+                }
+              >
+                <ArrowDown size={14} />
+              </button>
+            </div>
           </div>
-          <details>
-            <summary>{s.lines.length} partidas · Ver productos</summary>
-            <ul className="shipment-lines">
-              {s.lines.map((line) => (
-                <li key={line.moveId}>
-                  <span>
-                    {line.name}
-                    {line.pickerNote && (
-                      <small className="picker-note">{line.pickerNote}</small>
-                    )}
-                  </span>
-                  <strong>
-                    {line.quantity} {line.unit}
-                  </strong>
-                </li>
-              ))}
-            </ul>
-          </details>
-        </div>
-        <div className="shipment-controls">
-          <label>
-            <span className="sr-only">
-              Camioneta para {s.orderName} {s.pickingName}
-            </span>
-            <select
-              disabled={busy}
-              value={s.vehicle_id || ""}
-              onChange={(e) => void move(s.id, e.target.value || null)}
-            >
-              <option value="">Sin asignar</option>
-              {board?.vehicles.map((v) => (
-                <option value={v.id} key={v.id} disabled={!v.available}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="quiet"
-            disabled={busy || index === 0}
-            aria-label={`Subir ${s.orderName}`}
-            onClick={() => void move(s.id, s.vehicle_id, lane[index - 1].id)}
-          >
-            <ArrowUp size={14} />
-          </button>
-          <button
-            className="quiet"
-            disabled={busy || index === lane.length - 1}
-            aria-label={`Bajar ${s.orderName}`}
-            onClick={() =>
-              void move(s.id, s.vehicle_id, lane[index + 2]?.id ?? null)
-            }
-          >
-            <ArrowDown size={14} />
-          </button>
-        </div>
+        )}
       </article>
     );
   }

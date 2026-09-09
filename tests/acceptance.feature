@@ -151,7 +151,7 @@ Feature: Ana Rutas independiente y portable
 
   Scenario: Ventanas y prioridad todavía no entregadas
     Given el cliente aún no tiene importada su ventana o preferencia alta
-    Then su tarjeta muestra Sin horario registrado y Prioridad pendiente
+    Then su tarjeta cerrada muestra Sin horario y Prioridad pendiente
     And ningún proceso inventa un horario o una prioridad predeterminada
 
   Scenario: La IA arma y distribuye la ruta con datos reales de Google
@@ -166,9 +166,10 @@ Feature: Ana Rutas independiente y portable
     When el administrador cierra el menú con el botón de tres líneas
     Then el tablero usa todo el ancho disponible
     And crear un borrador abre un modal en vez de reservar una franja permanente
-    And a 768 píxeles de alto comienzan a verse al menos tres pedidos completos
-    And las tarjetas reagrupan folio, dirección, preferencias y productos cuando existe ancho
-    And en columnas angostas no superan 132 píxeles con los productos cerrados
+    And a 768 píxeles de alto se ven al menos seis pedidos completos
+    And la tarjeta cerrada sólo muestra parada, cliente, pedido, partidas, horario y prioridad
+    And dirección, surtido, productos, notas y controles aparecen al expandir la tarjeta
+    And ninguna tarjeta cerrada supera 80 píxeles de alto
     And cada lista permite bajar sus pedidos sin desplazar el documento en escritorio
     And las camionetas restantes son accesibles por desplazamiento horizontal
 
