@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.env*
+!.env.example
+.local/
+coverage/
+reports/
+test-results/
+playwright-report/
+.stryker-tmp/
+*.tsbuildinfo
+*.log

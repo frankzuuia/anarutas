@@ -1,0 +1,55 @@
+{
+  "name": "ana-rutas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write src scripts tests docs *.ts *.mjs *.json README.md AGENTS.md",
+    "bundle:migration": "esbuild scripts/migrate.ts --bundle --platform=node --format=esm --packages=external --outfile=.local/migrate.mjs",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:mutation": "stryker run",
+    "test:e2e": "playwright test",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "preview:local": "tsx scripts/local-preview.ts"
+  },
+  "dependencies": {
+    "sharp": "0.35.4",
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "pg": "8.23.0",
+    "lucide-react": "1.43.0"
+  },
+  "overrides": {
+    "typed-rest-client": {
+      "qs": "6.16.0"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/pg": "^8",
+    "typescript": "^5.9",
+    "tsx": "4.23.13",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.4",
+    "prettier": "3.9.6",
+    "esbuild": "0.28.2",
+    "vitest": "4.1.11",
+    "@vitest/coverage-v8": "4.1.11",
+    "@playwright/test": "1.63.0",
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/vitest-runner": "10.0.0",
+    "embedded-postgres": "17.10.0-beta.17"
+  }
+}

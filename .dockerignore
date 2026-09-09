@@ -1,0 +1,11 @@
+.git
+node_modules
+.next
+.env*
+.local
+.stryker-tmp
+coverage
+reports
+test-results
+playwright-report
+*.log
