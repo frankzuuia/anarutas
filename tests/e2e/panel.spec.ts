@@ -1006,6 +1006,15 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   );
   await expect(page.getByLabel("Desde", { exact: true })).toHaveValue("11:00");
   await expect(page.getByLabel("Hasta", { exact: true })).toHaveValue("13:00");
+  const archiveDesktopBox = await page
+    .getByRole("button", { name: "Archivar", exact: true })
+    .boundingBox();
+  const windowTrashDesktopBox = await page
+    .getByRole("button", { name: "Quitar ventana 1", exact: true })
+    .boundingBox();
+  expect(archiveDesktopBox?.height).toBeLessThanOrEqual(28);
+  expect(windowTrashDesktopBox?.width).toBeLessThanOrEqual(28);
+  expect(windowTrashDesktopBox?.height).toBeLessThanOrEqual(28);
   await page
     .getByLabel("Domicilio de entrega", { exact: true })
     .fill("Calle Reforma 20, Guadalajara");
@@ -1095,6 +1104,17 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   ).toBeVisible();
   for (const width of [375, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
+    if (width === 375) {
+      const archiveTouchBox = await page
+        .getByRole("button", { name: "Archivar", exact: true })
+        .boundingBox();
+      const windowTrashTouchBox = await page
+        .getByRole("button", { name: "Quitar ventana 1", exact: true })
+        .boundingBox();
+      expect(archiveTouchBox?.height).toBeGreaterThanOrEqual(44);
+      expect(windowTrashTouchBox?.width).toBeGreaterThanOrEqual(44);
+      expect(windowTrashTouchBox?.height).toBeGreaterThanOrEqual(44);
+    }
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,

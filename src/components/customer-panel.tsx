@@ -503,7 +503,7 @@ export function CustomerPanel({ revision }: { revision: number }) {
                 <div className="customer-editor-head-actions">
                   <button
                     type="button"
-                    className={archived ? "quiet" : "danger"}
+                    className={`${archived ? "quiet" : "danger"} customer-archive-action`}
                     onClick={() => {
                       if (dirty)
                         setError(
@@ -699,7 +699,7 @@ export function CustomerPanel({ revision }: { revision: number }) {
                       </label>
                       <button
                         type="button"
-                        className="danger icon-only"
+                        className="danger icon-only window-remove-action"
                         aria-label={`Quitar ventana ${index + 1}`}
                         onClick={() =>
                           setForm({

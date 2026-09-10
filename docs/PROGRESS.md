@@ -7,7 +7,7 @@
 - [x] C-T03 (BL-023): resolución única de preferencias en planificador/mapa y exportaciones XLSX de clientes y plan.
 - [x] C-T04 (BL-018..024): API y UI compacta completa con estados accesibles, recuperación y auditoría.
 - [x] C-T05: puertas locales unitarias, PostgreSQL, contrato, E2E, Gherkin, cobertura, mutación, seguridad, rendimiento, build y evidencia en `QA-BLOQUE-4-CLIENTES.md`. Smoke real Maps/Odoo 17 y 19.4, y aplicación del directorio Excel permanecen condicionados a configuración y preflight explícito.
-- [x] C-T06 (BL-025 / S30): editor ocultable con descarte confirmado, directorio a ancho completo, reapertura por selección y ausencia verificable de Importar Excel.
+- [x] C-T06 (BL-025 / S30): editor ocultable con descarte confirmado, directorio a ancho completo, reapertura por selección, ausencia verificable de Importar Excel y controles destructivos compactos/táctiles.
 
 ## Bloque 3B — planificador compacto, mapa y notas
 

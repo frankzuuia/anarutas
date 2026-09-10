@@ -334,3 +334,4 @@ Feature: Ana Rutas independiente y portable
     Then el editor permanece abierto con sus cambios
     When vuelve a ocultarlo y confirma el descarte
     Then el panel se oculta y al reabrirlo muestra los datos guardados
+    And los controles destructivos son compactos en escritorio y táctiles en móvil

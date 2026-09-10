@@ -138,7 +138,9 @@ local no guardado antes de ocultarlo. Búsqueda, paginación y sincronización r
 estado oculto; seleccionar cualquier fila abre nuevamente el editor con su versión
 vigente. La barra operativa contiene Actualizar clientes y Exportar Excel, pero no
 Importar Excel; la carga inicial desde archivos permanece como migración controlada
-con preflight y no como escritura libre desde el navegador.
+con preflight y no como escritura libre desde el navegador. Los controles Archivar y
+Quitar ventana miden 28 px visuales en escritorio, sin transformaciones, y recuperan
+un objetivo mínimo de 44 px en pantallas estrechas o dispositivos de puntero grueso.
 
 ### S19: densidad compacta del panel (BL-006)
 

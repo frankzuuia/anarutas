@@ -31,6 +31,7 @@ El bloque local está aprobado para subir a `develop`. No se hizo despliegue, no
 - Directorio, configuración de Maps y ambas exportaciones exigen sesión. Las mutaciones rechazan Origin ajeno sin cambiar la versión.
 - E2E cubre 375, 768, 1024 y 1440 px para clientes, además de regresión del planificador con siete camionetas y 25 pedidos.
 - El editor puede ocultarse sin escritura, protege cambios pendientes mediante confirmación, deja el directorio a ancho completo, no se reabre al buscar y vuelve al seleccionar una fila. La barra conserva únicamente Exportar Excel; Importar Excel no existe en la interfaz ni en sus rutas.
+- Archivar y los botes de ventanas se validan a 28 px en escritorio y 44 px en viewport táctil/estrecho, sin cambiar la semántica, confirmaciones ni foco visible.
 
 Los escenarios de aceptación están en `tests/acceptance.feature` y cubren sincronización, 24 horas, archivo/restauración, punto confirmado, exportaciones, concurrencia y seguridad.
 

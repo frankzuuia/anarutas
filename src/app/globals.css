@@ -1441,6 +1441,17 @@ tr:last-child td {
   justify-content: flex-end;
   gap: 6px;
 }
+.app button.customer-archive-action {
+  min-height: 28px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  gap: 4px;
+  font-size: 11px;
+}
+.customer-archive-action svg {
+  width: 13px;
+  height: 13px;
+}
 .customer-editor-scroll {
   min-height: 0;
   overflow: auto;
@@ -1485,7 +1496,7 @@ tr:last-child td {
 }
 .window-row {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) 90px 90px 32px;
+  grid-template-columns: minmax(160px, 1fr) 90px 90px 28px;
   align-items: end;
   gap: 6px;
   padding-bottom: 8px;
@@ -1502,6 +1513,31 @@ tr:last-child td {
 .app button.icon-only {
   width: 32px;
   padding: 5px;
+}
+.app button.window-remove-action {
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+}
+.window-remove-action svg {
+  width: 13px;
+  height: 13px;
+}
+@media (pointer: coarse), (max-width: 720px) {
+  .app button.customer-archive-action {
+    min-height: 44px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .app button.window-remove-action {
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    height: 44px;
+  }
 }
 .customer-location {
   display: grid;
