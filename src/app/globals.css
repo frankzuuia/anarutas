@@ -1376,12 +1376,14 @@ tr:last-child td {
   font-size: 10px;
   white-space: nowrap;
 }
-.priority-pill.high {
+.priority-pill.high,
+.shipment-priority.high {
   color: #ffd67a;
   border-color: #795d22;
   background: #332711;
 }
-.priority-pill.medium {
+.priority-pill.medium,
+.shipment-priority.medium {
   color: #b5d8ff;
   border-color: #315777;
   background: #10293b;

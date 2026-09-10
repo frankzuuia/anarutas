@@ -890,7 +890,7 @@ export function OrdersBoard({
                         .join(" / ")
                     : "Sin horario"}
                 </span>
-                <span className="badge">
+                <span className={`badge shipment-priority ${s.priority}`}>
                   {s.priority === "high"
                     ? "Prioridad alta"
                     : s.priority === "medium"

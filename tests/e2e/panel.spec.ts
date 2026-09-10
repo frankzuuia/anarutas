@@ -825,6 +825,52 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     })
     .toBeNull();
   const initialBoard = await orderBoard(db.pool, savedPlan.id);
+  await persistCustomerPage(db.pool, actorId, {
+    fingerprint: "e2e-source",
+    customers: [
+      {
+        partnerId: 11,
+        parentId: null,
+        parentName: null,
+        commercialPartnerId: 11,
+        commercialName: "Café E2E Odoo",
+        companyId: null,
+        type: "contact",
+        isCompany: true,
+        active: true,
+        name: "Café E2E Odoo",
+        reference: "CLIENTE-E2E",
+        phone: null,
+        mobile: "3312345678",
+        address: "Av. Vallarta 100, Guadalajara",
+      },
+      {
+        partnerId: 12,
+        parentId: null,
+        parentName: null,
+        commercialPartnerId: 12,
+        commercialName: "Cliente prioridad media",
+        companyId: null,
+        type: "contact",
+        isCompany: true,
+        active: true,
+        name: "Cliente prioridad media",
+        reference: "PRIORIDAD-MEDIA-E2E",
+        phone: "3311111111",
+        mobile: null,
+        address: "Av. México 12, Guadalajara",
+      },
+    ],
+    nextCursor: 12,
+    ceiling: 12,
+    hasMore: false,
+  });
+  await db.pool.query(
+    `UPDATE route_customers
+     SET priority=CASE odoo_partner_id WHEN 11 THEN 'high' ELSE 'medium' END
+     WHERE source=$1 AND odoo_partner_id IN (11,12)`,
+    ["e2e-source"],
+  );
   const chosenVehicles = [...initialBoard.vehicles.map((v) => v.id)];
   for (let i = 2; i <= 7; i++) {
     const vehicle = await createVehicle(db.pool, actorId, {
@@ -851,7 +897,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
       pickingName: `WH/OUT/${600 + i}`,
       orderId: 600 + i,
       orderName: `S${600 + i}`,
-      partnerId: 11,
+      partnerId: i % 2 === 0 ? 11 : 12,
       customerName: `Pedido QA ${i + 1}`,
       address: exemplar.address,
       validatedAt: exemplar.validatedAt,
@@ -867,6 +913,14 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   });
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(page.locator(".order-lane")).toHaveCount(8);
+  const highPriority = page.locator(".shipment-priority.high").first();
+  const mediumPriority = page.locator(".shipment-priority.medium").first();
+  await expect(highPriority).toHaveText("Prioridad alta");
+  await expect(highPriority).toHaveCSS("color", "rgb(255, 214, 122)");
+  await expect(highPriority).toHaveCSS("background-color", "rgb(51, 39, 17)");
+  await expect(mediumPriority).toHaveText("Prioridad media");
+  await expect(mediumPriority).toHaveCSS("color", "rgb(181, 216, 255)");
+  await expect(mediumPriority).toHaveCSS("background-color", "rgb(16, 41, 59)");
   await page.getByRole("button", { name: "Cerrar menú", exact: true }).click();
   await expect(page.locator(".sidebar")).toBeHidden();
   await page.locator(".shipment-card details[open]").evaluateAll((details) => {

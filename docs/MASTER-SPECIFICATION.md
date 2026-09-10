@@ -142,6 +142,15 @@ con preflight y no como escritura libre desde el navegador. Los controles Archiv
 Quitar ventana miden 28 px visuales en escritorio, sin transformaciones, y recuperan
 un objetivo mínimo de 44 px en pantallas estrechas o dispositivos de puntero grueso.
 
+### S31: prioridad visual consistente en el planificador (BL-023)
+
+La tarjeta cerrada de cada pedido conserva el valor resuelto por el contrato de
+clientes y aplica el mismo lenguaje visual del directorio: Alta usa amarillo, Media
+usa azul y Por horario permanece neutra. El texto siempre acompaña al color para que
+la distinción no dependa únicamente de percepción cromática. Este ajuste no modifica
+orden, asignación, ventanas, snapshots ni persistencia; el navegador valida las
+clases semánticas y sus colores calculados.
+
 ### S19: densidad compacta del panel (BL-006)
 
 Reducir tamaños y espacios dentro del panel autenticado, sin reducir mediante zoom/transform ni alterar login, formularios, API o datos. Escritorio: controles de 34–36 px, título principal de 24 px, títulos de tarjeta de 16 px, rellenos de 12–16 px y estados vacíos sin grandes alturas forzadas. Dispositivos táctiles: objetivos de pulsación de al menos 44 px y campos de 16 px para lectura. Mantener contraste, foco, texto completo, adaptación y ausencia de desbordamiento. Validación T09 con dimensiones calculadas, screenshots en 375/768/940/1024/1440 px y recorrido E2E existente. Sólo CSS y pruebas/documentación.

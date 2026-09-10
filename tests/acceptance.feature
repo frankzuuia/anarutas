@@ -199,6 +199,8 @@ Feature: Ana Rutas independiente y portable
     And crear un borrador abre un modal en vez de reservar una franja permanente
     And a 768 píxeles de alto se ven al menos seis pedidos completos
     And la tarjeta cerrada sólo muestra parada, cliente, pedido, partidas, horario y prioridad
+    And la prioridad Alta usa el distintivo amarillo del directorio de clientes
+    And la prioridad Media usa el distintivo azul del directorio de clientes
     And dirección, surtido, productos, notas y controles aparecen al expandir la tarjeta
     And ninguna tarjeta cerrada supera 80 píxeles de alto
     And cada lista permite bajar sus pedidos sin desplazar el documento en escritorio
