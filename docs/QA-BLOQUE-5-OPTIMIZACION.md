@@ -19,17 +19,22 @@ Guadalajara, Jalisco, México` y confirme visualmente sus coordenadas en la inte
 | ----------------------- | ------------------------------- | ----------------------------------------------------------------------- |
 | Tipos                   | `npm run typecheck`             | PASS                                                                    |
 | Estática                | `npm run lint`                  | PASS                                                                    |
-| Unitarias e integración | `npm test`                      | PASS — 20 archivos, 146/146 pruebas                                     |
-| Cobertura               | `npm run test:coverage`         | PASS — 93.37% sentencias, 87.48% ramas, 95.53% funciones, 94.61% líneas |
-| Mutación crítica        | `npm run test:mutation:routing` | PASS — 410/410 eliminados, 100%, 0 supervivientes, 0 sin cobertura      |
+| Unitarias e integración | `npm test`                      | PASS — 21 archivos, 148/148 pruebas                                     |
+| Cobertura               | `npm run test:coverage`         | PASS — 93.41% sentencias, 87.59% ramas, 95.57% funciones, 94.64% líneas |
+| Mutación crítica        | `npm run test:mutation:routing` | PASS — 434/434 eliminados, 100%, 0 supervivientes, 0 sin cobertura      |
 | Supply chain            | `npm audit --audit-level=high`  | PASS — 0 vulnerabilidades                                               |
 | Build productivo        | `npm run build`                 | PASS — Next.js 16.3.4                                                   |
-| E2E                     | `npx playwright test`           | PASS — 1/1 recorrido, 34.4 s                                            |
+| E2E                     | `npx playwright test`           | PASS — 1/1 recorrido, 35.6 s                                            |
 
 ## Matriz verificada
 
 - Configuración versionada y auditada del punto de salida; la dirección por sí sola
   nunca se convierte en coordenada aceptada.
+- El origen restringe la búsqueda a México, muestra la dirección normalizada por Google
+  y sólo propone resultados `ROOFTOP` o `RANGE_INTERPOLATED` correspondientes a un
+  domicilio. Coincidencias parciales, aproximadas, colonias o calles generales sólo
+  centran el mapa como referencia y exigen un ajuste manual explícito; una búsqueda o
+  edición nueva tampoco puede guardar silenciosamente el punto anterior.
 - Modelo `DRIVING` con tráfico, ventanas duras de 24 horas y precedencia
   Alta→Media→Por horario; no contiene demanda, límites de carga ni `endLocation`.
 - OAuth usa una cuenta de servicio en servidor y el alcance `cloud-platform`; proyecto,

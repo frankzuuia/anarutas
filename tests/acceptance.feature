@@ -344,6 +344,18 @@ Feature: Ana Rutas independiente y portable
     Then la dirección y coordenadas quedan versionadas y auditadas
     And la ruta usará ese punto sólo como inicio, sin regreso ni capacidad de peso
 
+  Scenario: Una dirección de salida incompleta no genera un punto falso
+    Given el administrador escribe una calle sin ciudad, estado o país
+    When Google devuelve una coincidencia parcial, una zona o una calle general
+    Then Ana Rutas muestra la dirección que Google encontró como referencia y no permite confirmarla directamente
+    And solicita completar el domicilio o marcar manualmente la salida exacta antes de guardar
+
+  Scenario: Cambiar el domicilio no conserva una propuesta anterior
+    Given Google propuso un punto para la dirección de salida
+    When el administrador modifica cualquier parte del domicilio
+    Then la propuesta y el mapa anterior se limpian
+    And Guardar salida permanece bloqueado hasta ubicar y confirmar el nuevo punto
+
   Scenario: Optimizar con red vial, ventanas y prioridades reales
     Given un borrador vigente con camionetas, pedidos y puntos confirmados
     When el administrador pulsa Armar ruta

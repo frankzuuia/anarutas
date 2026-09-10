@@ -109,12 +109,17 @@ export function RouteOriginDialog({
               <input
                 value={address}
                 maxLength={500}
+                placeholder="Calle, número, colonia, ciudad, estado y país"
                 onChange={(event) => {
                   setAddress(event.target.value);
                   setLocation(null);
                   setMapUrl("");
                 }}
               />
+              <span className="field-hint">
+                Escribe el domicilio completo. Ejemplo: Calle 5 1106, Colonia
+                Industrial, Guadalajara, Jalisco, México.
+              </span>
             </label>
             <CustomerLocationEditor
               address={address}
@@ -124,6 +129,10 @@ export function RouteOriginDialog({
               onMapUrl={setMapUrl}
               legend="Punto de salida confirmado"
               showMapUrl={false}
+              requirePreciseResult
+              geocodeRegion="mx"
+              geocodeCountry="MX"
+              onResolvedAddress={setAddress}
             />
             <div className="order-actions">
               <button className="quiet" disabled={busy} onClick={onClose}>

@@ -9,6 +9,7 @@
 - [x] O-T05 (BL-030): conservar route tokens privados por transición para la futura APK Android; no exponerlos al tablero web.
 - [x] O-T06: referencias, errores sanitarios, métricas operativas y documentación de QA/reversión.
 - [x] O-T07: unidades, PostgreSQL real, contrato Google, E2E, Gherkin, cobertura, mutación, lint, typecheck y build verdes. Evidencia local en `QA-BLOQUE-5-OPTIMIZACION.md`; smoke facturable posterior al deploy permanece explícitamente pendiente.
+- [x] O-T08 (BL-031 / S40): bloquear coincidencias parciales o aproximadas del origen, mostrar el resultado normalizado y exigir domicilio completo; regresión, cobertura, mutación, build y E2E verdes. Evidencia en `QA-BLOQUE-5-OPTIMIZACION.md`.
 
 ## Bloque 4 autorizado — clientes, horarios y puntos
 

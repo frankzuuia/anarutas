@@ -187,6 +187,7 @@ por transición; aplicación versionada y resultado obsoleto tras edición manua
 | S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments | Pedido Sin asignar con razón               | Corregir punto/ventana y reintentar           |
 | S38 | Ruta vigente                             | Ver mapa            | Run vigente          | Recorrido, ETA, km y duración reales       | Sin run vigente muestra puntos, no ruta falsa |
 | S39 | Ruta vigente                             | Movimiento manual   | Plan/version         | Resultado queda obsoleto                   | Reoptimizar antes de publicar/navegar         |
+| S40 | Origen incompleto o ambiguo              | Ubicar domicilio    | Google Geocoder      | Referencia visible; confirmar bloqueado    | Completar dirección o marcar punto exacto     |
 
 ### Data Flow
 

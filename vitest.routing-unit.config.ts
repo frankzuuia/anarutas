@@ -5,6 +5,7 @@ export default defineConfig({
     include: [
       "tests/routing-config.test.ts",
       "tests/route-optimization-google.test.ts",
+      "tests/geocode-quality.test.ts",
     ],
     fileParallelism: false,
   },

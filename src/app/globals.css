@@ -1569,6 +1569,11 @@ tr:last-child td {
   margin: 0;
   font-size: 11px;
 }
+.field-success {
+  margin: 0;
+  color: #7bf0b2;
+  font-size: 11px;
+}
 .customer-editor-actions {
   flex: 0 0 auto;
   min-height: 50px;

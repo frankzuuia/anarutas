@@ -238,6 +238,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(originDialog.getByLabel("Dirección de salida")).toHaveValue(
     depot.depotAddress,
   );
+  await expect(originDialog).toContainText("Escribe el domicilio completo");
   await expect(originDialog).toContainText("20.624000, -103.354000");
   await page.keyboard.press("Escape");
   await expect(originDialog).toHaveCount(0);

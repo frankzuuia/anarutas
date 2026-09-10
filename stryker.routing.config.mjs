@@ -9,6 +9,7 @@ const config = {
   mutate: [
     "src/core/route-optimization-google.ts:70-395",
     "src/core/routing-validation.ts",
+    "src/core/geocode-quality.ts",
   ],
   testRunner: "vitest",
   vitest: { configFile: "vitest.routing-unit.config.ts" },
