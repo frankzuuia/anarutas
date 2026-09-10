@@ -10,6 +10,7 @@ import {
   selectPlanVehicles,
 } from "../../src/core/orders";
 import { createVehicle } from "../../src/core/fleet";
+import { listCustomers, persistCustomerPage } from "../../src/core/customers";
 
 let db: Awaited<ReturnType<typeof startPostgres>>;
 let child: ChildProcess;
@@ -94,6 +95,19 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   expect((await first.request.get(`${origin}/api/maps/config`)).status()).toBe(
     401,
   );
+  expect((await first.request.get(`${origin}/api/customers`)).status()).toBe(
+    401,
+  );
+  expect(
+    (await first.request.get(`${origin}/api/customers/export`)).status(),
+  ).toBe(401);
+  expect(
+    (
+      await first.request.get(
+        `${origin}/api/plans/00000000-0000-0000-0000-000000000000/export`,
+      )
+    ).status(),
+  ).toBe(401);
   const csrf = await first.request.post(`${origin}/api/setup`, {
     data: {},
     headers: { Origin: "https://another.example" },
@@ -273,7 +287,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(
     other
       .getByRole("alert")
-      .filter({ hasText: "Otra persona modificó este borrador" }),
+      .filter({ hasText: "Otra persona modificó este registro" }),
   ).toBeVisible();
   await expect(other.getByLabel("Nombre del borrador")).toHaveValue(
     "No sobrescribir la otra sesión",
@@ -920,6 +934,135 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     ).toBe(true);
   }
   await page.getByRole("button", { name: "Abrir menú", exact: true }).click();
+  await persistCustomerPage(db.pool, actorId, {
+    fingerprint: "e2e-source",
+    customers: [
+      {
+        partnerId: 11,
+        parentId: null,
+        parentName: null,
+        commercialPartnerId: 11,
+        commercialName: "Café E2E Odoo",
+        companyId: null,
+        type: "contact",
+        isCompany: true,
+        active: true,
+        name: "Café E2E Odoo",
+        reference: "CLIENTE-E2E",
+        phone: null,
+        mobile: "3312345678",
+        address: "Av. Vallarta 100, Guadalajara",
+      },
+    ],
+    nextCursor: 11,
+    ceiling: 11,
+    hasMore: false,
+  });
+  const securedCustomer = (
+    await listCustomers(db.pool, {
+      archived: false,
+      query: "CLIENTE-E2E",
+      limit: 1,
+    })
+  ).customers[0];
+  const deniedCustomerUpdate = await first.request.patch(
+    `${origin}/api/customers/${securedCustomer.id}`,
+    {
+      headers: { Origin: "https://another.example" },
+      data: {},
+    },
+  );
+  expect(deniedCustomerUpdate.status()).toBe(403);
+  expect(
+    (
+      await listCustomers(db.pool, {
+        archived: false,
+        query: "CLIENTE-E2E",
+        limit: 1,
+      })
+    ).customers[0].version,
+  ).toBe(securedCustomer.version);
+  await page
+    .getByRole("button", { name: "Clientes y horarios", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Clientes y horarios", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByPlaceholder("Buscar cliente, Odoo, teléfono o matriz…")
+    .fill("cafe e2e");
+  await expect(page.getByLabel("Nombre en Odoo", { exact: true })).toHaveValue(
+    "Café E2E Odoo",
+  );
+  await page.getByLabel("Cliente", { exact: true }).fill("Sucursal E2E");
+  await page
+    .getByRole("button", { name: "Añadir ventana", exact: true })
+    .click();
+  await page.getByLabel("Desde", { exact: true }).fill("11:00");
+  await page.getByLabel("Hasta", { exact: true }).fill("13:00");
+  await expect(page.getByLabel("Desde", { exact: true })).toHaveAttribute(
+    "type",
+    "text",
+  );
+  await expect(page.getByLabel("Desde", { exact: true })).toHaveValue("11:00");
+  await expect(page.getByLabel("Hasta", { exact: true })).toHaveValue("13:00");
+  await page
+    .getByLabel("Domicilio de entrega", { exact: true })
+    .fill("Calle Reforma 20, Guadalajara");
+  await page.getByRole("button", { name: "Alta", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Guardar cambios", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText(
+    "Cambios del cliente guardados",
+  );
+  await expect(
+    page.getByText("Lun/Mar/Mié/Jue/Vie 11:00–13:00", { exact: true }),
+  ).toBeVisible();
+  const customerExport = await first.request.get(
+    `${origin}/api/customers/export?q=e2e&archived=false`,
+  );
+  expect(customerExport.status()).toBe(200);
+  expect(customerExport.headers()["content-type"]).toContain(
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  expect((await customerExport.body()).subarray(0, 2).toString()).toBe("PK");
+  const planExport = await first.request.get(
+    `${origin}/api/plans/${savedPlan.id}/export`,
+  );
+  expect(planExport.status()).toBe(200);
+  expect((await planExport.body()).subarray(0, 2).toString()).toBe("PK");
+  await page.getByRole("button", { name: "Archivar", exact: true }).click();
+  const archiveDialog = page.getByRole("dialog", { name: "Archivar cliente" });
+  await expect(archiveDialog).toBeVisible();
+  await archiveDialog
+    .getByRole("button", { name: "Archivar", exact: true })
+    .click();
+  await page.getByRole("tab", { name: /Archivados/ }).click();
+  await expect(
+    page.getByText("Sucursal E2E", { exact: true }).first(),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Restaurar", exact: true }).click();
+  const restoreDialog = page.getByRole("dialog", { name: "Restaurar cliente" });
+  await restoreDialog
+    .getByRole("button", { name: "Restaurar", exact: true })
+    .click();
+  await page.getByRole("tab", { name: /Activos/ }).click();
+  await expect(
+    page.getByText("Sucursal E2E", { exact: true }).first(),
+  ).toBeVisible();
+  for (const width of [375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: `reports/screenshots/customers-${width}.png`,
+      fullPage: true,
+    });
+  }
   await page.getByRole("button", { name: "Auditoría", exact: true }).click();
   await expect(
     page.getByRole("cell", { name: "Creó un borrador", exact: true }),

@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import { readOdooConfig } from "./config";
 import { AppError } from "./errors";
 import type { ImportPage, SourceShipment } from "./orders-contract";
+import type { CustomerSyncPage, SourceCustomer } from "./customers-contract";
 import { integer, orderNames as validateOrderNames } from "./orders-validation";
 import { stockMoveCapabilities } from "./odoo-capabilities";
 import { pickerNoteField, pickerNoteValue } from "./picker-notes";
+import { partnerCapabilities } from "./odoo-partner-capabilities";
 
 type OdooConfig = ReturnType<typeof readOdooConfig>;
 // Not exported: callers cannot select arbitrary models, methods, hosts or credentials.
@@ -133,6 +135,18 @@ function relation(value: unknown): [number, string] {
     throw new AppError("ODOO_INVALID_RESPONSE", 502);
   return value as [number, string];
 }
+function optionalRelation(value: unknown): [number, string] | null {
+  return value === false || value === null || value === undefined
+    ? null
+    : relation(value);
+}
+function optionalString(value: unknown): string | null {
+  if (value === false || value === null || value === undefined || value === "")
+    return null;
+  if (typeof value !== "string")
+    throw new AppError("ODOO_INVALID_RESPONSE", 502);
+  return value;
+}
 function odooDate(value: unknown): string {
   if (typeof value !== "string")
     throw new AppError("ODOO_INVALID_RESPONSE", 502);
@@ -142,12 +156,10 @@ function odooDate(value: unknown): string {
   return parsed.toISOString();
 }
 
-type ReadSession = {
+type BasicReadSession = {
   config: OdooConfig;
-  quantityField: string;
-  unitField: string;
-  noteField: string | null;
-  latestPickingId: (domain: unknown[]) => Promise<number>;
+  latestId: (model: ReadModel, domain: unknown[]) => Promise<number>;
+  fields: (model: ReadModel) => Promise<unknown>;
   search: (
     model: ReadModel,
     domain: unknown[],
@@ -167,7 +179,16 @@ type ReadSession = {
   ) => Promise<Map<number, Row>>;
 };
 
-async function openReadSession(config: OdooConfig): Promise<ReadSession> {
+type ReadSession = BasicReadSession & {
+  quantityField: string;
+  unitField: string;
+  noteField: string | null;
+};
+
+async function openBasicReadSession(
+  config: OdooConfig,
+  activeTest = true,
+): Promise<BasicReadSession> {
   const uid = await rpc(config, "common", "authenticate", [
     config.database,
     config.username,
@@ -194,6 +215,7 @@ async function openReadSession(config: OdooConfig): Promise<ReadSession> {
   const context = {
     allowed_company_ids: [config.companyId],
     ...(typeof users[0].lang === "string" ? { lang: users[0].lang } : {}),
+    active_test: activeTest,
   };
   // This is the only generic record reader and it remains private to this closed domain service.
   const search = async (
@@ -256,31 +278,19 @@ async function openReadSession(config: OdooConfig): Promise<ReadSession> {
     }
     return new Map(result.map((row) => [Number(row.id), row]));
   }
-  const fields = await rpc(config, "object", "execute_kw", [
-    ...prefix,
-    "stock.move",
-    "fields_get",
-    [],
-    { attributes: ["type", "relation"], context },
-  ]);
-  const { quantityField, unitField } = stockMoveCapabilities(fields);
-  const saleMetadata = await rpc(config, "object", "execute_kw", [
-    ...prefix,
-    "sale.order.line",
-    "fields_get",
-    [],
-    { attributes: ["type", "string"], context },
-  ]);
-  const noteField = pickerNoteField(
-    saleMetadata,
-    config.pickerNoteField,
-    config.pickerNoteLabel,
-  );
-  const latestPickingId = async (domain: unknown[]) => {
+  const fields = (model: ReadModel) =>
+    rpc(config, "object", "execute_kw", [
+      ...prefix,
+      model,
+      "fields_get",
+      [],
+      { attributes: ["type", "relation", "string"], context },
+    ]);
+  const latestId = async (model: ReadModel, domain: unknown[]) => {
     const rows = records(
       await rpc(config, "object", "execute_kw", [
         ...prefix,
-        "stock.picking",
+        model,
         "search_read",
         [domain],
         { fields: ["id"], limit: 1, order: "id desc", context },
@@ -288,15 +298,24 @@ async function openReadSession(config: OdooConfig): Promise<ReadSession> {
     );
     return rows.length ? Number(rows[0].id) : 0;
   };
+  return { config, latestId, fields, search, all, byIds };
+}
+
+async function openReadSession(config: OdooConfig): Promise<ReadSession> {
+  const basic = await openBasicReadSession(config);
+  const stockMetadata = await basic.fields("stock.move");
+  const { quantityField, unitField } = stockMoveCapabilities(stockMetadata);
+  const saleMetadata = await basic.fields("sale.order.line");
+  const noteField = pickerNoteField(
+    saleMetadata,
+    config.pickerNoteField,
+    config.pickerNoteLabel,
+  );
   return {
-    config,
+    ...basic,
     quantityField,
     unitField,
     noteField,
-    latestPickingId,
-    search,
-    all,
-    byIds,
   };
 }
 
@@ -452,7 +471,7 @@ export async function readFulfilledPage(
   ];
   let pageCeiling = ceiling;
   if (pageCeiling === undefined)
-    pageCeiling = await session.latestPickingId(base);
+    pageCeiling = await session.latestId("stock.picking", base);
   const pickings = await session.search(
     "stock.picking",
     [...base, ["id", ">", cursor], ["id", "<=", pageCeiling]],
@@ -567,5 +586,74 @@ export async function readFulfilledByOrderNames(
     nextCursor: 0,
     ceiling: 0,
     hasMore: false,
+  };
+}
+
+function sourceCustomer(row: Row): SourceCustomer {
+  const name = optionalString(row.name);
+  if (!name) throw new AppError("ODOO_INVALID_RESPONSE", 502);
+  const parent = optionalRelation(row.parent_id);
+  const commercial = optionalRelation(row.commercial_partner_id);
+  const company = optionalRelation(row.company_id);
+  const address = [
+    optionalString(row.street),
+    optionalString(row.street2),
+    optionalString(row.city),
+    optionalRelation(row.state_id)?.[1] || null,
+    optionalString(row.zip),
+    optionalRelation(row.country_id)?.[1] || null,
+  ]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .join(", ");
+  return {
+    partnerId: Number(row.id),
+    parentId: parent?.[0] || null,
+    parentName: parent?.[1] || null,
+    commercialPartnerId: commercial?.[0] || null,
+    commercialName: commercial?.[1] || null,
+    companyId: company?.[0] || null,
+    type: optionalString(row.type) || "contact",
+    isCompany: row.is_company === true,
+    active: row.active !== false,
+    name,
+    reference: optionalString(row.ref),
+    phone: optionalString(row.phone),
+    mobile: optionalString(row.mobile),
+    address,
+  };
+}
+
+/** All visible partner identities for the configured company, without customer_rank filtering. */
+export async function readCustomerPage(
+  cursor = 0,
+  ceiling?: number,
+  config = readOdooConfig(),
+): Promise<CustomerSyncPage> {
+  integer(cursor);
+  if (ceiling !== undefined) integer(ceiling);
+  const session = await openBasicReadSession(config, false);
+  const capabilities = partnerCapabilities(await session.fields("res.partner"));
+  const scope: unknown[] = [
+    "|",
+    ["company_id", "=", false],
+    ["company_id", "=", config.companyId],
+  ];
+  const pageCeiling =
+    ceiling === undefined
+      ? await session.latestId("res.partner", scope)
+      : ceiling;
+  const rows = await session.search(
+    "res.partner",
+    [...scope, ["id", ">", cursor], ["id", "<=", pageCeiling]],
+    capabilities.fields,
+    250,
+  );
+  const nextCursor = rows.length ? Number(rows[rows.length - 1].id) : cursor;
+  return {
+    fingerprint: config.fingerprint,
+    customers: rows.map(sourceCustomer),
+    nextCursor,
+    ceiling: pageCeiling,
+    hasMore: rows.length === 250 && nextCursor < pageCeiling,
   };
 }

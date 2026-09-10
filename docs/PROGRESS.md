@@ -1,5 +1,13 @@
 # Progreso — bloque 1
 
+## Bloque 4 autorizado — clientes, horarios y puntos
+
+- [x] C-T01 (BL-018..019): migración v5, identidad Odoo estable, jerarquía y sincronización paginada compatible por capacidades.
+- [x] C-T02 (BL-019..022): búsqueda normalizada, edición versionada, horario de 24 horas, prioridad, ubicación confirmable y archivo/restauración.
+- [x] C-T03 (BL-023): resolución única de preferencias en planificador/mapa y exportaciones XLSX de clientes y plan.
+- [x] C-T04 (BL-018..024): API y UI compacta completa con estados accesibles, recuperación y auditoría.
+- [x] C-T05: puertas locales unitarias, PostgreSQL, contrato, E2E, Gherkin, cobertura, mutación, seguridad, rendimiento, build y evidencia en `QA-BLOQUE-4-CLIENTES.md`. Smoke real Maps/Odoo 17 y 19.4, y aplicación del directorio Excel permanecen condicionados a configuración y preflight explícito.
+
 ## Bloque 3B — planificador compacto, mapa y notas
 
 - Implementados menú plegable, borradores compactos, columnas acotadas y scroll propio.

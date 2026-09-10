@@ -1,5 +1,10 @@
 import type { Plan } from "./plans";
 import type { Vehicle } from "./fleet-contract";
+import type {
+  CustomerPriority,
+  EffectiveDeliveryWindow,
+  FulfillmentMode,
+} from "./customers-contract";
 
 export type ShipmentLine = {
   moveId: number;
@@ -29,6 +34,16 @@ export type Shipment = SourceShipment & {
   window_start: string | null;
   window_end: string | null;
   high_priority: boolean | null;
+  priority: CustomerPriority;
+  deliveryWindows: EffectiveDeliveryWindow[];
+  deliveryNote: string;
+  phone: string | null;
+  fulfillmentMode: FulfillmentMode;
+  mapUrl: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  locationStatus: "pending" | "confirmed" | "driver_confirmed";
+  customerArchived: boolean;
 };
 export type OrderBoard = {
   plan: Plan;

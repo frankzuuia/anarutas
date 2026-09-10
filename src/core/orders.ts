@@ -10,6 +10,8 @@ import type {
   Shipment,
 } from "./orders-contract";
 import type { Plan } from "./plans";
+import { bindOdooSource, assertBoundOdooSource } from "./odoo-source";
+import { ensureCustomerFromShipment } from "./customers";
 
 async function planRow(
   sql: Sql,
@@ -55,13 +57,78 @@ export async function orderBoard(pool: Pool, id: string): Promise<OrderBoard> {
       [id],
     );
     const { rows } = await sql.query(
-      "SELECT id,vehicle_id,position,snapshot,window_start::text,window_end::text,high_priority FROM route_shipments WHERE plan_id=$1 ORDER BY position,id",
+      `SELECT s.id,s.vehicle_id,s.position,s.snapshot,
+              s.window_start::text,s.window_end::text,s.high_priority,
+              c.id AS customer_id,c.display_name,c.phone,c.delivery_note,
+              c.priority,c.fulfillment_mode,c.delivery_address,c.map_url,
+              c.latitude,c.longitude,c.location_status,c.archived_at
+       FROM route_shipments s
+       LEFT JOIN route_customers c
+         ON c.source=s.source AND c.odoo_partner_id=s.partner_id
+       WHERE s.plan_id=$1 ORDER BY s.position,s.id`,
       [id],
     );
-    const shipments: Shipment[] = rows.map(({ snapshot, ...row }) => ({
-      ...snapshot,
-      ...row,
-    }));
+    const customerIds = rows
+      .map((row) => row.customer_id)
+      .filter((value): value is string => typeof value === "string");
+    const jsDay = new Date(`${plan.service_date}T12:00:00Z`).getUTCDay();
+    const day = (jsDay + 6) % 7;
+    const { rows: effectiveWindows } = customerIds.length
+      ? await sql.query(
+          `SELECT customer_id,start_minute,end_minute
+           FROM route_customer_windows
+           WHERE customer_id=ANY($1::uuid[]) AND (days_mask & $2)<>0
+           ORDER BY customer_id,start_minute,end_minute`,
+          [customerIds, 1 << day],
+        )
+      : { rows: [] };
+    const windows = new Map<
+      string,
+      { startMinute: number; endMinute: number }[]
+    >();
+    for (const window of effectiveWindows) {
+      const customerId = String(window.customer_id);
+      windows.set(customerId, [
+        ...(windows.get(customerId) || []),
+        {
+          startMinute: Number(window.start_minute),
+          endMinute: Number(window.end_minute),
+        },
+      ]);
+    }
+    const time = (minute: number) =>
+      `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+    const shipments: Shipment[] = rows.map(
+      ({ snapshot, customer_id: customerId, ...row }) => {
+        const deliveryWindows = windows.get(String(customerId)) || [];
+        const priority = row.high_priority
+          ? "high"
+          : row.priority || "schedule";
+        return {
+          ...snapshot,
+          ...row,
+          customerName: row.display_name || snapshot.customerName,
+          address: row.delivery_address || snapshot.address,
+          window_start:
+            row.window_start ||
+            (deliveryWindows[0] ? time(deliveryWindows[0].startMinute) : null),
+          window_end:
+            row.window_end ||
+            (deliveryWindows[0] ? time(deliveryWindows[0].endMinute) : null),
+          high_priority: row.high_priority,
+          priority,
+          deliveryWindows,
+          deliveryNote: row.delivery_note || "",
+          phone: row.phone || null,
+          fulfillmentMode: row.fulfillment_mode || "delivery",
+          mapUrl: row.map_url || null,
+          latitude: row.latitude === null ? null : Number(row.latitude),
+          longitude: row.longitude === null ? null : Number(row.longitude),
+          locationStatus: row.location_status || "pending",
+          customerArchived: row.archived_at !== null,
+        } as Shipment;
+      },
+    );
     // Do not send creation_payload or private metadata from the fleet tables.
     return {
       plan,
@@ -181,11 +248,7 @@ export async function removePlanVehicle(
   });
 }
 export async function assertOrderSource(pool: Pool, fingerprint: string) {
-  const { rows } = await pool.query(
-    "SELECT fingerprint FROM route_order_source",
-  );
-  if (rows.length && rows[0].fingerprint !== fingerprint)
-    throw new AppError("ODOO_SOURCE_CHANGED", 409);
+  return assertBoundOdooSource(pool, fingerprint);
 }
 export async function persistImportPage(
   pool: Pool,
@@ -198,16 +261,7 @@ export async function persistImportPage(
     await planRow(sql, id, "UPDATE");
     // The singleton row atomically binds this installation to one Odoo source.
     // Shipment identity is intentionally scoped to each plan by its unique index.
-    await sql.query(
-      "INSERT INTO route_order_source(singleton,fingerprint) VALUES(true,$1) ON CONFLICT(singleton) DO NOTHING",
-      [page.fingerprint],
-    );
-    const source = await sql.query(
-      "SELECT fingerprint FROM route_order_source WHERE singleton=true",
-      [],
-    );
-    if (source.rows[0].fingerprint !== page.fingerprint)
-      throw new AppError("ODOO_SOURCE_CHANGED", 409);
+    await bindOdooSource(sql, page.fingerprint);
     const counts = { inserted: 0, existing: 0, changed: 0 };
     const max = await sql.query(
       "SELECT COALESCE(MAX(position),0)::integer AS position FROM route_shipments WHERE plan_id=$1",
@@ -215,6 +269,7 @@ export async function persistImportPage(
     );
     let position = max.rows[0].position;
     for (const shipment of page.shipments) {
+      await ensureCustomerFromShipment(sql, actor, page.fingerprint, shipment);
       const snapshot = JSON.stringify(shipment);
       const hash = createHash("sha256").update(snapshot).digest("hex");
       const result = await sql.query(

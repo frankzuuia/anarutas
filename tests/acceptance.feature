@@ -281,3 +281,40 @@ Feature: Ana Rutas independiente y portable
     Then no se elimina ningún dato ni aumenta la versión
     When confirma usando una versión que otra sesión ya modificó
     Then recibe un conflicto y el plan permanece íntegro
+
+  Scenario: Sincronizar todos los contactos sin sobrescribir operación local
+    Given Odoo devuelve matrices, sucursales, contactos sin ventas y nombres repetidos
+    When el administrador actualiza clientes en varias páginas
+    Then cada identidad se guarda por origen e ID Odoo sin filtrar customer_rank
+    And una interrupción puede continuar sin duplicar registros
+    And alias, teléfono, horarios, prioridad, domicilio, punto y archivo locales permanecen intactos
+
+  Scenario: Configurar una ventana inequívoca de 24 horas
+    Given el administrador edita una sucursal
+    When selecciona lunes a viernes y captura 11:00 hasta 13:00
+    Then Ana Rutas guarda 660 y 780 minutos sin AM ni PM
+    And muestra 11:00–13:00 en directorio, tarjeta, mapa y Excel
+    And rechaza ventanas invertidas, duplicadas o traslapadas el mismo día
+
+  Scenario: Archivar y restaurar sin alterar Odoo
+    Given un cliente tiene horarios, prioridad y punto configurados
+    When el administrador confirma Archivar
+    Then el cliente aparece en Archivados con la misma identidad y configuración
+    And una sincronización no lo reactiva ni duplica
+    When confirma Restaurar
+    Then vuelve a Activos con su configuración intacta
+
+  Scenario: Confirmar un punto de entrega
+    Given Google Maps está configurado y existe un domicilio de entrega
+    When Google propone un punto y el administrador lo ajusta y confirma
+    Then se guardan coordenadas, referencia, liga regenerada y versión de ubicación
+    And el planificador y mapa consumen ese punto por destinatario del pedido
+    When cambia el domicilio sin confirmar otro punto
+    Then el punto anterior queda invalidado y se muestra Punto por confirmar
+
+  Scenario: Exportar clientes y el plan sin fórmulas ejecutables
+    Given existen nombres, teléfonos o notas que comienzan con caracteres de fórmula
+    When el administrador exporta clientes o el plan seleccionado
+    Then recibe un XLSX con hojas Clientes y Ventanas o Ruta y Partidas
+    And las celdas peligrosas se guardan como texto
+    And el plan exportado conserva su versión, asignación y orden sin inventar ETA o distancia

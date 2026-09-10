@@ -13,13 +13,14 @@ Cada instalación es independiente. Los nombres de tablas siguientes pertenecen 
 
 ## Próximos bloques (no implementados todavía)
 
-Bloque 2A autorizado: BL-007..010 (camionetas, choferes, asignación actual y documentos privados), especificado en BLOQUE-2-FLOTA.md. Clientes/ventanas siguen pendientes.
+Bloque 2A autorizado: BL-007..010 (camionetas, choferes, asignación actual y documentos privados), especificado en BLOQUE-2-FLOTA.md.
 
 2. Unidades, choferes y documentos privados; clientes, direcciones, coordenadas, ventanas y prioridades.
 3. Importación idempotente de surtidos validados, selección de unidades, carga manual, retiro recuperable, reutilización entre planes y borrado de borradores: BL-011..017 en BLOQUE-3-PEDIDOS.md. Calendario operativo completo posterior.
-4. Google Maps/optimización, arrastre y recálculo de rutas afectadas, conflictos de ventanas, publicación versionada.
-5. Asistente flotante con herramientas nativas; mismos servicios de dominio que botones, trabajos durables y recuperación.
-6. APK Android, GPS, incidencias, llegadas y corrección de punto; liquidaciones y reportes según procesos autorizados.
+4. Directorio completo Odoo, preferencias locales, ventanas, prioridades, ubicación, archivo reversible y exportaciones: BL-018..024 en BLOQUE-4-CLIENTES.md.
+5. Optimización, arrastre y recálculo de rutas afectadas, conflictos de ventanas, publicación versionada.
+6. Asistente flotante con herramientas nativas; mismos servicios de dominio que botones, trabajos durables y recuperación.
+7. APK Android, GPS, incidencias, llegadas y corrección de punto; liquidaciones y reportes según procesos autorizados.
 
 ## Extensión aprobada — BL-017 eliminación de plan
 

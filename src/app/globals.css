@@ -24,7 +24,8 @@ body {
   line-height: 1.5;
 }
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 a {
@@ -45,7 +46,8 @@ button:disabled {
 }
 button:focus-visible,
 a:focus-visible,
-input:focus-visible {
+input:focus-visible,
+textarea:focus-visible {
   outline: 3px solid var(--green);
   outline-offset: 3px;
 }
@@ -97,6 +99,17 @@ input {
   border-radius: 9px;
   padding: 11px 13px;
   min-height: 46px;
+}
+textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  background: #0b120e;
+  color: var(--ink);
+  border: 1px solid #3b4b40;
+  border-radius: 7px;
+  padding: 8px 10px;
+  font: inherit;
 }
 input:disabled {
   opacity: 0.7;
@@ -282,6 +295,9 @@ small,
   min-height: 36px;
   padding: 7px 10px;
   border-radius: 7px;
+  font-size: 13px;
+}
+.app textarea {
   font-size: 13px;
 }
 .app label {
@@ -1167,6 +1183,440 @@ tr:last-child td {
   }
 }
 
+.button-link {
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 13px;
+}
+.button-link:hover {
+  background: #263c2d;
+}
+
+/* Clientes y horarios: data-dense workspace with independent scrolling. */
+.customer-app {
+  height: 100vh;
+  overflow: hidden;
+}
+.customer-app .content {
+  min-height: 0;
+  overflow: hidden;
+}
+.customer-main {
+  max-width: none;
+  margin: 0;
+  padding: 12px;
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.customer-main .page-heading {
+  flex: 0 0 auto;
+  margin-bottom: 10px;
+}
+.customer-main .bottom-note {
+  display: none;
+}
+.customer-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.customer-command-bar {
+  flex: 0 0 auto;
+  min-height: 48px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.customer-tabs {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.app .customer-tabs button {
+  border: 0;
+  background: transparent;
+  min-height: 30px;
+  padding: 4px 9px;
+}
+.field-with-help {
+  display: grid;
+  gap: 5px;
+}
+.app .customer-tabs button.active,
+.segmented button.active,
+.day-picker button.active {
+  background: #15452b;
+  color: #8dffbf;
+}
+.customer-tabs span {
+  color: var(--muted);
+}
+.customer-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  max-width: 560px;
+  margin-right: auto;
+}
+.customer-search svg {
+  position: absolute;
+  left: 10px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.customer-search input {
+  padding-left: 34px;
+}
+.customer-panel > .notice {
+  margin: 6px 10px 0;
+}
+.customer-workspace {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(620px, 1fr) minmax(390px, 450px);
+}
+.customer-list {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+}
+.customer-list-head,
+.customer-row {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1.15fr) minmax(180px, 0.9fr)
+    100px minmax(230px, 1.2fr);
+  gap: 10px;
+  align-items: center;
+}
+.customer-list-head {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 7px 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  border-bottom: 1px solid var(--line);
+  background: #0c140f;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.customer-list-scroll {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 5px;
+}
+.app button.customer-row {
+  width: 100%;
+  min-height: 58px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-bottom-color: #223127;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  justify-content: initial;
+  color: var(--ink);
+}
+.app button.customer-row:hover,
+.app button.customer-row.selected {
+  background: #13241a;
+  border-color: #28533a;
+}
+.customer-row > span {
+  min-width: 0;
+  display: grid;
+}
+.customer-row strong,
+.customer-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.customer-row strong {
+  font-size: 12px;
+}
+.customer-row small {
+  font-size: 10.5px;
+}
+.priority-pill {
+  width: fit-content;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.priority-pill.high {
+  color: #ffd67a;
+  border-color: #795d22;
+  background: #332711;
+}
+.priority-pill.medium {
+  color: #b5d8ff;
+  border-color: #315777;
+  background: #10293b;
+}
+.customer-row .warning,
+.field-warning {
+  color: #f5c777;
+}
+.delivery-note {
+  margin: 0;
+  padding: 6px 8px;
+  border-left: 2px solid var(--green);
+  background: #102319;
+  color: #c9f5db;
+  font-size: 11px;
+}
+.map-link {
+  color: #72e9aa;
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.customer-row .success {
+  color: #7bf0b2;
+}
+.load-more {
+  width: 100%;
+  margin-top: 6px;
+}
+.customer-editor {
+  min-width: 0;
+  min-height: 0;
+  background: #0d1511;
+}
+.customer-editor form {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.customer-editor-head {
+  flex: 0 0 auto;
+  min-height: 52px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.customer-editor-head h2 {
+  margin-top: 2px;
+}
+.customer-editor-scroll {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+}
+.form-grid.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.customer-editor fieldset {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px;
+}
+.customer-editor legend {
+  padding: 0 5px;
+  color: #cbd7ce;
+  font-size: 11px;
+  font-weight: 650;
+}
+.segmented {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.app .segmented button,
+.app .day-picker button {
+  min-height: 29px;
+  padding: 3px 8px;
+  background: transparent;
+}
+.windows-editor {
+  display: grid;
+  gap: 8px;
+}
+.window-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 90px 90px 32px;
+  align-items: end;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #203027;
+}
+.day-picker {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.app .day-picker button {
+  padding: 2px;
+}
+.app button.icon-only {
+  width: 32px;
+  padding: 5px;
+}
+.customer-location {
+  display: grid;
+  gap: 8px;
+}
+.customer-location-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.customer-location-status button {
+  margin-left: auto;
+}
+.customer-map-preview {
+  display: none;
+  height: 220px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.customer-map-preview.visible {
+  display: block;
+}
+.field-warning {
+  margin: 0;
+  font-size: 11px;
+}
+.customer-editor-actions {
+  flex: 0 0 auto;
+  min-height: 50px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.empty.compact {
+  padding: 36px 20px;
+  min-height: 0;
+}
+.spin {
+  animation: customer-spin 0.8s linear infinite;
+}
+@keyframes customer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1180px) {
+  .customer-workspace {
+    grid-template-columns: minmax(520px, 1fr) minmax(360px, 420px);
+  }
+  .customer-list-head,
+  .customer-row {
+    grid-template-columns: minmax(210px, 1fr) 170px 90px minmax(170px, 0.8fr);
+  }
+}
+@media (max-width: 940px) {
+  .customer-app {
+    height: auto;
+    overflow: visible;
+  }
+  .customer-app .content,
+  .customer-main {
+    overflow: visible;
+    height: auto;
+  }
+  .customer-panel {
+    min-height: 680px;
+  }
+  .customer-command-bar {
+    flex-wrap: wrap;
+  }
+  .customer-search {
+    order: 3;
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .customer-workspace {
+    display: block;
+  }
+  .customer-list {
+    border-right: 0;
+    height: 420px;
+  }
+  .customer-editor {
+    border-top: 1px solid var(--line);
+    min-height: 620px;
+  }
+  .customer-editor form {
+    min-height: 620px;
+  }
+}
+@media (max-width: 620px) {
+  .customer-main {
+    padding: 8px;
+  }
+  .customer-list-head {
+    display: none;
+  }
+  .app button.customer-row {
+    grid-template-columns: 1fr auto;
+    min-height: 74px;
+  }
+  .customer-row > :nth-child(2),
+  .customer-row > :nth-child(4) {
+    grid-column: 1 / -1;
+  }
+  .form-grid.two,
+  .window-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .window-row .day-picker {
+    grid-column: 1 / -1;
+  }
+  .customer-command-bar > button,
+  .customer-command-bar > .button-link {
+    flex: 1;
+  }
+}
+
 /* Workspace: keep the plan visible, scroll deliveries inside each lane. */
 .sidebar[hidden] {
   display: none;
@@ -1635,6 +2085,33 @@ button.shipment-remove:hover:not(:disabled) {
   .shipment-card .shipment-controls select,
   .shipment-card .shipment-controls .quiet {
     min-height: 28px;
+  }
+}
+@media (min-width: 721px) and (max-width: 900px) {
+  .orders-toolbar {
+    flex-direction: row;
+    align-items: center;
+  }
+  .orders-toolbar-actions {
+    flex-wrap: nowrap;
+  }
+  .orders-toolbar-actions > button,
+  .orders-toolbar-actions > .button-link {
+    width: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0;
+  }
+  .orders-toolbar-actions .toolbar-action-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 }
 @media (max-width: 720px) {

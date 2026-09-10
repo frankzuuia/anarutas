@@ -74,14 +74,26 @@ export function RouteMapDialog({
         fullscreenControl: false,
       });
       const geocoder = new Geocoder();
-      const addresses = [...new Set(board.shipments.map((s) => s.address))];
-      for (const address of addresses) {
+      const geocoded = new globalThis.Map<string, Located>();
+      for (const shipment of board.shipments) {
         if (!current) return;
         let result: Located;
-        if (!address.trim()) result = { issue: "Dirección pendiente" };
+        if (shipment.latitude !== null && shipment.longitude !== null)
+          result = {
+            position: {
+              lat: shipment.latitude,
+              lng: shipment.longitude,
+            },
+          };
+        else if (geocoded.has(shipment.address))
+          result = geocoded.get(shipment.address)!;
+        else if (!shipment.address.trim())
+          result = { issue: "Dirección pendiente" };
         else {
           try {
-            const response = await geocoder.geocode({ address });
+            const response = await geocoder.geocode({
+              address: shipment.address,
+            });
             if (!current) return;
             const found = response.results;
             result =
@@ -101,8 +113,12 @@ export function RouteMapDialog({
             result = { issue: "Dirección no encontrada" };
           }
         }
+        geocoded.set(shipment.address, result);
         if (current)
-          setLocations((previous) => ({ ...previous, [address]: result }));
+          setLocations((previous) => ({
+            ...previous,
+            [shipment.id]: result,
+          }));
       }
     }
     void initialize()
@@ -126,13 +142,13 @@ export function RouteMapDialog({
     // Keep colocated orders as separate records; one pin exposes all at that exact point.
     const groups = new globalThis.Map<string, Shipment[]>();
     for (const shipment of visible) {
-      const position = locations[shipment.address]?.position;
+      const position = locations[shipment.id]?.position;
       if (!position) continue;
       const key = JSON.stringify(position);
       groups.set(key, [...(groups.get(key) || []), shipment]);
     }
     for (const orders of groups.values()) {
-      const position = locations[orders[0].address].position!;
+      const position = locations[orders[0].id].position!;
       bounds.extend(position);
       const pin = document.createElement("div");
       pin.className = "map-pin";
@@ -154,7 +170,7 @@ export function RouteMapDialog({
         content.style.color = "#17221b";
         for (const s of orders) {
           const p = document.createElement("p");
-          p.textContent = `${s.customerName} · ${s.orderName} · ${vehicles[laneIndex(s)].name} · Parada ${stopNumber(s)}${s.high_priority ? " · Prioridad alta" : ""}${s.window_start ? ` · ${s.window_start}–${s.window_end}` : ""}`;
+          p.textContent = `${s.customerName} · ${s.orderName} · ${vehicles[laneIndex(s)].name} · Parada ${stopNumber(s)}${s.priority === "high" ? " · Prioridad alta" : s.priority === "medium" ? " · Prioridad media" : ""}${s.deliveryWindows.length ? ` · ${s.deliveryWindows.map((window) => `${String(Math.floor(window.startMinute / 60)).padStart(2, "0")}:${String(window.startMinute % 60).padStart(2, "0")}–${String(Math.floor(window.endMinute / 60)).padStart(2, "0")}:${String(window.endMinute % 60).padStart(2, "0")}`).join(" / ")}` : ""}`;
           content.append(p);
         }
         info.setContent(content);
@@ -210,8 +226,7 @@ export function RouteMapDialog({
         </label>
         <span className="small">
           {visible.length} pedidos ·{" "}
-          {visible.filter((s) => locations[s.address]?.position).length}{" "}
-          ubicados
+          {visible.filter((s) => locations[s.id]?.position).length} ubicados
         </span>
         <span className="small">
           Puntos de entrega y orden actual. Optimización pendiente.
@@ -256,9 +271,9 @@ export function RouteMapDialog({
               <button
                 className="map-stop quiet"
                 key={s.id}
-                disabled={!locations[s.address]?.position}
+                disabled={!locations[s.id]?.position}
                 onClick={() => {
-                  map.current?.panTo(locations[s.address].position!);
+                  map.current?.panTo(locations[s.id].position!);
                   map.current?.setZoom(17);
                 }}
               >
@@ -274,15 +289,22 @@ export function RouteMapDialog({
                 </small>
                 <small>{s.address || "Dirección pendiente"}</small>
                 <small>
-                  {s.window_start
-                    ? `${s.window_start}–${s.window_end}`
+                  {s.deliveryWindows.length
+                    ? s.deliveryWindows
+                        .map(
+                          (window) =>
+                            `${String(Math.floor(window.startMinute / 60)).padStart(2, "0")}:${String(window.startMinute % 60).padStart(2, "0")}–${String(Math.floor(window.endMinute / 60)).padStart(2, "0")}:${String(window.endMinute % 60).padStart(2, "0")}`,
+                        )
+                        .join(" / ")
                     : "Sin horario registrado"}
-                  {s.high_priority ? " · Prioridad alta" : ""}
+                  {s.priority === "high"
+                    ? " · Prioridad alta"
+                    : s.priority === "medium"
+                      ? " · Prioridad media"
+                      : ""}
                 </small>
-                {locations[s.address]?.issue && (
-                  <small className="warning">
-                    {locations[s.address].issue}
-                  </small>
+                {locations[s.id]?.issue && (
+                  <small className="warning">{locations[s.id].issue}</small>
                 )}
               </button>
             ))}

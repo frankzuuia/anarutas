@@ -1,4 +1,10 @@
 export const errors: Record<string, string> = {
+  CUSTOMER_WINDOWS_INVALID:
+    "Revisa los días y el horario de 24 horas. Cada ventana debe terminar después de comenzar.",
+  CUSTOMER_WINDOWS_OVERLAP:
+    "Dos ventanas se traslapan el mismo día. Corrige los horarios antes de guardar.",
+  CUSTOMER_MAP_URL_INVALID:
+    "La liga debe ser HTTPS y pertenecer a Google Maps.",
   MANUAL_ORDERS_INVALID:
     "Agrega entre 1 y 50 folios con el formato S seguido de números.",
   MANUAL_ORDERS_DUPLICATED: "Quita los folios repetidos antes de continuar.",
@@ -48,7 +54,7 @@ export const errors: Record<string, string> = {
   UNAUTHENTICATED: "Tu sesión terminó. Vuelve a iniciar sesión.",
   ORIGIN_DENIED: "La dirección del panel no coincide con su configuración.",
   VERSION_CONFLICT:
-    "Otra persona modificó este borrador. Actualiza la lista antes de volver a guardarlo.",
+    "Otra persona modificó este registro. Actualiza la lista antes de volver a guardarlo.",
   ALREADY_EXISTS: "Ese usuario ya existe.",
   SELF_DEACTIVATION: "No puedes desactivar tu propia cuenta.",
   TOO_MANY_ATTEMPTS:

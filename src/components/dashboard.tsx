@@ -13,6 +13,7 @@ import {
   Info,
   Menu,
   Trash2,
+  Building2,
 } from "lucide-react";
 import type { User } from "@/core/auth";
 import type { DeletedPlan, Plan } from "@/core/plans";
@@ -22,12 +23,19 @@ import { FleetPanel } from "./fleet-panel";
 import { OrdersBoard } from "./orders-board";
 import { CreatePlanDialog } from "./create-plan-dialog";
 import { DeletePlanDialog } from "./delete-plan-dialog";
+import { CustomerPanel } from "./customer-panel";
 
-type Section = "plans" | "vehicles" | "drivers" | "users" | "audit";
+type Section =
+  "plans" | "vehicles" | "drivers" | "customers" | "users" | "audit";
 const sections = [
   { id: "plans" as const, label: "Planificar rutas", icon: Route },
   { id: "vehicles" as const, label: "Camionetas", icon: Truck },
   { id: "drivers" as const, label: "Choferes", icon: Users },
+  {
+    id: "customers" as const,
+    label: "Clientes y horarios",
+    icon: Building2,
+  },
   { id: "users" as const, label: "Usuarios y accesos", icon: Users },
   { id: "audit" as const, label: "Auditoría", icon: History },
 ];
@@ -59,6 +67,10 @@ const events: Record<string, string> = {
   "plan.vehicles.selected": "Seleccionó camionetas del día",
   "shipment.moved": "Movió un pedido en el plan",
   "shipment.removed": "Quitó un pedido del plan",
+  "customers.synced": "Actualizó clientes desde Odoo",
+  "customer.updated": "Modificó un cliente",
+  "customer.archived": "Archivó un cliente",
+  "customer.restored": "Restauró un cliente",
 };
 
 export function Dashboard({
@@ -78,6 +90,7 @@ export function Dashboard({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [fleetRevision, setFleetRevision] = useState(0);
   const [boardRevision, setBoardRevision] = useState(0);
+  const [customerRevision, setCustomerRevision] = useState(0);
   const [plans, setPlans] = useState<Plan[]>([]),
     [users, setUsers] = useState<User[]>([]),
     [audit, setAudit] = useState<AuditRow[]>([]);
@@ -98,6 +111,7 @@ export function Dashboard({
         setPlans(await api<Plan[]>("/api/plans"));
         setBoardRevision((value) => value + 1);
       }
+      if (section === "customers") setCustomerRevision((value) => value + 1);
       if (section === "users") setUsers(await api<User[]>("/api/users"));
       if (section === "audit") setAudit(await api<AuditRow[]>("/api/audit"));
     } catch (e) {
@@ -129,6 +143,7 @@ export function Dashboard({
         api<AuditRow[]>("/api/audit").then((data) => {
           if (current) setAudit(data);
         }),
+      customers: () => Promise.resolve(),
     };
     void requests[section]().catch(fail).finally(done);
     return () => {
@@ -213,7 +228,7 @@ export function Dashboard({
   const title = sections.find((item) => item.id === section)!.label;
   return (
     <div
-      className={`app ${menuClosed ? "menu-closed" : ""} ${section === "plans" ? "planner-app" : ""}`}
+      className={`app ${menuClosed ? "menu-closed" : ""} ${section === "plans" ? "planner-app" : ""} ${section === "customers" ? "customer-app" : ""}`}
     >
       <aside className="sidebar" id="app-navigation" hidden={menuClosed}>
         <div className="brand">
@@ -285,7 +300,9 @@ export function Dashboard({
             </button>
           </div>
         </header>
-        <main className={`main ${section === "plans" ? "planner-main" : ""}`}>
+        <main
+          className={`main ${section === "plans" ? "planner-main" : ""} ${section === "customers" ? "customer-main" : ""}`}
+        >
           {section !== "plans" && (
             <header className="page-heading">
               <div>
@@ -296,9 +313,11 @@ export function Dashboard({
                     ? "Registra tus unidades y administra la asignación de choferes."
                     : section === "drivers"
                       ? "Datos de contacto, disponibilidad y documentos privados de tu equipo."
-                      : section === "users"
-                        ? "Una cuenta por persona. Todos administran únicamente Ana Rutas."
-                        : "Actividad registrada con su autor y fecha."}
+                      : section === "customers"
+                        ? "Directorio operativo, ventanas de entrega y puntos por sucursal. Odoo permanece en sólo lectura."
+                        : section === "users"
+                          ? "Una cuenta por persona. Todos administran únicamente Ana Rutas."
+                          : "Actividad registrada con su autor y fecha."}
                 </p>
               </div>
               <button
@@ -333,6 +352,9 @@ export function Dashboard({
               section={section}
               revision={fleetRevision}
             />
+          )}
+          {section === "customers" && (
+            <CustomerPanel revision={customerRevision} />
           )}
           {section === "plans" && (
             <div className="planner-grid">

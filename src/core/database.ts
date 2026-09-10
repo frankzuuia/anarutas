@@ -3,6 +3,7 @@ import { readConfig } from "./config";
 import { AppError } from "./errors";
 import { migrateFleet } from "./fleet-schema";
 import { migrateOrderPlanIdentity, migrateOrders } from "./orders-schema";
+import { migrateCustomers } from "./customers-schema";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
   return new pg.Pool({
@@ -66,7 +67,7 @@ export async function migrate(pool: Pool, instanceId: string) {
         "SELECT schema_version FROM rutas_installation WHERE singleton = true",
       );
       let version = result.rows[0]?.schema_version;
-      if (![1, 2, 3, 4].includes(version))
+      if (![1, 2, 3, 4, 5].includes(version))
         throw new AppError("SCHEMA_VERSION_UNSUPPORTED", 503);
       if (version === 1) {
         await migrateFleet(client);
@@ -76,7 +77,11 @@ export async function migrate(pool: Pool, instanceId: string) {
         await migrateOrders(client);
         version = 3;
       }
-      if (version < 4) await migrateOrderPlanIdentity(client);
+      if (version < 4) {
+        await migrateOrderPlanIdentity(client);
+        version = 4;
+      }
+      if (version < 5) await migrateCustomers(client);
       return;
     }
     await client.query(`
@@ -95,6 +100,7 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migrateFleet(client);
     await migrateOrders(client);
     await migrateOrderPlanIdentity(client);
+    await migrateCustomers(client);
   });
 }
 export async function audit(

@@ -9,6 +9,7 @@ import {
   Map,
   ChevronDown,
   Trash2,
+  FileSpreadsheet,
 } from "lucide-react";
 import type { Plan } from "@/core/plans";
 import type { Vehicle } from "@/core/fleet-contract";
@@ -20,6 +21,9 @@ import type {
 import { todayInTimezone } from "@/core/local-date";
 import { api } from "./api";
 import { RouteMapDialog } from "./route-map-dialog";
+
+const minuteText = (value: number) =>
+  `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
 
 function LoadDialog({
   board,
@@ -877,16 +881,21 @@ export function OrdersBoard({
               </small>
               <span className="shipment-tags">
                 <span className="badge">
-                  {s.window_start
-                    ? `${s.window_start}–${s.window_end}`
+                  {s.deliveryWindows.length
+                    ? s.deliveryWindows
+                        .map(
+                          (window) =>
+                            `${minuteText(window.startMinute)}–${minuteText(window.endMinute)}`,
+                        )
+                        .join(" / ")
                     : "Sin horario"}
                 </span>
                 <span className="badge">
-                  {s.high_priority === null
-                    ? "Prioridad pendiente"
-                    : s.high_priority
-                      ? "Prioridad alta"
-                      : "Prioridad normal"}
+                  {s.priority === "high"
+                    ? "Prioridad alta"
+                    : s.priority === "medium"
+                      ? "Prioridad media"
+                      : "Por horario"}
                 </span>
               </span>
             </span>
@@ -917,6 +926,20 @@ export function OrdersBoard({
                 {s.address || "Dirección pendiente"}
               </p>
             </div>
+            {s.phone && <p className="muted">Teléfono: {s.phone}</p>}
+            {s.deliveryNote && (
+              <p className="delivery-note">Entrega: {s.deliveryNote}</p>
+            )}
+            {s.mapUrl && (
+              <a
+                href={s.mapUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="map-link"
+              >
+                Abrir punto en Google Maps
+              </a>
+            )}
             {s.promisedAt && (
               <p className="muted">
                 Promesa Odoo:{" "}
@@ -996,29 +1019,42 @@ export function OrdersBoard({
             : "Cargando tablero…"}
         </span>
         <div className="orders-toolbar-actions">
+          {board && (
+            <a
+              className="quiet button-link"
+              href={`/api/plans/${board.plan.id}/export`}
+              aria-label={`Exportar ${board.plan.label} a Excel`}
+            >
+              <FileSpreadsheet size={16} />
+              <span className="toolbar-action-label">Exportar Excel</span>
+            </a>
+          )}
           <button
             className="quiet"
             disabled={!board || busy}
+            aria-label="Añadir camioneta"
             onClick={() => setAddVehiclesOpen(true)}
           >
             <Truck size={16} />
-            Añadir camioneta
+            <span className="toolbar-action-label">Añadir camioneta</span>
           </button>
           <button
             className="quiet"
             disabled={!board || busy || !board.shipments.length}
+            aria-label="Ver mapa de rutas"
             onClick={() => setMapOpen(true)}
           >
             <Map size={16} />
-            Ver mapa de rutas
+            <span className="toolbar-action-label">Ver mapa de rutas</span>
           </button>
           <button
             className="primary"
             disabled={busy || !board}
+            aria-label="Cargar pedidos de Odoo"
             onClick={() => setModal(true)}
           >
             <Download size={16} />
-            Cargar pedidos de Odoo
+            <span className="toolbar-action-label">Cargar pedidos de Odoo</span>
           </button>
         </div>
       </div>
