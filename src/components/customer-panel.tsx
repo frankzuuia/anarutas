@@ -4,6 +4,7 @@ import {
   Archive,
   Building2,
   Download,
+  PanelRightClose,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -117,6 +118,7 @@ export function CustomerPanel({ revision }: { revision: number }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [archiveTarget, setArchiveTarget] = useState<Customer | null>(null);
+  const [editorHidden, setEditorHidden] = useState(false);
   const dirty = Boolean(
     selected &&
     form &&
@@ -195,6 +197,21 @@ export function CustomerPanel({ revision }: { revision: number }) {
       return;
     setSelected(customer);
     setForm(formState(customer));
+    setEditorHidden(false);
+    setError("");
+  }
+
+  function closeEditor() {
+    if (!selected || !form) return;
+    if (
+      dirty &&
+      !window.confirm(
+        "Hay cambios sin guardar. ¿Descartarlos y ocultar el panel de edición?",
+      )
+    )
+      return;
+    if (dirty) setForm(formState(selected));
+    setEditorHidden(true);
     setError("");
   }
 
@@ -386,7 +403,9 @@ export function CustomerPanel({ revision }: { revision: number }) {
           {notice}
         </p>
       )}
-      <div className="customer-workspace">
+      <div
+        className={`customer-workspace ${editorHidden ? "editor-hidden" : ""}`}
+      >
         <div className="customer-list" aria-busy={loading}>
           <div className="customer-list-head">
             <span>Cliente / Nombre en Odoo</span>
@@ -460,7 +479,7 @@ export function CustomerPanel({ revision }: { revision: number }) {
             )}
           </div>
         </div>
-        <aside className="customer-editor">
+        <aside className="customer-editor" hidden={editorHidden}>
           {!selected || !form ? (
             <div className="empty compact">
               <Building2 size={28} />
@@ -481,20 +500,31 @@ export function CustomerPanel({ revision }: { revision: number }) {
                   </small>
                   <h2>{selected.displayName}</h2>
                 </div>
-                <button
-                  type="button"
-                  className={archived ? "quiet" : "danger"}
-                  onClick={() => {
-                    if (dirty)
-                      setError(
-                        "Guarda o descarta la edición antes de cambiar el estado del cliente.",
-                      );
-                    else setArchiveTarget(selected);
-                  }}
-                >
-                  {archived ? <RotateCcw size={15} /> : <Archive size={15} />}
-                  {archived ? "Restaurar" : "Archivar"}
-                </button>
+                <div className="customer-editor-head-actions">
+                  <button
+                    type="button"
+                    className={archived ? "quiet" : "danger"}
+                    onClick={() => {
+                      if (dirty)
+                        setError(
+                          "Guarda o descarta la edición antes de cambiar el estado del cliente.",
+                        );
+                      else setArchiveTarget(selected);
+                    }}
+                  >
+                    {archived ? <RotateCcw size={15} /> : <Archive size={15} />}
+                    {archived ? "Restaurar" : "Archivar"}
+                  </button>
+                  <button
+                    type="button"
+                    className="quiet"
+                    disabled={busy}
+                    title="Ocultar panel de edición"
+                    onClick={closeEditor}
+                  >
+                    <PanelRightClose size={15} /> Ocultar
+                  </button>
+                </div>
               </header>
               <div className="customer-editor-scroll">
                 <div className="form-grid two">

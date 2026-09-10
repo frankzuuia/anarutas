@@ -1294,6 +1294,12 @@ tr:last-child td {
   display: grid;
   grid-template-columns: minmax(620px, 1fr) minmax(390px, 450px);
 }
+.customer-workspace.editor-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+.customer-workspace.editor-hidden .customer-list {
+  border-right: 0;
+}
 .customer-list {
   min-width: 0;
   min-height: 0;
@@ -1428,6 +1434,12 @@ tr:last-child td {
 }
 .customer-editor-head h2 {
   margin-top: 2px;
+}
+.customer-editor-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
 }
 .customer-editor-scroll {
   min-height: 0;
@@ -1595,6 +1607,12 @@ tr:last-child td {
   }
   .customer-list-head {
     display: none;
+  }
+  .customer-editor-head {
+    align-items: flex-start;
+  }
+  .customer-editor-head-actions {
+    flex-wrap: wrap;
   }
   .app button.customer-row {
     grid-template-columns: 1fr auto;

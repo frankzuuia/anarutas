@@ -1019,6 +1019,48 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(
     page.getByText("Lun/Mar/Mié/Jue/Vie 11:00–13:00", { exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Exportar Excel", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Importar Excel", { exact: true })).toHaveCount(
+    0,
+  );
+  const splitListWidth = await page
+    .locator(".customer-list")
+    .evaluate((element) => element.getBoundingClientRect().width);
+  await page
+    .getByLabel("Cliente", { exact: true })
+    .fill("Cambio local que no se guardará");
+  let dismissedCloseMessage = "";
+  page.once("dialog", (dialog) => {
+    dismissedCloseMessage = dialog.message();
+    void dialog.dismiss();
+  });
+  await page.getByRole("button", { name: "Ocultar", exact: true }).click();
+  expect(dismissedCloseMessage).toContain("cambios sin guardar");
+  await expect(page.getByLabel("Cliente", { exact: true })).toHaveValue(
+    "Cambio local que no se guardará",
+  );
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Ocultar", exact: true }).click();
+  await expect(page.locator(".customer-editor")).toBeHidden();
+  const fullListWidth = await page
+    .locator(".customer-list")
+    .evaluate((element) => element.getBoundingClientRect().width);
+  expect(fullListWidth).toBeGreaterThan(splitListWidth + 250);
+  await page.screenshot({
+    path: "reports/screenshots/customers-editor-hidden-1440.png",
+    fullPage: true,
+  });
+  await page
+    .getByPlaceholder("Buscar cliente, Odoo, teléfono o matriz…")
+    .fill("cafe e2e ");
+  await page.waitForTimeout(350);
+  await expect(page.locator(".customer-editor")).toBeHidden();
+  await page.locator(".customer-row").first().click();
+  await expect(page.getByLabel("Cliente", { exact: true })).toHaveValue(
+    "Sucursal E2E",
+  );
   const customerExport = await first.request.get(
     `${origin}/api/customers/export?q=e2e&archived=false`,
   );

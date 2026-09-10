@@ -128,6 +128,18 @@ pedidos y selección diaria, elimina el plan y registra `plan.deleted` con canti
 No elimina flota, choferes, usuarios, auditoría ni escribe Odoo. La interfaz retira el
 plan del selector y abre otro disponible o el estado vacío.
 
+### S30: editor de clientes ocultable (BL-025)
+
+El panel derecho de Clientes y horarios incorpora una acción secundaria «Ocultar».
+Sin cambios pendientes, la acción no escribe datos, conserva la selección y devuelve
+todo el ancho disponible al directorio. Con cambios pendientes pide confirmación:
+cancelar mantiene exactamente el formulario abierto y aceptar descarta sólo el estado
+local no guardado antes de ocultarlo. Búsqueda, paginación y sincronización respetan el
+estado oculto; seleccionar cualquier fila abre nuevamente el editor con su versión
+vigente. La barra operativa contiene Actualizar clientes y Exportar Excel, pero no
+Importar Excel; la carga inicial desde archivos permanece como migración controlada
+con preflight y no como escritura libre desde el navegador.
+
 ### S19: densidad compacta del panel (BL-006)
 
 Reducir tamaños y espacios dentro del panel autenticado, sin reducir mediante zoom/transform ni alterar login, formularios, API o datos. Escritorio: controles de 34–36 px, título principal de 24 px, títulos de tarjeta de 16 px, rellenos de 12–16 px y estados vacíos sin grandes alturas forzadas. Dispositivos táctiles: objetivos de pulsación de al menos 44 px y campos de 16 px para lectura. Mantener contraste, foco, texto completo, adaptación y ausencia de desbordamiento. Validación T09 con dimensiones calculadas, screenshots en 375/768/940/1024/1440 px y recorrido E2E existente. Sólo CSS y pruebas/documentación.

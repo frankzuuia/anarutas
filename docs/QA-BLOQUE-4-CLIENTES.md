@@ -30,6 +30,7 @@ El bloque local está aprobado para subir a `develop`. No se hizo despliegue, no
 - XLSX de clientes y plan se genera y vuelve a abrir; neutraliza contenido que inicia con `=`, `+`, `-` o `@`.
 - Directorio, configuración de Maps y ambas exportaciones exigen sesión. Las mutaciones rechazan Origin ajeno sin cambiar la versión.
 - E2E cubre 375, 768, 1024 y 1440 px para clientes, además de regresión del planificador con siete camionetas y 25 pedidos.
+- El editor puede ocultarse sin escritura, protege cambios pendientes mediante confirmación, deja el directorio a ancho completo, no se reabre al buscar y vuelve al seleccionar una fila. La barra conserva únicamente Exportar Excel; Importar Excel no existe en la interfaz ni en sus rutas.
 
 Los escenarios de aceptación están en `tests/acceptance.feature` y cubren sincronización, 24 horas, archivo/restauración, punto confirmado, exportaciones, concurrencia y seguridad.
 

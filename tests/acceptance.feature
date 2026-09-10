@@ -318,3 +318,19 @@ Feature: Ana Rutas independiente y portable
     Then recibe un XLSX con hojas Clientes y Ventanas o Ruta y Partidas
     And las celdas peligrosas se guardan como texto
     And el plan exportado conserva su versión, asignación y orden sin inventar ETA o distancia
+
+  Scenario: Ocultar y reabrir el editor de clientes
+    Given el administrador tiene un cliente seleccionado en el directorio
+    When oculta el panel sin cambios pendientes
+    Then el directorio recupera todo el ancho y no se realiza ninguna escritura
+    And buscar o sincronizar no abre automáticamente el editor
+    When selecciona cualquier cliente
+    Then el editor se abre nuevamente con la versión vigente
+    And la interfaz ofrece Exportar Excel pero no Importar Excel
+
+  Scenario: Proteger cambios al ocultar el editor de clientes
+    Given el administrador modificó un cliente sin guardar
+    When intenta ocultar el panel y cancela la confirmación
+    Then el editor permanece abierto con sus cambios
+    When vuelve a ocultarlo y confirma el descarte
+    Then el panel se oculta y al reabrirlo muestra los datos guardados

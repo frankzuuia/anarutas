@@ -11,6 +11,7 @@ Estado: autorizado para `develop` el 2026-09-09. Amplía BL-018..024 sin reempla
 - **BL-022 — Archivo reversible.** Archivar requiere confirmación y sólo afecta el registro local seleccionado; conserva identidad y configuración. No archiva hijos, no elimina pedidos y no escribe Odoo. Restaurar recupera el mismo registro. Los estados activo/inactivo Odoo y archivado local son independientes.
 - **BL-023 — Planificador y exportaciones.** Cada surtido resuelve alias, teléfono, nota, prioridad, domicilio, ventanas efectivas y punto por `source + partner_id`, usando la fecha del plan. No modifica snapshot, posición ni camioneta. Excel de clientes incluye hojas Clientes/Ventanas; Excel del plan incluye Ruta/Partidas. Ambos son snapshots consistentes, neutralizan fórmulas y no inventan ETA, distancia ni totales de unidades incompatibles.
 - **BL-024 — Compatibilidad y futuro chofer.** El adaptador negocia campos con `fields_get`, solicita sólo capacidades existentes y funciona por contrato en Odoo 17 y SaaS 19.4. El servicio de ubicación es reutilizable y versionado; la aplicación futura del chofer deberá autenticar al chofer asignado y enviar su corrección a ese servicio. Este bloque no simula una app o identidad de chofer que todavía no existe.
+- **BL-025 — Editor ocultable y exportación controlada.** El administrador puede ocultar el editor para devolver todo el ancho al directorio. Si existen cambios locales debe confirmar su descarte; cancelar conserva el formulario. Buscar o sincronizar no reabre un panel oculto y seleccionar una fila sí lo reabre. La interfaz operativa ofrece únicamente Exportar Excel; la aplicación inicial del directorio no se expone como importación libre desde el navegador.
 
 ## Contratos y límites
 
@@ -44,5 +45,6 @@ Estado: autorizado para `develop` el 2026-09-09. Amplía BL-018..024 sin reempla
 10. Resolver en tablero/mapa/exportación exactamente la misma preferencia.
 11. Generar y volver a abrir ambos XLSX; neutralizar celdas `=`, `+`, `-`, `@`.
 12. Rechazar usuario inactivo, Origin ajeno, payload grande, URL peligrosa, otra compañía/origen y versión obsoleta.
+13. Ocultar el editor con y sin cambios, recuperar todo el ancho, reabrirlo al elegir cliente y comprobar que no existe Importar Excel.
 
 Puertas: unitarias, PostgreSQL real, contrato Odoo estático y smoke read-only contra develop 19.4 cuando esté disponible, Gherkin, E2E, cobertura >=90% del dominio nuevo con rutas críticas completas, mutación de identidad/overrides/ventanas, build, lint, auditoría de dependencias y QA visual 375/768/1024/1440. Producción Odoo 17, Maps real y aplicación del directorio Excel requieren preflight/vista previa antes de cualquier promoción o escritura en la base productiva.
