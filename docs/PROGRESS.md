@@ -1,5 +1,15 @@
 # Progreso — bloque 1
 
+## Bloque 5 autorizado — optimización vial Google
+
+- [x] O-T01 (BL-026 / S32-33): migración v6 y configuración versionada del punto de salida, con sugerencia runtime y confirmación visual.
+- [x] O-T02 (BL-027-028 / S34-35): configuración privada Google, OAuth, constructor de modelo sin peso y parser estricto de Route Optimization.
+- [x] O-T03 (BL-029 / S34, S36-37): llamada externa fuera de transacción y aplicación atómica/versionada con métricas, omisiones y auditoría.
+- [x] O-T04 (BL-030 / S38-39): UI Armar ruta, salida editable, polilíneas/ETA/km y estado obsoleto tras cambios manuales.
+- [x] O-T05 (BL-030): conservar route tokens privados por transición para la futura APK Android; no exponerlos al tablero web.
+- [x] O-T06: referencias, errores sanitarios, métricas operativas y documentación de QA/reversión.
+- [x] O-T07: unidades, PostgreSQL real, contrato Google, E2E, Gherkin, cobertura, mutación, lint, typecheck y build verdes. Evidencia local en `QA-BLOQUE-5-OPTIMIZACION.md`; smoke facturable posterior al deploy permanece explícitamente pendiente.
+
 ## Bloque 4 autorizado — clientes, horarios y puntos
 
 - [x] C-T01 (BL-018..019): migración v5, identidad Odoo estable, jerarquía y sincronización paginada compatible por capacidades.

@@ -17,12 +17,16 @@ export function CustomerLocationEditor({
   mapUrl,
   onLocation,
   onMapUrl,
+  legend = "Punto y liga de Maps",
+  showMapUrl = true,
 }: {
   address: string;
   location: EditableLocation | null;
   mapUrl: string;
   onLocation: (location: EditableLocation | null) => void;
   onMapUrl: (url: string) => void;
+  legend?: string;
+  showMapUrl?: boolean;
 }) {
   const canvas = useRef<HTMLDivElement>(null);
   const [proposed, setProposed] = useState<EditableLocation | null>(null);
@@ -107,7 +111,7 @@ export function CustomerLocationEditor({
 
   return (
     <fieldset className="customer-location">
-      <legend>Punto y liga de Maps</legend>
+      <legend>{legend}</legend>
       <div className="customer-location-status">
         <MapPin size={16} />
         <span>
@@ -125,19 +129,21 @@ export function CustomerLocationEditor({
           {busy ? "Buscando…" : "Ubicar domicilio"}
         </button>
       </div>
-      <label>
-        Liga de Maps
-        <input
-          type="url"
-          maxLength={1000}
-          placeholder="https://maps.google.com/…"
-          value={mapUrl}
-          onChange={(event) => {
-            onMapUrl(event.target.value);
-            if (location) onLocation(null);
-          }}
-        />
-      </label>
+      {showMapUrl && (
+        <label>
+          Liga de Maps
+          <input
+            type="url"
+            maxLength={1000}
+            placeholder="https://maps.google.com/…"
+            value={mapUrl}
+            onChange={(event) => {
+              onMapUrl(event.target.value);
+              if (location) onLocation(null);
+            }}
+          />
+        </label>
+      )}
       <div
         className={`customer-map-preview ${proposed ? "visible" : ""}`}
         ref={canvas}

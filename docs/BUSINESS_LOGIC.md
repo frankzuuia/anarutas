@@ -37,6 +37,16 @@ Bloque 2A autorizado: BL-007..010 (camionetas, choferes, asignación actual y do
 ## Decisiones pendientes que no se inventan
 
 - Captura acordada: una sola fecha de validación de pedidos, inicializada con el día civil actual de la instalación y editable hasta la fecha del plan. La carga manual por folio puede recuperar surtidos validados fuera de esa fecha; corte, días laborables/feriados todavía pendientes.
-- Depósito y horario de salida; política exacta de prioridad alta frente a ventanas incompatibles.
-- Proyecto/clave Google habilitados; cuenta/modelo del agente y permisos de integración.
+- El horario laboral específico y una posible hora de regreso siguen pendientes; el
+  bloque 5 usa el día civil completo y únicamente punto de salida.
 - Procedimiento real de devoluciones/contabilidad: no hay autorización de escrituras Odoo para ese alcance.
+
+## Extensión aprobada — optimización Google
+
+| Regla             | Actor / negocio                                                              | Dirección técnica / datos                                                                            | Permiso y auditoría                                         | Validación                                                                |
+| ----------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------- |
+| BL-026 Salida     | Administrador configura el origen de todas las rutas                         | Dirección editable y coordenada confirmada; sugerencia runtime; sólo inicio, sin regreso             | Sesión activa, versión y `routing.settings.updated`         | Dirección sin punto bloquea optimización; rango geográfico estricto       |
+| BL-027 Modelo     | Administrador arma el plan con datos reales, sin peso                        | Camionetas del plan, coordenadas confirmadas, ventanas, prioridad y día civil local                  | Modelo construido sólo en servidor; Google OAuth privado    | Sin flota/pedidos/puntos no llama Google; ninguna capacidad inventada     |
+| BL-028 Prioridad  | Alta debe ocurrir antes que Media y Por horario; Media antes que Por horario | Reglas de precedencia de entregas además de ventanas duras                                           | Política única auditable, no elegida por el navegador       | Conflicto se informa; no se relaja silenciosamente                        |
+| BL-029 Aplicación | Propuesta Google asigna y ordena pedidos                                     | Snapshot por versión, llamada externa y aplicación transaccional; métricas/ETA/polilínea persistidas | `plan.optimized`; actor y solicitud lógica                  | Cambio concurrente devuelve 409; reintento no duplica                     |
+| BL-030 Navegación | Web muestra recorridos reales y APK futura podrá navegar cada tramo          | Polilíneas visibles; route tokens privados por transición                                            | Sólo endpoints autenticados; tokens no salen en tablero web | Movimiento manual marca resultado obsoleto; nunca se muestra como vigente |

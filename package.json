@@ -22,6 +22,7 @@
     "test:mutation:plan-deletion": "stryker run stryker.plan-deletion.config.mjs",
     "test:mutation:plan-identity": "stryker run stryker.plan-identity.config.mjs",
     "test:mutation:customers": "stryker run stryker.customers.config.mjs",
+    "test:mutation:routing": "stryker run stryker.routing.config.mjs",
     "pretest:e2e": "npm run build",
     "test:e2e": "playwright test",
     "db:migrate": "tsx scripts/migrate.ts",
@@ -29,6 +30,7 @@
   },
   "dependencies": {
     "exceljs": "4.4.0",
+    "google-auth-library": "^10.5.0",
     "lucide-react": "1.43.0",
     "next": "16.3.4",
     "pg": "8.23.0",

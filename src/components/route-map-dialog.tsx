@@ -3,6 +3,10 @@ import { useEffect, useId, useRef, useState } from "react";
 import { X, MapPin, RefreshCw } from "lucide-react";
 import type { OrderBoard, Shipment } from "@/core/orders-contract";
 import type { MapConfig } from "@/core/map-config";
+import type {
+  PublicOptimization,
+  RoutingSettings,
+} from "@/core/routing-contract";
 import { api } from "./api";
 import { loadGoogleMaps } from "./google-maps";
 
@@ -13,9 +17,11 @@ function color(index: number) {
 
 export function RouteMapDialog({
   board,
+  timezone,
   onClose,
 }: {
   board: OrderBoard;
+  timezone: string;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null),
@@ -23,6 +29,10 @@ export function RouteMapDialog({
   const map = useRef<google.maps.Map | null>(null);
   const title = useId();
   const [config, setConfig] = useState<MapConfig | null>(null);
+  const [optimization, setOptimization] = useState<PublicOptimization | null>(
+    null,
+  );
+  const [origin, setOrigin] = useState<RoutingSettings | null>(null);
   const [locations, setLocations] = useState<Record<string, Located>>({});
   const [error, setError] = useState("");
   const [locating, setLocating] = useState(true);
@@ -53,9 +63,17 @@ export function RouteMapDialog({
   useEffect(() => {
     let current = true;
     async function initialize() {
-      const settings = await api<MapConfig>("/api/maps/config");
+      const [settings, optimized, routing] = await Promise.all([
+        api<MapConfig>("/api/maps/config"),
+        api<PublicOptimization | null>(
+          `/api/plans/${board.plan.id}/optimization`,
+        ),
+        api<RoutingSettings>("/api/routing/settings"),
+      ]);
       if (!current) return;
       setConfig(settings);
+      setOptimization(optimized);
+      setOrigin(routing);
       if (!settings.configured) return;
       await loadGoogleMaps(settings.browserKey);
       const { Map } = (await google.maps.importLibrary(
@@ -65,6 +83,7 @@ export function RouteMapDialog({
         "geocoding",
       )) as google.maps.GeocodingLibrary;
       await google.maps.importLibrary("marker");
+      await google.maps.importLibrary("geometry");
       if (!current || !canvas.current) return;
       // fitBounds sets the real center once at least one delivery is located.
       map.current = new Map(canvas.current, {
@@ -132,15 +151,34 @@ export function RouteMapDialog({
       current = false;
       map.current = null;
     };
-  }, [board.shipments, revision]);
+  }, [board.plan.id, board.shipments, revision]);
   useEffect(() => {
     if (!map.current || typeof google === "undefined") return;
     const currentMap = map.current;
     const bounds = new google.maps.LatLngBounds();
     const markers: google.maps.marker.AdvancedMarkerElement[] = [];
+    const routeLines: google.maps.Polyline[] = [];
     const info = new google.maps.InfoWindow();
     // Keep colocated orders as separate records; one pin exposes all at that exact point.
     const groups = new globalThis.Map<string, Shipment[]>();
+    if (origin?.depotLocation) {
+      const position = {
+        lat: origin.depotLocation.latitude,
+        lng: origin.depotLocation.longitude,
+      };
+      bounds.extend(position);
+      const pin = document.createElement("div");
+      pin.className = "map-pin map-origin-pin";
+      pin.textContent = "Salida";
+      markers.push(
+        new google.maps.marker.AdvancedMarkerElement({
+          map: currentMap,
+          position,
+          content: pin,
+          title: `Salida · ${origin.depotAddress}`,
+        }),
+      );
+    }
     for (const shipment of visible) {
       const position = locations[shipment.id]?.position;
       if (!position) continue;
@@ -178,6 +216,28 @@ export function RouteMapDialog({
       });
       markers.push(marker);
     }
+    if (optimization?.current) {
+      for (const optimizedRoute of optimization.routes) {
+        if (filter !== "all" && optimizedRoute.vehicleId !== filter) continue;
+        if (!optimizedRoute.encodedPolyline) continue;
+        const path = google.maps.geometry.encoding.decodePath(
+          optimizedRoute.encodedPolyline,
+        );
+        path.forEach((point) => bounds.extend(point));
+        const vehicleIndex = vehicles.findIndex(
+          (vehicle) => vehicle.id === optimizedRoute.vehicleId,
+        );
+        routeLines.push(
+          new google.maps.Polyline({
+            map: currentMap,
+            path,
+            strokeColor: color(Math.max(1, vehicleIndex)),
+            strokeOpacity: 0.9,
+            strokeWeight: 5,
+          }),
+        );
+      }
+    }
     if (!bounds.isEmpty()) currentMap.fitBounds(bounds, 60);
     const idle = google.maps.event.addListenerOnce(currentMap, "idle", () => {
       if ((currentMap.getZoom() ?? 0) > 17) currentMap.setZoom(17);
@@ -189,10 +249,20 @@ export function RouteMapDialog({
         google.maps.event.clearInstanceListeners(marker);
         marker.map = null;
       });
+      routeLines.forEach((line) => line.setMap(null));
     };
     // The board is immutable while this read-only modal is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locations, filter, board]);
+  }, [locations, filter, board, optimization, origin]);
+
+  const optimizedStops = new globalThis.Map(
+    (optimization?.current ? optimization.routes : []).flatMap((route) =>
+      route.stops.map((stop) => [stop.shipmentId, stop] as const),
+    ),
+  );
+  const minutes = optimization
+    ? Math.round(optimization.metrics.totalDurationSeconds / 60)
+    : 0;
 
   return (
     <dialog
@@ -228,9 +298,25 @@ export function RouteMapDialog({
           {visible.length} pedidos ·{" "}
           {visible.filter((s) => locations[s.id]?.position).length} ubicados
         </span>
-        <span className="small">
-          Puntos de entrega y orden actual. Optimización pendiente.
-        </span>
+        {optimization?.current ? (
+          <span className="small route-metrics">
+            Ruta Google vigente ·{" "}
+            {(optimization.metrics.travelDistanceMeters / 1000).toLocaleString(
+              "es-MX",
+              { maximumFractionDigits: 1 },
+            )}{" "}
+            km · {Math.floor(minutes / 60)} h {minutes % 60} min
+          </span>
+        ) : optimization ? (
+          <span className="small warning">
+            La ruta calculada quedó obsoleta por cambios en el borrador. Vuelve
+            a armarla.
+          </span>
+        ) : (
+          <span className="small">
+            Puntos y orden manual; ruta aún no calculada.
+          </span>
+        )}
       </div>
       {error && (
         <div className="notice error" role="alert">
@@ -287,6 +373,27 @@ export function RouteMapDialog({
                 <small>
                   {s.orderName} · {vehicles[laneIndex(s)].name}
                 </small>
+                {optimizedStops.get(s.id) && (
+                  <small className="route-stop-metrics">
+                    ETA{" "}
+                    {new Date(optimizedStops.get(s.id)!.eta).toLocaleTimeString(
+                      "es-MX",
+                      {
+                        timeZone: timezone,
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      },
+                    )}{" "}
+                    · tramo{" "}
+                    {(
+                      optimizedStops.get(s.id)!.travelDistanceMeters / 1000
+                    ).toLocaleString("es-MX", {
+                      maximumFractionDigits: 1,
+                    })}{" "}
+                    km
+                  </small>
+                )}
                 <small>{s.address || "Dirección pendiente"}</small>
                 <small>
                   {s.deliveryWindows.length

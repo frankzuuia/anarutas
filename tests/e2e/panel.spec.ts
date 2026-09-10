@@ -99,6 +99,16 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     401,
   );
   expect(
+    (await first.request.get(`${origin}/api/routing/settings`)).status(),
+  ).toBe(401);
+  expect(
+    (
+      await first.request.get(
+        `${origin}/api/plans/00000000-0000-0000-0000-000000000000/optimization`,
+      )
+    ).status(),
+  ).toBe(401);
+  expect(
     (await first.request.get(`${origin}/api/customers/export`)).status(),
   ).toBe(401);
   expect(
@@ -153,6 +163,46 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   );
   expect(cookie?.httpOnly).toBe(true);
   expect(cookie?.sameSite).toBe("Strict");
+  const depot = {
+    depotAddress:
+      "Calle 5 1106, Colonia Industrial, Guadalajara, Jalisco, México",
+    depotLocation: {
+      latitude: 20.624,
+      longitude: -103.354,
+      placeId: "e2e-depot",
+    },
+    expectedVersion: 0,
+  };
+  const deniedDepot = await first.request.put(
+    `${origin}/api/routing/settings`,
+    {
+      headers: { Origin: "https://another.example" },
+      data: depot,
+    },
+  );
+  expect(deniedDepot.status()).toBe(403);
+  expect(await deniedDepot.json()).toMatchObject({ error: "ORIGIN_DENIED" });
+  expect(
+    await (await first.request.get(`${origin}/api/routing/settings`)).json(),
+  ).toMatchObject({
+    depotLocation: null,
+    version: 0,
+  });
+  const savedDepot = await first.request.put(`${origin}/api/routing/settings`, {
+    headers: { Origin: origin },
+    data: depot,
+  });
+  expect(savedDepot.status()).toBe(200);
+  expect(await savedDepot.json()).toMatchObject({
+    depotAddress: depot.depotAddress,
+    depotLocation: depot.depotLocation,
+    version: 1,
+  });
+  const staleDepot = await first.request.put(`${origin}/api/routing/settings`, {
+    headers: { Origin: origin },
+    data: depot,
+  });
+  expect(staleDepot.status()).toBe(409);
   const second = await browser.newContext();
   const other = await second.newPage();
   await other.goto(`${origin}/login`);
@@ -179,6 +229,19 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(
     page.getByText("Sin pedidos cargados", { exact: true }),
   ).toBeVisible();
+  const originButton = page.getByRole("button", {
+    name: "Configurar punto de salida",
+    exact: true,
+  });
+  await originButton.click();
+  const originDialog = page.getByRole("dialog", { name: "Punto de salida" });
+  await expect(originDialog.getByLabel("Dirección de salida")).toHaveValue(
+    depot.depotAddress,
+  );
+  await expect(originDialog).toContainText("20.624000, -103.354000");
+  await page.keyboard.press("Escape");
+  await expect(originDialog).toHaveCount(0);
+  await expect(originButton).toBeFocused();
   await other.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(other.getByLabel("Abrir borrador")).toContainText(
     "Plan de validación",
@@ -189,6 +252,17 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   const savedPlan = plansBefore.find(
     (plan: { label: string }) => plan.label === "Plan de validación",
   );
+  const emptyOptimization = await first.request.post(
+    `${origin}/api/plans/${savedPlan.id}/optimization`,
+    {
+      headers: { Origin: origin },
+      data: { expectedVersion: savedPlan.version },
+    },
+  );
+  expect(emptyOptimization.status()).toBe(409);
+  expect(await emptyOptimization.json()).toMatchObject({
+    error: "ROUTING_VEHICLES_REQUIRED",
+  });
   const rename = page.getByRole("button", {
     name: "Cambiar nombre",
     exact: true,

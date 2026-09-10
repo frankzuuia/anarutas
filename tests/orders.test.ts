@@ -82,7 +82,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
       ),
     );
     await db.pool.query(
-      "DROP TABLE route_customer_location_history,route_customer_windows,route_shipments,route_customers,route_plan_vehicles,route_order_source; UPDATE rutas_installation SET schema_version=2",
+      "DROP TABLE route_optimization_stops,route_optimization_leases,route_optimization_runs,route_routing_settings,route_customer_location_history,route_customer_windows,route_shipments,route_customers,route_plan_vehicles,route_order_source; UPDATE rutas_installation SET schema_version=2",
     );
     const { migrate } = await import("../src/core/database");
     await Promise.all([
@@ -92,7 +92,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(5);
+    ).toBe(6);
     const identityIndex = await db.pool.query(
       "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='route_shipments_plan_source_picking_order'",
     );
@@ -122,6 +122,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
       )
     ).rows;
     await db.pool.query(`
+      DROP TABLE route_optimization_stops,route_optimization_leases,route_optimization_runs,route_routing_settings;
       DROP TABLE route_customer_location_history,route_customer_windows;
       ALTER TABLE route_shipments DROP CONSTRAINT route_shipments_customer_identity;
       DROP TABLE route_customers;
@@ -134,7 +135,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(5);
+    ).toBe(6);
     expect(
       (
         await db.pool.query(

@@ -2023,6 +2023,21 @@ button.shipment-remove:hover:not(:disabled) {
   background: var(--panel);
   color: var(--ink);
 }
+.route-origin-dialog {
+  width: min(620px, calc(100vw - 24px));
+}
+.route-origin-dialog .customer-map-preview.visible {
+  min-height: 250px;
+}
+button.route-optimize {
+  border-color: #12bd75;
+  background: #0f5f41;
+  color: #d7ffeb;
+}
+button.route-optimize:hover:not(:disabled) {
+  background: #168858;
+  border-color: #2ade91;
+}
 .route-map-dialog[open] {
   display: flex;
   flex-direction: column;
@@ -2045,6 +2060,13 @@ button.shipment-remove:hover:not(:disabled) {
 .map-toolbar select {
   width: auto;
   max-width: 280px;
+}
+.route-metrics,
+.route-stop-metrics {
+  color: #72e6aa;
+}
+.map-toolbar .warning {
+  color: #efcd85;
 }
 .map-content {
   display: grid;
@@ -2095,6 +2117,10 @@ button.shipment-remove:hover:not(:disabled) {
   min-width: 28px;
   text-align: center;
 }
+.map-origin-pin {
+  border-radius: 7px;
+  background: #21d886;
+}
 .map-empty {
   padding: 20px;
   margin: auto;
@@ -2143,7 +2169,7 @@ button.shipment-remove:hover:not(:disabled) {
     min-height: 28px;
   }
 }
-@media (min-width: 721px) and (max-width: 900px) {
+@media (min-width: 721px) and (max-width: 1180px) {
   .orders-toolbar {
     flex-direction: row;
     align-items: center;

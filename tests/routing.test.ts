@@ -1,0 +1,355 @@
+import { createHash, randomUUID } from "node:crypto";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { bootstrap } from "../src/core/auth";
+import { updateCustomer } from "../src/core/customers";
+import { createVehicle } from "../src/core/fleet";
+import {
+  moveShipment,
+  orderBoard,
+  persistImportPage,
+  removeShipment,
+  selectPlanVehicles,
+} from "../src/core/orders";
+import type { ImportPage, SourceShipment } from "../src/core/orders-contract";
+import { createPlan } from "../src/core/plans";
+import type { GoogleOptimizationResult } from "../src/core/route-optimization-google";
+import {
+  acquireOptimizationLease,
+  releaseOptimizationLease,
+} from "../src/core/route-optimization-lease";
+import {
+  applyOptimizationResult,
+  getPlanOptimization,
+} from "../src/core/route-optimization";
+import {
+  getRoutingSettings,
+  saveRoutingSettings,
+} from "../src/core/routing-settings";
+import { startPostgres } from "./helpers/postgres";
+
+let db: Awaited<ReturnType<typeof startPostgres>>;
+let actor: string;
+const source = createHash("sha256").update("routing-qa-odoo").digest("hex");
+
+function sourceShipment(index: number): SourceShipment {
+  return {
+    pickingId: 8100 + index,
+    pickingName: `WH/OUT/${8100 + index}`,
+    orderId: 9100 + index,
+    orderName: `S${9100 + index}`,
+    partnerId: 7100 + index,
+    customerName: `Cliente ruta ${index}`,
+    address: `Calle prueba ${index}, Guadalajara`,
+    validatedAt: "2026-09-09T12:00:00.000Z",
+    promisedAt: null,
+    backorderId: null,
+    lines: [
+      {
+        moveId: 6100 + index,
+        productId: 5100 + index,
+        name: `Producto ${index}`,
+        quantity: index,
+        unit: "pieza",
+      },
+    ],
+  };
+}
+
+function importPage(shipments: SourceShipment[]): ImportPage {
+  return {
+    fingerprint: source,
+    shipments,
+    nextCursor: shipments.length,
+    ceiling: shipments.length,
+    hasMore: false,
+    inspected: shipments.length,
+    excluded: 0,
+  };
+}
+
+beforeAll(async () => {
+  db = await startPostgres();
+  actor = (
+    await bootstrap(db.pool, db.config, {
+      token: db.config.bootstrapToken,
+      name: "Routing QA",
+      login: "routing-qa",
+      password: randomUUID(),
+    })
+  ).id;
+});
+
+afterAll(async () => {
+  await db?.close();
+});
+
+describe("routing settings and atomic optimization / real PostgreSQL", () => {
+  it("serializes the first settings write and enforces optimistic versions", async () => {
+    expect(await getRoutingSettings(db.pool)).toMatchObject({
+      depotLocation: null,
+      version: 0,
+    });
+    const input = {
+      depotAddress:
+        "Calle 5 1106, Colonia Industrial, Guadalajara, Jalisco, México",
+      depotLocation: {
+        latitude: 20.624,
+        longitude: -103.354,
+        placeId: "depot-place",
+      },
+      expectedVersion: 0,
+    };
+    const firstWrites = await Promise.allSettled([
+      saveRoutingSettings(db.pool, actor, input),
+      saveRoutingSettings(db.pool, actor, input),
+    ]);
+    expect(
+      firstWrites.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      firstWrites.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+    const first = await getRoutingSettings(db.pool);
+    expect(first).toMatchObject({
+      version: 1,
+      depotAddress: input.depotAddress,
+    });
+    const second = await saveRoutingSettings(db.pool, actor, {
+      ...input,
+      depotAddress: `${input.depotAddress}, Jalisco`,
+      expectedVersion: first.version,
+    });
+    expect(second.version).toBe(2);
+    await expect(
+      saveRoutingSettings(db.pool, actor, { ...input, expectedVersion: 1 }),
+    ).rejects.toThrow("VERSION_CONFLICT");
+  });
+
+  it("allows only one live Google optimization lease per plan version", async () => {
+    const plan = await createPlan(db.pool, actor, {
+      date: "2026-09-10",
+      label: "Concurrencia Google QA",
+    });
+    const requestHash = createHash("sha256")
+      .update("lease-request")
+      .digest("hex");
+    const leases = await Promise.allSettled([
+      acquireOptimizationLease(db.pool, plan.id, plan.version, requestHash, 5),
+      acquireOptimizationLease(db.pool, plan.id, plan.version, requestHash, 5),
+    ]);
+    const accepted = leases.find((result) => result.status === "fulfilled");
+    expect(accepted).toBeDefined();
+    if (!accepted || accepted.status !== "fulfilled")
+      throw new Error("OPTIMIZATION_LEASE_NOT_ACQUIRED");
+    expect(
+      leases.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      leases.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+    await expect(
+      acquireOptimizationLease(db.pool, plan.id, plan.version, requestHash, 5),
+    ).rejects.toThrow("ROUTING_ALREADY_RUNNING");
+    await releaseOptimizationLease(db.pool, plan.id, accepted.value);
+    const retry = await acquireOptimizationLease(
+      db.pool,
+      plan.id,
+      plan.version,
+      requestHash,
+      5,
+    );
+    expect(retry).not.toBe(accepted.value);
+    await releaseOptimizationLease(db.pool, plan.id, retry);
+  });
+
+  it("applies assignment, order, metrics and private navigation tokens atomically", async () => {
+    const plan = await createPlan(db.pool, actor, {
+      date: "2026-09-09",
+      label: "Optimización QA",
+    });
+    const vehicle = await createVehicle(db.pool, actor, {
+      id: randomUUID(),
+      name: "Ruta Google QA",
+      brand: "Ford",
+      model: "2026",
+      plate: "RUTA-QA",
+      mileage: 1,
+      fuel: "Gasolina",
+      available: true,
+    });
+    await selectPlanVehicles(db.pool, actor, plan.id, {
+      vehicleIds: [vehicle.id],
+      expectedVersion: plan.version,
+    });
+    await persistImportPage(
+      db.pool,
+      actor,
+      plan.id,
+      importPage([sourceShipment(1), sourceShipment(2)]),
+    );
+    const customerRows = await db.pool.query(
+      "SELECT id,version,odoo_partner_id FROM route_customers WHERE source=$1 ORDER BY odoo_partner_id",
+      [source],
+    );
+    for (const [index, customer] of customerRows.rows.entries())
+      await updateCustomer(db.pool, actor, customer.id, {
+        displayName: `Destino ${index + 1}`,
+        phone: null,
+        deliveryNote: "",
+        priority: index === 0 ? "high" : "medium",
+        fulfillmentMode: "delivery",
+        deliveryAddress: `Calle prueba ${index + 1}, Guadalajara`,
+        mapUrl: null,
+        location: {
+          latitude: 20.65 + index / 100,
+          longitude: -103.35 - index / 100,
+          placeId: `destination-${index + 1}`,
+        },
+        windows: [
+          {
+            days: [0, 1, 2, 3, 4, 5, 6],
+            start: { hour: 9 + index, minute: 0 },
+            end: { hour: 13 + index, minute: 0 },
+          },
+        ],
+        expectedVersion: Number(customer.version),
+      });
+
+    const before = await orderBoard(db.pool, plan.id);
+    const deliveries = before.shipments;
+    const result: GoogleOptimizationResult = {
+      routes: [
+        {
+          vehicleIndex: 0,
+          encodedPolyline: "public-route-polyline",
+          metrics: {
+            travelDistanceMeters: 12500,
+            travelDurationSeconds: 1800,
+            waitDurationSeconds: 120,
+            totalDurationSeconds: 1920,
+            performedShipmentCount: 2,
+          },
+          visits: [
+            {
+              shipmentIndex: 1,
+              eta: "2026-09-09T16:00:00.000Z",
+              travelDistanceMeters: 7000,
+              travelDurationSeconds: 1000,
+              waitDurationSeconds: 120,
+            },
+            {
+              shipmentIndex: 0,
+              eta: "2026-09-09T17:00:00.000Z",
+              travelDistanceMeters: 5500,
+              travelDurationSeconds: 800,
+              waitDurationSeconds: 0,
+            },
+          ],
+          transitions: [
+            { encodedPolyline: "leg-1", routeToken: "private-android-token" },
+            { encodedPolyline: "leg-2", routeToken: null },
+          ],
+        },
+      ],
+      skipped: [],
+      metrics: {
+        travelDistanceMeters: 12500,
+        travelDurationSeconds: 1800,
+        waitDurationSeconds: 120,
+        totalDurationSeconds: 1920,
+        performedShipmentCount: 2,
+      },
+    };
+    const applied = await applyOptimizationResult(
+      db.pool,
+      actor,
+      plan.id,
+      before.plan.version,
+      (await getRoutingSettings(db.pool)).version,
+      before,
+      deliveries,
+      createHash("sha256").update("routing-request").digest("hex"),
+      result,
+    );
+    expect(applied).toMatchObject({
+      current: true,
+      appliedPlanVersion: before.plan.version + 1,
+      metrics: { travelDistanceMeters: 12500, performedShipmentCount: 2 },
+    });
+    expect(JSON.stringify(applied)).not.toContain("private-android-token");
+    const after = await orderBoard(db.pool, plan.id);
+    expect(after.shipments.map((shipment) => shipment.id)).toEqual([
+      deliveries[1].id,
+      deliveries[0].id,
+    ]);
+    expect(
+      after.shipments.every((shipment) => shipment.vehicle_id === vehicle.id),
+    ).toBe(true);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT routes::text FROM route_optimization_runs WHERE plan_id=$1",
+          [plan.id],
+        )
+      ).rows[0].routes,
+    ).toContain("private-android-token");
+    expect(
+      Number(
+        (
+          await db.pool.query(
+            "SELECT count(*) AS count FROM route_optimization_stops WHERE run_id=$1",
+            [applied!.runId],
+          )
+        ).rows[0].count,
+      ),
+    ).toBe(2);
+
+    await moveShipment(db.pool, actor, plan.id, {
+      shipmentId: after.shipments[0].id,
+      vehicleId: null,
+      beforeId: null,
+      expectedVersion: after.plan.version,
+    });
+    expect(await getPlanOptimization(db.pool, plan.id)).toMatchObject({
+      current: false,
+    });
+    await expect(
+      applyOptimizationResult(
+        db.pool,
+        actor,
+        plan.id,
+        after.plan.version,
+        (await getRoutingSettings(db.pool)).version,
+        after,
+        deliveries,
+        createHash("sha256").update("stale-request").digest("hex"),
+        result,
+      ),
+    ).rejects.toThrow("VERSION_CONFLICT");
+    const changed = await orderBoard(db.pool, plan.id);
+    await removeShipment(db.pool, actor, plan.id, {
+      shipmentId: changed.shipments[0].id,
+      expectedVersion: changed.plan.version,
+    });
+    expect(
+      Number(
+        (
+          await db.pool.query(
+            "SELECT count(*) AS count FROM route_optimization_runs WHERE plan_id=$1",
+            [plan.id],
+          )
+        ).rows[0].count,
+      ),
+    ).toBe(1);
+    expect(
+      Number(
+        (
+          await db.pool.query(
+            "SELECT count(*) AS count FROM route_optimization_stops WHERE run_id=$1",
+            [applied!.runId],
+          )
+        ).rows[0].count,
+      ),
+    ).toBe(2);
+  });
+});

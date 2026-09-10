@@ -185,9 +185,9 @@ Feature: Ana Rutas independiente y portable
     Then su tarjeta cerrada muestra Sin horario y Prioridad pendiente
     And ningún proceso inventa un horario o una prioridad predeterminada
 
-  Scenario: La IA arma y distribuye la ruta con datos reales de Google
+  Scenario: Google arma y distribuye la ruta con datos viales reales
     Given pedidos cargados, camionetas del día, punto de salida y Google Route Optimization configurado
-    When el administrador pulsa Armar ruta con IA
+    When el administrador pulsa Armar ruta
     Then Google asigna los pedidos a las camionetas y ordena sus paradas usando la red vial real
     And el resultado guarda su versión, métricas y pedidos no asignables para revisión
     And el administrador puede mover pedidos manualmente después de la propuesta
@@ -337,3 +337,28 @@ Feature: Ana Rutas independiente y portable
     When vuelve a ocultarlo y confirma el descarte
     Then el panel se oculta y al reabrirlo muestra los datos guardados
     And los controles destructivos son compactos en escritorio y táctiles en móvil
+
+  Scenario: Confirmar el único punto de salida antes de optimizar
+    Given la instalación sugiere Calle 5 1106, Colonia Industrial como salida y Google Maps está activo
+    When el administrador ubica, ajusta y confirma ese punto
+    Then la dirección y coordenadas quedan versionadas y auditadas
+    And la ruta usará ese punto sólo como inicio, sin regreso ni capacidad de peso
+
+  Scenario: Optimizar con red vial, ventanas y prioridades reales
+    Given un borrador vigente con camionetas, pedidos y puntos confirmados
+    When el administrador pulsa Armar ruta
+    Then Google asigna camionetas y ordena paradas considerando tráfico y ventanas duras
+    And las entregas Alta preceden a Media y Por horario y las Media preceden a Por horario
+    And Ana Rutas guarda ETA, distancia, duración y polilíneas sin guardar credenciales
+
+  Scenario: Una respuesta externa no pisa un cambio concurrente
+    Given Google está calculando una propuesta para una versión del borrador
+    When otra sesión modifica esa versión antes de aplicar el resultado
+    Then la propuesta recibe conflicto y no cambia ninguna asignación ni posición
+    And el administrador puede actualizar y solicitar otra optimización
+
+  Scenario: Un cambio manual vuelve obsoleta la ruta calculada
+    Given el mapa muestra una optimización vigente
+    When el administrador mueve un pedido o cambia las camionetas
+    Then la propuesta anterior permanece en auditoría pero deja de presentarse como vigente
+    And debe volver a optimizar antes de usar el recorrido o sus tokens de navegación

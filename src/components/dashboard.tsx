@@ -71,6 +71,8 @@ const events: Record<string, string> = {
   "customer.updated": "Modificó un cliente",
   "customer.archived": "Archivó un cliente",
   "customer.restored": "Restauró un cliente",
+  "routing.settings.updated": "Actualizó el punto de salida",
+  "plan.optimized": "Armó una ruta optimizada",
 };
 
 export function Dashboard({
@@ -453,8 +455,8 @@ export function Dashboard({
                   )}
                   <div className="note-line">
                     <Info size={17} style={{ flexShrink: 0 }} />
-                    Los cambios se guardan en el borrador. La optimización y el
-                    envío a choferes se incorporarán después.
+                    Los cambios y la optimización se guardan en el borrador. El
+                    envío a choferes se incorporará con la aplicación Android.
                   </div>
                 </section>
               </div>

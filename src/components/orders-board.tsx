@@ -10,6 +10,8 @@ import {
   ChevronDown,
   Trash2,
   FileSpreadsheet,
+  MapPinned,
+  Sparkles,
 } from "lucide-react";
 import type { Plan } from "@/core/plans";
 import type { Vehicle } from "@/core/fleet-contract";
@@ -21,6 +23,8 @@ import type {
 import { todayInTimezone } from "@/core/local-date";
 import { api } from "./api";
 import { RouteMapDialog } from "./route-map-dialog";
+import { RouteOriginDialog } from "./route-origin-dialog";
+import type { PublicOptimization } from "@/core/routing-contract";
 
 const minuteText = (value: number) =>
   `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
@@ -620,7 +624,9 @@ export function OrdersBoard({
   const [removeShipmentTarget, setRemoveShipmentTarget] =
     useState<Shipment | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
+  const [originOpen, setOriginOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [expandedShipments, setExpandedShipments] = useState<Set<string>>(
@@ -835,6 +841,34 @@ export function OrdersBoard({
       working(false);
     }
   }
+  async function optimize() {
+    if (!board || busy) return;
+    setOptimizing(true);
+    working(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api<PublicOptimization>(
+        `/api/plans/${plan.id}/optimization`,
+        "POST",
+        { expectedVersion: board.plan.version },
+      );
+      const kilometers = (
+        result.metrics.travelDistanceMeters / 1000
+      ).toLocaleString("es-MX", { maximumFractionDigits: 1 });
+      setNotice(
+        `Ruta armada · ${result.metrics.performedShipmentCount} pedidos · ${kilometers} km · ${result.skipped.length} sin asignar.`,
+      );
+      await refresh();
+      setMapOpen(true);
+    } catch (caught) {
+      setError((caught as Error).message);
+      await refresh().catch(() => {});
+    } finally {
+      setOptimizing(false);
+      working(false);
+    }
+  }
   function toggleShipment(id: string) {
     setExpandedShipments((current) => {
       const next = new Set(current);
@@ -1032,11 +1066,36 @@ export function OrdersBoard({
           <button
             className="quiet"
             disabled={!board || busy}
+            aria-label="Configurar punto de salida"
+            onClick={() => setOriginOpen(true)}
+          >
+            <MapPinned size={16} />
+            <span className="toolbar-action-label">Punto de salida</span>
+          </button>
+          <button
+            className="quiet"
+            disabled={!board || busy}
             aria-label="Añadir camioneta"
             onClick={() => setAddVehiclesOpen(true)}
           >
             <Truck size={16} />
             <span className="toolbar-action-label">Añadir camioneta</span>
+          </button>
+          <button
+            className="route-optimize"
+            disabled={
+              !board ||
+              busy ||
+              !board.shipments.length ||
+              !board.vehicles.length
+            }
+            aria-label="Armar ruta con Google"
+            onClick={() => void optimize()}
+          >
+            <Sparkles size={16} />
+            <span className="toolbar-action-label">
+              {optimizing ? "Calculando…" : "Armar ruta"}
+            </span>
           </button>
           <button
             className="quiet"
@@ -1176,7 +1235,17 @@ export function OrdersBoard({
         />
       )}
       {mapOpen && board && (
-        <RouteMapDialog board={board} onClose={() => setMapOpen(false)} />
+        <RouteMapDialog
+          board={board}
+          timezone={timezone}
+          onClose={() => setMapOpen(false)}
+        />
+      )}
+      {originOpen && (
+        <RouteOriginDialog
+          onClose={() => setOriginOpen(false)}
+          onSaved={() => setNotice("Punto de salida confirmado.")}
+        />
       )}
     </div>
   );

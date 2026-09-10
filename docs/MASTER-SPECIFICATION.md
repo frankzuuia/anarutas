@@ -166,3 +166,63 @@ Build/types/lint; auditoría npm; unidades para configuración/seguridad; integr
 ## Veredicto previo
 
 GREEN LIGHT: construcción del bloque 1 local autorizada, con interfaces que no mezclan dominios. MATCH PERFECT: BL-001..006 y S01..17 tienen tareas en PROGRESS. Esto NO certifica el software aún no construido ni habilita producción. Integración Odoo live, imagen Docker en Linux, backup/restauración y configuración de servidores requieren validación antes de despliegue.
+
+## Batch 5: BL-026 a BL-030 — optimización vial
+
+### Requirements Covered
+
+Salida única confirmada; optimización sin peso/capacidad; ventanas duras; precedencia
+Alta→Media→Por horario; tráfico, asignación, orden, ETA, distancia, polilínea y tokens
+por transición; aplicación versionada y resultado obsoleto tras edición manual.
+
+### Scenario Matrix
+
+| ID  | Actor / precondición                     | Disparador          | Lectura/escritura    | Resultado                                  | Fallo y recuperación                          |
+| --- | ---------------------------------------- | ------------------- | -------------------- | ------------------------------------------ | --------------------------------------------- |
+| S32 | Admin, Maps activo, salida sin confirmar | Abre configuración  | Runtime + settings   | Dirección sugerida, ningún punto inventado | Puede cerrar sin escritura                    |
+| S33 | Admin con salida vigente                 | Confirma otro punto | Settings/auditoría   | Versión y liga regeneradas                 | 409 conserva edición ajena                    |
+| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | Snapshot→Google→DB   | Asignación, orden y métricas atómicas      | Google falla: cero cambio de plan             |
+| S35 | Ventanas/prioridades mezcladas           | Resolver modelo     | Route Optimization   | Ventanas duras y precedencia por nivel     | Incompatibilidad visible, no relajada         |
+| S36 | Otro admin cambia el plan durante Google | Aplicar respuesta   | Lock/version         | 409; resultado no aplicado                 | Actualizar y decidir de nuevo                 |
+| S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments | Pedido Sin asignar con razón               | Corregir punto/ventana y reintentar           |
+| S38 | Ruta vigente                             | Ver mapa            | Run vigente          | Recorrido, ETA, km y duración reales       | Sin run vigente muestra puntos, no ruta falsa |
+| S39 | Ruta vigente                             | Movimiento manual   | Plan/version         | Resultado queda obsoleto                   | Reoptimizar antes de publicar/navegar         |
+
+### Data Flow
+
+El servidor obtiene configuración y snapshot desde PostgreSQL; construye el modelo con
+identidades internas; obtiene OAuth desde una cuenta de servicio codificada en entorno;
+llama al host fijo de Google; valida índices, labels, métricas y cobertura; vuelve a
+bloquear el plan y aplica sólo si la versión coincide. El navegador recibe un contrato
+sanitizado. Los route tokens permanecen guardados para el endpoint de conductor futuro.
+
+### Tables / APIs / Tools
+
+Migración v6 y endpoints definidos en `BLOQUE-5-OPTIMIZACION.md`. Google Route
+Optimization es la fuente de asignación vial, métricas y polilíneas; Routes API queda
+disponible para refresco de recorridos y navegación en el siguiente contrato Android.
+
+### Permissions / Tenant Boundaries
+
+Cuenta de servicio exclusiva por instalación con `roles/routeoptimization.editor`.
+Proyecto, JSON y claves sólo en EasyPanel. Una instalación no acepta un `project_id`
+distinto al configurado.
+
+### Integrations / Costs / Limits
+
+Timeout dinámico por tamaño; AbortSignal local; tamaño de respuesta acotado; métricas de
+latencia/errores por código; cuotas y facturación observadas en Google Cloud. Polilíneas
+y tráfico se piden únicamente al confirmar Armar ruta.
+
+### Security / RLS / Secrets
+
+Sesión y Origin existentes; host Google fijo; modelo no controlable por cliente; secretos
+ausentes de JSON público, logs y DB. PostgreSQL dedicado conserva aislamiento de la
+instalación.
+
+### Failure Modes / Recovery / Validation
+
+Los casos S32..S39, pruebas unitarias, integración PostgreSQL, contrato fetch, E2E,
+cobertura y mutación son obligatorios. Veredicto forense: GREEN LIGHT. Auditoría
+incremental: INTEGRITY TOTAL; la migración es aditiva y no altera Odoo, clientes,
+flota ni borradores anteriores. MATCH PERFECT con tareas O-T01..O-T07 de PROGRESS.

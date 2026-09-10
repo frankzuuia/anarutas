@@ -76,6 +76,34 @@ export const errors: Record<string, string> = {
   INVALID_DATE: "Selecciona una fecha válida.",
   INVALID_INPUT: "Revisa los campos del formulario.",
   INVALID_JSON: "La solicitud no es válida.",
+  ROUTING_SETTINGS_INVALID:
+    "Confirma una dirección y un punto de salida válidos antes de guardar.",
+  ROUTING_ORIGIN_REQUIRED:
+    "Configura y confirma el punto de salida antes de armar la ruta.",
+  ROUTING_VEHICLES_REQUIRED:
+    "Añade al menos una camioneta disponible antes de armar la ruta.",
+  ROUTING_ORDERS_REQUIRED:
+    "Carga al menos un pedido de entrega antes de armar la ruta.",
+  ROUTING_POINTS_REQUIRED:
+    "Todos los pedidos de entrega activos necesitan un punto confirmado.",
+  ROUTING_CONFIG_MISSING:
+    "Falta completar la configuración privada de Google para optimización.",
+  ROUTING_CONFIG_INVALID:
+    "La configuración privada de Google no corresponde a esta instalación.",
+  ROUTING_GOOGLE_DENIED:
+    "Google rechazó la credencial de optimización. Revisa el permiso del servicio.",
+  ROUTING_GOOGLE_QUOTA:
+    "Google alcanzó la cuota de optimización. El borrador no cambió.",
+  ROUTING_GOOGLE_UNAVAILABLE:
+    "Google no pudo calcular la ruta. El borrador no cambió; vuelve a intentarlo.",
+  ROUTING_ALREADY_RUNNING:
+    "Otra sesión ya está armando esta ruta. Espera el resultado antes de volver a intentarlo.",
+  ROUTING_MODEL_REJECTED:
+    "Las ventanas y prioridades no producen una ruta válida. Revisa los pedidos señalados.",
+  ROUTING_RESPONSE_INVALID:
+    "Google devolvió una propuesta incompleta. El borrador no fue modificado.",
+  ROUTING_MODEL_INVALID:
+    "Los datos del plan no permiten construir una ruta válida. Revisa fecha, horarios y puntos.",
 };
 export function navigateAfterAuth(path: "/" | "/login") {
   // A full navigation deliberately discards all private React/client cache on auth changes.
