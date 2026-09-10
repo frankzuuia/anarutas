@@ -12,6 +12,10 @@ export type Plan = {
   version: number;
   updated_at: string;
 };
+export type DeletedPlan = Pick<Plan, "id" | "service_date" | "label"> & {
+  shipments: number;
+  vehicles: number;
+};
 export function serviceDate(value: unknown) {
   const text = textField(value, 10, 10);
   const date = new Date(`${text}T00:00:00Z`);
@@ -80,5 +84,46 @@ export async function editPlan(
       version: result.rows[0].version,
     });
     return result.rows[0];
+  });
+}
+
+export async function deletePlan(
+  pool: Pool,
+  actor: string,
+  id: string,
+  input: Record<string, unknown>,
+): Promise<DeletedPlan> {
+  return transaction(pool, async (client) => {
+    await assertActiveActor(client, actor);
+    const { rows } = await client.query(
+      "SELECT id,service_date::text,label,version FROM route_plans WHERE id=$1 FOR UPDATE",
+      [id],
+    );
+    if (!rows.length) throw new AppError("NOT_FOUND", 404);
+    if (!versionMatches(input.expectedVersion as number, rows[0].version))
+      throw new AppError("VERSION_CONFLICT", 409);
+
+    const shipments = await client.query(
+      "DELETE FROM route_shipments WHERE plan_id=$1 RETURNING id",
+      [id],
+    );
+    const vehicles = await client.query(
+      "DELETE FROM route_plan_vehicles WHERE plan_id=$1 RETURNING vehicle_id",
+      [id],
+    );
+    await client.query("DELETE FROM route_plans WHERE id=$1", [id]);
+    await audit(client, actor, "plan.deleted", id, {
+      serviceDate: rows[0].service_date,
+      label: rows[0].label,
+      shipments: shipments.rowCount,
+      vehicles: vehicles.rowCount,
+    });
+    return {
+      id: rows[0].id,
+      service_date: rows[0].service_date,
+      label: rows[0].label,
+      shipments: shipments.rowCount ?? 0,
+      vehicles: vehicles.rowCount ?? 0,
+    };
   });
 }

@@ -2,7 +2,7 @@ import pg, { type Pool, type PoolClient } from "pg";
 import { readConfig } from "./config";
 import { AppError } from "./errors";
 import { migrateFleet } from "./fleet-schema";
-import { migrateOrders } from "./orders-schema";
+import { migrateOrderPlanIdentity, migrateOrders } from "./orders-schema";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
   return new pg.Pool({
@@ -65,10 +65,18 @@ export async function migrate(pool: Pool, instanceId: string) {
       const result = await client.query(
         "SELECT schema_version FROM rutas_installation WHERE singleton = true",
       );
-      if (![1, 2, 3].includes(result.rows[0]?.schema_version))
+      let version = result.rows[0]?.schema_version;
+      if (![1, 2, 3, 4].includes(version))
         throw new AppError("SCHEMA_VERSION_UNSUPPORTED", 503);
-      if (result.rows[0]?.schema_version === 1) await migrateFleet(client);
-      if (result.rows[0]?.schema_version < 3) await migrateOrders(client);
+      if (version === 1) {
+        await migrateFleet(client);
+        version = 2;
+      }
+      if (version < 3) {
+        await migrateOrders(client);
+        version = 3;
+      }
+      if (version < 4) await migrateOrderPlanIdentity(client);
       return;
     }
     await client.query(`
@@ -86,6 +94,7 @@ export async function migrate(pool: Pool, instanceId: string) {
     );
     await migrateFleet(client);
     await migrateOrders(client);
+    await migrateOrderPlanIdentity(client);
   });
 }
 export async function audit(

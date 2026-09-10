@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createHash, randomUUID } from "node:crypto";
 import { startPostgres } from "./helpers/postgres";
 import { bootstrap } from "../src/core/auth";
-import { createPlan } from "../src/core/plans";
+import { createPlan, deletePlan, listPlans } from "../src/core/plans";
 import { createVehicle } from "../src/core/fleet";
 import {
   addPlanVehicles,
@@ -92,7 +92,13 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(3);
+    ).toBe(4);
+    const identityIndex = await db.pool.query(
+      "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='route_shipments_plan_source_picking_order'",
+    );
+    expect(identityIndex.rows[0].indexdef).toContain(
+      "(plan_id, source, picking_id, order_id)",
+    );
     const after = await Promise.all(
       ["route_users", "route_plans", "route_vehicles"].map(async (table) =>
         Number(
@@ -101,6 +107,39 @@ describe("fulfilled orders / real PostgreSQL", () => {
       ),
     );
     expect(after).toEqual(counts);
+  });
+
+  it("upgrades an actual v3 shipment to plan-scoped identity without data loss", async () => {
+    const plan = await createPlan(db.pool, actor, {
+      date: "2026-09-09",
+      label: "Migración v3 QA",
+    });
+    await persistImportPage(db.pool, actor, plan.id, page([shipment(1, 1)]));
+    const before = (
+      await db.pool.query(
+        "SELECT id,plan_id,source,picking_id,order_id,snapshot FROM route_shipments WHERE plan_id=$1",
+        [plan.id],
+      )
+    ).rows;
+    await db.pool.query(`
+      DROP INDEX route_shipments_plan_source_picking_order;
+      ALTER TABLE route_shipments ADD CONSTRAINT route_shipments_source_picking_id_order_id_key UNIQUE(source,picking_id,order_id);
+      UPDATE rutas_installation SET schema_version=3 WHERE singleton=true;
+    `);
+    const { migrate } = await import("../src/core/database");
+    await migrate(db.pool, db.config.instanceId);
+    expect(
+      (await db.pool.query("SELECT schema_version FROM rutas_installation"))
+        .rows[0].schema_version,
+    ).toBe(4);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT id,plan_id,source,picking_id,order_id,snapshot FROM route_shipments WHERE plan_id=$1",
+          [plan.id],
+        )
+      ).rows,
+    ).toEqual(before);
   });
 
   it("keeps independent orders for one customer, reloads idempotently and preserves assignment", async () => {
@@ -131,10 +170,10 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(first).toMatchObject({
       inserted: 2,
       existing: 0,
-      otherPlan: 0,
       changed: 0,
     });
     let board = await orderBoard(db.pool, plan.id);
+    expect(board.plan.version).toBe(plan.version + 2);
     expect(board.shipments.map((s) => s.orderId)).toEqual([4, 3]);
     expect(
       board.shipments.every(
@@ -156,13 +195,47 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(reload).toMatchObject({
       inserted: 0,
       existing: 2,
-      otherPlan: 0,
       changed: 0,
     });
     board = await orderBoard(db.pool, plan.id);
+    expect(board.plan.version).toBe(plan.version + 3);
     expect(board.shipments.find((s) => s.pickingId === 3)?.vehicle_id).toBe(
       vehicle.id,
     );
+    const changedShipment = shipment(3, 4);
+    changedShipment.customerName = "Cambio posterior en Odoo";
+    const changed = await persistImportPage(
+      db.pool,
+      actor,
+      plan.id,
+      page([changedShipment]),
+    );
+    expect(changed).toMatchObject({ inserted: 0, existing: 0, changed: 1 });
+    expect((await orderBoard(db.pool, plan.id)).plan.version).toBe(
+      board.plan.version,
+    );
+    expect(
+      (await orderBoard(db.pool, plan.id)).shipments.find(
+        (item) => item.pickingId === 3,
+      )?.customerName,
+    ).toBe("Fonda Martha");
+    expect(
+      (
+        await db.pool.query(
+          "SELECT action,details FROM route_audit WHERE action='orders.imported' AND entity_id=$1 ORDER BY id DESC LIMIT 1",
+          [plan.id],
+        )
+      ).rows[0],
+    ).toEqual({
+      action: "orders.imported",
+      details: {
+        inserted: 0,
+        existing: 0,
+        changed: 1,
+        inspected: 1,
+        excluded: 0,
+      },
+    });
     await selectPlanVehicles(db.pool, actor, plan.id, {
       vehicleIds: [],
       expectedVersion: board.plan.version,
@@ -326,7 +399,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect((await orderBoard(db.pool, plan.id)).vehicles).toHaveLength(1);
   });
 
-  it("allows only one plan to claim the same Odoo shipment under concurrent imports", async () => {
+  it("keeps the same Odoo shipment independent in concurrent plans", async () => {
     const a = await createPlan(db.pool, actor, {
       date: "2026-09-11",
       label: "A",
@@ -339,14 +412,114 @@ describe("fulfilled orders / real PostgreSQL", () => {
       persistImportPage(db.pool, actor, a.id, page([shipment(7, 7, 13)])),
       persistImportPage(db.pool, actor, b.id, page([shipment(7, 7, 13)])),
     ]);
-    expect(results.reduce((n, value) => n + value.inserted, 0)).toBe(1);
-    expect(results.reduce((n, value) => n + value.otherPlan, 0)).toBe(1);
+    expect(results.map((value) => value.inserted)).toEqual([1, 1]);
+    expect((await orderBoard(db.pool, a.id)).shipments).toHaveLength(1);
+    const boardB = await orderBoard(db.pool, b.id);
+    expect(boardB.shipments).toHaveLength(1);
+    await removeShipment(db.pool, actor, a.id, {
+      shipmentId: (await orderBoard(db.pool, a.id)).shipments[0].id,
+      expectedVersion: (await orderBoard(db.pool, a.id)).plan.version,
+    });
+    expect((await orderBoard(db.pool, a.id)).shipments).toHaveLength(0);
+    expect((await orderBoard(db.pool, b.id)).shipments).toHaveLength(1);
+    expect(
+      (
+        await persistImportPage(
+          db.pool,
+          actor,
+          b.id,
+          page([shipment(7, 7, 13)]),
+        )
+      ).existing,
+    ).toBe(1);
     await expect(
       assertOrderSource(
         db.pool,
         createHash("sha256").update("other-odoo").digest("hex"),
       ),
     ).rejects.toThrow("ODOO_SOURCE_CHANGED");
+    await expect(
+      persistImportPage(db.pool, actor, b.id, {
+        ...page([shipment(8, 8)]),
+        fingerprint: createHash("sha256").update("other-odoo").digest("hex"),
+      }),
+    ).rejects.toMatchObject({ code: "ODOO_SOURCE_CHANGED", status: 409 });
+    expect((await orderBoard(db.pool, b.id)).shipments).toHaveLength(1);
+  });
+
+  it("deletes one versioned plan with local dependencies and preserves master data", async () => {
+    const plan = await createPlan(db.pool, actor, {
+      date: "2026-09-15",
+      label: "Plan descartable QA",
+    });
+    const vehicle = await createVehicle(db.pool, actor, {
+      id: randomUUID(),
+      name: "Unidad preservada QA",
+      brand: "Ford",
+      model: "2026",
+      plate: randomUUID().slice(0, 8),
+      mileage: 1,
+      fuel: "Gasolina",
+      available: true,
+    });
+    await selectPlanVehicles(db.pool, actor, plan.id, {
+      vehicleIds: [vehicle.id],
+      expectedVersion: plan.version,
+    });
+    await persistImportPage(
+      db.pool,
+      actor,
+      plan.id,
+      page([shipment(71, 71), shipment(72, 72)]),
+    );
+    let board = await orderBoard(db.pool, plan.id);
+    await expect(
+      deletePlan(db.pool, actor, plan.id, {
+        expectedVersion: board.plan.version - 1,
+      }),
+    ).rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
+    expect((await orderBoard(db.pool, plan.id)).shipments).toHaveLength(2);
+
+    board = await orderBoard(db.pool, plan.id);
+    await expect(
+      deletePlan(db.pool, actor, plan.id, {
+        expectedVersion: String(board.plan.version),
+      }),
+    ).rejects.toThrow("VERSION_CONFLICT");
+    const deleted = await deletePlan(db.pool, actor, plan.id, {
+      expectedVersion: board.plan.version,
+    });
+    expect(deleted).toMatchObject({
+      id: plan.id,
+      label: "Plan descartable QA",
+      shipments: 2,
+      vehicles: 1,
+    });
+    expect((await listPlans(db.pool)).some((item) => item.id === plan.id)).toBe(
+      false,
+    );
+    expect(
+      (
+        await db.pool.query(
+          "SELECT count(*)::integer AS count FROM route_vehicles WHERE id=$1",
+          [vehicle.id],
+        )
+      ).rows[0].count,
+    ).toBe(1);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT details FROM route_audit WHERE action='plan.deleted' AND entity_id=$1 ORDER BY id DESC LIMIT 1",
+          [plan.id],
+        )
+      ).rows[0].details,
+    ).toMatchObject({ shipments: 2, vehicles: 1 });
+    await expect(orderBoard(db.pool, plan.id)).rejects.toThrow("NOT_FOUND");
+    await expect(
+      deletePlan(db.pool, actor, plan.id, {
+        expectedVersion: board.plan.version,
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
   });
 
   it("removes a shipment atomically and allows a later Odoo reload to recover it", async () => {

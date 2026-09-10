@@ -12,14 +12,16 @@ import {
   Truck,
   Info,
   Menu,
+  Trash2,
 } from "lucide-react";
 import type { User } from "@/core/auth";
-import type { Plan } from "@/core/plans";
+import type { DeletedPlan, Plan } from "@/core/plans";
 import { api, navigateAfterAuth } from "./api";
 import { DraftName } from "./draft-name";
 import { FleetPanel } from "./fleet-panel";
 import { OrdersBoard } from "./orders-board";
 import { CreatePlanDialog } from "./create-plan-dialog";
+import { DeletePlanDialog } from "./delete-plan-dialog";
 
 type Section = "plans" | "vehicles" | "drivers" | "users" | "audit";
 const sections = [
@@ -45,6 +47,7 @@ const events: Record<string, string> = {
   "session.logout": "Cerró sesión",
   "plan.created": "Creó un borrador",
   "plan.updated": "Modificó un borrador",
+  "plan.deleted": "Borró un borrador",
   "vehicle.created": "Registró una camioneta",
   "vehicle.updated": "Modificó una camioneta",
   "vehicle.driver.assigned": "Cambió la asignación de chofer",
@@ -72,6 +75,7 @@ export function Dashboard({
   const [section, setSection] = useState<Section>("plans");
   const [menuClosed, setMenuClosed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [fleetRevision, setFleetRevision] = useState(0);
   const [boardRevision, setBoardRevision] = useState(0);
   const [plans, setPlans] = useState<Plan[]>([]),
@@ -173,6 +177,26 @@ export function Dashboard({
       setSelected(plan);
       await refresh();
       setNotice("Nombre del borrador actualizado.");
+    });
+  }
+  async function deleteDraft() {
+    if (!selected) return;
+    const target = selected;
+    await perform(async () => {
+      const deleted = await api<DeletedPlan>(
+        `/api/plans/${target.id}`,
+        "DELETE",
+        {
+          expectedVersion: target.version,
+        },
+      );
+      const remaining = plans.filter((plan) => plan.id !== target.id);
+      setPlans(remaining);
+      setSelected(remaining[0] ?? null);
+      setDeleteOpen(false);
+      setNotice(
+        `${deleted.label} se borró · ${deleted.shipments} pedidos y ${deleted.vehicles} camionetas retirados del borrador.`,
+      );
     });
   }
   function addUser(event: React.FormEvent<HTMLFormElement>) {
@@ -350,6 +374,16 @@ export function Dashboard({
                     <Plus size={16} />
                     Nuevo borrador
                   </button>
+                  {selected && (
+                    <button
+                      className="danger"
+                      onClick={() => setDeleteOpen(true)}
+                      disabled={busy}
+                    >
+                      <Trash2 size={16} aria-hidden="true" />
+                      Borrar plan
+                    </button>
+                  )}
                   <button
                     className="quiet planner-refresh"
                     onClick={() => void refresh()}
@@ -410,6 +444,14 @@ export function Dashboard({
               busy={busy}
               onClose={() => setCreateOpen(false)}
               onSubmit={createDraft}
+            />
+          )}
+          {deleteOpen && selected && (
+            <DeletePlanDialog
+              plan={selected}
+              busy={busy}
+              onClose={() => setDeleteOpen(false)}
+              onConfirm={deleteDraft}
             />
           )}
           {section === "users" && (

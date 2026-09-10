@@ -304,6 +304,54 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(nameInput).toHaveValue("Reparto del martes");
   await page.getByRole("button", { name: "Cancelar", exact: true }).click();
   expect(patchRequests).toHaveLength(1);
+  await page
+    .getByLabel("Abrir borrador")
+    .selectOption({ label: "Otro día QA · 2026-10-11" });
+  const disposablePlan = (
+    await (await first.request.get(`${origin}/api/plans`)).json()
+  ).find((plan: { label: string }) => plan.label === "Otro día QA");
+  const deniedDelete = await first.request.delete(
+    `${origin}/api/plans/${disposablePlan.id}`,
+    { data: { expectedVersion: disposablePlan.version } },
+  );
+  expect(deniedDelete.status()).toBe(403);
+  const deletePlanButton = page.getByRole("button", {
+    name: "Borrar plan",
+    exact: true,
+  });
+  await deletePlanButton.click();
+  const deletePlanDialog = page.getByRole("dialog", { name: "Borrar plan" });
+  await expect(deletePlanDialog).toContainText("Otro día QA · 2026-10-11");
+  await page.screenshot({
+    path: "reports/screenshots/delete-plan-confirmation.png",
+    fullPage: true,
+  });
+  await page.keyboard.press("Escape");
+  await expect(deletePlanDialog).toHaveCount(0);
+  expect(
+    (await (await first.request.get(`${origin}/api/plans`)).json()).some(
+      (plan: { id: string }) => plan.id === disposablePlan.id,
+    ),
+  ).toBe(true);
+  await deletePlanButton.click();
+  const deleteResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "DELETE" &&
+      response.url().endsWith(`/api/plans/${disposablePlan.id}`),
+  );
+  await deletePlanDialog
+    .getByRole("button", { name: "Borrar plan", exact: true })
+    .click();
+  expect((await deleteResponse).status()).toBe(200);
+  await expect(deletePlanDialog).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("Otro día QA se borró");
+  await expect(page.getByLabel("Abrir borrador")).not.toContainText(
+    "Otro día QA",
+  );
+  await expect(page.getByLabel("Abrir borrador")).toHaveValue(savedPlan.id);
+  await expect(
+    page.getByRole("heading", { name: "Reparto del martes", exact: true }),
+  ).toBeVisible();
   await mkdir("reports/screenshots", { recursive: true });
   await page.screenshot({
     path: "reports/screenshots/panel-desktop.png",
@@ -482,12 +530,63 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
       exact: true,
     }),
   ).toBeEnabled();
-  await loadDialog
-    .getByRole("button", { name: "Guardar camionetas", exact: true })
-    .click();
-  await expect(page.getByRole("status")).toContainText(
-    "Camionetas del día guardadas",
+  await expect(
+    loadDialog.getByRole("button", {
+      name: "Guardar camionetas",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  const mutatingOrderRequests: Array<{ method: string; path: string }> = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (
+      ["POST", "PUT", "DELETE"].includes(request.method()) &&
+      path.startsWith(`/api/plans/${savedPlan.id}`)
+    )
+      mutatingOrderRequests.push({ method: request.method(), path });
+  });
+  const datedResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === `/api/plans/${savedPlan.id}/orders`,
   );
+  await loadDialog
+    .getByRole("button", { name: "Cargar pedidos", exact: true })
+    .click();
+  expect((await datedResponse).status()).toBe(503);
+  await expect(loadDialog.getByRole("alert")).toContainText(
+    "Falta completar la configuración",
+  );
+  expect(mutatingOrderRequests).toEqual([
+    { method: "PUT", path: `/api/plans/${savedPlan.id}/vehicles` },
+    { method: "POST", path: `/api/plans/${savedPlan.id}/orders` },
+  ]);
+  await expect(
+    loadDialog.getByRole("button", { name: "Cargar pedidos", exact: true }),
+  ).toBeVisible();
+  const manualRequestStart = mutatingOrderRequests.length;
+  const manualResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname ===
+        `/api/plans/${savedPlan.id}/orders/manual`,
+  );
+  await loadDialog
+    .getByRole("button", { name: "Confirmar pedidos", exact: true })
+    .click();
+  expect((await manualResponse).status()).toBe(503);
+  await expect(loadDialog.getByRole("alert")).toContainText(
+    "Falta completar la configuración",
+  );
+  expect(mutatingOrderRequests.slice(manualRequestStart)).toEqual([
+    { method: "POST", path: `/api/plans/${savedPlan.id}/orders/manual` },
+  ]);
+  await expect(
+    loadDialog.getByRole("button", { name: "Cargar pedidos", exact: true }),
+  ).toBeVisible();
+  await loadDialog
+    .getByRole("button", { name: "Cerrar carga", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "Añadir camioneta", exact: true })
     .click();
@@ -828,6 +927,9 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(
     page.getByRole("cell", { name: "Modificó un borrador", exact: true }),
   ).toHaveCount(2);
+  await expect(
+    page.getByRole("cell", { name: "Borró un borrador", exact: true }),
+  ).toHaveCount(1);
   await page.getByRole("button", { name: "Cerrar sesión" }).click();
   await expect(page).toHaveURL(`${origin}/login`);
   expect((await second.request.get(`${origin}/api/plans`)).status()).toBe(200);

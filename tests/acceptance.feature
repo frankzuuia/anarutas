@@ -250,3 +250,34 @@ Feature: Ana Rutas independiente y portable
     When el administrador pulsa Cancelar o Escape
     Then no cambia el borrador ni aumenta su versión
     And el foco regresa al bote del pedido
+
+  Scenario: La carga por fecha y la carga manual son independientes
+    Given el modal muestra camionetas, fecha y folios manuales
+    When el administrador pulsa Cargar pedidos
+    Then se guarda la selección de camionetas y sólo se consulta la fecha elegida
+    And únicamente ese botón muestra Cargando
+    When el administrador pulsa Confirmar pedidos
+    Then sólo se consultan los folios manuales
+    And no se guarda la selección de camionetas ni se ejecuta la carga por fecha
+    And no existe un botón separado Guardar camionetas
+
+  Scenario: El mismo pedido puede participar en varios planes
+    Given un surtido validado ya está incorporado en otro plan
+    When el administrador lo carga por fecha o folio en el plan actual
+    Then se incorpora también en el plan actual
+    And repetirlo no lo duplica dentro de ese plan
+    And moverlo o eliminarlo no modifica su copia en los otros planes
+
+  Scenario: Borrar un plan completo
+    Given el administrador abrió un plan con pedidos y camionetas seleccionadas
+    When pulsa Borrar plan y confirma con la versión vigente
+    Then desaparecen el plan y únicamente sus dependencias locales
+    And la flota, los choferes, los usuarios, la auditoría y Odoo se conservan
+    And se abre otro plan disponible o el estado vacío
+
+  Scenario: Cancelar o competir con el borrado de un plan
+    Given está abierto el modal Borrar plan
+    When el administrador pulsa Cancelar, cerrar o Escape
+    Then no se elimina ningún dato ni aumenta la versión
+    When confirma usando una versión que otra sesión ya modificó
+    Then recibe un conflicto y el plan permanece íntegro

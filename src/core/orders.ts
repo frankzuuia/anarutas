@@ -196,10 +196,8 @@ export async function persistImportPage(
   return transaction(pool, async (sql) => {
     await assertActiveActor(sql, actor);
     await planRow(sql, id, "UPDATE");
-    // Serialize source binding and global shipment identity across different plans.
-    await sql.query(
-      "SELECT pg_advisory_xact_lock(hashtext('ana-rutas:order-source'))",
-    );
+    // The singleton row atomically binds this installation to one Odoo source.
+    // Shipment identity is intentionally scoped to each plan by its unique index.
     await sql.query(
       "INSERT INTO route_order_source(singleton,fingerprint) VALUES(true,$1) ON CONFLICT(singleton) DO NOTHING",
       [page.fingerprint],
@@ -210,7 +208,7 @@ export async function persistImportPage(
     );
     if (source.rows[0].fingerprint !== page.fingerprint)
       throw new AppError("ODOO_SOURCE_CHANGED", 409);
-    const counts = { inserted: 0, existing: 0, otherPlan: 0, changed: 0 };
+    const counts = { inserted: 0, existing: 0, changed: 0 };
     const max = await sql.query(
       "SELECT COALESCE(MAX(position),0)::integer AS position FROM route_shipments WHERE plan_id=$1",
       [id],
@@ -221,7 +219,7 @@ export async function persistImportPage(
       const hash = createHash("sha256").update(snapshot).digest("hex");
       const result = await sql.query(
         `INSERT INTO route_shipments(id,source,picking_id,order_id,partner_id,plan_id,position,snapshot,snapshot_hash,created_by)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(source,picking_id,order_id) DO NOTHING RETURNING id`,
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(plan_id,source,picking_id,order_id) DO NOTHING RETURNING id`,
         [
           randomUUID(),
           page.fingerprint,
@@ -240,11 +238,10 @@ export async function persistImportPage(
         position++;
       } else {
         const previous = await sql.query(
-          "SELECT plan_id,snapshot_hash FROM route_shipments WHERE source=$1 AND picking_id=$2 AND order_id=$3",
-          [page.fingerprint, shipment.pickingId, shipment.orderId],
+          "SELECT snapshot_hash FROM route_shipments WHERE plan_id=$1 AND source=$2 AND picking_id=$3 AND order_id=$4",
+          [id, page.fingerprint, shipment.pickingId, shipment.orderId],
         );
-        if (previous.rows[0].plan_id !== id) counts.otherPlan++;
-        else if (previous.rows[0].snapshot_hash !== hash) counts.changed++;
+        if (previous.rows[0].snapshot_hash !== hash) counts.changed++;
         else counts.existing++;
       }
     }

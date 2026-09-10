@@ -25,3 +25,13 @@ export async function migrateOrders(sql: Sql) {
     UPDATE rutas_installation SET schema_version=3 WHERE singleton=true;
   `);
 }
+
+export async function migrateOrderPlanIdentity(sql: Sql) {
+  await sql.query(`
+    CREATE UNIQUE INDEX route_shipments_plan_source_picking_order
+      ON route_shipments(plan_id,source,picking_id,order_id);
+    ALTER TABLE route_shipments
+      DROP CONSTRAINT IF EXISTS route_shipments_source_picking_id_order_id_key;
+    UPDATE rutas_installation SET schema_version=4 WHERE singleton=true;
+  `);
+}

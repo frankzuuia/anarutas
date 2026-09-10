@@ -293,7 +293,7 @@ describe("PostgreSQL real / auth / persistence", () => {
     await expect(migrate(db.pool, db.config.instanceId)).rejects.toThrow(
       "SCHEMA_VERSION_UNSUPPORTED",
     );
-    await db.pool.query("UPDATE rutas_installation SET schema_version=3");
+    await db.pool.query("UPDATE rutas_installation SET schema_version=4");
   });
   it("cannot deactivate each other concurrently and leave zero active admins", async () => {
     const a = await createUser(db.pool, actor, {

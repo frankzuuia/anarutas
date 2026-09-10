@@ -49,6 +49,13 @@ No se incluyen cambios a repositorio five, sus entornos, vendedores, precios o V
 - [x] T16 (BL016 / S26): bote por pedido, confirmación accesible y DELETE transaccional versionado; una recarga Odoo puede recuperar el pedido.
 - [ ] T17 (BL015-016 / S25-26): unidades, PostgreSQL real, contrato estático Odoo, E2E, Gherkin, cobertura, mutación y seguridad verdes; falta smoke read-only de la ruta manual contra develop 19.4 y preflight de producción 17. Evidencia local en `QA-BLOQUE-3C-PEDIDOS-MANUALES.md`.
 
+## Bloque 3D autorizado — independencia, reutilización y borrado de plan
+
+- [x] T18 (BL013, BL015 / S27): retirar «Guardar camionetas», separar estados y garantizar que la carga por fecha sea la única que guarde selección, mientras la manual sólo consulte folios.
+- [x] T19 (BL012-013 / S28): migración v4 e idempotencia por plan; permitir el mismo pedido en múltiples planes y eliminar el concepto operativo «en otro plan».
+- [x] T20 (BL017 / S29): DELETE versionado y auditado del plan, confirmación accesible y actualización coherente del selector.
+- [x] T21 (BL012-017 / S27-29): regresión unitaria, PostgreSQL, contrato API, E2E, Gherkin, cobertura, mutación, seguridad, build y evidencia QA en `QA-BLOQUE-3D-PLANES.md`.
+
 ## Ajuste de interfaz solicitado: nombre del borrador
 
 - [x] T13 (BL003, BL006 / S23): bote rojo por carril con modal de confirmación; DELETE transaccional retira sólo la camioneta del borrador y regresa sus pedidos a Sin asignar, conservando datos, orden, flota y Odoo; versión, auditoría, concurrencia, foco y E2E.

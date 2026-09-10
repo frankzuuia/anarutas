@@ -19,6 +19,8 @@
     "test:mutation": "stryker run",
     "test:mutation:vehicle-removal": "stryker run stryker.vehicle-removal.config.mjs",
     "test:mutation:order-removal": "stryker run stryker.order-removal.config.mjs",
+    "test:mutation:plan-deletion": "stryker run stryker.plan-deletion.config.mjs",
+    "test:mutation:plan-identity": "stryker run stryker.plan-identity.config.mjs",
     "pretest:e2e": "npm run build",
     "test:e2e": "playwright test",
     "db:migrate": "tsx scripts/migrate.ts",

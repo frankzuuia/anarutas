@@ -47,7 +47,6 @@ export type ImportPage = {
 export type ImportResult = {
   inserted: number;
   existing: number;
-  otherPlan: number;
   changed: number;
   inspected: number;
   excluded: number;

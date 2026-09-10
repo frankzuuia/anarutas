@@ -33,12 +33,8 @@ function LoadDialog({
   timezone: string;
   busy: boolean;
   onClose: () => void;
-  onSubmit: (
-    vehicleIds: string[],
-    validationDate: string,
-    load: boolean,
-  ) => Promise<void>;
-  onManualSubmit: (vehicleIds: string[], orderNames: string[]) => Promise<void>;
+  onSubmit: (vehicleIds: string[], validationDate: string) => Promise<void>;
+  onManualSubmit: (orderNames: string[]) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useId();
@@ -51,6 +47,7 @@ function LoadDialog({
   );
   const nextManualId = useRef(2);
   const [manualRows, setManualRows] = useState([{ id: 1, suffix: "" }]);
+  const [operation, setOperation] = useState<"dated" | "manual" | null>(null);
   useEffect(() => {
     const element = dialog.current;
     const previous = document.activeElement as HTMLElement;
@@ -72,23 +69,26 @@ function LoadDialog({
       previous?.focus();
     };
   }, []);
-  const submit = async (load: boolean) => {
+  const submit = async () => {
     setError("");
+    setOperation("dated");
     try {
-      await onSubmit(chosen, validationDate, load);
+      await onSubmit(chosen, validationDate);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setOperation(null);
     }
   };
   const submitManual = async () => {
     setError("");
+    setOperation("manual");
     try {
-      await onManualSubmit(
-        chosen,
-        manualRows.map((row) => `S${row.suffix}`),
-      );
+      await onManualSubmit(manualRows.map((row) => `S${row.suffix}`));
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setOperation(null);
     }
   };
   const updateManualRow = (id: number, value: string) => {
@@ -189,13 +189,6 @@ function LoadDialog({
         </fieldset>
         <div className="order-actions">
           <button
-            className="quiet"
-            disabled={busy || !loaded}
-            onClick={() => void submit(false)}
-          >
-            Guardar camionetas
-          </button>
-          <button
             className="primary"
             disabled={
               busy ||
@@ -204,10 +197,10 @@ function LoadDialog({
               !validationDate ||
               validationDate > board.plan.service_date
             }
-            onClick={() => void submit(true)}
+            onClick={() => void submit()}
           >
             <Download size={16} />
-            {busy ? "Cargando…" : "Cargar pedidos"}
+            {operation === "dated" ? "Cargando…" : "Cargar pedidos"}
           </button>
         </div>
         <fieldset disabled={busy} className="vehicle-choice manual-order-box">
@@ -270,11 +263,11 @@ function LoadDialog({
             <button
               type="button"
               className="primary"
-              disabled={!loaded || !chosen.length || !manualReady}
+              disabled={busy || !manualReady}
               onClick={() => void submitManual()}
             >
               <Download size={16} aria-hidden="true" />
-              {busy ? "Cargando…" : "Confirmar pedidos"}
+              {operation === "manual" ? "Cargando…" : "Confirmar pedidos"}
             </button>
           </div>
         </fieldset>
@@ -663,11 +656,7 @@ export function OrdersBoard({
     setBusy(value);
     onBusy(value);
   }
-  async function load(
-    vehicleIds: string[],
-    validationDate: string,
-    importOrders: boolean,
-  ) {
+  async function load(vehicleIds: string[], validationDate: string) {
     if (!board) return;
     working(true);
     setError("");
@@ -679,40 +668,37 @@ export function OrdersBoard({
           expectedVersion: board.plan.version,
         }),
       );
-      if (importOrders) {
-        let cursor = 0,
-          ceiling: number | undefined;
-        const totals = {
-          inserted: 0,
-          existing: 0,
-          otherPlan: 0,
-          changed: 0,
-          excluded: 0,
-        };
-        while (true) {
-          const page = await api<ImportResult>(endpoint, "POST", {
-            from: validationDate,
-            to: validationDate,
-            cursor,
-            ceiling,
-          });
-          for (const key of Object.keys(totals) as (keyof typeof totals)[])
-            totals[key] += page[key];
-          setNotice(
-            `${totals.inserted} pedidos nuevos guardados · ${totals.existing} ya estaban en este plan`,
-          );
-          if (!page.hasMore) break;
-          if (page.nextCursor <= cursor)
-            throw new Error(
-              "La consulta no avanzó. Vuelve a cargar; lo guardado se conserva.",
-            );
-          cursor = page.nextCursor;
-          ceiling = page.ceiling;
-        }
+      let cursor = 0,
+        ceiling: number | undefined;
+      const totals = {
+        inserted: 0,
+        existing: 0,
+        changed: 0,
+        excluded: 0,
+      };
+      while (true) {
+        const page = await api<ImportResult>(endpoint, "POST", {
+          from: validationDate,
+          to: validationDate,
+          cursor,
+          ceiling,
+        });
+        for (const key of Object.keys(totals) as (keyof typeof totals)[])
+          totals[key] += page[key];
         setNotice(
-          `${totals.inserted} pedidos nuevos · ${totals.existing} ya cargados · ${totals.otherPlan} en otro plan · ${totals.changed} con cambios en Odoo para revisar · ${totals.excluded} surtidos sin pedidos aplicables.`,
+          `${totals.inserted} pedidos nuevos guardados · ${totals.existing} ya estaban en este plan`,
         );
-      } else setNotice("Camionetas del día guardadas.");
+        if (!page.hasMore) break;
+        if (page.nextCursor <= cursor)
+          throw new Error(
+            "La consulta no avanzó. Vuelve a cargar; lo guardado se conserva.",
+          );
+        cursor = page.nextCursor;
+        ceiling = page.ceiling;
+      }
+      setNotice(
+        `${totals.inserted} pedidos nuevos · ${totals.existing} ya cargados · ${totals.changed} con cambios en Odoo para revisar · ${totals.excluded} surtidos sin pedidos aplicables.`,
+      );
       setModal(false);
     } catch (e) {
       throw new Error(
@@ -746,23 +732,17 @@ export function OrdersBoard({
       working(false);
     }
   }
-  async function loadManual(vehicleIds: string[], orderNames: string[]) {
+  async function loadManual(orderNames: string[]) {
     if (!board) return;
     working(true);
     setError("");
     setNotice("");
     try {
-      update(
-        await api<OrderBoard>(`/api/plans/${plan.id}/vehicles`, "PUT", {
-          vehicleIds,
-          expectedVersion: board.plan.version,
-        }),
-      );
       const result = await api<ImportResult>(`${endpoint}/manual`, "POST", {
         orderNames,
       });
       setNotice(
-        `${result.inserted} pedidos nuevos · ${result.existing} ya cargados · ${result.otherPlan} en otro plan.`,
+        `${result.inserted} pedidos nuevos · ${result.existing} ya cargados.`,
       );
       setModal(false);
     } catch (error) {

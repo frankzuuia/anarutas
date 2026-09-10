@@ -18,7 +18,7 @@ El despliegue usa una imagen Docker standalone con configuración runtime. No ex
 - `/api/session`: POST acceso (Origin exacto + JSON), DELETE cerrar sesión; GET datos públicos de sesión.
 - `/api/setup`: POST primera cuenta, una sola vez.
 - `/api/users`: GET y POST para administradores. `/api/users/[id]`: PATCH activar/desactivar; prohibido desactivar la propia cuenta, evitando dejarse fuera. Cuenta inactiva invalida sus sesiones.
-- `/api/plans`: GET/POST borradores por fecha. `/api/plans/[id]`: PATCH etiqueta con expectedVersion. Conflicto 409 no destruye cambios ajenos.
+- `/api/plans`: GET/POST borradores por fecha. `/api/plans/[id]`: PATCH etiqueta y DELETE borrador con expectedVersion. El borrado elimina sólo pedidos/selección diaria del plan, conserva datos maestros y Odoo, y un conflicto 409 no destruye cambios ajenos.
 - `/api/plans/[id]/orders/manual`: POST de folios exactos, empresa y credenciales siempre tomadas del servidor. La ausencia de fecha no relaja los demás criterios de elegibilidad.
 - `/api/plans/[id]/orders`: DELETE retira un surtido del borrador con expectedVersion; no escribe Odoo y una sincronización posterior puede recuperarlo.
 - `/api/odoo`: GET configuración pública mínima, POST diagnóstico real de sólo lectura. Ninguna entrada del cliente decide host, credencial, compañía ni modelo RPC.
@@ -97,6 +97,32 @@ no escriben; aceptar envía el ID interno y expectedVersion. En una sola transac
 revalida actor, bloquea plan y tarjeta, comprueba versión, elimina la copia de Ana
 Rutas, normaliza posiciones, incrementa versión y audita. No existe exclusión
 permanente: volver a cargar desde Odoo puede recuperar la tarjeta eliminada.
+
+### S27: cargas independientes (BL-005, BL-013, BL-015)
+
+El modal no contiene una acción separada para guardar camionetas. «Cargar pedidos»
+guarda la selección diaria y ejecuta únicamente la importación por fecha. «Confirmar
+pedidos» llama únicamente a la carga manual por folios: no guarda camionetas ni
+ejecuta la consulta por fecha. Cada acción conserva su propio indicador visual de
+progreso; las demás se deshabilitan por exclusión mutua sin mostrar una operación
+que no están ejecutando.
+
+### S28: mismo pedido en varios planes (BL-012, BL-013)
+
+La identidad persistente es plan+fingerprint+surtido+venta. Una recarga dentro del
+mismo plan es idempotente y conserva posición/asignación. La misma identidad Odoo
+puede insertarse en cualquier número de planes, donde cada copia se mueve o elimina
+sin afectar las demás. La migración v4 reemplaza la restricción global sin eliminar
+datos y continúa fijando un solo origen Odoo por instalación.
+
+### S29: eliminación completa de borrador (BL-003, BL-004, BL-017)
+
+Una acción roja «Borrar plan» abre un diálogo accesible con nombre, fecha e impacto.
+Cancelar, cerrar o Escape no escriben. Confirmar envía expectedVersion; el servidor
+revalida al actor, bloquea el plan, comprueba versión, cuenta y elimina primero sus
+pedidos y selección diaria, elimina el plan y registra `plan.deleted` con cantidades.
+No elimina flota, choferes, usuarios, auditoría ni escribe Odoo. La interfaz retira el
+plan del selector y abre otro disponible o el estado vacío.
 
 ### S19: densidad compacta del panel (BL-006)
 
