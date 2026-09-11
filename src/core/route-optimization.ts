@@ -1,26 +1,18 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { assertActiveActor, audit, transaction, type Sql } from "./database";
 import { AppError } from "./errors";
-import { integer, uuid } from "./orders-validation";
-import { orderBoard } from "./orders";
-import {
-  buildGoogleOptimizationRequest,
-  parseGoogleOptimizationResponse,
-  requestGoogleOptimization,
-  type GoogleOptimizationResult,
-} from "./route-optimization-google";
-import { readGoogleRoutingConfig } from "./routing-config";
+import { uuid } from "./orders-validation";
+import { readOrderBoard } from "./orders";
+import type { OrderBoard } from "./orders-contract";
+import { routeFingerprint } from "./route-fingerprint";
+import type { GoogleOptimizationResult } from "./route-optimization-google";
 import type {
   PublicOptimization,
   PublicOptimizedRoute,
   RouteMetrics,
 } from "./routing-contract";
 import { getRoutingSettings } from "./routing-settings";
-import {
-  acquireOptimizationLease,
-  releaseOptimizationLease,
-} from "./route-optimization-lease";
 
 type PrivateRoute = PublicOptimizedRoute & {
   transitions: { encodedPolyline: string | null; routeToken: string | null }[];
@@ -34,6 +26,14 @@ function publicRoutes(value: unknown): PublicOptimizedRoute[] {
       vehicleId: route.vehicleId,
       vehicleName: route.vehicleName,
       encodedPolyline: route.encodedPolyline,
+      segmentPolylines:
+        route.segmentPolylines ??
+        route.transitions
+          ?.map((transition) => transition.encodedPolyline)
+          .filter((value): value is string => Boolean(value)),
+      departureAt: route.departureAt,
+      finishedAt: route.finishedAt,
+      trafficMode: route.trafficMode,
       metrics: route.metrics,
       stops: route.stops,
     };
@@ -52,21 +52,48 @@ async function currentRun(
   );
   if (!rows[0]) return null;
   const row = rows[0];
+  const board = await readOrderBoard(sql, planId);
+  const settings = await getRoutingSettings(sql);
+  const job = await sql.query(
+    "SELECT status,error_code FROM route_recalculation_jobs WHERE plan_id=$1",
+    [planId],
+  );
   return {
     runId: row.id,
     planId: row.plan_id,
     appliedPlanVersion: Number(row.applied_plan_version),
     current:
-      Number(row.applied_plan_version) === Number(row.current_plan_version),
+      Number(row.applied_plan_version) === board.plan.version &&
+      row.input_fingerprint === routeFingerprint(board, settings.version),
     createdAt: new Date(row.created_at).toISOString(),
     metrics: row.metrics as RouteMetrics,
     routes: publicRoutes(row.routes),
     skipped: row.skipped,
+    recalculation: job.rows[0]
+      ? { status: job.rows[0].status, errorCode: job.rows[0].error_code }
+      : null,
   };
 }
 
 export async function getPlanOptimization(pool: Pool, planId: string) {
-  return currentRun(pool, planId);
+  return transaction(pool, (sql) => currentRun(sql, planId));
+}
+
+export async function lockRouteInputs(sql: Sql, planId: string) {
+  const plan = await sql.query(
+    "SELECT version FROM route_plans WHERE id=$1 FOR UPDATE",
+    [uuid(planId)],
+  );
+  if (!plan.rows[0]) throw new AppError("NOT_FOUND", 404);
+  await sql.query(
+    "SELECT version FROM route_routing_settings WHERE singleton=true FOR SHARE",
+  );
+  await sql.query(
+    `SELECT c.id FROM route_customers c WHERE EXISTS(
+    SELECT 1 FROM route_shipments s WHERE s.plan_id=$1 AND s.source=c.source AND s.partner_id=c.odoo_partner_id
+  ) ORDER BY c.id FOR SHARE`,
+    [planId],
+  );
 }
 
 export async function applyOptimizationResult(
@@ -75,10 +102,11 @@ export async function applyOptimizationResult(
   planId: string,
   expectedVersion: number,
   settingsVersion: number,
-  board: Awaited<ReturnType<typeof orderBoard>>,
+  board: OrderBoard,
   deliveryShipments: typeof board.shipments,
   requestHash: string,
   result: GoogleOptimizationResult,
+  trace: Record<string, unknown> = {},
 ) {
   return transaction(pool, async (sql) => {
     await assertActiveActor(sql, actor);
@@ -93,6 +121,12 @@ export async function applyOptimizationResult(
       "SELECT version FROM route_routing_settings WHERE singleton=true FOR SHARE",
     );
     if (Number(settings.rows[0]?.version) !== settingsVersion)
+      throw new AppError("VERSION_CONFLICT", 409);
+    await lockRouteInputs(sql, planId);
+    if (
+      routeFingerprint(await readOrderBoard(sql, planId), settingsVersion) !==
+      routeFingerprint(board, settingsVersion)
+    )
       throw new AppError("VERSION_CONFLICT", 409);
 
     const privateRoutes: PrivateRoute[] = [];
@@ -133,6 +167,8 @@ export async function applyOptimizationResult(
         vehicleId: vehicle.id,
         vehicleName: vehicle.name,
         encodedPolyline: route.encodedPolyline,
+        departureAt: route.departureAt,
+        finishedAt: route.finishedAt,
         metrics: route.metrics,
         stops,
         transitions: route.transitions,
@@ -177,8 +213,8 @@ export async function applyOptimizationResult(
     const runId = randomUUID();
     const inserted = await sql.query(
       `INSERT INTO route_optimization_runs(
-         id,plan_id,base_plan_version,applied_plan_version,request_hash,metrics,routes,skipped,created_by
-       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         id,plan_id,base_plan_version,applied_plan_version,request_hash,metrics,routes,skipped,created_by,input_fingerprint
+       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        ON CONFLICT(plan_id,base_plan_version,request_hash) DO NOTHING RETURNING id`,
       [
         runId,
@@ -190,6 +226,7 @@ export async function applyOptimizationResult(
         JSON.stringify(privateRoutes),
         JSON.stringify(skipped),
         actor,
+        routeFingerprint(await readOrderBoard(sql, planId), settingsVersion),
       ],
     );
     if (!inserted.rowCount) throw new AppError("VERSION_CONFLICT", 409);
@@ -228,74 +265,11 @@ export async function applyOptimizationResult(
       skipped: skipped.length,
       travelDistanceMeters: result.metrics.travelDistanceMeters,
       totalDurationSeconds: result.metrics.totalDurationSeconds,
+      ...trace,
     });
+    await sql.query("DELETE FROM route_recalculation_jobs WHERE plan_id=$1", [
+      planId,
+    ]);
     return currentRun(sql, planId);
   });
-}
-
-export async function optimizePlan(
-  pool: Pool,
-  actor: string,
-  planId: string,
-  input: Record<string, unknown>,
-  timezone: string,
-  dependencies?: Parameters<typeof requestGoogleOptimization>[3],
-) {
-  const expectedVersion = integer(input.expectedVersion, 1);
-  await assertActiveActor(pool, actor);
-  const [board, settings] = await Promise.all([
-    orderBoard(pool, planId),
-    getRoutingSettings(pool),
-  ]);
-  if (board.plan.version !== expectedVersion)
-    throw new AppError("VERSION_CONFLICT", 409);
-  const request = buildGoogleOptimizationRequest(board, settings, timezone);
-  const deliveryShipments = board.shipments.filter(
-    (shipment) =>
-      shipment.fulfillmentMode === "delivery" && !shipment.customerArchived,
-  );
-  const requestHash = createHash("sha256")
-    .update(
-      JSON.stringify({
-        request,
-        settingsVersion: settings.version,
-        expectedVersion,
-      }),
-    )
-    .digest("hex");
-  const config = readGoogleRoutingConfig();
-  const timeoutSeconds = Number(request.timeout.slice(0, -1));
-  const lease = await acquireOptimizationLease(
-    pool,
-    planId,
-    expectedVersion,
-    requestHash,
-    timeoutSeconds,
-  );
-  try {
-    const raw = await requestGoogleOptimization(
-      config.projectId,
-      config.credentials,
-      request,
-      dependencies,
-    );
-    const result = parseGoogleOptimizationResponse(
-      raw,
-      deliveryShipments.length,
-      board.vehicles.length,
-    );
-    return await applyOptimizationResult(
-      pool,
-      actor,
-      planId,
-      expectedVersion,
-      settings.version,
-      board,
-      deliveryShipments,
-      requestHash,
-      result,
-    );
-  } finally {
-    await releaseOptimizationLease(pool, planId, lease).catch(() => {});
-  }
 }

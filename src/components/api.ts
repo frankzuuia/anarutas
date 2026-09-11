@@ -1,4 +1,26 @@
 export const errors: Record<string, string> = {
+  ROUTING_AI_CONFIG_MISSING:
+    "Falta configurar la clave privada y el modelo de OpenAI para armar rutas.",
+  ROUTING_AI_CONFIG_INVALID: "La configuración privada de OpenAI no es válida.",
+  ROUTING_AI_DENIED:
+    "OpenAI rechazó la credencial del planificador. Revisa el proyecto y sus permisos.",
+  ROUTING_AI_QUOTA: "OpenAI alcanzó su límite de uso. El borrador no cambió.",
+  ROUTING_AI_UNAVAILABLE:
+    "OpenAI no pudo completar la planificación. El borrador no cambió.",
+  ROUTING_AI_RESPONSE_INVALID:
+    "OpenAI no completó el proceso de herramientas. El borrador no cambió.",
+  ROUTING_AI_CANDIDATE_INVALID:
+    "La propuesta de IA omitió, duplicó o usó datos ajenos al plan y fue rechazada.",
+  ROUTING_AI_PRIORITY_INVALID:
+    "La propuesta de IA no respetó Alta, después Media y después Por horario.",
+  ROUTING_ROADS_CONFIG_MISSING:
+    "Falta configurar la credencial privada de Google Routes para recalcular los recorridos.",
+  ROUTING_NOT_CALCULATED:
+    "Arma la ruta una vez para activar el recálculo automático de tus cambios.",
+  ROUTING_DEPARTURE_INVALID:
+    "Escribe una hora de salida válida en formato de 24 horas: HH:mm.",
+  ROUTING_DEPARTURE_REQUIRED:
+    "Configura la hora de salida de este plan antes de calcular sus rutas.",
   CUSTOMER_WINDOWS_INVALID:
     "Revisa los días y el horario de 24 horas. Cada ventana debe terminar después de comenzar.",
   CUSTOMER_WINDOWS_OVERLAP:

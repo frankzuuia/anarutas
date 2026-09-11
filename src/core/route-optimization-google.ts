@@ -27,7 +27,9 @@ type GoogleOptimizationRequest = {
       label: string;
       travelMode: "DRIVING";
       startLocation: { latitude: number; longitude: number };
+      endLocation: { latitude: number; longitude: number };
       costPerHour: number;
+      startTimeWindows?: GoogleTimeWindow[];
     }[];
     precedenceRules?: {
       firstIsDelivery: true;
@@ -40,6 +42,8 @@ type GoogleOptimizationRequest = {
 
 export type GoogleRouteResult = {
   vehicleIndex: number;
+  departureAt?: string;
+  finishedAt?: string;
   encodedPolyline: string | null;
   metrics: RouteMetrics;
   visits: {
@@ -162,7 +166,13 @@ export function buildGoogleOptimizationRequest(
       shipment.fulfillmentMode === "delivery" && !shipment.customerArchived,
   );
   if (!deliveries.length) throw new AppError("ROUTING_ORDERS_REQUIRED", 409);
-  const start = `${localMidnight(board.plan.service_date, timezone).replace(" ", "T")}Z`;
+  if (board.plan.departure_minute == null)
+    throw new AppError("ROUTING_DEPARTURE_REQUIRED", 409);
+  const start = localMinuteInstant(
+    board.plan.service_date,
+    board.plan.departure_minute,
+    timezone,
+  );
   const end = `${localMidnight(dayAfter(board.plan.service_date), timezone).replace(" ", "T")}Z`;
   const rules = precedenceRules(deliveries);
   return {
@@ -208,7 +218,12 @@ export function buildGoogleOptimizationRequest(
           latitude: settings.depotLocation!.latitude,
           longitude: settings.depotLocation!.longitude,
         },
+        endLocation: {
+          latitude: settings.depotLocation!.latitude,
+          longitude: settings.depotLocation!.longitude,
+        },
         costPerHour: 1,
+        startTimeWindows: [{ startTime: start, endTime: start }],
       })),
       ...(rules.length ? { precedenceRules: rules } : {}),
     },
@@ -333,10 +348,24 @@ export function parseGoogleOptimizationResponse(
     });
     const polyline = route.routePolyline as Record<string, unknown> | undefined;
     const routeMetrics = metrics(route.metrics);
+    for (const time of [route.vehicleStartTime, route.vehicleEndTime])
+      if (
+        time !== undefined &&
+        (typeof time !== "string" || !Number.isFinite(Date.parse(time)))
+      )
+        throw new AppError("ROUTING_RESPONSE_INVALID", 503);
     if (routeMetrics.performedShipmentCount !== visits.length)
       throw new AppError("ROUTING_RESPONSE_INVALID", 503);
     return {
       vehicleIndex,
+      departureAt:
+        typeof route.vehicleStartTime === "string"
+          ? new Date(route.vehicleStartTime).toISOString()
+          : undefined,
+      finishedAt:
+        typeof route.vehicleEndTime === "string"
+          ? new Date(route.vehicleEndTime).toISOString()
+          : undefined,
       encodedPolyline:
         typeof polyline?.points === "string" ? polyline.points : null,
       metrics: routeMetrics,

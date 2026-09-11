@@ -4,6 +4,7 @@ import { bootstrap } from "../src/core/auth";
 import { updateCustomer } from "../src/core/customers";
 import { createVehicle } from "../src/core/fleet";
 import {
+  addPlanVehicles,
   moveShipment,
   orderBoard,
   persistImportPage,
@@ -304,11 +305,51 @@ describe("routing settings and atomic optimization / real PostgreSQL", () => {
       ),
     ).toBe(2);
 
+    const extraVehicle = await createVehicle(db.pool, actor, {
+      id: randomUUID(),
+      name: "Ruta adicional QA",
+      brand: "Ford",
+      model: "2027",
+      plate: "RUTA-2-QA",
+      mileage: 2,
+      fuel: "Gasolina",
+      available: true,
+    });
+    await addPlanVehicles(db.pool, actor, plan.id, {
+      vehicleIds: [extraVehicle.id],
+      expectedVersion: after.plan.version,
+    });
+    const withExtraVehicle = await orderBoard(db.pool, plan.id);
+    const queuedOnce = await db.pool.query(
+      "SELECT revision,status FROM route_recalculation_jobs WHERE plan_id=$1",
+      [plan.id],
+    );
+    expect(queuedOnce.rows[0]).toMatchObject({
+      revision: "1",
+      status: "pending",
+    });
     await moveShipment(db.pool, actor, plan.id, {
       shipmentId: after.shipments[0].id,
-      vehicleId: null,
+      vehicleId: extraVehicle.id,
       beforeId: null,
-      expectedVersion: after.plan.version,
+      expectedVersion: withExtraVehicle.plan.version,
+    });
+    const redistributed = await orderBoard(db.pool, plan.id);
+    expect(
+      redistributed.shipments.find((s) => s.id === after.shipments[0].id)
+        ?.vehicle_id,
+    ).toBe(extraVehicle.id);
+    expect(
+      redistributed.shipments.find((s) => s.id === after.shipments[1].id)
+        ?.vehicle_id,
+    ).toBe(vehicle.id);
+    const queuedAgain = await db.pool.query(
+      "SELECT revision,status FROM route_recalculation_jobs WHERE plan_id=$1",
+      [plan.id],
+    );
+    expect(queuedAgain.rows[0]).toMatchObject({
+      revision: "2",
+      status: "pending",
     });
     expect(await getPlanOptimization(db.pool, plan.id)).toMatchObject({
       current: false,

@@ -1,5 +1,10 @@
 # QA — bloque 5: optimización vial Google
 
+> Evidencia histórica del bloque 5. El bloque 5B sustituye la salida libre, la ausencia
+> de regreso y el estado obsoleto tras una edición manual. El contrato vigente exige
+> hora de salida por plan, regreso a bodega y recálculo automático; consultar
+> `QA-BLOQUE-5B-RECALCULO-IA.md`.
+
 Fecha de evidencia local: 2026-09-10. Rama: `develop`.
 
 ## Resultado

@@ -50,3 +50,18 @@ export async function releaseOptimizationLease(
     [uuid(planId), uuid(token)],
   );
 }
+
+export async function renewOptimizationLease(
+  pool: Pool,
+  planId: string,
+  token: string,
+  timeoutSeconds: number,
+) {
+  const timeout = integer(timeoutSeconds, 1);
+  const result = await pool.query(
+    `UPDATE route_optimization_leases SET expires_at=now()+$3::integer*interval '1 second',updated_at=now()
+     WHERE plan_id=$1 AND token=$2 RETURNING plan_id`,
+    [uuid(planId), uuid(token), timeout + 60],
+  );
+  if (!result.rowCount) throw new AppError("VERSION_CONFLICT", 409);
+}

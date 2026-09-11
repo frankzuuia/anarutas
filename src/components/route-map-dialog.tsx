@@ -7,7 +7,7 @@ import type {
   PublicOptimization,
   RoutingSettings,
 } from "@/core/routing-contract";
-import { api } from "./api";
+import { api, errors } from "./api";
 import { loadGoogleMaps } from "./google-maps";
 
 type Located = { position?: google.maps.LatLngLiteral; issue?: string };
@@ -16,7 +16,7 @@ function color(index: number) {
 }
 
 export function RouteMapDialog({
-  board,
+  board: initialBoard,
   timezone,
   onClose,
 }: {
@@ -24,6 +24,7 @@ export function RouteMapDialog({
   timezone: string;
   onClose: () => void;
 }) {
+  const [board, setBoard] = useState(initialBoard);
   const dialog = useRef<HTMLDialogElement>(null),
     canvas = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
@@ -38,6 +39,8 @@ export function RouteMapDialog({
   const [locating, setLocating] = useState(true);
   const [filter, setFilter] = useState("all");
   const [revision, setRevision] = useState(0);
+  const [refreshError, setRefreshError] = useState("");
+  const [retrying, setRetrying] = useState(false);
   const vehicles = [
     { id: "unassigned", name: "Sin asignar" },
     ...board.vehicles,
@@ -51,6 +54,47 @@ export function RouteMapDialog({
     board.shipments
       .filter((p) => p.vehicle_id === s.vehicle_id)
       .findIndex((p) => p.id === s.id) + 1;
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    async function refresh() {
+      try {
+        const [nextBoard, nextRun, nextOrigin] = await Promise.all([
+          api<OrderBoard>(`/api/plans/${initialBoard.plan.id}/orders`),
+          api<PublicOptimization | null>(
+            `/api/plans/${initialBoard.plan.id}/optimization`,
+          ),
+          api<RoutingSettings>("/api/routing/settings"),
+        ]);
+        if (!active) return;
+        setBoard((previous) =>
+          JSON.stringify(previous) === JSON.stringify(nextBoard)
+            ? previous
+            : nextBoard,
+        );
+        setOptimization((previous) =>
+          JSON.stringify(previous) === JSON.stringify(nextRun)
+            ? previous
+            : nextRun,
+        );
+        setOrigin((previous) =>
+          JSON.stringify(previous) === JSON.stringify(nextOrigin)
+            ? previous
+            : nextOrigin,
+        );
+        setRefreshError("");
+      } catch (caught) {
+        if (active) setRefreshError((caught as Error).message);
+      } finally {
+        if (active) timer = setTimeout(() => void refresh(), 2000);
+      }
+    }
+    timer = setTimeout(() => void refresh(), 2000);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [initialBoard.plan.id]);
   useEffect(() => {
     const element = dialog.current,
       previous = document.activeElement as HTMLElement;
@@ -169,13 +213,13 @@ export function RouteMapDialog({
       bounds.extend(position);
       const pin = document.createElement("div");
       pin.className = "map-pin map-origin-pin";
-      pin.textContent = "Salida";
+      pin.textContent = "Bodega · salida y regreso";
       markers.push(
         new google.maps.marker.AdvancedMarkerElement({
           map: currentMap,
           position,
           content: pin,
-          title: `Salida · ${origin.depotAddress}`,
+          title: `Salida y regreso · ${origin.depotAddress}`,
         }),
       );
     }
@@ -219,23 +263,27 @@ export function RouteMapDialog({
     if (optimization?.current) {
       for (const optimizedRoute of optimization.routes) {
         if (filter !== "all" && optimizedRoute.vehicleId !== filter) continue;
-        if (!optimizedRoute.encodedPolyline) continue;
-        const path = google.maps.geometry.encoding.decodePath(
-          optimizedRoute.encodedPolyline,
-        );
-        path.forEach((point) => bounds.extend(point));
-        const vehicleIndex = vehicles.findIndex(
-          (vehicle) => vehicle.id === optimizedRoute.vehicleId,
-        );
-        routeLines.push(
-          new google.maps.Polyline({
-            map: currentMap,
-            path,
-            strokeColor: color(Math.max(1, vehicleIndex)),
-            strokeOpacity: 0.9,
-            strokeWeight: 5,
-          }),
-        );
+        const polylines =
+          optimizedRoute.segmentPolylines ??
+          (optimizedRoute.encodedPolyline
+            ? [optimizedRoute.encodedPolyline]
+            : []);
+        for (const polyline of polylines) {
+          const path = google.maps.geometry.encoding.decodePath(polyline);
+          path.forEach((point) => bounds.extend(point));
+          const vehicleIndex = vehicles.findIndex(
+            (vehicle) => vehicle.id === optimizedRoute.vehicleId,
+          );
+          routeLines.push(
+            new google.maps.Polyline({
+              map: currentMap,
+              path,
+              strokeColor: color(Math.max(1, vehicleIndex)),
+              strokeOpacity: 0.9,
+              strokeWeight: 5,
+            }),
+          );
+        }
       }
     }
     if (!bounds.isEmpty()) currentMap.fitBounds(bounds, 60);
@@ -251,7 +299,6 @@ export function RouteMapDialog({
       });
       routeLines.forEach((line) => line.setMap(null));
     };
-    // The board is immutable while this read-only modal is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locations, filter, board, optimization, origin]);
 
@@ -260,9 +307,42 @@ export function RouteMapDialog({
       route.stops.map((stop) => [stop.shipmentId, stop] as const),
     ),
   );
-  const minutes = optimization
-    ? Math.round(optimization.metrics.totalDurationSeconds / 60)
-    : 0;
+  const selectedRoutes = (
+    optimization?.current ? optimization.routes : []
+  ).filter((route) => filter === "all" || route.vehicleId === filter);
+  const minutes = Math.round(
+    selectedRoutes.reduce(
+      (sum, route) => sum + route.metrics.totalDurationSeconds,
+      0,
+    ) / 60,
+  );
+  const distance = selectedRoutes.reduce(
+    (sum, route) => sum + route.metrics.travelDistanceMeters,
+    0,
+  );
+  const time = (value: string) =>
+    new Date(value).toLocaleTimeString("es-MX", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  async function retryRoute() {
+    setRetrying(true);
+    setRefreshError("");
+    try {
+      await api(`/api/plans/${board.plan.id}/recalculation`, "POST");
+      setOptimization(
+        await api<PublicOptimization | null>(
+          `/api/plans/${board.plan.id}/optimization`,
+        ),
+      );
+    } catch (caught) {
+      setRefreshError((caught as Error).message);
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   return (
     <dialog
@@ -300,17 +380,30 @@ export function RouteMapDialog({
         </span>
         {optimization?.current ? (
           <span className="small route-metrics">
-            Ruta Google vigente ·{" "}
-            {(optimization.metrics.travelDistanceMeters / 1000).toLocaleString(
-              "es-MX",
-              { maximumFractionDigits: 1 },
-            )}{" "}
+            Recorrido vigente · regreso incluido ·{" "}
+            {(distance / 1000).toLocaleString("es-MX", {
+              maximumFractionDigits: 1,
+            })}{" "}
             km · {Math.floor(minutes / 60)} h {minutes % 60} min
+            {filter === "all" ? " acumulados" : ""}
           </span>
         ) : optimization ? (
-          <span className="small warning">
-            La ruta calculada quedó obsoleta por cambios en el borrador. Vuelve
-            a armarla.
+          <span className="small warning" role="status">
+            {optimization.recalculation?.status === "pending" ||
+            optimization.recalculation?.status === "running"
+              ? "Recalculando recorrido; se conserva tu acomodo…"
+              : "Tu acomodo está guardado. El recorrido necesita recalcularse."}
+            {(!optimization.recalculation ||
+              optimization.recalculation.status === "failed") && (
+              <button
+                className="quiet"
+                disabled={retrying}
+                onClick={() => void retryRoute()}
+              >
+                <RefreshCw size={14} />
+                {retrying ? "Solicitando…" : "Reintentar cálculo"}
+              </button>
+            )}
           </span>
         ) : (
           <span className="small">
@@ -318,6 +411,13 @@ export function RouteMapDialog({
           </span>
         )}
       </div>
+      {(refreshError || optimization?.recalculation?.errorCode) && (
+        <p className="notice error" role="alert">
+          {refreshError ||
+            errors[optimization!.recalculation!.errorCode!] ||
+            "El recálculo no pudo completarse; tus cambios siguen guardados."}
+        </p>
+      )}
       {error && (
         <div className="notice error" role="alert">
           {error}
@@ -353,6 +453,27 @@ export function RouteMapDialog({
           />
           <aside className="map-stops" aria-label="Puntos de entrega">
             {locating && <p role="status">Ubicando direcciones…</p>}
+            {selectedRoutes
+              .filter((route) => route.stops.length > 0)
+              .map((route) => (
+                <div className="map-stop small" key={route.vehicleId}>
+                  <strong>{route.vehicleName}</strong>
+                  {route.departureAt && (
+                    <small>Salida de bodega: {time(route.departureAt)}</small>
+                  )}
+                  {route.finishedAt && (
+                    <small>Regreso a bodega: {time(route.finishedAt)}</small>
+                  )}
+                  {route.trafficMode === "static" && (
+                    <small>
+                      Estimación sin tráfico en vivo para la hora pasada.
+                    </small>
+                  )}
+                  <small>
+                    Traslados y esperas; no incluye tiempo de descarga.
+                  </small>
+                </div>
+              ))}
             {visible.map((s) => (
               <button
                 className="map-stop quiet"
@@ -395,6 +516,19 @@ export function RouteMapDialog({
                   </small>
                 )}
                 <small>{s.address || "Dirección pendiente"}</small>
+                {!!optimizedStops.get(s.id)?.lateSeconds && (
+                  <small className="warning">
+                    Fuera de ventana:{" "}
+                    {Math.ceil(optimizedStops.get(s.id)!.lateSeconds! / 60)} min
+                    después del cierre.
+                  </small>
+                )}
+                {optimizedStops.get(s.id)?.priorityConflict && (
+                  <small className="warning">
+                    El acomodo manual adelanta este pedido a uno de mayor
+                    prioridad.
+                  </small>
+                )}
                 <small>
                   {s.deliveryWindows.length
                     ? s.deliveryWindows

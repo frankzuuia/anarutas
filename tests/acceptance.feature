@@ -185,10 +185,10 @@ Feature: Ana Rutas independiente y portable
     Then su tarjeta cerrada muestra Sin horario y Prioridad pendiente
     And ningún proceso inventa un horario o una prioridad predeterminada
 
-  Scenario: Google arma y distribuye la ruta con datos viales reales
-    Given pedidos cargados, camionetas del día, punto de salida y Google Route Optimization configurado
+  Scenario: OpenAI arma y Google mide la ruta con datos viales reales
+    Given pedidos cargados, camionetas del día, salida y regreso, OpenAI y Google configurados
     When el administrador pulsa Armar ruta
-    Then Google asigna los pedidos a las camionetas y ordena sus paradas usando la red vial real
+    Then OpenAI propone repartos y Google mide sus calles, ventanas, ETA y regreso real
     And el resultado guarda su versión, métricas y pedidos no asignables para revisión
     And el administrador puede mover pedidos manualmente después de la propuesta
 
@@ -342,7 +342,7 @@ Feature: Ana Rutas independiente y portable
     Given la instalación sugiere Calle 5 1106, Colonia Industrial como salida y Google Maps está activo
     When el administrador ubica, ajusta y confirma ese punto
     Then la dirección y coordenadas quedan versionadas y auditadas
-    And la ruta usará ese punto sólo como inicio, sin regreso ni capacidad de peso
+    And cada camioneta usará ese punto como salida y regreso, sin capacidad de peso
 
   Scenario: Una dirección de salida incompleta no genera un punto falso
     Given el administrador escribe una calle sin ciudad, estado o país
@@ -359,7 +359,7 @@ Feature: Ana Rutas independiente y portable
   Scenario: Optimizar con red vial, ventanas y prioridades reales
     Given un borrador vigente con camionetas, pedidos y puntos confirmados
     When el administrador pulsa Armar ruta
-    Then Google asigna camionetas y ordena paradas considerando tráfico y ventanas duras
+    Then OpenAI propone y compara candidatos medidos por Google considerando calles y ventanas duras
     And las entregas Alta preceden a Media y Por horario y las Media preceden a Por horario
     And Ana Rutas guarda ETA, distancia, duración y polilíneas sin guardar credenciales
 
@@ -369,8 +369,28 @@ Feature: Ana Rutas independiente y portable
     Then la propuesta recibe conflicto y no cambia ninguna asignación ni posición
     And el administrador puede actualizar y solicitar otra optimización
 
-  Scenario: Un cambio manual vuelve obsoleta la ruta calculada
+  Scenario: Un cambio manual recalcula el recorrido sin deshacer el acomodo
     Given el mapa muestra una optimización vigente
     When el administrador mueve un pedido o cambia las camionetas
-    Then la propuesta anterior permanece en auditoría pero deja de presentarse como vigente
-    And debe volver a optimizar antes de usar el recorrido o sus tokens de navegación
+    Then la propuesta anterior permanece en auditoría mientras se recalculan tramos y ETA
+    And el nuevo recorrido conserva vehículo y orden elegidos y regresa a la bodega
+
+  Scenario: Añadir una camioneta a un plan previamente armado
+    Given un plan con recorrido vigente y pedidos asignados
+    When el administrador añade otra camioneta y mueve pedidos hacia ella
+    Then la asignación manual queda guardada y no redistribuye los demás pedidos
+    And se recalculan ambas rutas desde la salida hasta el regreso a bodega
+
+  Scenario: La IA no puede degradar la prioridad estricta
+    Given existen pedidos Alta, Media y Por horario con puntos y ventanas confirmados
+    When OpenAI propone uno o más candidatos y solicita confirmarlos
+    Then el servidor rechaza IDs ajenos, omisiones, duplicados y orden de prioridad inverso
+    And sólo confirma el candidato vial factible de menor score ya evaluado
+
+  Scenario: Configurar y auditar el razonamiento del planificador
+    Given EasyPanel configura un nivel de razonamiento compatible con el modelo OpenAI
+    When el administrador arma una ruta
+    Then cada ciclo de Responses API recibe el nivel configurado
+    And la auditoría registra modelo y nivel sin exponer la clave privada
+    When el nivel configurado no pertenece al contrato oficial admitido
+    Then el planificador falla cerrado antes de enviar datos a OpenAI

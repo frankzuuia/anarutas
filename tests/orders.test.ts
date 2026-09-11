@@ -92,7 +92,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(6);
+    ).toBe(7);
     const identityIndex = await db.pool.query(
       "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='route_shipments_plan_source_picking_order'",
     );
@@ -135,7 +135,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(6);
+    ).toBe(7);
     expect(
       (
         await db.pool.query(

@@ -1089,7 +1089,7 @@ export function OrdersBoard({
               !board.shipments.length ||
               !board.vehicles.length
             }
-            aria-label="Armar ruta con Google"
+            aria-label="Armar ruta con OpenAI y Google"
             onClick={() => void optimize()}
           >
             <Sparkles size={16} />
@@ -1238,11 +1238,20 @@ export function OrdersBoard({
         <RouteMapDialog
           board={board}
           timezone={timezone}
-          onClose={() => setMapOpen(false)}
+          onClose={() => {
+            setMapOpen(false);
+            void api<OrderBoard>(endpoint)
+              .then(update)
+              .catch((caught) => setNotice((caught as Error).message));
+          }}
         />
       )}
       {originOpen && (
         <RouteOriginDialog
+          plan={board?.plan || plan}
+          onPlan={(saved) => {
+            if (board) update({ ...board, plan: saved });
+          }}
           onClose={() => setOriginOpen(false)}
           onSaved={() => setNotice("Punto de salida confirmado.")}
         />

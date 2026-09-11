@@ -21,6 +21,10 @@ export type PublicOptimizedRoute = {
   vehicleId: string;
   vehicleName: string;
   encodedPolyline: string | null;
+  segmentPolylines?: string[];
+  departureAt?: string;
+  finishedAt?: string;
+  trafficMode?: "forecast" | "static";
   metrics: RouteMetrics;
   stops: {
     shipmentId: string;
@@ -29,6 +33,8 @@ export type PublicOptimizedRoute = {
     travelDistanceMeters: number;
     travelDurationSeconds: number;
     waitDurationSeconds: number;
+    lateSeconds?: number;
+    priorityConflict?: boolean;
   }[];
 };
 
@@ -41,4 +47,8 @@ export type PublicOptimization = {
   metrics: RouteMetrics;
   routes: PublicOptimizedRoute[];
   skipped: { shipmentId: string; reasons: string[] }[];
+  recalculation?: {
+    status: "pending" | "running" | "failed";
+    errorCode: string | null;
+  } | null;
 };

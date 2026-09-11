@@ -23,6 +23,7 @@
     "test:mutation:plan-identity": "stryker run stryker.plan-identity.config.mjs",
     "test:mutation:customers": "stryker run stryker.customers.config.mjs",
     "test:mutation:routing": "stryker run stryker.routing.config.mjs",
+    "test:mutation:routing-operations": "stryker run stryker.routing-operations.config.mjs",
     "pretest:e2e": "npm run build",
     "test:e2e": "playwright test",
     "db:migrate": "tsx scripts/migrate.ts",

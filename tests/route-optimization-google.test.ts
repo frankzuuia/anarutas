@@ -100,6 +100,7 @@ function board(): OrderBoard {
     plan: {
       id: "00000000-0000-4000-8000-000000000020",
       service_date: "2026-09-09",
+      departure_minute: 450,
       label: "QA",
       version: 1,
       updated_at: "2026-09-09T00:00:00.000Z",
@@ -174,7 +175,7 @@ describe("Google Route Optimization contract", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("builds a real-road model with start only and no weight fields", () => {
+  it("builds a real-road model with fixed departure, warehouse return and no weight fields", () => {
     const request = buildGoogleOptimizationRequest(
       board(),
       settings,
@@ -186,7 +187,7 @@ describe("Google Route Optimization contract", () => {
       populatePolylines: true,
       populateTransitionPolylines: true,
       model: {
-        globalStartTime: "2026-09-09T06:00:00Z",
+        globalStartTime: "2026-09-09T13:30:00.000Z",
         globalEndTime: "2026-09-10T06:00:00Z",
         shipments: ids.map((id) => ({
           label: id,
@@ -211,7 +212,14 @@ describe("Google Route Optimization contract", () => {
             label: vehicle.id,
             travelMode: "DRIVING",
             startLocation: { latitude: 20.624, longitude: -103.354 },
+            endLocation: { latitude: 20.624, longitude: -103.354 },
             costPerHour: 1,
+            startTimeWindows: [
+              {
+                startTime: "2026-09-09T13:30:00.000Z",
+                endTime: "2026-09-09T13:30:00.000Z",
+              },
+            ],
           },
         ],
         precedenceRules: [
@@ -238,7 +246,9 @@ describe("Google Route Optimization contract", () => {
     });
     expect(JSON.stringify(request)).not.toContain("loadLimit");
     expect(JSON.stringify(request)).not.toContain("loadDemand");
-    expect(request.model.vehicles[0]).not.toHaveProperty("endLocation");
+    expect(request.model.vehicles[0].endLocation).toEqual(
+      request.model.vehicles[0].startLocation,
+    );
   });
 
   it("converts civil minutes through timezone offsets and DST", () => {
@@ -289,6 +299,13 @@ describe("Google Route Optimization contract", () => {
         "UTC",
       ),
     ).toThrow("ROUTING_ORDERS_REQUIRED");
+    expect(() =>
+      buildGoogleOptimizationRequest(
+        { ...value, plan: { ...value.plan, departure_minute: null } },
+        settings,
+        "UTC",
+      ),
+    ).toThrow("ROUTING_DEPARTURE_REQUIRED");
     expect(() =>
       buildGoogleOptimizationRequest(
         {
@@ -396,6 +413,8 @@ describe("Google Route Optimization contract", () => {
       {
         routes: [
           {
+            vehicleStartTime: "2026-09-09T13:30:00Z",
+            vehicleEndTime: "2026-09-09T13:37:30Z",
             visits: [{ startTime: "2026-09-09T15:15:00Z" }],
             transitions: [
               {
@@ -433,6 +452,8 @@ describe("Google Route Optimization contract", () => {
       routes: [
         {
           vehicleIndex: 0,
+          departureAt: "2026-09-09T13:30:00.000Z",
+          finishedAt: "2026-09-09T13:37:30.000Z",
           encodedPolyline: "route",
           metrics: {
             travelDistanceMeters: 1250,
@@ -658,6 +679,36 @@ describe("Google Route Optimization contract", () => {
     invalid({ routes: [{}] });
     invalid({ routes: [{ visits: [], transitions: {}, metrics: {} }] });
     invalid({ routes: [{ visits: {}, transitions: [], metrics: {} }] });
+    for (const route of [
+      {
+        vehicleStartTime: 7,
+        visits: [],
+        transitions: [],
+        metrics: {},
+      },
+      {
+        vehicleStartTime: "not-a-date",
+        visits: [],
+        transitions: [],
+        metrics: {},
+      },
+      {
+        vehicleEndTime: 7,
+        visits: [],
+        transitions: [],
+        metrics: {},
+      },
+      {
+        vehicleEndTime: "not-a-date",
+        visits: [],
+        transitions: [],
+        metrics: {},
+      },
+    ])
+      invalid({
+        routes: [route],
+        metrics: { aggregatedRouteMetrics: {} },
+      });
     invalid(
       {
         routes: [

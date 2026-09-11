@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { assertActiveActor, audit, transaction } from "./database";
+import { assertActiveActor, audit, transaction, type Sql } from "./database";
 import { AppError } from "./errors";
 import { readRoutingDefaults } from "./routing-config";
 import type { RoutingSettings } from "./routing-contract";
@@ -21,7 +21,7 @@ function mapRow(
   };
 }
 
-export async function getRoutingSettings(pool: Pool): Promise<RoutingSettings> {
+export async function getRoutingSettings(pool: Sql): Promise<RoutingSettings> {
   const { rows } = await pool.query(
     "SELECT * FROM route_routing_settings WHERE singleton=true",
   );

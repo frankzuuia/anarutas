@@ -234,15 +234,25 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     exact: true,
   });
   await originButton.click();
-  const originDialog = page.getByRole("dialog", { name: "Punto de salida" });
+  const originDialog = page.getByRole("dialog", { name: "Salida y horario" });
   await expect(originDialog.getByLabel("Dirección de salida")).toHaveValue(
     depot.depotAddress,
   );
   await expect(originDialog).toContainText("Escribe el domicilio completo");
   await expect(originDialog).toContainText("20.624000, -103.354000");
+  await originDialog.getByLabel("Hora de salida del plan").fill("07:30");
+  await originDialog.getByRole("button", { name: "Guardar horario" }).click();
+  await expect(originDialog).toContainText("Horario guardado para este plan.");
   await page.keyboard.press("Escape");
   await expect(originDialog).toHaveCount(0);
   await expect(originButton).toBeFocused();
+  await originButton.click();
+  await expect(
+    page
+      .getByRole("dialog", { name: "Salida y horario" })
+      .getByLabel("Hora de salida del plan"),
+  ).toHaveValue("07:30");
+  await page.keyboard.press("Escape");
   await other.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(other.getByLabel("Abrir borrador")).toContainText(
     "Plan de validación",

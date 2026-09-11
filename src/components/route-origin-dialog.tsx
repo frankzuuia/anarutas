@@ -2,6 +2,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { MapPinned, Save, X } from "lucide-react";
 import type { RoutingSettings } from "@/core/routing-contract";
+import type { Plan } from "@/core/plans";
 import { api } from "./api";
 import {
   CustomerLocationEditor,
@@ -9,9 +10,13 @@ import {
 } from "./customer-location-editor";
 
 export function RouteOriginDialog({
+  plan,
+  onPlan,
   onClose,
   onSaved,
 }: {
+  plan: Plan;
+  onPlan: (plan: Plan) => void;
   onClose: () => void;
   onSaved: (settings: RoutingSettings) => void;
 }) {
@@ -23,6 +28,31 @@ export function RouteOriginDialog({
   const [mapUrl, setMapUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [departure, setDeparture] = useState(() =>
+    plan.departure_minute == null
+      ? ""
+      : `${String(Math.floor(plan.departure_minute / 60)).padStart(2, "0")}:${String(plan.departure_minute % 60).padStart(2, "0")}`,
+  );
+  const [hourBusy, setHourBusy] = useState(false);
+  const [hourNotice, setHourNotice] = useState("");
+
+  async function saveHour() {
+    setHourBusy(true);
+    setError("");
+    setHourNotice("");
+    try {
+      const saved = await api<Plan>(`/api/plans/${plan.id}/departure`, "PUT", {
+        departureTime: departure,
+        expectedVersion: plan.version,
+      });
+      onPlan(saved);
+      setHourNotice("Horario guardado para este plan.");
+    } catch (caught) {
+      setError((caught as Error).message);
+    } finally {
+      setHourBusy(false);
+    }
+  }
 
   useEffect(() => {
     const element = dialog.current;
@@ -74,17 +104,17 @@ export function RouteOriginDialog({
       aria-labelledby={title}
       onCancel={(event) => {
         event.preventDefault();
-        if (!busy) onClose();
+        if (!busy && !hourBusy) onClose();
       }}
     >
       <header className="panel-header">
         <h2 id={title}>
-          <MapPinned size={18} /> Punto de salida
+          <MapPinned size={18} /> Salida y horario
         </h2>
         <button
           className="quiet"
           aria-label="Cerrar punto de salida"
-          disabled={busy}
+          disabled={busy || hourBusy}
           onClick={onClose}
         >
           <X size={16} />
@@ -92,14 +122,47 @@ export function RouteOriginDialog({
       </header>
       <div className="panel-body stack">
         <p className="muted">
-          Todas las camionetas comenzarán aquí. La ruta no obliga a regresar a
-          este punto.
+          Todas las camionetas salen de esta bodega y regresan al mismo punto al terminar sus entregas.
         </p>
         {error && (
           <p className="notice error" role="alert">
             {error}
           </p>
         )}
+        <fieldset disabled={busy || hourBusy}>
+          <legend>Horario de salida · {plan.label}</legend>
+          <label>
+            Hora de salida · 24 horas
+            <input
+              value={departure}
+              inputMode="numeric"
+              maxLength={5}
+              placeholder="HH:mm"
+              aria-label="Hora de salida del plan"
+              onChange={(event) => {
+                setDeparture(event.target.value);
+                setHourNotice("");
+              }}
+            />
+          </label>
+          <p className="field-hint">
+            Todas las camionetas de este plan comienzan a esta hora. El
+            administrador puede cambiarla.
+          </p>
+          <button
+            className="quiet"
+            disabled={!departure || hourBusy}
+            onClick={() => void saveHour()}
+          >
+            <Save size={15} />{" "}
+            {hourBusy ? "Guardando horario…" : "Guardar horario"}
+          </button>
+          {hourNotice && (
+            <p className="small" role="status">
+              {hourNotice}
+            </p>
+          )}
+        </fieldset>
         {!settings ? (
           <p role="status">Cargando configuración…</p>
         ) : (
@@ -135,16 +198,20 @@ export function RouteOriginDialog({
               onResolvedAddress={setAddress}
             />
             <div className="order-actions">
-              <button className="quiet" disabled={busy} onClick={onClose}>
+              <button
+                className="quiet"
+                disabled={busy || hourBusy}
+                onClick={onClose}
+              >
                 Cancelar
               </button>
               <button
                 className="primary"
-                disabled={busy || !address.trim() || !location}
+                disabled={busy || hourBusy || !address.trim() || !location}
                 onClick={() => void save()}
               >
                 <Save size={16} />
-                {busy ? "Guardando…" : "Guardar salida"}
+                {busy ? "Guardando…" : "Guardar punto de salida"}
               </button>
             </div>
           </>

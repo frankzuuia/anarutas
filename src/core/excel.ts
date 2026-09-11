@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import type { Customer } from "./customers-contract";
 import type { OrderBoard } from "./orders-contract";
+import type { PublicOptimization } from "./routing-contract";
 
 const green = "FF16D98A";
 const dark = "FF0B1711";
@@ -147,7 +148,11 @@ export async function customerWorkbook(customers: Customer[]) {
   return buffer(workbook);
 }
 
-export async function planWorkbook(board: OrderBoard) {
+export async function planWorkbook(
+  board: OrderBoard,
+  optimization: PublicOptimization | null = null,
+  timezone = "UTC",
+) {
   const workbook = new ExcelJS.Workbook();
   const route = workbook.addWorksheet("Ruta", {
     properties: { tabColor: { argb: green } },
@@ -168,7 +173,30 @@ export async function planWorkbook(board: OrderBoard) {
     { header: "Liga Maps", key: "map", width: 45 },
     { header: "Nota de entrega", key: "note", width: 38 },
     { header: "Modalidad", key: "mode", width: 14 },
+    { header: "Hora de salida", key: "departure", width: 16 },
+    { header: "ETA", key: "eta", width: 16 },
+    { header: "Regreso a bodega", key: "return", width: 20 },
+    { header: "Km del tramo", key: "legKm", width: 14 },
+    { header: "Km de la ruta", key: "routeKm", width: 15 },
   ];
+  const routeTime = (value?: string) =>
+    value
+      ? new Intl.DateTimeFormat("es-MX", {
+          timeZone: timezone,
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }).format(new Date(value))
+      : "";
+  const optimizedRoutes = optimization?.current ? optimization.routes : [];
+  const routeByVehicle = new Map(
+    optimizedRoutes.map((optimized) => [optimized.vehicleId, optimized]),
+  );
+  const stopByShipment = new Map(
+    optimizedRoutes.flatMap((optimized) =>
+      optimized.stops.map((stop) => [stop.shipmentId, stop] as const),
+    ),
+  );
   const stops = new Map<string, number>();
   for (const shipment of board.shipments) {
     const lane = shipment.vehicle_id || "unassigned";
@@ -177,6 +205,10 @@ export async function planWorkbook(board: OrderBoard) {
     const vehicle = board.vehicles.find(
       (item) => item.id === shipment.vehicle_id,
     );
+    const optimizedRoute = shipment.vehicle_id
+      ? routeByVehicle.get(shipment.vehicle_id)
+      : undefined;
+    const optimizedStop = stopByShipment.get(shipment.id);
     route.addRow({
       date: board.plan.service_date,
       version: board.plan.version,
@@ -203,6 +235,17 @@ export async function planWorkbook(board: OrderBoard) {
       map: excelText(shipment.mapUrl),
       note: excelText(shipment.deliveryNote),
       mode: shipment.fulfillmentMode === "pickup" ? "Recoge" : "Entrega",
+      departure: routeTime(optimizedRoute?.departureAt),
+      eta: routeTime(optimizedStop?.eta),
+      return: routeTime(optimizedRoute?.finishedAt),
+      legKm:
+        optimizedStop === undefined
+          ? ""
+          : optimizedStop.travelDistanceMeters / 1000,
+      routeKm:
+        optimizedRoute === undefined
+          ? ""
+          : optimizedRoute.metrics.travelDistanceMeters / 1000,
     });
   }
   prepareSheet(route, route.columns as never);

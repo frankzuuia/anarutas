@@ -136,5 +136,80 @@ describe("Excel exports", () => {
     expect(workbook.getWorksheet("Partidas")!.getCell("G2").text).toBe(
       "'=NO_EJECUTAR()",
     );
+    expect(workbook.getWorksheet("Ruta")!.getCell("P2").text).toBe("");
+
+    const vehicleId = "00000000-0000-4000-8000-000000000005";
+    const assigned: OrderBoard = {
+      ...board,
+      vehicles: [
+        {
+          id: vehicleId,
+          name: "Camioneta QA",
+          brand: "Ford",
+          model: "2026",
+          plate: "QA-1",
+          mileage: "0",
+          fuel: "Gasolina",
+          available: true,
+          driver_id: null,
+          driver_name: null,
+          version: 1,
+        },
+      ],
+      shipments: [{ ...board.shipments[0], vehicle_id: vehicleId }],
+    };
+    const optimized = await planWorkbook(
+      assigned,
+      {
+        runId: "00000000-0000-4000-8000-000000000006",
+        planId: board.plan.id,
+        appliedPlanVersion: board.plan.version,
+        current: true,
+        createdAt: "2026-09-09T12:00:00Z",
+        metrics: {
+          travelDistanceMeters: 12500,
+          travelDurationSeconds: 1800,
+          waitDurationSeconds: 0,
+          totalDurationSeconds: 1800,
+          performedShipmentCount: 1,
+        },
+        skipped: [],
+        routes: [
+          {
+            vehicleId,
+            vehicleName: "Camioneta QA",
+            encodedPolyline: null,
+            departureAt: "2026-09-09T08:00:00Z",
+            finishedAt: "2026-09-09T08:30:00Z",
+            metrics: {
+              travelDistanceMeters: 12500,
+              travelDurationSeconds: 1800,
+              waitDurationSeconds: 0,
+              totalDurationSeconds: 1800,
+              performedShipmentCount: 1,
+            },
+            stops: [
+              {
+                shipmentId: board.shipments[0].id,
+                position: 1,
+                eta: "2026-09-09T08:12:00Z",
+                travelDistanceMeters: 4500,
+                travelDurationSeconds: 720,
+                waitDurationSeconds: 0,
+              },
+            ],
+          },
+        ],
+      },
+      "UTC",
+    );
+    const optimizedWorkbook = new ExcelJS.Workbook();
+    await optimizedWorkbook.xlsx.load(optimized as never);
+    const optimizedRoute = optimizedWorkbook.getWorksheet("Ruta")!;
+    expect(optimizedRoute.getCell("P2").text).toBe("08:00");
+    expect(optimizedRoute.getCell("Q2").text).toBe("08:12");
+    expect(optimizedRoute.getCell("R2").text).toBe("08:30");
+    expect(optimizedRoute.getCell("S2").value).toBe(4.5);
+    expect(optimizedRoute.getCell("T2").value).toBe(12.5);
   });
 });

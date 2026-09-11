@@ -11,6 +11,7 @@ export type Plan = {
   label: string;
   version: number;
   updated_at: string;
+  departure_minute?: number | null;
 };
 export type DeletedPlan = Pick<Plan, "id" | "service_date" | "label"> & {
   shipments: number;
@@ -28,7 +29,7 @@ export function serviceDate(value: unknown) {
 }
 export async function listPlans(pool: Pool): Promise<Plan[]> {
   const { rows } = await pool.query(
-    "SELECT id,service_date::text,label,version,updated_at FROM route_plans ORDER BY service_date DESC LIMIT 100",
+    "SELECT id,service_date::text,label,version,updated_at,departure_minute FROM route_plans ORDER BY service_date DESC LIMIT 100",
   );
   return rows;
 }
@@ -43,7 +44,7 @@ export async function createPlan(
     await assertActiveActor(client, actor);
     const result = await client.query(
       `INSERT INTO route_plans(id,service_date,label,created_by,updated_by) VALUES($1,$2,$3,$4,$4)
-      ON CONFLICT(service_date) DO NOTHING RETURNING id,service_date::text,label,version,updated_at`,
+      ON CONFLICT(service_date) DO NOTHING RETURNING id,service_date::text,label,version,updated_at,departure_minute`,
       [randomUUID(), date, label, actor],
     );
     if (result.rowCount) {
@@ -51,7 +52,7 @@ export async function createPlan(
       return result.rows[0];
     }
     const existing = await client.query(
-      "SELECT id,service_date::text,label,version,updated_at FROM route_plans WHERE service_date=$1",
+      "SELECT id,service_date::text,label,version,updated_at,departure_minute FROM route_plans WHERE service_date=$1",
       [date],
     );
     return existing.rows[0];
@@ -77,7 +78,7 @@ export async function editPlan(
     )
       throw new AppError("VERSION_CONFLICT", 409);
     const result = await client.query(
-      "UPDATE route_plans SET label=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$1 RETURNING id,service_date::text,label,version,updated_at",
+      "UPDATE route_plans SET label=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$1 RETURNING id,service_date::text,label,version,updated_at,departure_minute",
       [id, label, actor],
     );
     await audit(client, actor, "plan.updated", id, {

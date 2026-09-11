@@ -1,5 +1,17 @@
 # Progreso — bloque 1
 
+## Bloque 5B — recálculo automático y OpenAI
+
+Especificación: BLOQUE-5B-RECALCULO-IA.md. Reglas confirmadas por el usuario: OpenAI,
+hora de salida configurable por administrador y Alta→Media→Por horario obligatorio.
+
+- [x] R-T01 (BL-032 / R01-03): hora de salida por plan, migración aditiva, API versionada y formulario 24 h.
+- [x] R-T02 (BL-033 / R04-07, R09): recálculo durable después de ediciones, invalidación de puntos y compare-and-swap.
+- [x] R-T03 (BL-034 / R04-08): recorrido manual conservado, ETA/conflictos y métricas por camioneta.
+- [x] R-T04 (BL-035 / R10-13): planificador OpenAI con tools nativas, recuperación y credenciales runtime.
+- [x] R-T05 (BL-036 / R14): evaluación de alternativas por espera, tiempo, distancia y paradas con prioridad obligatoria.
+- [x] R-T06 (R01-14): puertas locales, PostgreSQL real, contratos de proveedores, E2E, cobertura y mutación verdes. Evidencia en `QA-BLOQUE-5B-RECALCULO-IA.md`; el smoke facturable OpenAI/Google posterior al despliegue permanece explícitamente pendiente.
+
 ## Bloque 5 autorizado — optimización vial Google
 
 - [x] O-T01 (BL-026 / S32-33): migración v6 y configuración versionada del punto de salida, con sugerencia runtime y confirmación visual.

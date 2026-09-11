@@ -1,5 +1,11 @@
 # Bloque 1 — especificación y auditoría previa
 
+Extensión 5B: BL-032..036 y R01..14 en BLOQUE-5B-RECALCULO-IA.md sustituyen
+la obsolescencia manual S39 por recálculo automático conservando el orden, y la salida
+libre por horario configurado por plan. OpenAI fue seleccionado por el usuario;
+la precedencia Alta→Media→Por horario continúa obligatoria y cada camioneta vuelve
+al punto de salida con el regreso incluido en tiempo, distancia y mapa.
+
 ## Límites
 
 Extensión autorizada 3A: BL-011..014/O01..14, contratos y migración v3 en
@@ -181,27 +187,27 @@ por transición; aplicación versionada y resultado obsoleto tras edición manua
 | --- | ---------------------------------------- | ------------------- | -------------------- | ------------------------------------------ | --------------------------------------------- |
 | S32 | Admin, Maps activo, salida sin confirmar | Abre configuración  | Runtime + settings   | Dirección sugerida, ningún punto inventado | Puede cerrar sin escritura                    |
 | S33 | Admin con salida vigente                 | Confirma otro punto | Settings/auditoría   | Versión y liga regeneradas                 | 409 conserva edición ajena                    |
-| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | Snapshot→Google→DB   | Asignación, orden y métricas atómicas      | Google falla: cero cambio de plan             |
+| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | OpenAI tools→Google→DB | Mejor candidato factible aplicado atómicamente | Servicio externo falla: cero cambio        |
 | S35 | Ventanas/prioridades mezcladas           | Resolver modelo     | Route Optimization   | Ventanas duras y precedencia por nivel     | Incompatibilidad visible, no relajada         |
 | S36 | Otro admin cambia el plan durante Google | Aplicar respuesta   | Lock/version         | 409; resultado no aplicado                 | Actualizar y decidir de nuevo                 |
 | S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments | Pedido Sin asignar con razón               | Corregir punto/ventana y reintentar           |
 | S38 | Ruta vigente                             | Ver mapa            | Run vigente          | Recorrido, ETA, km y duración reales       | Sin run vigente muestra puntos, no ruta falsa |
-| S39 | Ruta vigente                             | Movimiento manual   | Plan/version         | Resultado queda obsoleto                   | Reoptimizar antes de publicar/navegar         |
+| S39 | Ruta vigente                             | Movimiento manual   | Plan/job/version     | Conserva acomodo y recalcula calles/ETA    | Reintento durable sin redistribución          |
 | S40 | Origen incompleto o ambiguo              | Ubicar domicilio    | Google Geocoder      | Referencia visible; confirmar bloqueado    | Completar dirección o marcar punto exacto     |
 
 ### Data Flow
 
-El servidor obtiene configuración y snapshot desde PostgreSQL; construye el modelo con
-identidades internas; obtiene OAuth desde una cuenta de servicio codificada en entorno;
-llama al host fijo de Google; valida índices, labels, métricas y cobertura; vuelve a
-bloquear el plan y aplica sólo si la versión coincide. El navegador recibe un contrato
-sanitizado. Los route tokens permanecen guardados para el endpoint de conductor futuro.
+El servidor obtiene configuración y snapshot desde PostgreSQL. OpenAI sólo recibe
+identidades opacas, coordenadas, ventanas y prioridades mediante tools nativas; Google
+mide los candidatos por vialidad real. El servidor valida cobertura, orden, prioridad,
+ventanas y versión, y sólo entonces aplica. El navegador recibe un contrato sanitizado;
+los route tokens permanecen privados para el endpoint de conductor futuro.
 
 ### Tables / APIs / Tools
 
-Migración v6 y endpoints definidos en `BLOQUE-5-OPTIMIZACION.md`. Google Route
-Optimization es la fuente de asignación vial, métricas y polilíneas; Routes API queda
-disponible para refresco de recorridos y navegación en el siguiente contrato Android.
+Migración v7 y contratos definidos en `BLOQUE-5B-RECALCULO-IA.md`. OpenAI orquesta la
+distribución, Route Optimization aporta una propuesta base y Routes API evalúa y
+recalcula cada tramo, incluido el regreso a bodega.
 
 ### Permissions / Tenant Boundaries
 
