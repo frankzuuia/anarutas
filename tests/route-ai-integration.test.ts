@@ -348,6 +348,7 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
                 totalDuration: "0s",
               },
             },
+            { vehicleIndex: 1 },
           ],
           metrics: {
             aggregatedRouteMetrics: {

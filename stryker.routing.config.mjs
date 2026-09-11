@@ -7,7 +7,7 @@ const config = {
     ".next/**",
   ],
   mutate: [
-    "src/core/route-optimization-google.ts:70-395",
+    "src/core/route-optimization-google.ts:70-437",
     "src/core/routing-validation.ts",
     "src/core/geocode-quality.ts",
   ],

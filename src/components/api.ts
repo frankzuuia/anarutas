@@ -123,7 +123,7 @@ export const errors: Record<string, string> = {
   ROUTING_MODEL_REJECTED:
     "Las ventanas y prioridades no producen una ruta válida. Revisa los pedidos señalados.",
   ROUTING_RESPONSE_INVALID:
-    "Google devolvió una propuesta incompleta. El borrador no fue modificado.",
+    "No se pudo interpretar la respuesta de Google. El borrador no fue modificado; el diagnóstico quedó registrado.",
   ROUTING_MODEL_INVALID:
     "Los datos del plan no permiten construir una ruta válida. Revisa fecha, horarios y puntos.",
 };

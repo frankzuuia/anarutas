@@ -11,6 +11,7 @@ hora de salida configurable por administrador y Alta→Media→Por horario oblig
 - [x] R-T04 (BL-035 / R10-13): planificador OpenAI con tools nativas, recuperación y credenciales runtime.
 - [x] R-T05 (BL-036 / R14): evaluación de alternativas por espera, tiempo, distancia y paradas con prioridad obligatoria.
 - [x] R-T06 (R01-14): puertas locales, PostgreSQL real, contratos de proveedores, E2E, cobertura y mutación verdes. Evidencia en `QA-BLOQUE-5B-RECALCULO-IA.md`; el smoke facturable OpenAI/Google posterior al despliegue permanece explícitamente pendiente.
+- [x] R-T07: regresión ROUTING_RESPONSE_INVALID por listas ProtoJSON omitidas en camionetas vacías; normalización, diagnóstico por campo y continuidad del flujo OpenAI. 242 pruebas, 486 mutantes detectados, build/E2E verdes. Evidencia en `QA-FIX-GOOGLE-PROTOJSON.md`.
 
 ## Bloque 5 autorizado — optimización vial Google
 

@@ -259,15 +259,19 @@ function responseRecord(value: unknown) {
   return value as Record<string, unknown>;
 }
 
-function metrics(value: unknown): RouteMetrics {
-  const item = responseRecord(value);
-  return {
-    travelDistanceMeters: integer(item.travelDistanceMeters ?? 0),
-    travelDurationSeconds: duration(item.travelDuration ?? "0s"),
-    waitDurationSeconds: duration(item.waitDuration ?? "0s"),
-    totalDurationSeconds: duration(item.totalDuration ?? "0s"),
-    performedShipmentCount: integer(item.performedShipmentCount ?? 0),
-  };
+function metrics(value: unknown, field: string): RouteMetrics {
+  try {
+    const item = responseRecord(value);
+    return {
+      travelDistanceMeters: integer(item.travelDistanceMeters ?? 0),
+      travelDurationSeconds: duration(item.travelDuration ?? "0s"),
+      waitDurationSeconds: duration(item.waitDuration ?? "0s"),
+      totalDurationSeconds: duration(item.totalDuration ?? "0s"),
+      performedShipmentCount: integer(item.performedShipmentCount ?? 0),
+    };
+  } catch {
+    throw new AppError("ROUTING_RESPONSE_INVALID", 503, { field });
+  }
 }
 
 const skippedReasonCodes = new Set([
@@ -292,25 +296,33 @@ export function parseGoogleOptimizationResponse(
 ): GoogleOptimizationResult {
   const root = responseRecord(value);
   if (
-    !Array.isArray(root.routes) ||
+    (root.routes != null && !Array.isArray(root.routes)) ||
     (root.skippedShipments !== undefined &&
       !Array.isArray(root.skippedShipments))
   )
-    throw new AppError("ROUTING_RESPONSE_INVALID", 503);
+    throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
+      field: "routes/skippedShipments",
+    });
   const seenShipments = new Set<number>();
   const seenVehicles = new Set<number>();
-  const routes = root.routes.map((raw) => {
+  const routes = (root.routes ?? []).map((raw: unknown) => {
     const route = responseRecord(raw);
     const vehicleIndex = integer(route.vehicleIndex ?? 0);
     if (vehicleIndex >= vehicleCount || seenVehicles.has(vehicleIndex))
       throw new AppError("ROUTING_RESPONSE_INVALID", 503);
     seenVehicles.add(vehicleIndex);
-    if (!Array.isArray(route.visits) || !Array.isArray(route.transitions))
-      throw new AppError("ROUTING_RESPONSE_INVALID", 503);
-    const routeTransitions = route.transitions;
-    if (routeTransitions.length < route.visits.length)
-      throw new AppError("ROUTING_RESPONSE_INVALID", 503);
-    const visits = route.visits.map((rawVisit, index) => {
+    // ProtoJSON omits empty repeated fields, notably for unused vehicles.
+    const routeVisits = route.visits ?? [];
+    const routeTransitions = route.transitions ?? [];
+    if (!Array.isArray(routeVisits) || !Array.isArray(routeTransitions))
+      throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
+        field: "route.visits/transitions",
+      });
+    if (routeTransitions.length < routeVisits.length)
+      throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
+        field: "route.transitions.count",
+      });
+    const visits = routeVisits.map((rawVisit, index) => {
       const visit = responseRecord(rawVisit);
       const shipmentIndex = integer(visit.shipmentIndex ?? 0);
       if (
@@ -347,7 +359,10 @@ export function parseGoogleOptimizationResponse(
       };
     });
     const polyline = route.routePolyline as Record<string, unknown> | undefined;
-    const routeMetrics = metrics(route.metrics);
+    const routeMetrics = metrics(
+      route.metrics === undefined && visits.length === 0 ? {} : route.metrics,
+      "route.metrics",
+    );
     for (const time of [route.vehicleStartTime, route.vehicleEndTime])
       if (
         time !== undefined &&
@@ -355,7 +370,9 @@ export function parseGoogleOptimizationResponse(
       )
         throw new AppError("ROUTING_RESPONSE_INVALID", 503);
     if (routeMetrics.performedShipmentCount !== visits.length)
-      throw new AppError("ROUTING_RESPONSE_INVALID", 503);
+      throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
+        field: "route.metrics.performedShipmentCount",
+      });
     return {
       vehicleIndex,
       departureAt:
@@ -395,17 +412,22 @@ export function parseGoogleOptimizationResponse(
     };
   });
   if (seenShipments.size !== shipmentCount)
-    throw new AppError("ROUTING_RESPONSE_INVALID", 503);
+    throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
+      field: "shipments.coverage",
+    });
   const aggregated = metrics(
     root.metrics &&
       (root.metrics as Record<string, unknown>).aggregatedRouteMetrics,
+    "metrics.aggregatedRouteMetrics",
   );
   const performed = routes.reduce(
     (count, route) => count + route.visits.length,
     0,
   );
   if (aggregated.performedShipmentCount !== performed)
-    throw new AppError("ROUTING_RESPONSE_INVALID", 503);
+    throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
+      field: "metrics.performedShipmentCount",
+    });
   return {
     routes,
     skipped,

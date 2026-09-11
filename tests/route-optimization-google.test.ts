@@ -618,6 +618,116 @@ describe("Google Route Optimization contract", () => {
       ).toEqual(["UNSPECIFIED"]);
   });
 
+  it.each([
+    { vehicleIndex: 1 },
+    { vehicleIndex: 1, visits: [], metrics: {} },
+    { vehicleIndex: 1, transitions: [] },
+    { vehicleIndex: 1, visits: null, transitions: null },
+  ])(
+    "accepts a ProtoJSON unused vehicle without losing shipment coverage: %j",
+    (unused) => {
+      const routes = [
+        {
+          visits: Array.from({ length: 7 }, (_, shipmentIndex) => ({
+            shipmentIndex,
+            startTime: "2026-09-11T15:00:00Z",
+          })),
+          transitions: Array.from({ length: 8 }, () => ({})),
+          metrics: { performedShipmentCount: 7 },
+        },
+        unused,
+      ];
+      const response = {
+        routes,
+        metrics: { aggregatedRouteMetrics: { performedShipmentCount: 7 } },
+      };
+      const parsed = parseGoogleOptimizationResponse(response, 7, 2);
+      expect(parsed.routes[1]).toMatchObject({
+        vehicleIndex: 1,
+        visits: [],
+        transitions: [],
+        metrics: { performedShipmentCount: 0, totalDurationSeconds: 0 },
+      });
+      expect(
+        parsed.routes[0].visits.map((visit) => visit.shipmentIndex),
+      ).toEqual([0, 1, 2, 3, 4, 5, 6]);
+      expect(() => parseGoogleOptimizationResponse(response, 8, 2)).toThrow(
+        "ROUTING_RESPONSE_INVALID",
+      );
+    },
+  );
+
+  it("accepts omitted empty routes only with complete skipped coverage and valid aggregate metrics", () => {
+    const response = {
+      skippedShipments: [{}],
+      metrics: { aggregatedRouteMetrics: {} },
+    };
+    expect(parseGoogleOptimizationResponse(response, 1, 2)).toMatchObject({
+      routes: [],
+      skipped: [{ shipmentIndex: 0 }],
+      metrics: { performedShipmentCount: 0 },
+    });
+    expect(() => parseGoogleOptimizationResponse(response, 2, 2)).toThrow(
+      "ROUTING_RESPONSE_INVALID",
+    );
+  });
+
+  it("identifies the rejected field without including provider contents", () => {
+    const response = {
+      routes: [
+        {
+          visits: [{ startTime: "2026-09-11T15:00:00Z" }],
+          transitions: [{}],
+          metrics: { performedShipmentCount: 1 },
+        },
+      ],
+      metrics: { aggregatedRouteMetrics: { performedShipmentCount: 1 } },
+    };
+    const check = (value: unknown, field: string) => {
+      let failure: unknown;
+      try {
+        parseGoogleOptimizationResponse(value, 1, 2);
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toMatchObject({
+        code: "ROUTING_RESPONSE_INVALID",
+        details: { field },
+      });
+    };
+    check(
+      { ...response, routes: "PRIVATE_RESPONSE" },
+      "routes/skippedShipments",
+    );
+    check(
+      { ...response, routes: [{ ...response.routes[0], transitions: [] }] },
+      "route.transitions.count",
+    );
+    check(
+      { ...response, routes: [{ ...response.routes[0], visits: {} }] },
+      "route.visits/transitions",
+    );
+    check(
+      { ...response, routes: [{ ...response.routes[0], metrics: undefined }] },
+      "route.metrics",
+    );
+    check(
+      {
+        ...response,
+        routes: [
+          { ...response.routes[0], metrics: { performedShipmentCount: 0 } },
+        ],
+      },
+      "route.metrics.performedShipmentCount",
+    );
+    check({ ...response, routes: [] }, "shipments.coverage");
+    check({ ...response, metrics: {} }, "metrics.aggregatedRouteMetrics");
+    check(
+      { ...response, metrics: { aggregatedRouteMetrics: {} } },
+      "metrics.performedShipmentCount",
+    );
+  });
+
   it("rejects duplicate, missing and out-of-range shipment coverage", () => {
     expect(() =>
       parseGoogleOptimizationResponse(

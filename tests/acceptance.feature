@@ -387,6 +387,13 @@ Feature: Ana Rutas independiente y portable
     Then el servidor rechaza IDs ajenos, omisiones, duplicados y orden de prioridad inverso
     And sólo confirma el candidato vial factible de menor score ya evaluado
 
+  Scenario: Google omite las listas de una camioneta sin entregas
+    Given Google propone siete entregas en una camioneta y devuelve otra sin listas de visitas
+    When Ana Rutas interpreta la respuesta ProtoJSON
+    Then conserva las siete entregas y reconoce la segunda camioneta como vacía
+    And OpenAI continúa la evaluación de alternativas sujetas a prioridades y cobertura completa
+    And una respuesta con pedidos realmente ausentes se rechaza con diagnóstico del campo
+
   Scenario: Configurar y auditar el razonamiento del planificador
     Given EasyPanel configura un nivel de razonamiento compatible con el modelo OpenAI
     When el administrador arma una ruta

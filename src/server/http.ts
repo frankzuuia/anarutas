@@ -51,6 +51,10 @@ export async function endpoint(action: () => Promise<NextResponse>) {
         status,
         code,
         durationMs: Math.round(performance.now() - started),
+        routingField:
+          error instanceof AppError && error.code === "ROUTING_RESPONSE_INVALID"
+            ? error.details?.field
+            : undefined,
       }),
     );
     return json(
