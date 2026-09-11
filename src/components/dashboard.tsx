@@ -14,6 +14,7 @@ import {
   Menu,
   Trash2,
   Building2,
+  Gauge,
 } from "lucide-react";
 import type { User } from "@/core/auth";
 import type { DeletedPlan, Plan } from "@/core/plans";
@@ -24,9 +25,16 @@ import { OrdersBoard } from "./orders-board";
 import { CreatePlanDialog } from "./create-plan-dialog";
 import { DeletePlanDialog } from "./delete-plan-dialog";
 import { CustomerPanel } from "./customer-panel";
+import { GoogleConsumptionPanel } from "./google-consumption-panel";
 
 type Section =
-  "plans" | "vehicles" | "drivers" | "customers" | "users" | "audit";
+  | "plans"
+  | "vehicles"
+  | "drivers"
+  | "customers"
+  | "users"
+  | "audit"
+  | "consumption";
 const sections = [
   { id: "plans" as const, label: "Planificar rutas", icon: Route },
   { id: "vehicles" as const, label: "Camionetas", icon: Truck },
@@ -38,6 +46,7 @@ const sections = [
   },
   { id: "users" as const, label: "Usuarios y accesos", icon: Users },
   { id: "audit" as const, label: "Auditoría", icon: History },
+  { id: "consumption" as const, label: "Control de consumo", icon: Gauge },
 ];
 type AuditRow = {
   id: string;
@@ -73,6 +82,9 @@ const events: Record<string, string> = {
   "customer.restored": "Restauró un cliente",
   "routing.settings.updated": "Actualizó el punto de salida",
   "plan.optimized": "Armó una ruta optimizada",
+  "google.consumption.sync.requested": "Solicitó el consumo de Google",
+  "google.consumption.synced": "Actualizó el consumo desde Google",
+  "google.consumption.sync.failed": "Google no pudo actualizar el consumo",
 };
 
 export function Dashboard({
@@ -93,6 +105,7 @@ export function Dashboard({
   const [fleetRevision, setFleetRevision] = useState(0);
   const [boardRevision, setBoardRevision] = useState(0);
   const [customerRevision, setCustomerRevision] = useState(0);
+  const [consumptionRevision, setConsumptionRevision] = useState(0);
   const [plans, setPlans] = useState<Plan[]>([]),
     [users, setUsers] = useState<User[]>([]),
     [audit, setAudit] = useState<AuditRow[]>([]);
@@ -116,6 +129,8 @@ export function Dashboard({
       if (section === "customers") setCustomerRevision((value) => value + 1);
       if (section === "users") setUsers(await api<User[]>("/api/users"));
       if (section === "audit") setAudit(await api<AuditRow[]>("/api/audit"));
+      if (section === "consumption")
+        setConsumptionRevision((value) => value + 1);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -146,6 +161,7 @@ export function Dashboard({
           if (current) setAudit(data);
         }),
       customers: () => Promise.resolve(),
+      consumption: () => Promise.resolve(),
     };
     void requests[section]().catch(fail).finally(done);
     return () => {
@@ -319,7 +335,9 @@ export function Dashboard({
                         ? "Directorio operativo, ventanas de entrega y puntos por sucursal. Odoo permanece en sólo lectura."
                         : section === "users"
                           ? "Una cuenta por persona. Todos administran únicamente Ana Rutas."
-                          : "Actividad registrada con su autor y fecha."}
+                          : section === "audit"
+                            ? "Actividad registrada con su autor y fecha."
+                            : "Métricas y cargos reales publicados por Google Cloud Billing, sin estimaciones internas."}
                 </p>
               </div>
               <button
@@ -357,6 +375,12 @@ export function Dashboard({
           )}
           {section === "customers" && (
             <CustomerPanel revision={customerRevision} />
+          )}
+          {section === "consumption" && (
+            <GoogleConsumptionPanel
+              revision={consumptionRevision}
+              timezone={timezone}
+            />
           )}
           {section === "plans" && (
             <div className="planner-grid">

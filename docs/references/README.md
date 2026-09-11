@@ -8,5 +8,10 @@
 - Odoo external API: https://www.odoo.com/documentation/17.0/developer/reference/external_api.html (verificar versión desplegada en diagnóstico; no asumir versión por la documentación).
 - PostgreSQL transactions/locks: https://www.postgresql.org/docs/current/explicit-locking.html
 - PostgreSQL local real para QA: https://github.com/leinelissen/embedded-postgres (dependencia de desarrollo, no producción; sin createPostgresUser).
+- Cloud Billing Standard export: https://cloud.google.com/billing/docs/how-to/export-data-bigquery-tables/standard-usage
+- Cloud Billing Pricing export: https://cloud.google.com/billing/docs/how-to/export-data-bigquery-tables/pricing-data
+- BigQuery jobs.query: https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query
+- BigQuery IAM: https://cloud.google.com/bigquery/docs/access-control
+- Route Optimization usage and billing: https://developers.google.com/maps/documentation/route-optimization/usage-and-billing
 
 Decisiones: el env privado se lee al atender solicitudes/arranque, nunca NEXT_PUBLIC ni next.config.env. API key Odoo tiene permisos de su usuario, no un modo mágico read-only. SQL y permisos permanecen en servidor, no quedan a criterio de un LLM.

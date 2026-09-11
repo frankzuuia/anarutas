@@ -401,3 +401,31 @@ Feature: Ana Rutas independiente y portable
     And la auditoría registra modelo y nivel sin exponer la clave privada
     When el nivel configurado no pertenece al contrato oficial admitido
     Then el planificador falla cerrado antes de enviar datos a OpenAI
+
+  Scenario: Mostrar únicamente consumo oficial de Google
+    Given Cloud Billing exporta Standard usage cost y Pricing data al dataset configurado
+    When el actualizador de Ana Rutas consulta BigQuery
+    Then filtra únicamente el proyecto Google Maps de esta instalación
+    And muestra uso, cuota, restante, costo bruto, créditos y costo neto de los SKUs publicados
+    And registra la hora del último corte de Google y de la tabla de precios
+    And no calcula consumo a partir de clics, pedidos o movimientos internos
+
+  Scenario: Acumular por periodo sin duplicar sincronizaciones
+    Given Google publicó varios días y meses de uso para el mismo SKU
+    When dos réplicas intentan actualizar el control simultáneamente
+    Then una sola obtiene el arrendamiento y consulta BigQuery
+    And los días forman el histórico y el mes vigente agrega cada movimiento una sola vez
+    And la nueva fotografía reemplaza a la anterior en lugar de sumarse sobre ella
+
+  Scenario: Conservar el último corte ante retraso o caída de Google
+    Given existe una fotografía oficial guardada
+    When BigQuery no responde o devuelve un contrato incompleto
+    Then Ana Rutas conserva intacta la última fotografía válida
+    And muestra que el dato está atrasado junto con la fecha de su corte
+    And no expone credenciales, consultas ni detalles privados del proveedor
+
+  Scenario: No fingir consumo cuando la integración no está configurada
+    Given las exportaciones FinOps todavía no están configuradas en EasyPanel
+    When el administrador abre Control de consumo
+    Then ve los requisitos de integración y no una cifra de cero pesos
+    And un visitante sin sesión no puede leer ni solicitar la sincronización

@@ -30,6 +30,12 @@ No usar el workflow de despliegue de `five`. No copiar su Postgres/Redis, usuari
 
 Configurar URL, base, usuario, clave y empresa de CADA instalación en su servicio de rutas. Crear cuenta de integración con permisos mínimos de lectura para producción. La API key hereda permisos del usuario; el adaptador además sólo implementa consultas cerradas. Cambiar URL/base/empresa produce un fingerprint distinto para el futuro aislamiento de caché. No se actualiza ningún campo de Odoo en este bloque.
 
+### Control de consumo Google
+
+El panel consulta datos reales de Cloud Billing; no estima llamadas a partir de clics internos. Habilitar en la cuenta de facturación las exportaciones **Standard usage cost** y **Pricing data** hacia un mismo dataset BigQuery, habilitar BigQuery API y crear una cuenta de servicio FinOps dedicada. Conceder `roles/bigquery.jobUser` en el proyecto que ejecuta la consulta y `roles/bigquery.dataViewer` únicamente sobre el dataset exportado. Después, configurar las seis variables `RUTAS_GOOGLE_*` del bloque FinOps de `.env.example`. El JSON de la cuenta se guarda codificado en base64 como secreto privado; nunca se pega en el chat ni se expone al navegador.
+
+Google actualiza esas exportaciones con retraso, por lo que la pantalla muestra la hora oficial del último dato. Ana Rutas reemplaza su caché PostgreSQL en cada sincronización y conserva el último corte confirmado si BigQuery falla.
+
 ## QA reproducible
 
 `npm run typecheck`, `npm run lint`, `npm run test:coverage`, `npm run test:mutation`, `npm run build`, `npm run test:e2e`, `npm audit`.

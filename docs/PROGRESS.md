@@ -1,5 +1,19 @@
 # Progreso — bloque 1
 
+## Bloque 5C — control de consumo oficial de Google
+
+Especificación: `BLOQUE-5C-CONSUMO-GOOGLE.md`. Sólo sección lateral; sin tarjeta ni
+consultas de consumo en el mapa. Google Billing/BigQuery es la autoridad y PostgreSQL
+únicamente cachea resultados sustituibles.
+
+- [x] G-T01 (BL-037..039 / G01-09): configuración FinOps separada, OAuth, descubrimiento seguro de exports y cliente BigQuery acotado.
+- [x] G-T02 (BL-037..038 / G03, G05, G07-08): query parametrizado, parser estricto, agregado por SKU/ciclo y escalones derivados de Pricing export.
+- [x] G-T03 (BL-038..039 / G04-06, G09): migración v8, cache idempotente, lease, backoff, sincronización periódica/manual y auditoría sanitaria.
+- [x] G-T04 (BL-039..040 / G01-02, G06, G09): API autenticada GET/POST, privacidad, frescura y estados configurado/desactualizado/error.
+- [x] G-T05 (BL-040 / G01, G06-10): navegación y pantalla responsive con costo, créditos, historial y medidores independientes; mapa intacto.
+- [x] G-T06 (todas / G01-10): 293 pruebas, PostgreSQL real, Gherkin, E2E, seguridad, 90.40% statements, 93.80% mutación, lint, typecheck y build verdes. Evidencia en `QA-BLOQUE-5C-CONSUMO-GOOGLE.md`.
+- [ ] G-T07: configurar Standard + Pricing export e IAM en develop; smoke oficial y evidencia antes de promoción.
+
 ## Bloque 5B — recálculo automático y OpenAI
 
 Especificación: BLOQUE-5B-RECALCULO-IA.md. Reglas confirmadas por el usuario: OpenAI,

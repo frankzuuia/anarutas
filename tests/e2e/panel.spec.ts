@@ -47,6 +47,10 @@ async function startApp() {
         ODOO_API_KEY: "",
         ODOO_PASSWORD: "",
         ODOO_COMPANY_ID: "",
+        RUTAS_GOOGLE_FINOPS_SERVICE_ACCOUNT_JSON_BASE64: "",
+        RUTAS_GOOGLE_BILLING_EXPORT_PROJECT_ID: "",
+        RUTAS_GOOGLE_BILLING_EXPORT_DATASET_ID: "",
+        RUTAS_GOOGLE_BILLING_EXPORT_LOCATION: "",
       },
     },
   );
@@ -112,6 +116,9 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     (await first.request.get(`${origin}/api/customers/export`)).status(),
   ).toBe(401);
   expect(
+    (await first.request.get(`${origin}/api/google-consumption`)).status(),
+  ).toBe(401);
+  expect(
     (
       await first.request.get(
         `${origin}/api/plans/00000000-0000-0000-0000-000000000000/export`,
@@ -158,6 +165,28 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(
     page.getByRole("heading", { name: "Planificar rutas", exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Control de consumo", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Control de consumo", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Configuración pendiente")).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Conecta Cloud Billing con BigQuery",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("$0", { exact: false })).toHaveCount(0);
+  await mkdir("reports/screenshots", { recursive: true });
+  await page.screenshot({
+    path: "reports/screenshots/google-consumption-unconfigured.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Planificar rutas", exact: true })
+    .click();
   const cookie = (await first.cookies()).find(
     (c) => c.name === "ana-rutas-local",
   );

@@ -1,4 +1,20 @@
 export const errors: Record<string, string> = {
+  GOOGLE_CONSUMPTION_CONFIG_MISSING:
+    "Falta configurar la integración privada de Cloud Billing y BigQuery.",
+  GOOGLE_CONSUMPTION_CONFIG_INVALID:
+    "La configuración privada del control de consumo no es válida.",
+  GOOGLE_CONSUMPTION_DENIED:
+    "Google rechazó la cuenta FinOps. Revisa sus permisos de BigQuery.",
+  GOOGLE_CONSUMPTION_EXPORT_MISSING:
+    "No se encontraron juntas las exportaciones Standard y Pricing de Cloud Billing.",
+  GOOGLE_CONSUMPTION_QUOTA:
+    "BigQuery rechazó temporalmente la consulta por cuota. Se conserva el último corte.",
+  GOOGLE_CONSUMPTION_RESPONSE_INVALID:
+    "Google devolvió un corte de consumo incompleto. Se conserva el último dato válido.",
+  GOOGLE_CONSUMPTION_CACHE_INVALID:
+    "El último corte guardado no pasó la validación de integridad.",
+  GOOGLE_CONSUMPTION_UNAVAILABLE:
+    "Google no pudo actualizar el consumo. Se conserva el último corte oficial.",
   ROUTING_AI_CONFIG_MISSING:
     "Falta configurar la clave privada y el modelo de OpenAI para armar rutas.",
   ROUTING_AI_CONFIG_INVALID: "La configuración privada de OpenAI no es válida.",

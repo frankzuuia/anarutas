@@ -183,17 +183,17 @@ por transición; aplicación versionada y resultado obsoleto tras edición manua
 
 ### Scenario Matrix
 
-| ID  | Actor / precondición                     | Disparador          | Lectura/escritura    | Resultado                                  | Fallo y recuperación                          |
-| --- | ---------------------------------------- | ------------------- | -------------------- | ------------------------------------------ | --------------------------------------------- |
-| S32 | Admin, Maps activo, salida sin confirmar | Abre configuración  | Runtime + settings   | Dirección sugerida, ningún punto inventado | Puede cerrar sin escritura                    |
-| S33 | Admin con salida vigente                 | Confirma otro punto | Settings/auditoría   | Versión y liga regeneradas                 | 409 conserva edición ajena                    |
-| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | OpenAI tools→Google→DB | Mejor candidato factible aplicado atómicamente | Servicio externo falla: cero cambio        |
-| S35 | Ventanas/prioridades mezcladas           | Resolver modelo     | Route Optimization   | Ventanas duras y precedencia por nivel     | Incompatibilidad visible, no relajada         |
-| S36 | Otro admin cambia el plan durante Google | Aplicar respuesta   | Lock/version         | 409; resultado no aplicado                 | Actualizar y decidir de nuevo                 |
-| S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments | Pedido Sin asignar con razón               | Corregir punto/ventana y reintentar           |
-| S38 | Ruta vigente                             | Ver mapa            | Run vigente          | Recorrido, ETA, km y duración reales       | Sin run vigente muestra puntos, no ruta falsa |
-| S39 | Ruta vigente                             | Movimiento manual   | Plan/job/version     | Conserva acomodo y recalcula calles/ETA    | Reintento durable sin redistribución          |
-| S40 | Origen incompleto o ambiguo              | Ubicar domicilio    | Google Geocoder      | Referencia visible; confirmar bloqueado    | Completar dirección o marcar punto exacto     |
+| ID  | Actor / precondición                     | Disparador          | Lectura/escritura      | Resultado                                      | Fallo y recuperación                          |
+| --- | ---------------------------------------- | ------------------- | ---------------------- | ---------------------------------------------- | --------------------------------------------- |
+| S32 | Admin, Maps activo, salida sin confirmar | Abre configuración  | Runtime + settings     | Dirección sugerida, ningún punto inventado     | Puede cerrar sin escritura                    |
+| S33 | Admin con salida vigente                 | Confirma otro punto | Settings/auditoría     | Versión y liga regeneradas                     | 409 conserva edición ajena                    |
+| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | OpenAI tools→Google→DB | Mejor candidato factible aplicado atómicamente | Servicio externo falla: cero cambio           |
+| S35 | Ventanas/prioridades mezcladas           | Resolver modelo     | Route Optimization     | Ventanas duras y precedencia por nivel         | Incompatibilidad visible, no relajada         |
+| S36 | Otro admin cambia el plan durante Google | Aplicar respuesta   | Lock/version           | 409; resultado no aplicado                     | Actualizar y decidir de nuevo                 |
+| S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments   | Pedido Sin asignar con razón                   | Corregir punto/ventana y reintentar           |
+| S38 | Ruta vigente                             | Ver mapa            | Run vigente            | Recorrido, ETA, km y duración reales           | Sin run vigente muestra puntos, no ruta falsa |
+| S39 | Ruta vigente                             | Movimiento manual   | Plan/job/version       | Conserva acomodo y recalcula calles/ETA        | Reintento durable sin redistribución          |
+| S40 | Origen incompleto o ambiguo              | Ubicar domicilio    | Google Geocoder        | Referencia visible; confirmar bloqueado        | Completar dirección o marcar punto exacto     |
 
 ### Data Flow
 
@@ -233,3 +233,13 @@ Los casos S32..S39, pruebas unitarias, integración PostgreSQL, contrato fetch, 
 cobertura y mutación son obligatorios. Veredicto forense: GREEN LIGHT. Auditoría
 incremental: INTEGRITY TOTAL; la migración es aditiva y no altera Odoo, clientes,
 flota ni borradores anteriores. MATCH PERFECT con tareas O-T01..O-T07 de PROGRESS.
+
+## Batch 7: BL-037 a BL-040 — control de consumo oficial de Google
+
+La especificación normativa, escenarios G01..G10, flujo, migración v8, API, IAM,
+seguridad, costo, calidad y referencias se encuentran en
+`BLOQUE-5C-CONSUMO-GOOGLE.md`. La fuente confirmada será Cloud Billing en BigQuery;
+PostgreSQL sólo cacheará snapshots reemplazables y jamás incrementará consumo.
+
+Veredicto forense: GREEN LIGHT. Auditoría incremental: INTEGRITY TOTAL. Correspondencia
+de construcción: MATCH PERFECT con G-T01..G-T07 de PROGRESS.

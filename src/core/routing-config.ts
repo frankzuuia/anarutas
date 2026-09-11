@@ -15,8 +15,11 @@ function required(env: Env, key: string) {
   return value;
 }
 
-function decodeServiceAccount(encoded: string): GoogleServiceAccount {
-  if (encoded.length > 65536) throw new AppError("ROUTING_CONFIG_INVALID", 503);
+export function decodeGoogleServiceAccount(
+  encoded: string,
+  errorCode = "ROUTING_CONFIG_INVALID",
+): GoogleServiceAccount {
+  if (encoded.length > 65536) throw new AppError(errorCode, 503);
   let parsed: unknown;
   try {
     const bytes = Buffer.from(encoded, "base64");
@@ -27,10 +30,10 @@ function decodeServiceAccount(encoded: string): GoogleServiceAccount {
       throw new Error("invalid base64");
     parsed = JSON.parse(bytes.toString("utf8"));
   } catch {
-    throw new AppError("ROUTING_CONFIG_INVALID", 503);
+    throw new AppError(errorCode, 503);
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-    throw new AppError("ROUTING_CONFIG_INVALID", 503);
+    throw new AppError(errorCode, 503);
   const value = parsed as Record<string, unknown>;
   if (
     value.type !== "service_account" ||
@@ -41,7 +44,7 @@ function decodeServiceAccount(encoded: string): GoogleServiceAccount {
     !value.private_key.includes("BEGIN PRIVATE KEY") ||
     value.token_uri !== "https://oauth2.googleapis.com/token"
   )
-    throw new AppError("ROUTING_CONFIG_INVALID", 503);
+    throw new AppError(errorCode, 503);
   return value as GoogleServiceAccount;
 }
 
@@ -58,7 +61,7 @@ export function readGoogleRoutingConfig(env: Env = process.env) {
     )
   )
     throw new AppError("ROUTING_CONFIG_INVALID", 503);
-  const credentials = decodeServiceAccount(
+  const credentials = decodeGoogleServiceAccount(
     required(env, "RUTAS_GOOGLE_SERVICE_ACCOUNT_JSON_BASE64"),
   );
   if (credentials.project_id !== projectId)
