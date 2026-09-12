@@ -25,6 +25,7 @@
     "test:mutation:routing": "stryker run stryker.routing.config.mjs",
     "test:mutation:routing-operations": "stryker run stryker.routing-operations.config.mjs",
     "test:mutation:google-consumption": "stryker run stryker.google-consumption.config.mjs",
+    "test:mutation:order-candidates": "stryker run stryker.order-candidates.config.mjs",
     "pretest:e2e": "npm run build",
     "test:e2e": "playwright test",
     "db:migrate": "tsx scripts/migrate.ts",

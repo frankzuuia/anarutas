@@ -107,7 +107,7 @@ describe("Google consumption persistence / real PostgreSQL", () => {
           "SELECT schema_version FROM rutas_installation WHERE singleton=true",
         )
       ).rows[0].schema_version,
-    ).toBe(8);
+    ).toBe(9);
     await expect(
       getGoogleConsumptionState(db.pool, {
         RUTAS_GOOGLE_CLOUD_PROJECT_ID: "ana-rutas-develop",

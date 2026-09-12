@@ -25,6 +25,12 @@ import { api } from "./api";
 import { RouteMapDialog } from "./route-map-dialog";
 import { RouteOriginDialog } from "./route-origin-dialog";
 import type { PublicOptimization } from "@/core/routing-contract";
+import type {
+  CandidateBatch,
+  CandidateSelection,
+  ConfirmationResult,
+} from "@/core/order-candidates-contract";
+import { OrderCandidatePicker } from "./order-candidate-picker";
 
 const minuteText = (value: number) =>
   `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
@@ -36,12 +42,21 @@ function LoadDialog({
   onClose,
   onSubmit,
   onManualSubmit,
+  onConfirm,
 }: {
   board: OrderBoard;
   timezone: string;
   busy: boolean;
   onClose: () => void;
-  onSubmit: (vehicleIds: string[], validationDate: string) => Promise<void>;
+  onSubmit: (
+    vehicleIds: string[],
+    validationDate: string,
+  ) => Promise<CandidateBatch>;
+  onConfirm: (
+    batch: CandidateBatch,
+    vehicleIds: string[],
+    selection: CandidateSelection,
+  ) => Promise<void>;
   onManualSubmit: (orderNames: string[]) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -56,6 +71,8 @@ function LoadDialog({
   const nextManualId = useRef(2);
   const [manualRows, setManualRows] = useState([{ id: 1, suffix: "" }]);
   const [operation, setOperation] = useState<"dated" | "manual" | null>(null);
+  const [batch, setBatch] = useState<CandidateBatch | null>(null);
+  const querying = useRef(false);
   useEffect(() => {
     const element = dialog.current;
     const previous = document.activeElement as HTMLElement;
@@ -78,14 +95,17 @@ function LoadDialog({
     };
   }, []);
   const submit = async () => {
+    if (querying.current) return;
+    querying.current = true;
     setError("");
     setOperation("dated");
     try {
-      await onSubmit(chosen, validationDate);
+      setBatch(await onSubmit(chosen, validationDate));
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setOperation(null);
+      querying.current = false;
     }
   };
   const submitManual = async () => {
@@ -114,7 +134,7 @@ function LoadDialog({
     manualRows.length > 0 && manualRows.every((row) => row.suffix.length > 0);
   return (
     <dialog
-      className="fleet-dialog"
+      className={`fleet-dialog ${batch ? "candidate-dialog" : ""}`}
       ref={dialog}
       aria-labelledby={title}
       onCancel={(e) => {
@@ -134,151 +154,176 @@ function LoadDialog({
         </button>
       </header>
       <div className="panel-body stack">
-        <p className="muted">
-          {loaded
-            ? `${vehicles.filter((v) => v.available).length} camionetas disponibles`
-            : "Consultando camionetas…"}{" "}
-          · Plan {board.plan.service_date}
-        </p>
-        {error && (
-          <p className="notice error" role="alert">
-            {error}
-          </p>
-        )}
-        <fieldset disabled={busy} className="vehicle-choice">
-          <legend>Camionetas del día</legend>
-          {vehicles.map((v) => (
-            <label className="vehicle-option" key={v.id}>
-              <input
-                type="checkbox"
-                checked={chosen.includes(v.id)}
-                disabled={!v.available && !chosen.includes(v.id)}
-                onChange={(e) =>
-                  setChosen(
-                    e.target.checked
-                      ? [...chosen, v.id]
-                      : chosen.filter((id) => id !== v.id),
-                  )
-                }
-              />
-              <span>
-                <strong>{v.name}</strong>
-                <small>
-                  {v.plate} · {v.driver_name || "Sin chofer asignado"}
-                </small>
-              </span>
-              <span className={`badge ${v.available ? "" : "amber"}`}>
-                {v.available ? "Disponible" : "No disponible"}
-              </span>
-            </label>
-          ))}
-          {loaded && !vehicles.length && (
+        {batch ? (
+          <OrderCandidatePicker
+            batch={batch}
+            timezone={timezone}
+            busy={busy}
+            onBack={() => {
+              setBatch(null);
+              setError("");
+            }}
+            onClose={onClose}
+            onConfirm={(selection) => onConfirm(batch, chosen, selection)}
+          />
+        ) : (
+          <>
             <p className="muted">
-              Registra una camioneta en Camionetas para cargar pedidos.
+              {loaded
+                ? `${vehicles.filter((v) => v.available).length} camionetas disponibles`
+                : "Consultando camionetas…"}{" "}
+              · Plan {board.plan.service_date}
             </p>
-          )}
-        </fieldset>
-        <fieldset disabled={busy} className="vehicle-choice">
-          <legend>Fecha de validación de pedidos</legend>
-          <label className="validation-date-field">
-            <span className="sr-only">Fecha de validación de pedidos</span>
-            <input
-              aria-label="Fecha de validación de pedidos"
-              type="date"
-              value={validationDate}
-              max={board.plan.service_date}
-              onChange={(e) => setValidationDate(e.target.value)}
-              required
-            />
-          </label>
-          <p className="muted">
-            {timezone} · La fecha seleccionada traerá los pedidos validados.
-          </p>
-        </fieldset>
-        <div className="order-actions">
-          <button
-            className="primary"
-            disabled={
-              busy ||
-              !loaded ||
-              !chosen.length ||
-              !validationDate ||
-              validationDate > board.plan.service_date
-            }
-            onClick={() => void submit()}
-          >
-            <Download size={16} />
-            {operation === "dated" ? "Cargando…" : "Cargar pedidos"}
-          </button>
-        </div>
-        <fieldset disabled={busy} className="vehicle-choice manual-order-box">
-          <legend>Cargar pedido manual fuera de fecha</legend>
-          <p className="muted">
-            Escribe los folios exactos. Sólo se cargarán surtidos validados de
-            la empresa configurada.
-          </p>
-          <div className="manual-order-list">
-            {manualRows.map((row, index) => (
-              <div className="manual-order-row" key={row.id}>
-                <label>
-                  <span className="sr-only">Folio del pedido {index + 1}</span>
-                  <span className="manual-order-input">
-                    <span className="manual-order-prefix" aria-hidden="true">
-                      S
-                    </span>
-                    <input
-                      aria-label={`Número del folio S, pedido ${index + 1}`}
-                      inputMode="numeric"
-                      maxLength={20}
-                      placeholder="00001"
-                      value={row.suffix}
-                      onChange={(event) =>
-                        updateManualRow(row.id, event.target.value)
-                      }
-                    />
+            {error && (
+              <p className="notice error" role="alert">
+                {error}
+              </p>
+            )}
+            <fieldset disabled={busy} className="vehicle-choice">
+              <legend>Camionetas del día</legend>
+              {vehicles.map((v) => (
+                <label className="vehicle-option" key={v.id}>
+                  <input
+                    type="checkbox"
+                    checked={chosen.includes(v.id)}
+                    disabled={!v.available && !chosen.includes(v.id)}
+                    onChange={(e) =>
+                      setChosen(
+                        e.target.checked
+                          ? [...chosen, v.id]
+                          : chosen.filter((id) => id !== v.id),
+                      )
+                    }
+                  />
+                  <span>
+                    <strong>{v.name}</strong>
+                    <small>
+                      {v.plate} · {v.driver_name || "Sin chofer asignado"}
+                    </small>
+                  </span>
+                  <span className={`badge ${v.available ? "" : "amber"}`}>
+                    {v.available ? "Disponible" : "No disponible"}
                   </span>
                 </label>
+              ))}
+              {loaded && !vehicles.length && (
+                <p className="muted">
+                  Registra una camioneta en Camionetas para cargar pedidos.
+                </p>
+              )}
+            </fieldset>
+            <fieldset disabled={busy} className="vehicle-choice">
+              <legend>Fecha de pedidos</legend>
+              <label className="validation-date-field">
+                <span className="sr-only">Fecha de pedidos</span>
+                <input
+                  aria-label="Fecha de pedidos"
+                  type="date"
+                  value={validationDate}
+                  max={board.plan.service_date}
+                  onChange={(e) => setValidationDate(e.target.value)}
+                  required
+                />
+              </label>
+              <p className="muted">
+                {timezone} · Validados por fecha de validación y pendientes por
+                fecha programada.
+              </p>
+            </fieldset>
+            <div className="order-actions">
+              <button
+                className="primary"
+                disabled={
+                  busy ||
+                  !loaded ||
+                  !chosen.length ||
+                  !validationDate ||
+                  validationDate > board.plan.service_date
+                }
+                onClick={() => void submit()}
+              >
+                <Download size={16} />
+                {operation === "dated" ? "Consultando…" : "Consultar pedidos"}
+              </button>
+            </div>
+            <fieldset
+              disabled={busy}
+              className="vehicle-choice manual-order-box"
+            >
+              <legend>Cargar pedido manual fuera de fecha</legend>
+              <p className="muted">
+                Escribe los folios exactos. Sólo se cargarán surtidos validados
+                de la empresa configurada.
+              </p>
+              <div className="manual-order-list">
+                {manualRows.map((row, index) => (
+                  <div className="manual-order-row" key={row.id}>
+                    <label>
+                      <span className="sr-only">
+                        Folio del pedido {index + 1}
+                      </span>
+                      <span className="manual-order-input">
+                        <span
+                          className="manual-order-prefix"
+                          aria-hidden="true"
+                        >
+                          S
+                        </span>
+                        <input
+                          aria-label={`Número del folio S, pedido ${index + 1}`}
+                          inputMode="numeric"
+                          maxLength={20}
+                          placeholder="00001"
+                          value={row.suffix}
+                          onChange={(event) =>
+                            updateManualRow(row.id, event.target.value)
+                          }
+                        />
+                      </span>
+                    </label>
+                    <button
+                      type="button"
+                      className="quiet manual-row-remove"
+                      aria-label={`Quitar folio ${index + 1}`}
+                      disabled={manualRows.length === 1}
+                      onClick={() =>
+                        setManualRows((rows) =>
+                          rows.filter((candidate) => candidate.id !== row.id),
+                        )
+                      }
+                    >
+                      <X size={15} aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="order-actions manual-order-actions">
                 <button
                   type="button"
-                  className="quiet manual-row-remove"
-                  aria-label={`Quitar folio ${index + 1}`}
-                  disabled={manualRows.length === 1}
+                  className="quiet"
+                  disabled={manualRows.length >= 50}
                   onClick={() =>
-                    setManualRows((rows) =>
-                      rows.filter((candidate) => candidate.id !== row.id),
-                    )
+                    setManualRows((rows) => [
+                      ...rows,
+                      { id: nextManualId.current++, suffix: "" },
+                    ])
                   }
                 >
-                  <X size={15} aria-hidden="true" />
+                  + Agregar pedido
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={busy || !manualReady}
+                  onClick={() => void submitManual()}
+                >
+                  <Download size={16} aria-hidden="true" />
+                  {operation === "manual" ? "Cargando…" : "Confirmar pedidos"}
                 </button>
               </div>
-            ))}
-          </div>
-          <div className="order-actions manual-order-actions">
-            <button
-              type="button"
-              className="quiet"
-              disabled={manualRows.length >= 50}
-              onClick={() =>
-                setManualRows((rows) => [
-                  ...rows,
-                  { id: nextManualId.current++, suffix: "" },
-                ])
-              }
-            >
-              + Agregar pedido
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={busy || !manualReady}
-              onClick={() => void submitManual()}
-            >
-              <Download size={16} aria-hidden="true" />
-              {operation === "manual" ? "Cargando…" : "Confirmar pedidos"}
-            </button>
-          </div>
-        </fieldset>
+            </fieldset>
+          </>
+        )}
       </div>
     </dialog>
   );
@@ -667,55 +712,45 @@ export function OrdersBoard({
     onBusy(value);
   }
   async function load(vehicleIds: string[], validationDate: string) {
-    if (!board) return;
+    if (!board) throw new Error("El tablero todavía no está disponible.");
     working(true);
     setError("");
     setNotice("");
     try {
-      update(
-        await api<OrderBoard>(`/api/plans/${plan.id}/vehicles`, "PUT", {
+      return await api<CandidateBatch>(`${endpoint}/candidates`, "POST", {
+        date: validationDate,
+        vehicleIds,
+        expectedVersion: board.plan.version,
+      });
+    } finally {
+      working(false);
+    }
+  }
+  async function confirmSelection(
+    batch: CandidateBatch,
+    vehicleIds: string[],
+    selection: CandidateSelection,
+  ) {
+    working(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api<ConfirmationResult>(
+        `${endpoint}/confirm`,
+        "POST",
+        {
+          batchId: batch.batchId,
+          expectedVersion: batch.expectedVersion,
           vehicleIds,
-          expectedVersion: board.plan.version,
-        }),
+          selection,
+        },
       );
-      let cursor = 0,
-        ceiling: number | undefined;
-      const totals = {
-        inserted: 0,
-        existing: 0,
-        changed: 0,
-        excluded: 0,
-      };
-      while (true) {
-        const page = await api<ImportResult>(endpoint, "POST", {
-          from: validationDate,
-          to: validationDate,
-          cursor,
-          ceiling,
-        });
-        for (const key of Object.keys(totals) as (keyof typeof totals)[])
-          totals[key] += page[key];
-        setNotice(
-          `${totals.inserted} pedidos nuevos guardados · ${totals.existing} ya estaban en este plan`,
-        );
-        if (!page.hasMore) break;
-        if (page.nextCursor <= cursor)
-          throw new Error(
-            "La consulta no avanzó. Vuelve a cargar; lo guardado se conserva.",
-          );
-        cursor = page.nextCursor;
-        ceiling = page.ceiling;
-      }
       setNotice(
-        `${totals.inserted} pedidos nuevos · ${totals.existing} ya cargados · ${totals.changed} con cambios en Odoo para revisar · ${totals.excluded} surtidos sin pedidos aplicables.`,
+        `${result.inserted} pedidos nuevos · ${result.updated} actualizados · ${result.existing} ya cargados · ${result.pending} pendientes de validar.`,
       );
       setModal(false);
-    } catch (e) {
-      throw new Error(
-        `${(e as Error).message} Los lotes ya guardados se conservan. Puedes reintentar la carga.`,
-      );
-    } finally {
       await refresh().catch((e) => setError(e.message));
+    } finally {
       working(false);
     }
   }
@@ -914,6 +949,11 @@ export function OrdersBoard({
                 Pedido {s.orderName} · {s.lines.length} partidas
               </small>
               <span className="shipment-tags">
+                <span className="badge">
+                  {s.fulfillmentStatus === "pending_validation"
+                    ? "Pendiente de validar"
+                    : "Validado"}
+                </span>
                 <span className="badge">
                   {s.deliveryWindows.length
                     ? s.deliveryWindows
@@ -1127,6 +1167,24 @@ export function OrdersBoard({
           {notice}
         </p>
       )}
+      {board?.shipments.some(
+        (s) => s.fulfillmentStatus === "pending_validation",
+      ) && (
+        <p className="notice" role="status">
+          Hay{" "}
+          {
+            board.shipments.filter(
+              (s) => s.fulfillmentStatus === "pending_validation",
+            ).length
+          }{" "}
+          {board.shipments.filter(
+            (s) => s.fulfillmentStatus === "pending_validation",
+          ).length === 1
+            ? "pedido pendiente"
+            : "pedidos pendientes"}{" "}
+          de validación en Odoo.
+        </p>
+      )}
       {board && (
         <div
           className="orders-lanes"
@@ -1207,6 +1265,7 @@ export function OrdersBoard({
           onClose={() => setModal(false)}
           onSubmit={load}
           onManualSubmit={loadManual}
+          onConfirm={confirmSelection}
         />
       )}
       {addVehiclesOpen && board && (

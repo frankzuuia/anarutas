@@ -7,6 +7,13 @@ import { integer, orderNames as validateOrderNames } from "./orders-validation";
 import { stockMoveCapabilities } from "./odoo-capabilities";
 import { pickerNoteField, pickerNoteValue } from "./picker-notes";
 import { partnerCapabilities } from "./odoo-partner-capabilities";
+import {
+  fulfillmentStatus,
+  routingCapabilities,
+  routingDateEligible,
+} from "./order-candidates-validation";
+import { candidateConfig } from "./order-candidates-config";
+import type { RoutingShipment } from "./order-candidates-contract";
 
 type OdooConfig = ReturnType<typeof readOdooConfig>;
 // Not exported: callers cannot select arbitrary models, methods, hosts or credentials.
@@ -284,7 +291,7 @@ async function openBasicReadSession(
       model,
       "fields_get",
       [],
-      { attributes: ["type", "relation", "string"], context },
+      { attributes: ["type", "relation", "string", "selection"], context },
     ]);
   const latestId = async (model: ReadModel, domain: unknown[]) => {
     const rows = records(
@@ -328,7 +335,11 @@ const pickingFields = [
   "backorder_id",
 ];
 
-async function hydratePickings(session: ReadSession, pickings: Row[]) {
+async function hydratePickings(
+  session: ReadSession,
+  pickings: Row[],
+  routing = false,
+) {
   const { config, quantityField, unitField, noteField, all, byIds } = session;
   if (!pickings.length) return [];
   const moves = await all(
@@ -336,7 +347,15 @@ async function hydratePickings(session: ReadSession, pickings: Row[]) {
     [
       ["company_id", "=", config.companyId],
       ["picking_id", "in", pickings.map((p) => p.id)],
-      ["state", "=", "done"],
+      ...(routing && pickings[0].state !== "done"
+        ? [
+            [
+              "state",
+              "in",
+              ["confirmed", "assigned", "partially_available", "waiting"],
+            ],
+          ]
+        : [["state", "=", "done"]]),
       ["sale_line_id", "!=", false],
       ["origin_returned_move_id", "=", false],
       [quantityField, ">", 0],
@@ -420,7 +439,20 @@ async function hydratePickings(session: ReadSession, pickings: Row[]) {
           ]
             .filter((value) => typeof value === "string" && value.trim())
             .join(", "),
-          validatedAt: odooDate(picking.date_done),
+          validatedAt:
+            routing && picking.state !== "done"
+              ? null
+              : odooDate(picking.date_done),
+          ...(routing
+            ? {
+                odooPickingState: String(picking.state),
+                fulfillmentStatus: fulfillmentStatus(picking.state),
+                scheduledAt: picking.scheduled_date
+                  ? odooDate(picking.scheduled_date)
+                  : null,
+                sourceUpdatedAt: odooDate(picking.write_date),
+              }
+            : {}),
           promisedAt: sale.commitment_date
             ? odooDate(sale.commitment_date)
             : null,
@@ -587,6 +619,90 @@ export async function readFulfilledByOrderNames(
     ceiling: 0,
     hasMore: false,
   };
+}
+
+/** Closed read-only operation for preview and selected identities. Manual reader stays independent. */
+export async function readRoutingCandidates(
+  range: { start: string; end: string },
+  selected?: { pickingId: number; orderId: number }[],
+  config = readOdooConfig(),
+): Promise<RoutingShipment[]> {
+  const limits = candidateConfig();
+  const deadline = Date.now() + limits.timeoutMs;
+  const session = await openReadSession(config);
+  const capabilities = routingCapabilities(
+    await session.fields("stock.picking"),
+    await session.fields("stock.move"),
+    await session.fields("sale.order"),
+  );
+  const base: unknown[] = [
+    ["company_id", "=", config.companyId],
+    ["picking_type_code", "=", "outgoing"],
+    ["location_dest_id.usage", "=", "customer"],
+    ...(capabilities.returnField
+      ? [[capabilities.returnField, "=", false]]
+      : []),
+    "|",
+    "&",
+    ["state", "=", "done"],
+    "&",
+    ["date_done", ">=", range.start],
+    ["date_done", "<", range.end],
+    "&",
+    ["state", "in", ["confirmed", "assigned"]],
+    "&",
+    ["scheduled_date", ">=", range.start],
+    ["scheduled_date", "<", range.end],
+    ...(selected
+      ? [
+          [
+            "id",
+            "in",
+            [...new Set(selected.map((s) => integer(s.pickingId, 1)))],
+          ],
+        ]
+      : []),
+  ];
+  const ceiling = await session.latestId("stock.picking", base);
+  const result: RoutingShipment[] = [];
+  let cursor = 0;
+  while (cursor < ceiling) {
+    if (Date.now() >= deadline) throw new AppError("ODOO_UNAVAILABLE", 502);
+    const rows = await session.search(
+      "stock.picking",
+      [...base, ["id", ">", cursor], ["id", "<=", ceiling]],
+      [...pickingFields, "state", "scheduled_date", "write_date"],
+      50,
+    );
+    if (!rows.length) break;
+    const next = Number(rows[rows.length - 1].id);
+    if (next <= cursor) throw new AppError("ODOO_INVALID_RESPONSE", 502);
+    cursor = next;
+    for (const state of ["done", "confirmed", "assigned"]) {
+      const group = rows.filter((row) => row.state === state);
+      const hydrated = (await hydratePickings(
+        {
+          ...session,
+          quantityField:
+            state === "done"
+              ? capabilities.quantityField
+              : capabilities.demandField,
+          unitField: capabilities.unitField,
+        },
+        group,
+        true,
+      )) as RoutingShipment[];
+      result.push(...hydrated.filter((s) => routingDateEligible(s, range)));
+    }
+    if (result.length > limits.maxCandidates)
+      throw new AppError("CANDIDATES_LIMIT", 422);
+    if (rows.length < 50) break;
+  }
+  const identities =
+    selected && new Set(selected.map((s) => `${s.pickingId}:${s.orderId}`));
+  return result
+    .filter((s) => !identities || identities.has(`${s.pickingId}:${s.orderId}`))
+    .sort((a, b) => a.pickingId - b.pickingId || a.orderId - b.orderId);
 }
 
 function sourceCustomer(row: Row): SourceCustomer {

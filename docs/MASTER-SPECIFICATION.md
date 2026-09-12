@@ -1,5 +1,11 @@
 # Bloque 1 — especificación y auditoría previa
 
+Extensión selección Odoo autorizada: `BLOQUE-SELECCION-ODOO.md`, BL-041..047,
+C01..C19 y SC-T01..07. Sustituye carga ordinaria inmediata por consulta/selección/
+confirmación e incluye confirmed/assigned; manual BL-015 conserva done.
+MATCH PERFECT documental previo a construcción; producción 17 requiere preflight.
+Evidencia de implementación y QA: QA-SELECCION-PEDIDOS-ODOO.md.
+
 Extensión 5B: BL-032..036 y R01..14 en BLOQUE-5B-RECALCULO-IA.md sustituyen
 la obsolescencia manual S39 por recálculo automático conservando el orden, y la salida
 libre por horario configurado por plan. OpenAI fue seleccionado por el usuario;

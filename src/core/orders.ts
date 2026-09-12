@@ -31,7 +31,7 @@ async function bump(sql: Sql, planId: string, actor: string) {
     [planId, actor],
   );
 }
-async function availableVehicleRows(sql: Sql, ids: string[]) {
+export async function availableVehicleRows(sql: Sql, ids: string[]) {
   const { rows: chosen } = await sql.query(
     "SELECT id,driver_id,available FROM route_vehicles WHERE id=ANY($1::uuid[]) ORDER BY id FOR SHARE",
     [ids],
@@ -108,6 +108,8 @@ export async function readOrderBoard(
       const deliveryWindows = windows.get(String(customerId)) || [];
       const priority = row.high_priority ? "high" : row.priority || "schedule";
       return {
+        odooPickingState: "done",
+        fulfillmentStatus: "validated",
         ...snapshot,
         ...row,
         customerName: row.display_name || snapshot.customerName,

@@ -1,5 +1,9 @@
 # Ana Rutas — bloque 1 aprobado
 
+Extensión vigente de carga ordinaria: BL-041..047 en `BLOQUE-SELECCION-ODOO.md`.
+Consulta sin cambios del plan, selección explícita y confirmación atómica de
+salidas validadas/pendientes; flota sólo al confirmar. Manual BL-015 independiente.
+
 Cada instalación es independiente. Los nombres de tablas siguientes pertenecen exclusivamente al proyecto nuevo; no describen tablas de five.
 
 | Regla               | Actor / negocio                                                    | Dirección técnica / datos                                                             | Permiso y auditoría                                                | Validación                                                                                |

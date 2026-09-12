@@ -1,4 +1,17 @@
 export const errors: Record<string, string> = {
+  CANDIDATE_CHANGED:
+    "Algunos pedidos cambiaron en Odoo. No se guardó la selección; vuelve a consultar",
+  CANDIDATE_INVALID:
+    "La selección no pertenece a esta consulta. Vuelve a consultar.",
+  CANDIDATE_BATCH_INVALID:
+    "La consulta ya no está disponible para este plan. Vuelve a consultar.",
+  CANDIDATE_BATCH_EXPIRED:
+    "La consulta caducó. Vuelve a consultar los pedidos.",
+  CANDIDATE_BATCH_CONSUMED:
+    "Esta consulta ya fue confirmada. Abre una nueva consulta.",
+  CANDIDATES_LIMIT:
+    "La consulta excede el límite configurado. No se guardó ningún pedido; solicita revisar el límite de la instalación.",
+  SELECTION_EMPTY: "Selecciona al menos un pedido.",
   GOOGLE_CONSUMPTION_CONFIG_MISSING:
     "Falta configurar la integración privada de Cloud Billing y BigQuery.",
   GOOGLE_CONSUMPTION_CONFIG_INVALID:

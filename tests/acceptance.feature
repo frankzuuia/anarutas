@@ -125,11 +125,33 @@ Feature: Ana Rutas independiente y portable
     Then las fichas, asignación y documentos continúan disponibles
     And los formularios permiten alta, edición, cancelación y teclado sin desbordamiento horizontal a 375, 940 y 1440 píxeles
 
-  Scenario: La fecha de surtido decide qué pedidos se incorporan
-    Given una venta creada antes y un surtido de cliente validado dentro del rango elegido
-    When el administrador carga pedidos para un plan con camionetas seleccionadas
-    Then se incorpora el surtido por su fecha de validación y no por la creación de la venta
+  Scenario: La fecha del pedido decide qué candidatos se muestran
+    Given hay surtidos de cliente validados y confirmados pendientes para la fecha elegida
+    When el administrador consulta pedidos para un plan con camionetas seleccionadas
+    Then los validados se incluyen por su fecha de validación
+    And los confirmados pendientes se incluyen por su fecha programada
+    And todavía no cambia el borrador, sus camionetas ni sus pedidos
     And la consulta no escribe ventas, entregas, contactos, productos ni precios en Odoo
+
+  Scenario: Guardar únicamente los pedidos seleccionados
+    Given el modal muestra todos los pedidos validados y confirmados pendientes de la fecha
+    When el administrador marca algunos pedidos y pulsa Guardar pedidos
+    Then sólo esos pedidos y las camionetas elegidas se guardan en el borrador
+    And los pedidos no marcados no aparecen en el tablero ni se incorporan al ruteo
+    And pesos, cantidades, prioridades, horarios y reglas de ruteo existentes no se recalculan ni reinterpretan durante la selección
+
+  Scenario: Seleccionar todos funciona sobre el lote completo
+    Given la lista de candidatos tiene búsqueda, filtro o varias páginas visuales
+    When el administrador marca Seleccionar todos y desmarca un pedido
+    Then todos los demás candidatos del lote quedan seleccionados
+    And el control Seleccionar todos queda en estado indeterminado
+
+  Scenario: Odoo cambia mientras el administrador selecciona
+    Given el administrador consultó pedidos y todavía no los guarda
+    When un seleccionado se cancela, cambia de fecha, destinatario o deja de ser elegible en Odoo
+    Then Guardar pedidos relee los seleccionados y rechaza el lote completo
+    And conserva la selección para que el administrador pueda revisar y volver a consultar
+    And el borrador y sus camionetas permanecen sin cambios
 
   Scenario: Varios pedidos del mismo cliente conservan su identidad
     Given un cliente con varios pedidos o surtidos independientes durante el mismo día
@@ -141,8 +163,8 @@ Feature: Ana Rutas independiente y portable
     Given existen camionetas disponibles en la flota
     When el administrador abre Cargar pedidos de Odoo
     Then el modal muestra el número real de camionetas disponibles y permite seleccionarlas
-    And muestra una sola Fecha de validación de pedidos editable con el día local actual por defecto
-    And explica que la fecha seleccionada traerá los pedidos validados
+    And muestra una sola Fecha de pedidos editable con el día local actual por defecto
+    And explica que la fecha traerá pedidos validados y confirmados pendientes
     And las no disponibles permanecen visibles sin poder seleccionarse
 
   Scenario: Añadir camionetas conserva el trabajo del borrador
@@ -255,9 +277,11 @@ Feature: Ana Rutas independiente y portable
 
   Scenario: La carga por fecha y la carga manual son independientes
     Given el modal muestra camionetas, fecha y folios manuales
-    When el administrador pulsa Cargar pedidos
-    Then se guarda la selección de camionetas y sólo se consulta la fecha elegida
-    And únicamente ese botón muestra Cargando
+    When el administrador pulsa Consultar pedidos
+    Then no se guarda todavía la selección de camionetas ni ningún pedido
+    And aparece la lista de candidatos con casillas de selección
+    When marca pedidos y pulsa Guardar pedidos
+    Then se guardan juntos las camionetas y únicamente los pedidos marcados
     When el administrador pulsa Confirmar pedidos
     Then sólo se consultan los folios manuales
     And no se guarda la selección de camionetas ni se ejecuta la carga por fecha

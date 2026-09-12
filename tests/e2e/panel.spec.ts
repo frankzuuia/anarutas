@@ -611,14 +611,13 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(loadDialog.getByText("2 camionetas disponibles")).toBeVisible();
   await expect(
     loadDialog.getByText(
-      "La fecha seleccionada traerá los pedidos validados.",
+      "Validados por fecha de validación y pendientes por fecha programada.",
       { exact: false },
     ),
   ).toBeVisible();
-  const validationDate = loadDialog.getByLabel(
-    "Fecha de validación de pedidos",
-    { exact: true },
-  );
+  const validationDate = loadDialog.getByLabel("Fecha de pedidos", {
+    exact: true,
+  });
   await expect(validationDate).toHaveCount(1);
   await expect(validationDate).toHaveValue(
     new Date().toISOString().slice(0, 10),
@@ -676,21 +675,21 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   const datedResponse = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
-      new URL(response.url()).pathname === `/api/plans/${savedPlan.id}/orders`,
+      new URL(response.url()).pathname ===
+        `/api/plans/${savedPlan.id}/orders/candidates`,
   );
   await loadDialog
-    .getByRole("button", { name: "Cargar pedidos", exact: true })
+    .getByRole("button", { name: "Consultar pedidos", exact: true })
     .click();
   expect((await datedResponse).status()).toBe(503);
   await expect(loadDialog.getByRole("alert")).toContainText(
     "Falta completar la configuración",
   );
   expect(mutatingOrderRequests).toEqual([
-    { method: "PUT", path: `/api/plans/${savedPlan.id}/vehicles` },
-    { method: "POST", path: `/api/plans/${savedPlan.id}/orders` },
+    { method: "POST", path: `/api/plans/${savedPlan.id}/orders/candidates` },
   ]);
   await expect(
-    loadDialog.getByRole("button", { name: "Cargar pedidos", exact: true }),
+    loadDialog.getByRole("button", { name: "Consultar pedidos", exact: true }),
   ).toBeVisible();
   const manualRequestStart = mutatingOrderRequests.length;
   const manualResponse = page.waitForResponse(
@@ -702,15 +701,15 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await loadDialog
     .getByRole("button", { name: "Confirmar pedidos", exact: true })
     .click();
-  expect((await manualResponse).status()).toBe(503);
+  expect((await manualResponse).status()).toBe(400);
   await expect(loadDialog.getByRole("alert")).toContainText(
-    "Falta completar la configuración",
+    "Selecciona al menos una camioneta",
   );
   expect(mutatingOrderRequests.slice(manualRequestStart)).toEqual([
     { method: "POST", path: `/api/plans/${savedPlan.id}/orders/manual` },
   ]);
   await expect(
-    loadDialog.getByRole("button", { name: "Cargar pedidos", exact: true }),
+    loadDialog.getByRole("button", { name: "Consultar pedidos", exact: true }),
   ).toBeVisible();
   await loadDialog
     .getByRole("button", { name: "Cerrar carga", exact: true })
@@ -722,17 +721,18 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     name: "Añadir camionetas al plan",
   });
   await expect(
-    addVehicleDialog.getByText("1 camioneta disponible para agregar", {
+    addVehicleDialog.getByText("2 camionetas disponibles para agregar", {
       exact: false,
     }),
   ).toBeVisible();
-  await addVehicleDialog.getByRole("checkbox").check();
+  for (const checkbox of await addVehicleDialog.getByRole("checkbox").all())
+    await checkbox.check();
   await addVehicleDialog
     .getByRole("button", { name: "Añadir seleccionadas", exact: true })
     .click();
   await expect(addVehicleDialog).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText(
-    "1 camioneta añadida al plan",
+    "2 camionetas añadidas al plan",
   );
   await expect(page.locator(".order-lane")).toHaveCount(3);
   await page

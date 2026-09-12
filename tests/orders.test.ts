@@ -92,7 +92,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(8);
+    ).toBe(9);
     const identityIndex = await db.pool.query(
       "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='route_shipments_plan_source_picking_order'",
     );
@@ -117,7 +117,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     await persistImportPage(db.pool, actor, plan.id, page([shipment(1, 1)]));
     const before = (
       await db.pool.query(
-        "SELECT id,plan_id,source,picking_id,order_id,snapshot FROM route_shipments WHERE plan_id=$1",
+        "SELECT id,plan_id,source,picking_id,order_id,snapshot,snapshot_hash FROM route_shipments WHERE plan_id=$1",
         [plan.id],
       )
     ).rows;
@@ -135,15 +135,27 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(8);
+    ).toBe(9);
     expect(
       (
         await db.pool.query(
-          "SELECT id,plan_id,source,picking_id,order_id,snapshot FROM route_shipments WHERE plan_id=$1",
+          "SELECT id,plan_id,source,picking_id,order_id,snapshot,snapshot_hash FROM route_shipments WHERE plan_id=$1",
           [plan.id],
         )
       ).rows,
-    ).toEqual(before);
+    ).toEqual(
+      before.map((row) => ({
+        ...row,
+        snapshot: {
+          ...row.snapshot,
+          odooPickingState: "done",
+          fulfillmentStatus: "validated",
+        },
+      })),
+    );
+    expect(
+      await persistImportPage(db.pool, actor, plan.id, page([shipment(1, 1)])),
+    ).toMatchObject({ inserted: 0, existing: 1, changed: 0 });
   });
 
   it("keeps independent orders for one customer, reloads idempotently and preserves assignment", async () => {

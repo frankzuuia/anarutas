@@ -50,6 +50,7 @@ it("Odoo exposes no generic executor and permits only fixed read operations", as
     "diagnoseOdoo",
     "readFulfilledPage",
     "readFulfilledByOrderNames",
+    "readRoutingCandidates",
     "readCustomerPage",
   ]);
   expect(source).not.toMatch(/"(write|create|unlink)"/);

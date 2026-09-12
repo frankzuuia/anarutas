@@ -1,5 +1,15 @@
 # Progreso — bloque 1
 
+## Selección Odoo autorizada — BLOQUE-SELECCION-ODOO.md
+
+- [x] SC-T01: autopsia/línea base y muestra live 19.4 done/assigned; contrato 17 por capacidades (C01,C15).
+- [x] SC-T02: contratos/validadores y migración v9, backfill, expiración y restricciones (BL-041..046/C11,C12,C17).
+- [x] SC-T03: lector por estado, fecha, cantidades, techo y relectura (BL-042,044/C01,C07,C08,C10,C15,C18). La paginación queda cubierta estructuralmente; volumen live >50 pendiente antes de promoción.
+- [x] SC-T04: preview/API y confirmación atómica, recibo y reintento (BL-041,043..046/C01..14).
+- [x] SC-T05: modal, selección global/indeterminado y estados del tablero; consumidores downstream sin cambios (BL-043,047/C02..04,C09,C10,C14,C16).
+- [x] SC-T06: regresiones downstream/manual conservando íntegramente pesos, prioridad, horarios y ruteo existentes (BL-046..047/C08,C14,C16,C19).
+- [x] SC-T07: Gherkin, unitarias, integración, E2E live 19.4, cobertura, mutación, seguridad y evidencia (C01..19). Ver QA-SELECCION-PEDIDOS-ODOO.md; preflight live 17 y volumen >50 pendientes antes de promoción.
+
 ## Bloque 5C — control de consumo oficial de Google
 
 Especificación: `BLOQUE-5C-CONSUMO-GOOGLE.md`. Sólo sección lateral; sin tarjeta ni

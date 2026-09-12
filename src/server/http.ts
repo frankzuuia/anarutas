@@ -13,11 +13,13 @@ export function json(data: unknown, status = 200) {
     headers: { "Cache-Control": "no-store, private" },
   });
 }
-export async function endpoint(action: () => Promise<NextResponse>) {
+export async function endpoint(
+  action: (requestId: string) => Promise<NextResponse>,
+) {
   const started = performance.now();
   const requestId = randomUUID();
   try {
-    const response = await action();
+    const response = await action(requestId);
     response.headers.set("X-Request-ID", requestId);
     response.headers.set(
       "Server-Timing",
@@ -67,7 +69,7 @@ export async function endpoint(action: () => Promise<NextResponse>) {
     );
   }
 }
-export async function body(request: Request) {
+export async function body(request: Request, maximumBytes = 8192) {
   const config = readConfig();
   if (!sameOrigin(request.headers.get("origin"), config.origin))
     throw new AppError("ORIGIN_DENIED", 403);
@@ -84,7 +86,7 @@ export async function body(request: Request) {
     const chunk = await reader.read();
     if (chunk.done) break;
     total += chunk.value.byteLength;
-    if (total > 8192) {
+    if (total > maximumBytes) {
       await reader.cancel();
       throw new AppError("BODY_TOO_LARGE", 413);
     }

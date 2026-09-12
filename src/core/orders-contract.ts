@@ -22,7 +22,11 @@ export type SourceShipment = {
   partnerId: number;
   customerName: string;
   address: string;
-  validatedAt: string;
+  validatedAt: string | null;
+  odooPickingState?: string;
+  fulfillmentStatus?: "validated" | "pending_validation";
+  scheduledAt?: string | null;
+  sourceUpdatedAt?: string | null;
   promisedAt: string | null;
   backorderId: number | null;
   lines: ShipmentLine[];
