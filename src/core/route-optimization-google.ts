@@ -1,7 +1,7 @@
 import { GoogleAuth } from "google-auth-library";
 import { AppError } from "./errors";
-import { dayAfter, localMidnight } from "./orders-validation";
-import type { OrderBoard, Shipment } from "./orders-contract";
+import { localMidnight } from "./orders-validation";
+import type { OrderBoard } from "./orders-contract";
 import type { GoogleServiceAccount } from "./routing-config";
 import type { RouteMetrics } from "./routing-contract";
 import type { RoutingSettings } from "./routing-contract";
@@ -31,12 +31,6 @@ type GoogleOptimizationRequest = {
       costPerHour: number;
       startTimeWindows?: GoogleTimeWindow[];
     }[];
-    precedenceRules?: {
-      firstIsDelivery: true;
-      secondIsDelivery: true;
-      firstIndex: number;
-      secondIndex: number;
-    }[];
   };
 };
 
@@ -63,12 +57,6 @@ export type GoogleOptimizationResult = {
   routes: GoogleRouteResult[];
   skipped: { shipmentIndex: number; reasons: string[] }[];
   metrics: RouteMetrics;
-};
-
-const priorityRank: Record<Shipment["priority"], number> = {
-  high: 0,
-  medium: 1,
-  schedule: 2,
 };
 
 export function optimizationTimeoutSeconds(shipments: number) {
@@ -121,25 +109,6 @@ export function localMinuteInstant(
   throw new AppError("DATE_BOUNDARY_UNSUPPORTED");
 }
 
-function precedenceRules(shipments: Shipment[]) {
-  const rules: NonNullable<
-    GoogleOptimizationRequest["model"]["precedenceRules"]
-  > = [];
-  for (let first = 0; first < shipments.length; first++)
-    for (let second = 0; second < shipments.length; second++)
-      if (
-        priorityRank[shipments[first].priority] <
-        priorityRank[shipments[second].priority]
-      )
-        rules.push({
-          firstIsDelivery: true,
-          secondIsDelivery: true,
-          firstIndex: first,
-          secondIndex: second,
-        });
-  return rules;
-}
-
 export function buildGoogleOptimizationRequest(
   board: OrderBoard,
   settings: RoutingSettings,
@@ -173,8 +142,11 @@ export function buildGoogleOptimizationRequest(
     board.plan.departure_minute,
     timezone,
   );
-  const end = `${localMidnight(dayAfter(board.plan.service_date), timezone).replace(" ", "T")}Z`;
-  const rules = precedenceRules(deliveries);
+  // Google's model horizon must be finite and shorter than one year. Business
+  // windows remain preferences, so they never shorten this routing horizon.
+  const end = new Date(
+    Date.parse(start) + 364 * 24 * 60 * 60 * 1000,
+  ).toISOString();
   return {
     timeout: `${optimizationTimeoutSeconds(deliveries.length)}s`,
     considerRoadTraffic: true,
@@ -192,22 +164,6 @@ export function buildGoogleOptimizationRequest(
               latitude: shipment.latitude!,
               longitude: shipment.longitude!,
             },
-            ...(shipment.deliveryWindows.length
-              ? {
-                  timeWindows: shipment.deliveryWindows.map((window) => ({
-                    startTime: localMinuteInstant(
-                      board.plan.service_date,
-                      window.startMinute,
-                      timezone,
-                    ),
-                    endTime: localMinuteInstant(
-                      board.plan.service_date,
-                      window.endMinute,
-                      timezone,
-                    ),
-                  })),
-                }
-              : {}),
           },
         ],
       })),
@@ -225,7 +181,6 @@ export function buildGoogleOptimizationRequest(
         costPerHour: 1,
         startTimeWindows: [{ startTime: start, endTime: start }],
       })),
-      ...(rules.length ? { precedenceRules: rules } : {}),
     },
   };
 }
@@ -489,6 +444,7 @@ export async function requestGoogleOptimization(
         headers: {
           Authorization: `Bearer ${await (dependencies.token || accessToken)(credentials)}`,
           "Content-Type": "application/json",
+          "X-Server-Timeout": String(timeoutSeconds),
         },
         body: JSON.stringify(request),
         signal: AbortSignal.timeout((timeoutSeconds + 15) * 1000),

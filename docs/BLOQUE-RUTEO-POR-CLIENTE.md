@@ -17,9 +17,9 @@ No agrupar por nombre, comercial padre ni coordenadas: sucursales distintas
 conservan su identidad. Cada surtido/venta conserva tarjeta, cantidades y estado.
 
 BL-049: uso de flota y mínimo de alternativas se calculan por grupos elegibles,
-no por pedidos. Si sólo hay un grupo no se divide para llenar camionetas.
-Prioridades globales, ventanas, salida, regreso, calles y comparador no cambian.
-Prioridades incompatibles no se relajan ni se inventan horarios/capacidades.
+no por pedidos. Si sólo hay un grupo no se divide para llenar camionetas. La
+extensión BL-054 convierte prioridades y ventanas en preferencias para que nunca
+bloqueen el lote; salida, regreso, calles y agrupación no cambian.
 
 BL-050: validar agrupación antes de medir y antes de escribir dentro de la
 transacción versionada. Devolver a las tools el error de grupo para que el LLM

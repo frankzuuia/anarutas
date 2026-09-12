@@ -149,7 +149,91 @@ describe("Google Route Optimization contract", () => {
     expect(options.headers).toEqual({
       Authorization: "Bearer qa-oauth-token",
       "Content-Type": "application/json",
+      "X-Server-Timeout": "5",
     });
+  });
+
+  it("uses the complete solver timeout for both the REST deadline and local transport", async () => {
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(new AbortController().signal);
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ routes: [] }), { status: 200 }),
+    );
+    const request = {
+      ...buildGoogleOptimizationRequest(
+        board(),
+        settings,
+        "America/Mexico_City",
+      ),
+      timeout: "60s",
+    };
+
+    await requestGoogleOptimization(
+      "ana-rutas-develop",
+      credentials,
+      request,
+      {
+        fetch: fetcher as typeof fetch,
+        token: async () => "qa-oauth-token",
+      },
+    );
+
+    const options = fetcher.mock.calls[0][1] as RequestInit;
+    expect(options.headers).toMatchObject({ "X-Server-Timeout": "60" });
+    expect(timeout).toHaveBeenCalledWith(75_000);
+    timeout.mockRestore();
+  });
+
+  it("fails closed for a missing, malformed or oversized Google response body", async () => {
+    const request = buildGoogleOptimizationRequest(
+      board(),
+      settings,
+      "America/Mexico_City",
+    );
+    const call = (response: Response) =>
+      requestGoogleOptimization("ana-rutas-develop", credentials, request, {
+        fetch: vi.fn().mockResolvedValueOnce(response) as typeof fetch,
+        token: async () => "qa-oauth-token",
+      });
+    await expect(
+      call({ ok: true, status: 200, body: null } as Response),
+    ).rejects.toThrow("ROUTING_GOOGLE_UNAVAILABLE");
+    await expect(call(new Response("not-json", { status: 200 }))).rejects.toThrow(
+      "ROUTING_RESPONSE_INVALID",
+    );
+
+    const json = new TextEncoder().encode(JSON.stringify({ routes: [] }));
+    const maximum = 20 * 1024 * 1024;
+    const response = (size: number, cancel = vi.fn()) => {
+      const chunks = [json, new Uint8Array(size - json.byteLength).fill(32)];
+      return {
+        value: {
+          ok: true,
+          status: 200,
+          body: {
+            getReader: () => ({
+              read: vi
+                .fn()
+                .mockResolvedValueOnce({ done: false, value: chunks[0] })
+                .mockResolvedValueOnce({ done: false, value: chunks[1] })
+                .mockResolvedValueOnce({ done: true }),
+              cancel,
+            }),
+          },
+        } as unknown as Response,
+        cancel,
+      };
+    };
+    const exact = response(maximum);
+    await expect(call(exact.value)).resolves.toEqual({ routes: [] });
+    expect(exact.cancel).not.toHaveBeenCalled();
+
+    const oversized = response(maximum + 1);
+    await expect(call(oversized.value)).rejects.toThrow(
+      "ROUTING_RESPONSE_INVALID",
+    );
+    expect(oversized.cancel).toHaveBeenCalledOnce();
   });
 
   it("fails closed before the Google request when OAuth returns no token", async () => {
@@ -175,7 +259,7 @@ describe("Google Route Optimization contract", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("builds a real-road model with fixed departure, warehouse return and no weight fields", () => {
+  it("builds a complete real-road seed without hard business windows, priorities or weight fields", () => {
     const request = buildGoogleOptimizationRequest(
       board(),
       settings,
@@ -188,7 +272,7 @@ describe("Google Route Optimization contract", () => {
       populateTransitionPolylines: true,
       model: {
         globalStartTime: "2026-09-09T13:30:00.000Z",
-        globalEndTime: "2026-09-10T06:00:00Z",
+        globalEndTime: "2027-09-08T13:30:00.000Z",
         shipments: ids.map((id) => ({
           label: id,
           deliveries: [
@@ -198,12 +282,6 @@ describe("Google Route Optimization contract", () => {
                 latitude: 20.6597,
                 longitude: -103.3496,
               },
-              timeWindows: [
-                {
-                  startTime: "2026-09-09T15:00:00.000Z",
-                  endTime: "2026-09-09T18:00:00.000Z",
-                },
-              ],
             },
           ],
         })),
@@ -222,28 +300,10 @@ describe("Google Route Optimization contract", () => {
             ],
           },
         ],
-        precedenceRules: [
-          {
-            firstIsDelivery: true,
-            secondIsDelivery: true,
-            firstIndex: 0,
-            secondIndex: 1,
-          },
-          {
-            firstIsDelivery: true,
-            secondIsDelivery: true,
-            firstIndex: 0,
-            secondIndex: 2,
-          },
-          {
-            firstIsDelivery: true,
-            secondIsDelivery: true,
-            firstIndex: 1,
-            secondIndex: 2,
-          },
-        ],
       },
     });
+    expect(JSON.stringify(request)).not.toContain("timeWindows");
+    expect(JSON.stringify(request)).not.toContain("precedenceRules");
     expect(JSON.stringify(request)).not.toContain("loadLimit");
     expect(JSON.stringify(request)).not.toContain("loadDemand");
     expect(request.model.vehicles[0].endLocation).toEqual(

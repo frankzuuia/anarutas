@@ -40,8 +40,6 @@ export const errors: Record<string, string> = {
     "OpenAI no completó el proceso de herramientas. El borrador no cambió.",
   ROUTING_AI_CANDIDATE_INVALID:
     "La propuesta de IA omitió, duplicó o usó datos ajenos al plan y fue rechazada.",
-  ROUTING_AI_PRIORITY_INVALID:
-    "La propuesta de IA no respetó Alta, después Media y después Por horario.",
   ROUTING_CUSTOMER_GROUP_INVALID:
     "La propuesta separó pedidos del mismo cliente. No se guardó; vuelve a armar la ruta.",
   ROUTING_ROADS_CONFIG_MISSING:
@@ -152,7 +150,7 @@ export const errors: Record<string, string> = {
   ROUTING_ALREADY_RUNNING:
     "Otra sesión ya está armando esta ruta. Espera el resultado antes de volver a intentarlo.",
   ROUTING_MODEL_REJECTED:
-    "Las ventanas y prioridades no producen una ruta válida. Revisa los pedidos señalados.",
+    "Google rechazó los datos técnicos de la solicitud. El borrador no cambió.",
   ROUTING_RESPONSE_INVALID:
     "No se pudo interpretar la respuesta de Google. El borrador no fue modificado; el diagnóstico quedó registrado.",
   ROUTING_MODEL_INVALID:

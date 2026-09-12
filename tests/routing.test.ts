@@ -503,6 +503,12 @@ describe("routing settings and atomic optimization / real PostgreSQL", () => {
     await expect(apply(partial)).rejects.toThrow(
       "ROUTING_CUSTOMER_GROUP_INVALID",
     );
+    const missingWholeCustomer = structuredClone(result);
+    missingWholeCustomer.routes[0].visits.pop();
+    await expect(apply(missingWholeCustomer)).rejects.toMatchObject({
+      code: "ROUTING_RESPONSE_INVALID",
+      details: { field: "shipments.completeCoverage" },
+    });
     const interleaved = structuredClone(result);
     interleaved.routes[0].visits.reverse();
     [interleaved.routes[0].visits[0], interleaved.routes[0].visits[1]] = [
@@ -552,5 +558,118 @@ describe("routing settings and atomic optimization / real PostgreSQL", () => {
         )
       ).rowCount,
     ).toBe(1);
+  });
+
+  it("persists the complete loaded batch in one atomic PostgreSQL transaction", async () => {
+    let plan = await createPlan(db.pool, actor, {
+      date: "2026-09-13",
+      label: "Volumen completo QA",
+    });
+    plan = await saveDeparture(db.pool, actor, plan.id, {
+      departureTime: "08:00",
+      expectedVersion: plan.version,
+    });
+    const vehicle = await createVehicle(db.pool, actor, {
+      id: randomUUID(),
+      name: "Volumen completo",
+      brand: "Ford",
+      model: "2026",
+      plate: "VOLUME-QA",
+      mileage: 0,
+      fuel: "Gasolina",
+      available: true,
+    });
+    await selectPlanVehicles(db.pool, actor, plan.id, {
+      vehicleIds: [vehicle.id],
+      expectedVersion: plan.version,
+    });
+    await persistImportPage(
+      db.pool,
+      actor,
+      plan.id,
+      importPage(
+        Array.from({ length: 61 }, (_, index) => sourceShipment(200 + index)),
+      ),
+    );
+    const customers = await db.pool.query(
+      `SELECT id,version FROM route_customers
+       WHERE source=$1 AND odoo_partner_id BETWEEN 7300 AND 7360
+       ORDER BY odoo_partner_id`,
+      [source],
+    );
+    expect(customers.rowCount).toBe(61);
+    const settings = await getRoutingSettings(db.pool);
+    for (const customer of customers.rows)
+      await updateCustomer(db.pool, actor, customer.id, {
+        displayName: "Cliente volumen QA",
+        phone: null,
+        deliveryNote: "",
+        priority: "high",
+        fulfillmentMode: "delivery",
+        deliveryAddress: settings.depotAddress,
+        mapUrl: null,
+        location: settings.depotLocation,
+        windows: [],
+        expectedVersion: Number(customer.version),
+      });
+    const before = await orderBoard(db.pool, plan.id);
+    expect(before.shipments).toHaveLength(61);
+    const measured = await calculateManualRoutes(
+      {
+        ...before,
+        shipments: before.shipments.map((item, index) => ({
+          ...item,
+          vehicle_id: vehicle.id,
+          position: index + 1,
+        })),
+      },
+      settings,
+      "UTC",
+    );
+    expect(measured.metrics.performedShipmentCount).toBe(61);
+    const result: GoogleOptimizationResult = {
+      metrics: measured.metrics,
+      skipped: [],
+      routes: measured.routes.map((route, vehicleIndex) => ({
+        vehicleIndex,
+        encodedPolyline: route.encodedPolyline,
+        metrics: route.metrics,
+        transitions: route.transitions,
+        departureAt: route.departureAt,
+        finishedAt: route.finishedAt,
+        visits: route.stops.map((stop) => ({
+          shipmentIndex: before.shipments.findIndex(
+            (item) => item.id === stop.shipmentId,
+          ),
+          eta: stop.eta,
+          travelDistanceMeters: stop.travelDistanceMeters,
+          travelDurationSeconds: stop.travelDurationSeconds,
+          waitDurationSeconds: stop.waitDurationSeconds,
+        })),
+      })),
+    };
+    const applied = await applyOptimizationResult(
+      db.pool,
+      actor,
+      plan.id,
+      before.plan.version,
+      settings.version,
+      before,
+      before.shipments,
+      createHash("sha256").update("complete-volume").digest("hex"),
+      result,
+    );
+    expect(applied?.metrics.performedShipmentCount).toBe(61);
+    expect(applied?.skipped).toEqual([]);
+    expect(
+      Number(
+        (
+          await db.pool.query(
+            "SELECT count(*) AS count FROM route_optimization_stops WHERE run_id=$1",
+            [applied!.runId],
+          )
+        ).rows[0].count,
+      ),
+    ).toBe(61);
   });
 });

@@ -187,6 +187,18 @@ export async function applyOptimizationResult(
         shipmentIds: route.stops.map((stop) => stop.shipmentId),
       })),
     );
+    const expectedDeliveryIds = new Set(
+      deliveryShipments.map((shipment) => shipment.id),
+    );
+    if (
+      skipped.length ||
+      optimizedIds.length !== expectedDeliveryIds.size ||
+      optimizedIds.some((id) => !expectedDeliveryIds.has(id)) ||
+      new Set(optimizedIds).size !== expectedDeliveryIds.size
+    )
+      throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
+        field: "shipments.completeCoverage",
+      });
     const optimizedIdSet = new Set(optimizedIds);
     const remainingIds = board.shipments
       .map((shipment) => shipment.id)

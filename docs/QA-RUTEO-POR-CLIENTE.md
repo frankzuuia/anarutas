@@ -20,8 +20,10 @@ de la transacción de guardado. Google aporta una semilla; si rompe un grupo la
 herramienta devuelve el error para que OpenAI replantee, sin reasignación heurística.
 Flota y alternativas cuentan grupos, no pedidos. La huella incluye partnerId.
 
-No se alteraron pesos/capacidad, ventanas, prioridades, comparación de métricas,
-salida/regreso, Odoo 17/19, importación, movimientos manuales, V3 ni Luna.
+Este bloque no alteró pesos/capacidad, ventanas, prioridades, comparación de
+métricas, salida/regreso, Odoo 17/19, importación, movimientos manuales, V3 ni
+Luna. La extensión posterior BL-054 suaviza ventanas/prioridades sin cambiar la
+regla de cliente indivisible.
 El análisis master-architect situó la protección en ambas fronteras y comprobó
 la identidad real de entrega antes de implementar.
 

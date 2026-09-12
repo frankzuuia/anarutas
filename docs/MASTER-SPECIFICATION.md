@@ -187,9 +187,10 @@ GREEN LIGHT: construcción del bloque 1 local autorizada, con interfaces que no 
 
 ### Requirements Covered
 
-Salida única confirmada; optimización sin peso/capacidad; ventanas duras; precedencia
-Alta→Media→Por horario; tráfico, asignación, orden, ETA, distancia, polilínea y tokens
-por transición; aplicación versionada y resultado obsoleto tras edición manual.
+Salida única confirmada; optimización sin peso/capacidad; preferencias de ventana y
+prioridad sin omisiones; tráfico, asignación, orden, ETA, distancia, polilínea y tokens
+por transición; aplicación versionada y resultado obsoleto tras edición manual. La
+autoridad operativa vigente está formalizada en BL-054.
 
 ### Scenario Matrix
 
@@ -197,10 +198,10 @@ por transición; aplicación versionada y resultado obsoleto tras edición manua
 | --- | ---------------------------------------- | ------------------- | ---------------------- | ---------------------------------------------- | --------------------------------------------- |
 | S32 | Admin, Maps activo, salida sin confirmar | Abre configuración  | Runtime + settings     | Dirección sugerida, ningún punto inventado     | Puede cerrar sin escritura                    |
 | S33 | Admin con salida vigente                 | Confirma otro punto | Settings/auditoría     | Versión y liga regeneradas                     | 409 conserva edición ajena                    |
-| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | OpenAI tools→Google→DB | Mejor candidato factible aplicado atómicamente | Servicio externo falla: cero cambio           |
-| S35 | Ventanas/prioridades mezcladas           | Resolver modelo     | Route Optimization     | Ventanas duras y precedencia por nivel         | Incompatibilidad visible, no relajada         |
+| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | OpenAI tools→Google→DB | Mejor candidato completo aplicado atómicamente | Servicio externo falla: cero cambio           |
+| S35 | Ventanas/prioridades mezcladas           | Resolver modelo     | Route Optimization     | Lote completo; conflictos medidos como avisos  | Operador conserva autoridad sobre las salidas |
 | S36 | Otro admin cambia el plan durante Google | Aplicar respuesta   | Lock/version           | 409; resultado no aplicado                     | Actualizar y decidir de nuevo                 |
-| S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments   | Pedido Sin asignar con razón                   | Corregir punto/ventana y reintentar           |
+| S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments   | Respuesta parcial rechazada; cero escritura    | OpenAI construye y mide un candidato completo |
 | S38 | Ruta vigente                             | Ver mapa            | Run vigente            | Recorrido, ETA, km y duración reales           | Sin run vigente muestra puntos, no ruta falsa |
 | S39 | Ruta vigente                             | Movimiento manual   | Plan/job/version       | Conserva acomodo y recalcula calles/ETA        | Reintento durable sin redistribución          |
 | S40 | Origen incompleto o ambiguo              | Ubicar domicilio    | Google Geocoder        | Referencia visible; confirmar bloqueado        | Completar dirección o marcar punto exacto     |

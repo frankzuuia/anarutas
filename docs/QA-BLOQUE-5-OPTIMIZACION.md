@@ -40,8 +40,9 @@ Guadalajara, Jalisco, México` y confirme visualmente sus coordenadas en la inte
   domicilio. Coincidencias parciales, aproximadas, colonias o calles generales sólo
   centran el mapa como referencia y exigen un ajuste manual explícito; una búsqueda o
   edición nueva tampoco puede guardar silenciosamente el punto anterior.
-- Modelo `DRIVING` con tráfico, ventanas duras de 24 horas y precedencia
-  Alta→Media→Por horario; no contiene demanda, límites de carga ni `endLocation`.
+- El modelo `DRIVING` con tráfico fue actualizado por BL-054: ventanas y prioridad
+  ahora son preferencias medidas después del cálculo vial, nunca autorización para
+  omitir pedidos. No contiene demanda, límites de carga ni `endLocation`.
 - OAuth usa una cuenta de servicio en servidor y el alcance `cloud-platform`; proyecto,
   credencial y host no son controlables por el navegador.
 - Sin salida, flota, pedidos o puntos confirmados se rechaza antes de invocar Google.

@@ -137,6 +137,7 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
       selectedCandidateId = "";
     const openAIFetch: typeof fetch = async (input, init) => {
       expect(String(input)).toBe("https://api.openai.com/v1/responses");
+      expect(init).not.toHaveProperty("signal");
       expect((init?.headers as Record<string, string>).Authorization).toBe(
         "Bearer test-key",
       );
@@ -164,8 +165,6 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
           { status: 200 },
         );
       if (openAICalls === 2) {
-        const snapshot = JSON.parse(request.input[0].content[0].text);
-        expect(snapshot.minimumDistinctCandidates).toBe(2);
         const googleOutput = JSON.parse(
           request.input
             .filter(
@@ -174,8 +173,8 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
             .at(-1).output,
         );
         expect(googleOutput).toMatchObject({
-          evaluated: false,
-          error: "ROUTING_AI_PRIORITY_INVALID",
+          feasible: true,
+          unusedVehicles: 1,
         });
         return new Response(
           JSON.stringify({
@@ -216,98 +215,18 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
             output: [
               {
                 type: "function_call",
-                name: "evaluate_candidate",
-                arguments: JSON.stringify({
-                  routes: [
-                    {
-                      vehicleId: before.vehicles[0].id,
-                      shipmentIds: [before.shipments[0].id],
-                    },
-                    {
-                      vehicleId: before.vehicles[1].id,
-                      shipmentIds: [before.shipments[1].id],
-                    },
-                  ],
-                }),
-                call_id: "duplicate-evaluate-call",
-              },
-            ],
-          }),
-          { status: 200 },
-        );
-      }
-      if (openAICalls === 4) {
-        expect(JSON.parse(toolOutput.output).candidateId).toBe(
-          selectedCandidateId,
-        );
-        return new Response(
-          JSON.stringify({
-            status: "completed",
-            output: [
-              {
-                type: "function_call",
                 name: "commit_candidate",
                 arguments: JSON.stringify({
                   candidateId: selectedCandidateId,
                 }),
-                call_id: "early-commit-call",
+                call_id: "commit-call",
               },
             ],
           }),
           { status: 200 },
         );
       }
-      if (openAICalls === 5) {
-        expect(JSON.parse(toolOutput.output)).toMatchObject({
-          committed: false,
-          error: "Evaluate at least 2 distinct complete candidates.",
-        });
-        return new Response(
-          JSON.stringify({
-            status: "completed",
-            output: [
-              {
-                type: "function_call",
-                name: "evaluate_candidate",
-                arguments: JSON.stringify({
-                  routes: [
-                    {
-                      vehicleId: before.vehicles[0].id,
-                      shipmentIds: before.shipments.map(
-                        (shipment) => shipment.id,
-                      ),
-                    },
-                    {
-                      vehicleId: before.vehicles[1].id,
-                      shipmentIds: [],
-                    },
-                  ],
-                }),
-                call_id: "evaluate-unbalanced-call",
-              },
-            ],
-          }),
-          { status: 200 },
-        );
-      }
-      expect(JSON.parse(toolOutput.output)).toMatchObject({
-        feasible: false,
-        unusedVehicles: 1,
-      });
-      return new Response(
-        JSON.stringify({
-          status: "completed",
-          output: [
-            {
-              type: "function_call",
-              name: "commit_candidate",
-              arguments: JSON.stringify({ candidateId: selectedCandidateId }),
-              call_id: "commit-call",
-            },
-          ],
-        }),
-        { status: 200 },
-      );
+      throw new Error("UNEXPECTED_OPENAI_CALL");
     };
     const googleFetch: typeof fetch = async (input, init) => {
       googleCalls++;
@@ -392,7 +311,7 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
         googleToken: async () => "google-token",
       },
     );
-    expect(openAICalls).toBe(6);
+    expect(openAICalls).toBe(3);
     expect(googleCalls).toBe(1);
     expect(result).toMatchObject({
       current: true,
@@ -425,7 +344,7 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
       planner: "openai-native-tools",
       model: "test-model",
       reasoningEffort: "high",
-      toolCalls: 6,
+      toolCalls: 3,
       evaluatedCandidates: 2,
     });
   });

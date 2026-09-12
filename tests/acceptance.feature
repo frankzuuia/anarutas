@@ -380,11 +380,11 @@ Feature: Ana Rutas independiente y portable
     Then la propuesta y el mapa anterior se limpian
     And Guardar salida permanece bloqueado hasta ubicar y confirmar el nuevo punto
 
-  Scenario: Optimizar con red vial, ventanas y prioridades reales
+  Scenario: Optimizar con red vial y preferencias operativas reales
     Given un borrador vigente con camionetas, pedidos y puntos confirmados
     When el administrador pulsa Armar ruta
-    Then OpenAI propone y compara candidatos medidos por Google considerando calles y ventanas duras
-    And las entregas Alta preceden a Media y Por horario y las Media preceden a Por horario
+    Then OpenAI obtiene o construye un candidato completo medido por Google considerando calles reales
+    And ventanas y prioridades ordenan el score y producen avisos sin omitir pedidos
     And Ana Rutas guarda ETA, distancia, duración y polilíneas sin guardar credenciales
 
   Scenario: Una respuesta externa no pisa un cambio concurrente
@@ -405,17 +405,17 @@ Feature: Ana Rutas independiente y portable
     Then la asignación manual queda guardada y no redistribuye los demás pedidos
     And se recalculan ambas rutas desde la salida hasta el regreso a bodega
 
-  Scenario: La IA no puede degradar la prioridad estricta
+  Scenario: La IA conserva todo el lote aunque existan conflictos operativos
     Given existen pedidos Alta, Media y Por horario con puntos y ventanas confirmados
     When OpenAI propone uno o más candidatos y solicita confirmarlos
-    Then el servidor rechaza IDs ajenos, omisiones, duplicados y orden de prioridad inverso
-    And sólo confirma el candidato vial factible de menor score ya evaluado
+    Then el servidor rechaza IDs ajenos, omisiones y duplicados
+    And confirma el candidato completo de menor score aunque tenga retrasos o inversión de prioridad
 
   Scenario: Google omite las listas de una camioneta sin entregas
     Given Google propone siete entregas en una camioneta y devuelve otra sin listas de visitas
     When Ana Rutas interpreta la respuesta ProtoJSON
     Then conserva las siete entregas y reconoce la segunda camioneta como vacía
-    And OpenAI continúa la evaluación de alternativas sujetas a prioridades y cobertura completa
+    And OpenAI continúa con cobertura completa y mide prioridades como preferencias
     And una respuesta con pedidos realmente ausentes se rechaza con diagnóstico del campo
 
   Scenario: Configurar y auditar el razonamiento del planificador
@@ -460,7 +460,8 @@ Feature: Ana Rutas independiente y portable
     When el administrador pulsa Armar ruta
     Then cada destino queda completo y consecutivo en una sola camioneta
     And todas las tarjetas y cantidades se conservan sin fusionarse
-    And siguen vigentes prioridades, ventanas, salida y regreso a bodega
+    And prioridades y ventanas siguen guiando el orden sin bloquear la cobertura
+    And siguen vigentes salida y regreso a bodega
 
   Scenario: RC02 RC07 rechazar y corregir una propuesta que divide un cliente
     Given Google o la IA proponen separar un cliente entre camionetas o visitas
@@ -478,7 +479,15 @@ Feature: Ana Rutas independiente y portable
     And existen recogidas o clientes archivados
     When la IA evalúa todos los pedidos elegibles juntos en una camioneta
     Then no exige dividir el cliente para llenar la otra camioneta
-    And basta una distribución evaluada factible para poder confirmar
+    And basta una distribución completa evaluada para poder confirmar
+
+  Scenario: RV01 el lote actual se rutea completo sin límite artificial
+    Given un borrador con 61 pedidos cargados y cuatro camionetas
+    And algunos horarios y prioridades entran en conflicto
+    When el administrador pulsa Armar ruta
+    Then los 61 pedidos quedan asignados exactamente una vez
+    And ningún pedido se omite por horario, prioridad o número total
+    And los pedidos de un mismo cliente quedan juntos en una camioneta
 
   Scenario: RC08 RC09 RC10 integridad y recuperación al guardar grupos
     Given existe un borrador con varios pedidos del mismo cliente

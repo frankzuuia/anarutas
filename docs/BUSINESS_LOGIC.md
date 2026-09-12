@@ -4,6 +4,11 @@ Extensión vigente de carga ordinaria: BL-041..047 en `BLOQUE-SELECCION-ODOO.md`
 Consulta sin cambios del plan, selección explícita y confirmación atómica de
 salidas validadas/pendientes; flota sólo al confirmar. Manual BL-015 independiente.
 
+Resiliencia de volumen vigente: BL-051..054 en `BLOQUE-RUTEO-VOLUMEN.md`.
+El lote cargado se valida y persiste con cobertura exacta, sin límite de negocio,
+sin abortos locales de OpenAI/Routes y sin resultados parciales. Horarios y
+prioridades orientan el orden, pero no bloquean Armar ruta.
+
 Cada instalación es independiente. Los nombres de tablas siguientes pertenecen exclusivamente al proyecto nuevo; no describen tablas de five.
 
 | Regla               | Actor / negocio                                                    | Dirección técnica / datos                                                             | Permiso y auditoría                                                | Validación                                                                                |
@@ -51,8 +56,8 @@ Bloque 2A autorizado: BL-007..010 (camionetas, choferes, asignación actual y do
 | ----------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------- |
 | BL-026 Salida     | Administrador configura el origen de todas las rutas                         | Dirección editable y coordenada confirmada; salida y regreso a la misma bodega                     | Sesión activa, versión y `routing.settings.updated`         | Dirección sin punto bloquea optimización; rango geográfico estricto   |
 | BL-027 Modelo     | Administrador arma el plan con datos reales, sin peso                        | Camionetas del plan, coordenadas confirmadas, ventanas, prioridad y día civil local                | Modelo construido sólo en servidor; Google OAuth privado    | Sin flota/pedidos/puntos no llama Google; ninguna capacidad inventada |
-| BL-028 Prioridad  | Alta debe ocurrir antes que Media y Por horario; Media antes que Por horario | Reglas de precedencia de entregas además de ventanas duras                                         | Política única auditable, no elegida por el navegador       | Conflicto se informa; no se relaja silenciosamente                    |
-| BL-029 Aplicación | OpenAI propone y Google evalúa; sólo el mejor candidato factible se aplica   | Snapshot por versión, tools nativas y aplicación transaccional; métricas/ETA/polilínea persistidas | `plan.optimized`; actor, modelo y cantidad de evaluaciones  | Cambio concurrente devuelve 409; reintento no duplica                 |
+| BL-028 Prioridad  | Alta, Media y Por horario guían el mejor orden sin decidir qué pedido sale  | Prioridad y ventanas son penalizaciones medibles; no son restricciones que permitan omitir pedidos | Política única auditable, no elegida por el navegador       | Conflicto se informa y el lote completo continúa                      |
+| BL-029 Aplicación | OpenAI propone y Google evalúa; el mejor candidato completo medido se aplica | Snapshot por versión, tools nativas y aplicación transaccional; métricas/ETA/polilínea persistidas | `plan.optimized`; actor, modelo y cantidad de evaluaciones  | Cambio concurrente devuelve 409; reintento no duplica                 |
 | BL-030 Navegación | Web muestra recorridos reales y APK futura podrá navegar cada tramo          | Polilíneas visibles; route tokens privados; recálculo manual incluye regreso                       | Sólo endpoints autenticados; tokens no salen en tablero web | Movimiento manual conserva acomodo y recalcula sin redistribuir       |
 | BL-031 Precisión  | El origen debe representar un domicilio real, no la primera coincidencia     | Geocodificación restringida al país; acepta domicilio preciso o ajuste manual explícito            | Misma sesión y guardado versionado de BL-026                | Parcial/aproximada sólo centra el mapa; edición limpia la propuesta   |
 

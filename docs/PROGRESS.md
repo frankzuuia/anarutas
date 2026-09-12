@@ -1,5 +1,12 @@
 # Progreso — bloque 1
 
+## Resiliencia de volumen — BLOQUE-RUTEO-VOLUMEN.md
+
+- [x] RV-T01 (BL-051 / V01..04): cobertura exacta antes de medir y dentro de la transacción; regresión del lote actual de 61 pedidos con PostgreSQL real, sin convertir esa cantidad en límite.
+- [x] RV-T02 (BL-052..054 / V05..10): retirar abortos locales de OpenAI/Routes, enviar el deadline REST exigido por Google, convertir ventanas/prioridades en preferencias y permitir confirmar desde el primer candidato completo medido.
+- [x] RV-T03: 330 pruebas, PostgreSQL real con 61 pedidos, cobertura, mutación dirigida 100%, lint, tipos, build, auditoría y E2E local verdes; evidencia en `QA-RUTEO-VOLUMEN.md`.
+- [ ] RV-T04: smoke facturable con los 61 pedidos reales en `develop` después del deploy manual del usuario; confirmar 61 asignados, cero omitidos y grupos de cliente intactos.
+
 ## Corrección de agrupación por cliente — BLOQUE-RUTEO-POR-CLIENTE.md
 
 - [x] RC-T01 (BL-048/RC01..03,06): regresión reproducida, agrupación por partner de entrega y validación indivisible/consecutiva.

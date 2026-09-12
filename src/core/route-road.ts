@@ -109,7 +109,6 @@ export async function requestRoadLeg(
             "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.routeToken",
         },
         body: JSON.stringify(request),
-        signal: AbortSignal.timeout(30000),
       },
     );
   } catch {

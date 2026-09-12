@@ -6,8 +6,9 @@ import {
   evaluateCandidate,
   parseCandidate,
   planningSnapshot,
-  requiredDistinctCandidates,
+  proposalCandidate,
 } from "../src/core/route-ai-planner";
+import type { GoogleOptimizationResult } from "../src/core/route-optimization-google";
 
 const vehicle = (id: string) => ({
   id,
@@ -86,6 +87,35 @@ const valid = {
 };
 
 describe("OpenAI candidate boundary", () => {
+  it("accepts the complete loaded batch without truncating, duplicating or omitting IDs", () => {
+    const loaded = structuredClone(board);
+    loaded.shipments = Array.from({ length: 61 }, (_, index) =>
+      shipment(
+        `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        "high",
+      ),
+    );
+    const candidate = {
+      routes: loaded.vehicles.map((item, vehicleIndex) => ({
+        vehicleId: item.id,
+        shipmentIds: loaded.shipments
+          .filter((_, shipmentIndex) => shipmentIndex % 2 === vehicleIndex)
+          .map((item) => item.id),
+      })),
+    };
+    const parsed = parseCandidate(candidate, loaded);
+    const ids = parsed.routes.flatMap((route) => route.shipmentIds);
+    expect(ids).toHaveLength(loaded.shipments.length);
+    expect(new Set(ids).size).toBe(loaded.shipments.length);
+    expect(new Set(ids)).toEqual(
+      new Set(loaded.shipments.map((item) => item.id)),
+    );
+    const incomplete = structuredClone(candidate);
+    incomplete.routes[0].shipmentIds.pop();
+    expect(() => parseCandidate(incomplete, loaded)).toThrow(
+      "ROUTING_AI_CANDIDATE_INVALID",
+    );
+  });
   it("sends opaque complete groups without customer PII and counts alternatives by groups", () => {
     const settings = {
       depotAddress: "",
@@ -94,7 +124,6 @@ describe("OpenAI candidate boundary", () => {
       updatedAt: null,
     };
     const context = planningSnapshot(board, settings);
-    expect(context.minimumDistinctCandidates).toBe(2);
     expect(context.deliveryGroups).toEqual(
       board.shipments
         .slice(0, 3)
@@ -125,7 +154,6 @@ describe("OpenAI candidate boundary", () => {
       customerArchived: true,
     });
     const grouped = planningSnapshot(repeated, settings);
-    expect(grouped.minimumDistinctCandidates).toBe(1);
     expect(grouped.deliveryGroups).toEqual([
       {
         id: board.shipments[0].id,
@@ -133,6 +161,24 @@ describe("OpenAI candidate boundary", () => {
       },
     ]);
     expect(grouped.shipments).toHaveLength(3);
+  });
+  it("maps Google indices only against eligible delivery shipments", () => {
+    const mixed = structuredClone(board);
+    mixed.shipments = [
+      { ...mixed.shipments[0], id: "pickup", fulfillmentMode: "pickup" },
+      ...mixed.shipments,
+      { ...mixed.shipments[0], id: "archived", customerArchived: true },
+    ];
+    const result = {
+      routes: [
+        {
+          vehicleIndex: 0,
+          visits: [{ shipmentIndex: 0 }, { shipmentIndex: 1 }],
+        },
+        { vehicleIndex: 1, visits: [{ shipmentIndex: 2 }] },
+      ],
+    } as GoogleOptimizationResult;
+    expect(proposalCandidate(mixed, result)).toEqual(valid);
   });
   it("also rejects a split before measuring a candidate supplied directly", async () => {
     const repeated = structuredClone(board);
@@ -211,34 +257,23 @@ describe("OpenAI candidate boundary", () => {
     expect(evaluated.feasible).toBe(true);
     expect(evaluated.result.metrics.performedShipmentCount).toBe(3);
   });
-  it("requires alternatives only when both the fleet and deliveries can be redistributed", () => {
-    expect(requiredDistinctCandidates(1, 7)).toBe(1);
-    expect(requiredDistinctCandidates(2, 1)).toBe(1);
-    expect(requiredDistinctCandidates(2, 2)).toBe(2);
-    expect(requiredDistinctCandidates(3, 7)).toBe(2);
-  });
-  it("blocks early, unknown, infeasible and non-best commits", () => {
+  it("blocks unknown and non-best commits without rejecting soft conflicts", () => {
     const chosen = { id: "chosen", feasible: true };
-    expect(candidateCommitDecision(1, 2, chosen, chosen)).toEqual({
-      error: "Evaluate at least 2 distinct complete candidates.",
+    expect(candidateCommitDecision(undefined, chosen)).toEqual({
+      error: "Candidate must be the lowest-score complete evaluated candidate.",
     });
-    expect(candidateCommitDecision(2, 2, undefined, chosen)).toEqual({
-      error: "Candidate must be the lowest-score feasible evaluated candidate.",
+    expect(candidateCommitDecision(chosen, { id: "better" })).toEqual({
+      error: "Candidate must be the lowest-score complete evaluated candidate.",
+    });
+    expect(candidateCommitDecision(chosen, undefined)).toEqual({
+      error: "Candidate must be the lowest-score complete evaluated candidate.",
     });
     expect(
-      candidateCommitDecision(2, 2, { ...chosen, feasible: false }, chosen),
-    ).toEqual({
-      error: "Candidate must be the lowest-score feasible evaluated candidate.",
-    });
-    expect(candidateCommitDecision(2, 2, chosen, { id: "better" })).toEqual({
-      error: "Candidate must be the lowest-score feasible evaluated candidate.",
-    });
-    expect(candidateCommitDecision(2, 2, chosen, undefined)).toEqual({
-      error: "Candidate must be the lowest-score feasible evaluated candidate.",
-    });
-    expect(candidateCommitDecision(2, 2, chosen, chosen)).toEqual({ chosen });
+      candidateCommitDecision({ ...chosen, feasible: false }, chosen),
+    ).toEqual({ chosen: { ...chosen, feasible: false } });
+    expect(candidateCommitDecision(chosen, chosen)).toEqual({ chosen });
   });
-  it("accepts exact delivery coverage, every vehicle and strict local priority order", () => {
+  it("accepts exact delivery coverage and every vehicle", () => {
     expect(parseCandidate(valid, board)).toEqual(valid);
     const equalPriority: OrderBoard = {
       ...board,
@@ -342,24 +377,7 @@ describe("OpenAI candidate boundary", () => {
       );
     },
   );
-  it("rejects Medium before High and Schedule before Medium", () => {
-    expect(() =>
-      parseCandidate(
-        {
-          routes: [
-            {
-              vehicleId: board.vehicles[0].id,
-              shipmentIds: [board.shipments[1].id, board.shipments[0].id],
-            },
-            {
-              vehicleId: board.vehicles[1].id,
-              shipmentIds: [board.shipments[2].id],
-            },
-          ],
-        },
-        board,
-      ),
-    ).toThrow("ROUTING_AI_PRIORITY_INVALID");
+  it("accepts priority conflicts as measurable preferences instead of blockers", () => {
     expect(
       parseCandidate(
         {
@@ -377,7 +395,7 @@ describe("OpenAI candidate boundary", () => {
         board,
       ).routes[1].shipmentIds,
     ).toEqual([board.shipments[1].id, board.shipments[2].id]);
-    expect(() =>
+    expect(
       parseCandidate(
         {
           routes: [
@@ -392,8 +410,8 @@ describe("OpenAI candidate boundary", () => {
           ],
         },
         board,
-      ),
-    ).toThrow("ROUTING_AI_PRIORITY_INVALID");
+      ).routes[0].shipmentIds,
+    ).toEqual([board.shipments[2].id, board.shipments[1].id]);
   });
   it("evaluates balance and global priority with deterministic zero-distance roads", async () => {
     const settings = {
@@ -415,6 +433,10 @@ describe("OpenAI candidate boundary", () => {
       unusedVehicles: 0,
       imbalanceSeconds: 0,
       score: {
+        priorityConflicts: 0,
+        lateStops: 0,
+        lateSeconds: 0,
+        unusedVehicles: 0,
         makespanSeconds: 0,
         distanceMeters: 0,
         travelSeconds: 0,
@@ -468,10 +490,14 @@ describe("OpenAI candidate boundary", () => {
       "UTC",
     );
     expect(conflict).toMatchObject({
-      feasible: false,
+      feasible: true,
       priorityConflicts: 2,
       imbalanceSeconds: 7200,
-      score: { makespanSeconds: 7200, imbalanceSeconds: 7200 },
+      score: {
+        priorityConflicts: 2,
+        makespanSeconds: 7200,
+        imbalanceSeconds: 7200,
+      },
     });
 
     const unequalBoard: OrderBoard = {
@@ -515,7 +541,7 @@ describe("OpenAI candidate boundary", () => {
       settings,
       "UTC",
     );
-    expect(unused).toMatchObject({ feasible: false, unusedVehicles: 1 });
+    expect(unused).toMatchObject({ feasible: true, unusedVehicles: 1 });
 
     const exactVehicleCountBoard: OrderBoard = {
       ...board,
@@ -592,7 +618,11 @@ describe("OpenAI candidate boundary", () => {
       settings,
       "UTC",
     );
-    expect(late).toMatchObject({ feasible: false, lateStops: 1 });
+    expect(late).toMatchObject({
+      feasible: true,
+      lateStops: 1,
+      score: { lateSeconds: 21_600 },
+    });
   });
 });
 
