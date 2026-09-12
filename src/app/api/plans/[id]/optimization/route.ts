@@ -16,7 +16,7 @@ export function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  return endpoint(async () => {
+  return endpoint(async (requestId) => {
     const input = await body(request);
     const { pool, user, config } = await principal();
     return json(
@@ -26,6 +26,7 @@ export function POST(
         (await context.params).id,
         input,
         config.timezone,
+        { requestId },
       ),
     );
   });

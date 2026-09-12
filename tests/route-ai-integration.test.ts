@@ -12,6 +12,7 @@ import {
 import type { ImportPage, SourceShipment } from "../src/core/orders-contract";
 import { createPlan } from "../src/core/plans";
 import { planRouteWithOpenAI } from "../src/core/route-ai-planner";
+import type { RoutingLogEntry } from "../src/core/route-observability";
 import { saveRoutingSettings } from "../src/core/routing-settings";
 import { startPostgres } from "./helpers/postgres";
 
@@ -135,6 +136,7 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
     let openAICalls = 0,
       googleCalls = 0,
       selectedCandidateId = "";
+    const routingLogs: RoutingLogEntry[] = [];
     const openAIFetch: typeof fetch = async (input, init) => {
       expect(String(input)).toBe("https://api.openai.com/v1/responses");
       expect(init).not.toHaveProperty("signal");
@@ -309,6 +311,8 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
         openAIFetch,
         googleFetch,
         googleToken: async () => "google-token",
+        requestId: "routing-request-qa",
+        logSink: (entry) => routingLogs.push(entry),
       },
     );
     expect(openAICalls).toBe(3);
@@ -346,6 +350,72 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
       reasoningEffort: "high",
       toolCalls: 3,
       evaluatedCandidates: 2,
+    });
+    expect(routingLogs[0]).toMatchObject({
+      event: "routing.request.received",
+      system: "Ana Rutas",
+      requestId: "routing-request-qa",
+      planId: plan.id,
+    });
+    expect(routingLogs.at(-1)).toMatchObject({
+      event: "routing.completed",
+      system: "PostgreSQL",
+      details: { assignedOrders: 2, skippedOrders: 0 },
+    });
+    expect(routingLogs.map((entry) => entry.event)).toEqual(
+      expect.arrayContaining([
+        "routing.batch.prepared",
+        "routing.lease.acquired",
+        "routing.openai.started",
+        "routing.openai.completed",
+        "routing.openai.requested_google",
+        "routing.google.started",
+        "routing.google.completed",
+        "routing.roads.started",
+        "routing.roads.progress",
+        "routing.candidate.evaluated",
+        "routing.openai.candidate_received",
+        "routing.openai.commit_requested",
+        "routing.database.started",
+      ]),
+    );
+    expect(new Set(routingLogs.map((entry) => entry.system))).toEqual(
+      new Set([
+        "Ana Rutas",
+        "OpenAI Responses API",
+        "Google Route Optimization",
+        "Google Routes API",
+        "PostgreSQL",
+      ]),
+    );
+    const serializedLogs = JSON.stringify(routingLogs);
+    for (const privateValue of [
+      "test-key",
+      "private_key",
+      "PII segundo cliente",
+      "same-as-warehouse",
+    ])
+      expect(serializedLogs).not.toContain(privateValue);
+
+    const failedLogs: RoutingLogEntry[] = [];
+    await expect(
+      planRouteWithOpenAI(
+        db.pool,
+        actor,
+        plan.id,
+        { expectedVersion: before.plan.version },
+        "UTC",
+        {
+          requestId: "routing-failed-qa",
+          logSink: (entry) => failedLogs.push(entry),
+        },
+      ),
+    ).rejects.toThrow("VERSION_CONFLICT");
+    expect(failedLogs.at(-1)).toMatchObject({
+      event: "routing.failed",
+      level: "error",
+      requestId: "routing-failed-qa",
+      details: { errorCode: "VERSION_CONFLICT" },
     });
   });
 });

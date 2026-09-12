@@ -24,6 +24,12 @@ import {
 import { readGoogleRoutingConfig } from "./routing-config";
 import { getRoutingSettings } from "./routing-settings";
 import type { PublicOptimization } from "./routing-contract";
+import {
+  createRoutingLogger,
+  type RoutingLogger,
+  type RoutingLogSink,
+  type RoutingLogSystem,
+} from "./route-observability";
 
 type CandidateRoute = { vehicleId: string; shipmentIds: string[] };
 type Candidate = { routes: CandidateRoute[] };
@@ -445,156 +451,422 @@ export async function planRouteWithOpenAI(
     openAIFetch?: typeof fetch;
     googleFetch?: typeof fetch;
     googleToken?: () => Promise<string>;
+    requestId?: string;
+    logSink?: RoutingLogSink;
   } = {},
 ): Promise<PublicOptimization | null> {
-  const planId = uuid(planIdRaw),
-    expectedVersion = integer(input.expectedVersion, 1);
-  await assertActiveActor(pool, actor);
-  const [board, settings] = await Promise.all([
-    orderBoard(pool, planId),
-    getRoutingSettings(pool),
-  ]);
-  if (board.plan.version !== expectedVersion)
-    throw new AppError("VERSION_CONFLICT", 409);
-  const googleRequest = buildGoogleOptimizationRequest(
-    board,
-    settings,
-    timezone,
+  const planId = uuid(planIdRaw);
+  const logger =
+    dependencies.requestId || dependencies.logSink
+      ? createRoutingLogger(
+          dependencies.requestId ?? randomUUID(),
+          planId,
+          dependencies.logSink,
+        )
+      : null;
+  let currentSystem: RoutingLogSystem = "Ana Rutas",
+    currentStage = "recepción";
+  const progress: RoutingLogger = (
+    level,
+    event,
+    system,
+    stage,
+    message,
+    details,
+  ) => {
+    currentSystem = system;
+    currentStage = stage;
+    logger?.(level, event, system, stage, message, details);
+  };
+  progress(
+    "info",
+    "routing.request.received",
+    "Ana Rutas",
+    "recepción",
+    "Ana Rutas recibió la solicitud para armar la ruta.",
   );
-  const config = dependencies.openAIConfig ?? readOpenAIRoutingConfig();
-  const requestHash = createHash("sha256")
-    .update(
-      JSON.stringify({
-        provider: "openai-tools-customer-groups-v2",
-        fingerprint: routeFingerprint(board, settings.version),
-      }),
-    )
-    .digest("hex");
-  const externalTimeout = Math.max(
-    120,
-    Number(googleRequest.timeout.slice(0, -1)),
-  );
-  const lease = await acquireOptimizationLease(
-    pool,
-    planId,
-    expectedVersion,
-    requestHash,
-    externalTimeout,
-  );
-  const evaluated = new Map<string, Evaluation>();
-  const evaluatedByCandidate = new Map<string, Evaluation>();
-  let googleToolOutput: unknown,
-    googleRequested = false;
-  const deliveries = board.shipments.filter(
-    (s) => s.fulfillmentMode === "delivery" && !s.customerArchived,
-  );
-  const snapshot = planningSnapshot(board, settings);
-  const evaluateOnce = async (candidate: Candidate) => {
-    const signature = candidateSignature(candidate);
-    const prior = evaluatedByCandidate.get(signature);
-    if (prior) return prior;
-    const evaluation = await evaluateCandidate(
+  try {
+    const expectedVersion = integer(input.expectedVersion, 1);
+    await assertActiveActor(pool, actor);
+    const [board, settings] = await Promise.all([
+      orderBoard(pool, planId),
+      getRoutingSettings(pool),
+    ]);
+    if (board.plan.version !== expectedVersion)
+      throw new AppError("VERSION_CONFLICT", 409);
+    const googleRequest = buildGoogleOptimizationRequest(
       board,
-      candidate,
       settings,
       timezone,
-      () => renewOptimizationLease(pool, planId, lease, externalTimeout),
     );
-    evaluated.set(evaluation.id, evaluation);
-    evaluatedByCandidate.set(signature, evaluation);
-    return evaluation;
-  };
-  const inputItems: unknown[] = [
-    {
-      role: "user",
-      content: [
-        {
-          type: "input_text",
-          text: JSON.stringify(snapshot),
-        },
-      ],
-    },
-  ];
-  let toolCalls = 0;
-  try {
-    while (true) {
-      await renewOptimizationLease(pool, planId, lease, externalTimeout);
-      const response = await openAIResponse(
-        config,
-        inputItems,
-        dependencies.openAIFetch,
+    const config = dependencies.openAIConfig ?? readOpenAIRoutingConfig();
+    const requestHash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          provider: "openai-tools-customer-groups-v2",
+          fingerprint: routeFingerprint(board, settings.version),
+        }),
+      )
+      .digest("hex");
+    const externalTimeout = Math.max(
+      120,
+      Number(googleRequest.timeout.slice(0, -1)),
+    );
+    const deliveries = board.shipments.filter(
+      (s) => s.fulfillmentMode === "delivery" && !s.customerArchived,
+    );
+    const snapshot = planningSnapshot(board, settings);
+    progress(
+      "info",
+      "routing.batch.prepared",
+      "Ana Rutas",
+      "preparación",
+      `Ana Rutas preparó ${deliveries.length} pedidos de ${snapshot.deliveryGroups.length} clientes para ${board.vehicles.length} camionetas.`,
+      {
+        expectedVersion,
+        orders: deliveries.length,
+        deliveryGroups: snapshot.deliveryGroups.length,
+        vehicles: board.vehicles.length,
+        solverTimeoutSeconds: Number(googleRequest.timeout.slice(0, -1)),
+        model: config.model,
+        reasoningEffort: config.reasoningEffort ?? "predeterminado",
+      },
+    );
+    const lease = await acquireOptimizationLease(
+      pool,
+      planId,
+      expectedVersion,
+      requestHash,
+      externalTimeout,
+    );
+    progress(
+      "info",
+      "routing.lease.acquired",
+      "Ana Rutas",
+      "control de concurrencia",
+      "Ana Rutas reservó este borrador para evitar que dos procesos armen la misma ruta al mismo tiempo.",
+      { expectedVersion },
+    );
+    const evaluated = new Map<string, Evaluation>();
+    const evaluatedByCandidate = new Map<string, Evaluation>();
+    let googleToolOutput: unknown,
+      googleRequested = false;
+    const evaluateOnce = async (
+      candidate: Candidate,
+      source: "Google" | "OpenAI",
+    ) => {
+      const signature = candidateSignature(candidate);
+      const prior = evaluatedByCandidate.get(signature);
+      if (prior) {
+        progress(
+          "info",
+          "routing.candidate.reused",
+          "Ana Rutas",
+          "evaluación",
+          `Ana Rutas reconoció que el candidato de ${source} ya estaba medido y reutilizó el resultado.`,
+          { evaluatedCandidates: evaluated.size },
+        );
+        return prior;
+      }
+      const segmentsTotal = candidate.routes.reduce(
+        (total, route) =>
+          total +
+          route.shipmentIds.length +
+          (route.shipmentIds.length > 0 ? 1 : 0),
+        0,
       );
-      if (response.status === "incomplete") {
-        const details = record(response.incomplete_details);
-        if (details.reason !== "max_output_tokens")
-          throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
-      }
-      if (!Array.isArray(response.output))
-        throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
-      inputItems.push(...response.output);
-      const calls = response.output
-        .map(record)
-        .filter((item) => item.type === "function_call");
-      if (!calls.length && response.status === "incomplete") {
-        inputItems.push({
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: "Continúa exactamente desde el estado conservado y usa una herramienta.",
-            },
-          ],
-        });
-        continue;
-      }
-      if (!calls.length) throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
-      for (const call of calls) {
-        toolCalls++;
-        if (
-          toolCalls >
-          Math.max(32, deliveries.length * 8 + board.vehicles.length * 4)
-        )
-          throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
-        if (
-          typeof call.call_id !== "string" ||
-          typeof call.name !== "string" ||
-          typeof call.arguments !== "string"
-        )
-          throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
-        let args: unknown;
-        try {
-          args = JSON.parse(call.arguments);
-        } catch {
-          throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
-        }
-        let output: unknown;
-        if (call.name === "get_google_proposal") {
-          if (!googleRequested) {
-            googleRequested = true;
-            const google =
-              dependencies.googleConfig ?? readGoogleRoutingConfig();
-            await renewOptimizationLease(pool, planId, lease, externalTimeout);
-            const raw = await requestGoogleOptimization(
-              google.projectId,
-              google.credentials,
-              googleRequest,
-              {
-                fetch: dependencies.googleFetch,
-                token: dependencies.googleToken,
-              },
+      let segmentsCompleted = 0;
+      const logEvery = Math.max(1, Math.ceil(segmentsTotal / 10));
+      progress(
+        "info",
+        "routing.roads.started",
+        "Google Routes API",
+        "medición vial",
+        `Google Routes comenzó a medir por calles el candidato de ${source}.`,
+        {
+          orders: candidate.routes.reduce(
+            (total, route) => total + route.shipmentIds.length,
+            0,
+          ),
+          routes: candidate.routes.length,
+          segmentsCompleted,
+          segmentsTotal,
+        },
+      );
+      const measurementStarted = performance.now();
+      const evaluation = await evaluateCandidate(
+        board,
+        candidate,
+        settings,
+        timezone,
+        async () => {
+          await renewOptimizationLease(pool, planId, lease, externalTimeout);
+          segmentsCompleted++;
+          if (
+            segmentsCompleted === 1 ||
+            segmentsCompleted === segmentsTotal ||
+            segmentsCompleted % logEvery === 0
+          )
+            progress(
+              "info",
+              "routing.roads.progress",
+              "Google Routes API",
+              "medición vial",
+              `Google Routes lleva ${segmentsCompleted} de ${segmentsTotal} tramos revisados para este candidato.`,
+              { segmentsCompleted, segmentsTotal },
             );
-            const proposal = proposalCandidate(
-              board,
-              parseGoogleOptimizationResponse(
+        },
+      );
+      evaluated.set(evaluation.id, evaluation);
+      evaluatedByCandidate.set(signature, evaluation);
+      progress(
+        "info",
+        "routing.candidate.evaluated",
+        "Google Routes API",
+        "evaluación",
+        `El candidato de ${source} quedó medido con ${evaluation.result.metrics.performedShipmentCount} pedidos; los horarios y prioridades se conservaron como avisos, no como bloqueos.`,
+        {
+          stepDurationMs: Math.round(performance.now() - measurementStarted),
+          evaluatedCandidates: evaluated.size,
+          assignedOrders: evaluation.result.metrics.performedShipmentCount,
+          routes: evaluation.result.routes.length,
+          lateStops: evaluation.lateStops,
+          lateSeconds: evaluation.score.lateSeconds,
+          priorityConflicts: evaluation.priorityConflicts,
+          unusedVehicles: evaluation.unusedVehicles,
+          distanceMeters: evaluation.result.metrics.travelDistanceMeters,
+          durationSeconds: evaluation.result.metrics.totalDurationSeconds,
+        },
+      );
+      return evaluation;
+    };
+    const inputItems: unknown[] = [
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(snapshot),
+          },
+        ],
+      },
+    ];
+    let toolCalls = 0,
+      aiCycle = 0;
+    try {
+      while (true) {
+        await renewOptimizationLease(pool, planId, lease, externalTimeout);
+        aiCycle++;
+        progress(
+          "info",
+          "routing.openai.started",
+          "OpenAI Responses API",
+          "razonamiento",
+          `OpenAI comenzó el ciclo ${aiCycle} para decidir la mejor distribución completa.`,
+          {
+            cycle: aiCycle,
+            toolCalls,
+            evaluatedCandidates: evaluated.size,
+            model: config.model,
+            reasoningEffort: config.reasoningEffort ?? "predeterminado",
+          },
+        );
+        const openAIStarted = performance.now();
+        const response = await openAIResponse(
+          config,
+          inputItems,
+          dependencies.openAIFetch,
+        );
+        progress(
+          "info",
+          "routing.openai.completed",
+          "OpenAI Responses API",
+          "razonamiento",
+          `OpenAI terminó el ciclo ${aiCycle} y solicitó el siguiente paso del ruteo.`,
+          {
+            cycle: aiCycle,
+            stepDurationMs: Math.round(performance.now() - openAIStarted),
+            toolCalls,
+            evaluatedCandidates: evaluated.size,
+          },
+        );
+        if (response.status === "incomplete") {
+          const details = record(response.incomplete_details);
+          if (details.reason !== "max_output_tokens")
+            throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
+          progress(
+            "warning",
+            "routing.openai.continuing",
+            "OpenAI Responses API",
+            "razonamiento",
+            "OpenAI indicó que necesita continuar; Ana Rutas conserva el avance y abre el siguiente ciclo sin repetir el trabajo confirmado.",
+            { cycle: aiCycle, evaluatedCandidates: evaluated.size },
+          );
+        }
+        if (!Array.isArray(response.output))
+          throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
+        inputItems.push(...response.output);
+        const calls = response.output
+          .map(record)
+          .filter((item) => item.type === "function_call");
+        if (!calls.length && response.status === "incomplete") {
+          inputItems.push({
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: "Continúa exactamente desde el estado conservado y usa una herramienta.",
+              },
+            ],
+          });
+          continue;
+        }
+        if (!calls.length)
+          throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
+        for (const call of calls) {
+          toolCalls++;
+          if (
+            toolCalls >
+            Math.max(32, deliveries.length * 8 + board.vehicles.length * 4)
+          )
+            throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
+          if (
+            typeof call.call_id !== "string" ||
+            typeof call.name !== "string" ||
+            typeof call.arguments !== "string"
+          )
+            throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
+          let args: unknown;
+          try {
+            args = JSON.parse(call.arguments);
+          } catch {
+            throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
+          }
+          let output: unknown;
+          if (call.name === "get_google_proposal") {
+            progress(
+              "info",
+              "routing.openai.requested_google",
+              "OpenAI Responses API",
+              "selección de herramienta",
+              "OpenAI pidió una propuesta inicial al optimizador vial de Google.",
+              { cycle: aiCycle, toolCalls },
+            );
+            if (!googleRequested) {
+              googleRequested = true;
+              const google =
+                dependencies.googleConfig ?? readGoogleRoutingConfig();
+              await renewOptimizationLease(
+                pool,
+                planId,
+                lease,
+                externalTimeout,
+              );
+              progress(
+                "info",
+                "routing.google.started",
+                "Google Route Optimization",
+                "optimización vial",
+                `Google Route Optimization comenzó a distribuir ${deliveries.length} pedidos entre ${board.vehicles.length} camionetas.`,
+                {
+                  orders: deliveries.length,
+                  deliveryGroups: snapshot.deliveryGroups.length,
+                  vehicles: board.vehicles.length,
+                  solverTimeoutSeconds: Number(
+                    googleRequest.timeout.slice(0, -1),
+                  ),
+                },
+              );
+              const googleStarted = performance.now();
+              const raw = await requestGoogleOptimization(
+                google.projectId,
+                google.credentials,
+                googleRequest,
+                {
+                  fetch: dependencies.googleFetch,
+                  token: dependencies.googleToken,
+                },
+              );
+              const googleResult = parseGoogleOptimizationResponse(
                 raw,
                 deliveries.length,
                 board.vehicles.length,
-              ),
+              );
+              progress(
+                googleResult.skipped.length ? "warning" : "info",
+                "routing.google.completed",
+                "Google Route Optimization",
+                "optimización vial",
+                googleResult.skipped.length
+                  ? `Google devolvió una propuesta parcial: asignó ${googleResult.metrics.performedShipmentCount} y omitió ${googleResult.skipped.length}; OpenAI deberá reconstruirla completa.`
+                  : `Google terminó la propuesta inicial con los ${googleResult.metrics.performedShipmentCount} pedidos incluidos.`,
+                {
+                  stepDurationMs: Math.round(performance.now() - googleStarted),
+                  assignedOrders: googleResult.metrics.performedShipmentCount,
+                  skippedOrders: googleResult.skipped.length,
+                  routes: googleResult.routes.length,
+                  distanceMeters: googleResult.metrics.travelDistanceMeters,
+                  durationSeconds: googleResult.metrics.totalDurationSeconds,
+                },
+              );
+              const proposal = proposalCandidate(board, googleResult);
+              try {
+                googleToolOutput = toolResult(
+                  await evaluateOnce(parseCandidate(proposal, board), "Google"),
+                );
+              } catch (error) {
+                if (
+                  error instanceof AppError &&
+                  [
+                    "ROUTING_AI_CANDIDATE_INVALID",
+                    "ROUTING_CUSTOMER_GROUP_INVALID",
+                  ].includes(error.code)
+                ) {
+                  progress(
+                    "warning",
+                    "routing.google.proposal_rejected",
+                    "Ana Rutas",
+                    "validación de cobertura",
+                    "Ana Rutas rechazó la propuesta inicial porque no conservó todos los pedidos o separó pedidos del mismo cliente; OpenAI continuará con una distribución corregida.",
+                    { errorCode: error.code },
+                  );
+                  googleToolOutput = {
+                    evaluated: false,
+                    error: error.code,
+                    proposal,
+                  };
+                } else throw error;
+              }
+            } else {
+              progress(
+                "info",
+                "routing.google.reused",
+                "Ana Rutas",
+                "optimización vial",
+                "Ana Rutas reutilizó la propuesta de Google ya obtenida y evitó una segunda llamada facturable.",
+                { toolCalls },
+              );
+            }
+            output = googleToolOutput;
+          } else if (call.name === "evaluate_candidate") {
+            progress(
+              "info",
+              "routing.openai.candidate_received",
+              "OpenAI Responses API",
+              "evaluación",
+              "OpenAI propuso una distribución y pidió medirla por calles reales.",
+              {
+                cycle: aiCycle,
+                toolCalls,
+                evaluatedCandidates: evaluated.size,
+              },
             );
             try {
-              googleToolOutput = toolResult(
-                await evaluateOnce(parseCandidate(proposal, board)),
+              const evaluation = await evaluateOnce(
+                parseCandidate(args, board),
+                "OpenAI",
               );
+              output = toolResult(evaluation);
             } catch (error) {
               if (
                 error instanceof AppError &&
@@ -602,73 +874,134 @@ export async function planRouteWithOpenAI(
                   "ROUTING_AI_CANDIDATE_INVALID",
                   "ROUTING_CUSTOMER_GROUP_INVALID",
                 ].includes(error.code)
-              )
-                googleToolOutput = {
-                  evaluated: false,
-                  error: error.code,
-                  proposal,
-                };
-              else throw error;
+              ) {
+                progress(
+                  "warning",
+                  "routing.openai.candidate_rejected",
+                  "Ana Rutas",
+                  "validación de cobertura",
+                  "Ana Rutas rechazó el candidato de OpenAI porque omitía, duplicaba o separaba pedidos; OpenAI recibirá el código y podrá corregirlo.",
+                  {
+                    errorCode: error.code,
+                    evaluatedCandidates: evaluated.size,
+                  },
+                );
+                output = { evaluated: false, error: error.code };
+              } else throw error;
             }
-          }
-          output = googleToolOutput;
-        } else if (call.name === "evaluate_candidate") {
-          try {
-            const evaluation = await evaluateOnce(parseCandidate(args, board));
-            output = toolResult(evaluation);
-          } catch (error) {
-            if (
-              error instanceof AppError &&
-              [
-                "ROUTING_AI_CANDIDATE_INVALID",
-                "ROUTING_CUSTOMER_GROUP_INVALID",
-              ].includes(error.code)
-            )
-              output = { evaluated: false, error: error.code };
-            else throw error;
-          }
-        } else if (call.name === "commit_candidate") {
-          const candidateId = record(args).candidateId;
-          const chosen =
-            typeof candidateId === "string"
-              ? evaluated.get(candidateId)
-              : undefined;
-          const best = [...evaluated.values()].sort(compareEvaluations)[0];
-          const decision = candidateCommitDecision(chosen, best);
-          if ("error" in decision)
-            output = {
-              committed: false,
-              error: decision.error,
-            };
-          else
-            return await applyOptimizationResult(
-              pool,
-              actor,
-              planId,
-              expectedVersion,
-              settings.version,
-              board,
-              deliveries,
-              requestHash,
-              asOptimizationResult(decision.chosen, board),
+          } else if (call.name === "commit_candidate") {
+            progress(
+              "info",
+              "routing.openai.commit_requested",
+              "OpenAI Responses API",
+              "confirmación",
+              "OpenAI pidió confirmar el mejor candidato completo que ya fue medido.",
               {
-                planner: "openai-native-tools",
-                model: config.model,
-                reasoningEffort: config.reasoningEffort,
+                cycle: aiCycle,
                 toolCalls,
                 evaluatedCandidates: evaluated.size,
-                deliveryGroups: snapshot.deliveryGroups.length,
               },
             );
-        } else throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
-        inputItems.push({
-          type: "function_call_output",
-          call_id: call.call_id,
-          output: JSON.stringify(output),
-        });
+            const candidateId = record(args).candidateId;
+            const chosen =
+              typeof candidateId === "string"
+                ? evaluated.get(candidateId)
+                : undefined;
+            const best = [...evaluated.values()].sort(compareEvaluations)[0];
+            const decision = candidateCommitDecision(chosen, best);
+            if ("error" in decision) {
+              progress(
+                "warning",
+                "routing.commit.rejected",
+                "Ana Rutas",
+                "confirmación",
+                "Ana Rutas no confirmó la solicitud porque el candidato no era el mejor candidato completo medido; OpenAI continuará.",
+                {
+                  errorCode: "CANDIDATE_NOT_BEST",
+                  evaluatedCandidates: evaluated.size,
+                },
+              );
+              output = {
+                committed: false,
+                error: decision.error,
+              };
+            } else {
+              progress(
+                "info",
+                "routing.database.started",
+                "PostgreSQL",
+                "guardado transaccional",
+                `PostgreSQL comenzó a guardar atómicamente los ${deliveries.length} pedidos de la ruta elegida.`,
+                {
+                  orders: deliveries.length,
+                  routes: decision.chosen.result.routes.length,
+                  evaluatedCandidates: evaluated.size,
+                },
+              );
+              const databaseStarted = performance.now();
+              const saved = await applyOptimizationResult(
+                pool,
+                actor,
+                planId,
+                expectedVersion,
+                settings.version,
+                board,
+                deliveries,
+                requestHash,
+                asOptimizationResult(decision.chosen, board),
+                {
+                  planner: "openai-native-tools",
+                  model: config.model,
+                  reasoningEffort: config.reasoningEffort,
+                  toolCalls,
+                  evaluatedCandidates: evaluated.size,
+                  deliveryGroups: snapshot.deliveryGroups.length,
+                },
+              );
+              progress(
+                "info",
+                "routing.completed",
+                "PostgreSQL",
+                "terminado",
+                `Ruta terminada: ${saved?.metrics.performedShipmentCount ?? 0} pedidos quedaron guardados, sin omisiones parciales.`,
+                {
+                  stepDurationMs: Math.round(
+                    performance.now() - databaseStarted,
+                  ),
+                  assignedOrders: saved?.metrics.performedShipmentCount ?? 0,
+                  skippedOrders: saved?.skipped.length ?? 0,
+                  routes: saved?.routes.length ?? 0,
+                  evaluatedCandidates: evaluated.size,
+                  toolCalls,
+                  distanceMeters: saved?.metrics.travelDistanceMeters ?? 0,
+                  durationSeconds: saved?.metrics.totalDurationSeconds ?? 0,
+                },
+              );
+              return saved;
+            }
+          } else throw new AppError("ROUTING_AI_RESPONSE_INVALID", 503);
+          inputItems.push({
+            type: "function_call_output",
+            call_id: call.call_id,
+            output: JSON.stringify(output),
+          });
+        }
       }
+    } finally {
+      await releaseOptimizationLease(pool, planId, lease).catch(() => {});
     }
-  } finally {
-    await releaseOptimizationLease(pool, planId, lease).catch(() => {});
+  } catch (error) {
+    logger?.(
+      "error",
+      "routing.failed",
+      currentSystem,
+      currentStage,
+      `El proceso para armar la ruta se detuvo durante la etapa: ${currentStage}. El borrador conserva su último estado válido.`,
+      {
+        errorCode:
+          error instanceof AppError ? error.code : "UNEXPECTED_ROUTING_ERROR",
+      },
+    );
+    throw error;
   }
 }

@@ -1,5 +1,13 @@
 # Progreso — bloque 1
 
+## Observabilidad de ruteo — BLOQUE-OBSERVABILIDAD-RUTEO.md
+
+- [x] RO-T01 (BL-055/RO01): logger estructurado para stdout/stderr con mensaje natural, sistema, etapa, requestId, planId y duración.
+- [x] RO-T02 (BL-056/RO01): avance conectado a Ana Rutas, OpenAI, Google Route Optimization, Google Routes y PostgreSQL, incluido progreso agregado de tramos.
+- [x] RO-T03 (BL-057/RO01): lista cerrada de métricas, cero PII/secretos y logging fail-open; pruebas unitarias e integración del recorrido completo.
+- [x] RO-T04: 332 pruebas, cobertura, mutación 100%, lint, tipos, build, auditoría y E2E local verdes; evidencia en `QA-OBSERVABILIDAD-RUTEO.md`.
+- [ ] RO-T05: smoke visible en EasyPanel develop después del deploy manual; confirmar secuencia completa y privacidad con la corrida real.
+
 ## Resiliencia de volumen — BLOQUE-RUTEO-VOLUMEN.md
 
 - [x] RV-T01 (BL-051 / V01..04): cobertura exacta antes de medir y dentro de la transacción; regresión del lote actual de 61 pedidos con PostgreSQL real, sin convertir esa cantidad en límite.

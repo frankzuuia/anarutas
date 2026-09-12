@@ -489,6 +489,15 @@ Feature: Ana Rutas independiente y portable
     And ningún pedido se omite por horario, prioridad o número total
     And los pedidos de un mismo cliente quedan juntos en una camioneta
 
+  Scenario: RO01 EasyPanel muestra el avance completo del ruteo en lenguaje natural
+    Given un administrador pulsa Armar ruta en Ana Rutas develop
+    When Ana Rutas prepara el lote, OpenAI razona, Google optimiza y PostgreSQL guarda
+    Then cada etapa escribe en stdout un mensaje en español con sistema, etapa y tiempo transcurrido
+    And todas las líneas de la misma corrida comparten requestId y planId
+    And el avance vial informa tramos revisados sin imprimir pedidos individuales
+    And los logs nunca contienen claves, credenciales, nombres, teléfonos ni domicilios
+    And si una etapa falla informa el código y confirma que el borrador conserva su último estado válido
+
   Scenario: RC08 RC09 RC10 integridad y recuperación al guardar grupos
     Given existe un borrador con varios pedidos del mismo cliente
     When llega al guardado una propuesta con grupo dividido o parcial
