@@ -42,6 +42,8 @@ export const errors: Record<string, string> = {
     "La propuesta de IA omitió, duplicó o usó datos ajenos al plan y fue rechazada.",
   ROUTING_AI_PRIORITY_INVALID:
     "La propuesta de IA no respetó Alta, después Media y después Por horario.",
+  ROUTING_CUSTOMER_GROUP_INVALID:
+    "La propuesta separó pedidos del mismo cliente. No se guardó; vuelve a armar la ruta.",
   ROUTING_ROADS_CONFIG_MISSING:
     "Falta configurar la credencial privada de Google Routes para recalcular los recorridos.",
   ROUTING_NOT_CALCULATED:

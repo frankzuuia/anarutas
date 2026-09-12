@@ -1,5 +1,11 @@
 # Progreso — bloque 1
 
+## Corrección de agrupación por cliente — BLOQUE-RUTEO-POR-CLIENTE.md
+
+- [x] RC-T01 (BL-048/RC01..03,06): regresión reproducida, agrupación por partner de entrega y validación indivisible/consecutiva.
+- [x] RC-T02 (BL-049..050/RC04,05,07): grupos opacos en snapshot/tools, flota por grupos y retorno de propuesta inválida a la IA.
+- [x] RC-T03 (BL-050/RC08..10): validación transaccional, regresión, PostgreSQL real, Gherkin, cobertura/mutación, 2 E2E de regresión y E2E adicional con los 8 pedidos reales/OpenAI/Google, todos verdes. Agrupación y frontera de persistencia: mutación 100%. Evidencia en QA-RUTEO-POR-CLIENTE.md. Commit/push a develop autorizados por el usuario el 12 septiembre; deploy manual a cargo del usuario.
+
 ## Selección Odoo autorizada — BLOQUE-SELECCION-ODOO.md
 
 - [x] SC-T01: autopsia/línea base y muestra live 19.4 done/assigned; contrato 17 por capacidades (C01,C15).

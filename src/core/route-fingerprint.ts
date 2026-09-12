@@ -16,6 +16,7 @@ export function routeFingerprint(board: OrderBoard, settingsVersion: number) {
         })),
         shipments: board.shipments.map((s) => ({
           id: s.id,
+          partnerId: s.partnerId,
           vehicle: s.vehicle_id,
           position: s.position,
           latitude: s.latitude,

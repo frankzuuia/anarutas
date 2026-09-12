@@ -77,6 +77,7 @@ describe("route input fingerprint", () => {
       shipments: [
         {
           id: "00000000-0000-4000-8000-000000000021",
+          partnerId: 1,
           vehicle: "00000000-0000-4000-8000-000000000011",
           position: 3,
           latitude: 20.6,
@@ -105,5 +106,8 @@ describe("route input fingerprint", () => {
     expect(routeFingerprint(moved, 4)).not.toBe(baseline);
     expect(routeFingerprint(reassigned, 4)).not.toBe(baseline);
     expect(routeFingerprint(board, 5)).not.toBe(baseline);
+    const otherCustomer = structuredClone(board);
+    otherCustomer.shipments[0].partnerId = 2;
+    expect(routeFingerprint(otherCustomer, 4)).not.toBe(baseline);
   });
 });

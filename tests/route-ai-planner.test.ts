@@ -5,6 +5,7 @@ import {
   candidateCommitDecision,
   evaluateCandidate,
   parseCandidate,
+  planningSnapshot,
   requiredDistinctCandidates,
 } from "../src/core/route-ai-planner";
 
@@ -36,7 +37,7 @@ const shipment = (
   pickingName: "WH/OUT/1",
   orderId: 1,
   orderName: "S1",
-  partnerId: 1,
+  partnerId: Number(id.slice(-12)),
   customerName: "Dato no ejecutable",
   address: "",
   validatedAt: "2026-09-10T00:00:00Z",
@@ -85,6 +86,131 @@ const valid = {
 };
 
 describe("OpenAI candidate boundary", () => {
+  it("sends opaque complete groups without customer PII and counts alternatives by groups", () => {
+    const settings = {
+      depotAddress: "",
+      depotLocation: null,
+      version: 1,
+      updatedAt: null,
+    };
+    const context = planningSnapshot(board, settings);
+    expect(context.minimumDistinctCandidates).toBe(2);
+    expect(context.deliveryGroups).toEqual(
+      board.shipments
+        .slice(0, 3)
+        .map((s) => ({ id: s.id, shipmentIds: [s.id] })),
+    );
+    expect(context.shipments).toEqual(
+      board.shipments.slice(0, 3).map((s) => ({
+        id: s.id,
+        latitude: s.latitude,
+        longitude: s.longitude,
+        priority: s.priority,
+        windows: s.deliveryWindows,
+      })),
+    );
+    expect(context).toMatchObject({
+      planId: board.plan.id,
+      serviceDate: board.plan.service_date,
+      departureMinute: 480,
+      depot: null,
+      vehicles: board.vehicles.map((v) => ({ id: v.id })),
+    });
+    expect(JSON.stringify(context)).not.toContain("Dato no ejecutable");
+    const repeated = structuredClone(board);
+    repeated.shipments.forEach((s) => (s.partnerId = 1));
+    repeated.shipments.push({
+      ...repeated.shipments[0],
+      id: "archived",
+      customerArchived: true,
+    });
+    const grouped = planningSnapshot(repeated, settings);
+    expect(grouped.minimumDistinctCandidates).toBe(1);
+    expect(grouped.deliveryGroups).toEqual([
+      {
+        id: board.shipments[0].id,
+        shipmentIds: board.shipments.slice(0, 3).map((s) => s.id),
+      },
+    ]);
+    expect(grouped.shipments).toHaveLength(3);
+  });
+  it("also rejects a split before measuring a candidate supplied directly", async () => {
+    const repeated = structuredClone(board);
+    repeated.shipments[2].partnerId = repeated.shipments[0].partnerId;
+    await expect(
+      evaluateCandidate(
+        repeated,
+        valid,
+        { depotAddress: "", depotLocation: null, version: 1, updatedAt: null },
+        "UTC",
+      ),
+    ).rejects.toThrow("ROUTING_CUSTOMER_GROUP_INVALID");
+  });
+  it.each(["high", "medium"] as const)(
+    "rejects splitting one %s customer's orders between drivers (reported regression)",
+    (priority) => {
+      const repeated = structuredClone(board);
+      repeated.shipments[0].priority = priority;
+      repeated.shipments[2].priority = priority;
+      repeated.shipments[2].partnerId = repeated.shipments[0].partnerId;
+      repeated.shipments[1].priority = "schedule";
+      expect(() => parseCandidate(valid, repeated)).toThrow(
+        "ROUTING_CUSTOMER_GROUP_INVALID",
+      );
+    },
+  );
+  it("rejects returning to the same customer after another stop", () => {
+    const repeated = structuredClone(board);
+    repeated.shipments.forEach((item) => (item.priority = "high"));
+    repeated.shipments[2].partnerId = repeated.shipments[0].partnerId;
+    expect(() =>
+      parseCandidate(
+        {
+          routes: [
+            {
+              vehicleId: board.vehicles[0].id,
+              shipmentIds: repeated.shipments.slice(0, 3).map((s) => s.id),
+            },
+            { vehicleId: board.vehicles[1].id, shipmentIds: [] },
+          ],
+        },
+        repeated,
+      ),
+    ).toThrow("ROUTING_CUSTOMER_GROUP_INVALID");
+  });
+  it("does not force splitting a single customer just to occupy two trucks", async () => {
+    const repeated = structuredClone(board);
+    repeated.shipments.forEach((s) => {
+      s.partnerId = 1;
+      s.priority = "high";
+    });
+    const candidate = parseCandidate(
+      {
+        routes: [
+          {
+            vehicleId: board.vehicles[0].id,
+            shipmentIds: repeated.shipments.slice(0, 3).map((s) => s.id),
+          },
+          { vehicleId: board.vehicles[1].id, shipmentIds: [] },
+        ],
+      },
+      repeated,
+    );
+    const evaluated = await evaluateCandidate(
+      repeated,
+      candidate,
+      {
+        depotAddress: "",
+        depotLocation: { latitude: 20, longitude: -103, placeId: "warehouse" },
+        version: 1,
+        updatedAt: null,
+      },
+      "UTC",
+    );
+    expect(evaluated.unusedVehicles).toBe(0);
+    expect(evaluated.feasible).toBe(true);
+    expect(evaluated.result.metrics.performedShipmentCount).toBe(3);
+  });
   it("requires alternatives only when both the fleet and deliveries can be redistributed", () => {
     expect(requiredDistinctCandidates(1, 7)).toBe(1);
     expect(requiredDistinctCandidates(2, 1)).toBe(1);

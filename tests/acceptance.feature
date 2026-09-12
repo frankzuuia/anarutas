@@ -453,3 +453,38 @@ Feature: Ana Rutas independiente y portable
     When el administrador abre Control de consumo
     Then ve los requisitos de integración y no una cifra de cero pesos
     And un visitante sin sesión no puede leer ni solicitar la sincronización
+
+  Scenario: RC01 pedidos del mismo cliente viajan con un único chofer
+    Given dos pedidos Alta del mismo destino y tres Media de otro destino
+    And hay dos camionetas disponibles
+    When el administrador pulsa Armar ruta
+    Then cada destino queda completo y consecutivo en una sola camioneta
+    And todas las tarjetas y cantidades se conservan sin fusionarse
+    And siguen vigentes prioridades, ventanas, salida y regreso a bodega
+
+  Scenario: RC02 RC07 rechazar y corregir una propuesta que divide un cliente
+    Given Google o la IA proponen separar un cliente entre camionetas o visitas
+    When la herramienta evalúa esa propuesta
+    Then responde ROUTING_CUSTOMER_GROUP_INVALID sin medir ni guardar ese candidato
+    And la IA puede proponer otro reparto respetando los grupos opacos
+
+  Scenario: RC03 separar identidades de entrega distintas
+    Given dos sucursales tienen el mismo nombre o coordenadas pero distinto partnerId
+    When se construyen los grupos del plan
+    Then siguen siendo destinos independientes
+
+  Scenario: RC04 RC06 contar clientes elegibles para uso de flota
+    Given hay varios pedidos de un solo cliente y dos camionetas
+    And existen recogidas o clientes archivados
+    When la IA evalúa todos los pedidos elegibles juntos en una camioneta
+    Then no exige dividir el cliente para llenar la otra camioneta
+    And basta una distribución evaluada factible para poder confirmar
+
+  Scenario: RC08 RC09 RC10 integridad y recuperación al guardar grupos
+    Given existe un borrador con varios pedidos del mismo cliente
+    When llega al guardado una propuesta con grupo dividido o parcial
+    Then PostgreSQL conserva pedidos, versión y auditoría sin nueva optimización
+    When se reintenta con grupo completo y versión vigente
+    Then se guarda una sola optimización
+    And repetir la versión anterior o usar un actor inactivo se rechaza
+    And una edición manual posterior sigue conservando la decisión del administrador

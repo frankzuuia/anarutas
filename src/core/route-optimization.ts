@@ -6,6 +6,7 @@ import { uuid } from "./orders-validation";
 import { readOrderBoard } from "./orders";
 import type { OrderBoard } from "./orders-contract";
 import { routeFingerprint } from "./route-fingerprint";
+import { assertDeliveryGroups } from "./route-delivery-groups";
 import type { GoogleOptimizationResult } from "./route-optimization-google";
 import type {
   PublicOptimization,
@@ -179,6 +180,13 @@ export async function applyOptimizationResult(
       reasons: item.reasons,
     }));
     const optimizedIds = stopRows.map((stop) => stop.shipmentId);
+    assertDeliveryGroups(
+      board.shipments,
+      privateRoutes.map((route) => ({
+        vehicleId: route.vehicleId,
+        shipmentIds: route.stops.map((stop) => stop.shipmentId),
+      })),
+    );
     const optimizedIdSet = new Set(optimizedIds);
     const remainingIds = board.shipments
       .map((shipment) => shipment.id)

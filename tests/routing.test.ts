@@ -27,6 +27,8 @@ import {
   saveRoutingSettings,
 } from "../src/core/routing-settings";
 import { startPostgres } from "./helpers/postgres";
+import { calculateManualRoutes } from "../src/core/route-road";
+import { saveDeparture } from "../src/core/departure";
 
 let db: Awaited<ReturnType<typeof startPostgres>>;
 let actor: string;
@@ -392,5 +394,163 @@ describe("routing settings and atomic optimization / real PostgreSQL", () => {
         ).rows[0].count,
       ),
     ).toBe(2);
+  });
+
+  it("atomically rejects split/partial customer groups and permits a complete retry", async () => {
+    let plan = await createPlan(db.pool, actor, {
+      date: "2026-09-11",
+      label: "Cliente indivisible QA",
+    });
+    plan = await saveDeparture(db.pool, actor, plan.id, {
+      departureTime: "08:00",
+      expectedVersion: plan.version,
+    });
+    const vehicles = await Promise.all(
+      [1, 2].map((index) =>
+        createVehicle(db.pool, actor, {
+          id: randomUUID(),
+          name: `Grupo ${index}`,
+          brand: "Ford",
+          model: "2026",
+          plate: `GROUP-QA-${index}`,
+          mileage: 0,
+          fuel: "Gasolina",
+          available: true,
+        }),
+      ),
+    );
+    await selectPlanVehicles(db.pool, actor, plan.id, {
+      vehicleIds: vehicles.map((v) => v.id),
+      expectedVersion: plan.version,
+    });
+    const first = sourceShipment(100);
+    await persistImportPage(
+      db.pool,
+      actor,
+      plan.id,
+      importPage([
+        first,
+        { ...sourceShipment(101), partnerId: first.partnerId },
+        sourceShipment(102),
+      ]),
+    );
+    const before = await orderBoard(db.pool, plan.id);
+    const currentSettings = await getRoutingSettings(db.pool);
+    const calculationSettings = {
+      ...currentSettings,
+      depotLocation: { latitude: 20, longitude: -103, placeId: "warehouse" },
+    };
+    // Exercise the real zero-distance domain calculation. No road/provider response
+    // is fabricated: all destinations coincide with the departure point in this test.
+    const measured = await calculateManualRoutes(
+      {
+        ...before,
+        shipments: before.shipments.map((s) => ({
+          ...s,
+          vehicle_id: before.vehicles[0].id,
+          latitude: 20,
+          longitude: -103,
+          locationStatus: "confirmed",
+        })),
+      },
+      calculationSettings,
+      "UTC",
+    );
+    const result: GoogleOptimizationResult = {
+      metrics: measured.metrics,
+      skipped: [],
+      routes: measured.routes.map((route, vehicleIndex) => ({
+        vehicleIndex,
+        encodedPolyline: null,
+        metrics: route.metrics,
+        transitions: route.transitions,
+        departureAt: route.departureAt,
+        finishedAt: route.finishedAt,
+        visits: route.stops.map((stop) => ({
+          shipmentIndex: before.shipments.findIndex(
+            (s) => s.id === stop.shipmentId,
+          ),
+          eta: stop.eta,
+          travelDistanceMeters: stop.travelDistanceMeters,
+          travelDurationSeconds: stop.travelDurationSeconds,
+          waitDurationSeconds: stop.waitDurationSeconds,
+        })),
+      })),
+    };
+    const apply = (
+      value: GoogleOptimizationResult,
+      by = actor,
+      version = before.plan.version,
+    ) =>
+      applyOptimizationResult(
+        db.pool,
+        by,
+        plan.id,
+        version,
+        currentSettings.version,
+        before,
+        before.shipments,
+        createHash("sha256").update("group-retry").digest("hex"),
+        value,
+      );
+    const split = structuredClone(result);
+    split.routes[1].visits.push(split.routes[0].visits.splice(1, 1)[0]);
+    await expect(apply(split)).rejects.toThrow(
+      "ROUTING_CUSTOMER_GROUP_INVALID",
+    );
+    const partial = structuredClone(result);
+    partial.routes[0].visits.splice(1, 1);
+    await expect(apply(partial)).rejects.toThrow(
+      "ROUTING_CUSTOMER_GROUP_INVALID",
+    );
+    const interleaved = structuredClone(result);
+    interleaved.routes[0].visits.reverse();
+    [interleaved.routes[0].visits[0], interleaved.routes[0].visits[1]] = [
+      interleaved.routes[0].visits[1],
+      interleaved.routes[0].visits[0],
+    ];
+    await expect(apply(interleaved)).rejects.toThrow(
+      "ROUTING_CUSTOMER_GROUP_INVALID",
+    );
+    await expect(apply(result, randomUUID())).rejects.toThrow(
+      "UNAUTHENTICATED",
+    );
+    expect(await orderBoard(db.pool, plan.id)).toEqual(before);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT id FROM route_optimization_runs WHERE plan_id=$1",
+          [plan.id],
+        )
+      ).rowCount,
+    ).toBe(0);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT id FROM route_audit WHERE action='plan.optimized' AND entity_id=$1",
+          [plan.id],
+        )
+      ).rowCount,
+    ).toBe(0);
+    expect(await apply(result)).toMatchObject({
+      current: true,
+      appliedPlanVersion: before.plan.version + 1,
+    });
+    await expect(apply(result)).rejects.toThrow("VERSION_CONFLICT");
+    const after = await orderBoard(db.pool, plan.id);
+    expect(after.shipments.map((s) => s.id)).toEqual(
+      before.shipments.map((s) => s.id),
+    );
+    expect(
+      after.shipments.every((s) => s.vehicle_id === before.vehicles[0].id),
+    ).toBe(true);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT id FROM route_optimization_runs WHERE plan_id=$1",
+          [plan.id],
+        )
+      ).rowCount,
+    ).toBe(1);
   });
 });

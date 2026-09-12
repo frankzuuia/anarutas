@@ -1,5 +1,9 @@
 # Bloque 1 — especificación y auditoría previa
 
+Corrección autorizada de ruteo: `BLOQUE-RUTEO-POR-CLIENTE.md`, BL-048..050 y
+RC01..10. Cliente/destino indivisible y consecutivo al armar ruta; el uso de
+flota se cuenta por grupos, sin cambiar pesos, ventanas ni prioridades.
+
 Extensión selección Odoo autorizada: `BLOQUE-SELECCION-ODOO.md`, BL-041..047,
 C01..C19 y SC-T01..07. Sustituye carga ordinaria inmediata por consulta/selección/
 confirmación e incluye confirmed/assigned; manual BL-015 conserva done.
