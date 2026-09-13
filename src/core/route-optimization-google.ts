@@ -15,14 +15,20 @@ type GoogleTimeWindow = {
 };
 type GoogleOptimizationRequest = {
   timeout: string;
+  searchMode: "CONSUME_ALL_AVAILABLE_TIME";
   considerRoadTraffic: true;
   populatePolylines: true;
   populateTransitionPolylines: true;
   model: {
     globalStartTime: string;
     globalEndTime: string;
+    globalDurationCostPerHour: number;
     shipments: {
       label: string;
+      loadDemands: {
+        orders: { amount: string };
+        destinations: { amount: string };
+      };
       deliveries: {
         label: string;
         arrivalLocation: { latitude: number; longitude: number };
@@ -34,7 +40,17 @@ type GoogleOptimizationRequest = {
       travelMode: "DRIVING";
       startLocation: { latitude: number; longitude: number };
       endLocation: { latitude: number; longitude: number };
-      costPerHour: number;
+      costPerTraveledHour: number;
+      loadLimits: {
+        orders: {
+          softMaxLoad: string;
+          costPerUnitAboveSoftMax: number;
+        };
+        destinations: {
+          softMaxLoad: string;
+          costPerUnitAboveSoftMax: number;
+        };
+      };
       startTimeWindows?: GoogleTimeWindow[];
     }[];
   };
@@ -158,14 +174,25 @@ export function buildGoogleOptimizationRequest(
   ).toISOString();
   const byId = new Map(deliveries.map((shipment) => [shipment.id, shipment]));
   const groups = priorityGroups(deliveries);
+  const globalDurationCostPerHour = board.vehicles.length + 1;
+  // One overload unit is guidance, not a disguised hard capacity. Global span
+  // remains stronger so geography and the real finishing time govern the fleet.
+  const balanceCost = 1;
+  const lateCost =
+    (globalDurationCostPerHour + balanceCost) *
+    (deliveries.length + groups.length + 1);
+  const orderSoftMax = Math.ceil(deliveries.length / board.vehicles.length);
+  const destinationSoftMax = Math.ceil(groups.length / board.vehicles.length);
   return {
     timeout: `${optimizationTimeoutSeconds(groups.length)}s`,
+    searchMode: "CONSUME_ALL_AVAILABLE_TIME",
     considerRoadTraffic: true,
     populatePolylines: true,
     populateTransitionPolylines: true,
     model: {
       globalStartTime: start,
       globalEndTime: end,
+      globalDurationCostPerHour,
       shipments: groups.map((group) => {
         const shipment = byId.get(group.id)!;
         const windows = group.shipmentIds.flatMap(
@@ -192,6 +219,10 @@ export function buildGoogleOptimizationRequest(
         ).toISOString();
         return {
           label: group.id,
+          loadDemands: {
+            orders: { amount: String(group.shipmentIds.length) },
+            destinations: { amount: "1" },
+          },
           deliveries: [
             {
               label: group.id,
@@ -211,8 +242,7 @@ export function buildGoogleOptimizationRequest(
                         // One unit/hour of route time below; one late second outweighs an
                         // hour of aggregate fleet travel in the seed. Final choice is
                         // lexicographic, not this surrogate cost and not a currency.
-                        costPerHourAfterSoftEndTime:
-                          3600 * board.vehicles.length,
+                        costPerHourAfterSoftEndTime: lateCost,
                       },
                     ],
                   }
@@ -232,7 +262,18 @@ export function buildGoogleOptimizationRequest(
           latitude: settings.depotLocation!.latitude,
           longitude: settings.depotLocation!.longitude,
         },
-        costPerHour: 1,
+        costPerTraveledHour: 1,
+        // Soft limits guide allocation but never forbid a complete route.
+        loadLimits: {
+          orders: {
+            softMaxLoad: String(orderSoftMax),
+            costPerUnitAboveSoftMax: balanceCost,
+          },
+          destinations: {
+            softMaxLoad: String(destinationSoftMax),
+            costPerUnitAboveSoftMax: balanceCost,
+          },
+        },
         startTimeWindows: [{ startTime: start, endTime: start }],
       })),
     },

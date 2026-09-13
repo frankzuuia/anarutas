@@ -1,7 +1,7 @@
 import type { OrderBoard, Shipment } from "./orders-contract";
 import { deliveryGroups } from "./route-delivery-groups";
 
-export const logisticsPolicyVersion = "priority-per-route-v1";
+export const logisticsPolicyVersion = "priority-window-balanced-v3";
 export const priorityOrder = ["high", "medium", "schedule"] as const;
 export type RoutingCandidate = {
   routes: { vehicleId: string; shipmentIds: string[] }[];
@@ -83,6 +83,61 @@ export function hasRoutingAlternatives(board: OrderBoard) {
   return new Set(groups.map((group) => group.rank)).size < groups.length;
 }
 
+export function routeLoads(shipments: Shipment[], candidate: RoutingCandidate) {
+  const groupByShipment = new Map(
+    deliveryGroups(shipments).flatMap((group) =>
+      group.shipmentIds.map((id) => [id, group.id] as const),
+    ),
+  );
+  const routes = candidate.routes.map((route) => ({
+    vehicleId: route.vehicleId,
+    orders: route.shipmentIds.length,
+    destinations: new Set(
+      route.shipmentIds.map((id) => groupByShipment.get(id)),
+    ).size,
+  }));
+  const orders = routes.map((route) => route.orders);
+  const destinations = routes.map((route) => route.destinations);
+  return {
+    routes,
+    maxOrders: Math.max(0, ...orders),
+    orderImbalance: orders.length
+      ? Math.max(...orders) - Math.min(...orders)
+      : 0,
+    maxDestinations: Math.max(0, ...destinations),
+    destinationImbalance: destinations.length
+      ? Math.max(...destinations) - Math.min(...destinations)
+      : 0,
+  };
+}
+
+// Largest indivisible destinations go first to the least-loaded vehicle. This is
+// an attainable measured baseline, not a capacity limit or claim of optimality.
+export function balancedCandidate(
+  shipments: Shipment[],
+  vehicleIds: string[],
+): RoutingCandidate {
+  const groups = priorityGroups(shipments).sort(
+    (a, b) => b.shipmentIds.length - a.shipmentIds.length || a.rank - b.rank,
+  );
+  const routes = vehicleIds.map((vehicleId) => ({
+    vehicleId,
+    shipmentIds: [] as string[],
+    orders: 0,
+  }));
+  for (const group of groups) {
+    const route = [...routes].sort((a, b) => a.orders - b.orders)[0];
+    route.shipmentIds.push(...group.shipmentIds);
+    route.orders += group.shipmentIds.length;
+  }
+  return prioritizeCandidate(shipments, {
+    routes: routes.map(({ vehicleId, shipmentIds }) => ({
+      vehicleId,
+      shipmentIds,
+    })),
+  });
+}
+
 export const logisticsScoreKeys = [
   "priorityConflicts",
   "lateStops",
@@ -93,6 +148,10 @@ export const logisticsScoreKeys = [
   "waitSeconds",
   "travelSeconds",
   "distanceMeters",
+  "maxOrders",
+  "orderImbalance",
+  "maxDestinations",
+  "destinationImbalance",
 ] as const;
 export type LogisticsScore = Record<
   (typeof logisticsScoreKeys)[number],

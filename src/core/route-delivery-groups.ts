@@ -39,8 +39,8 @@ export function assertDeliveryGroups(
       const position = positions.get(id);
       return position ? [position] : [];
     });
-    // A wholly skipped group is supported by the persistence contract. The AI
-    // candidate boundary separately requires exact coverage of every delivery.
+    // A wholly skipped group is supported by the persistence contract. The
+    // deterministic candidate boundary separately requires exact coverage.
     if (!assigned.length) continue;
     const indices = assigned.map((position) => position.index);
     if (

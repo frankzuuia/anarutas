@@ -11,32 +11,35 @@ import {
 } from "../src/core/orders";
 import type { ImportPage, SourceShipment } from "../src/core/orders-contract";
 import { createPlan } from "../src/core/plans";
-import { planRouteWithOpenAI } from "../src/core/route-ai-planner";
+import { planRouteDeterministically } from "../src/core/route-deterministic-planner";
 import type { RoutingLogEntry } from "../src/core/route-observability";
 import { saveRoutingSettings } from "../src/core/routing-settings";
 import { startPostgres } from "./helpers/postgres";
 
-let db: Awaited<ReturnType<typeof startPostgres>>, actor: string;
+let db: Awaited<ReturnType<typeof startPostgres>>;
+let actor: string;
 const source = createHash("sha256")
-  .update("openai-tools-contract-qa")
+  .update("deterministic-routing-contract-qa")
   .digest("hex");
+
 beforeAll(async () => {
   db = await startPostgres();
   actor = (
     await bootstrap(db.pool, db.config, {
       token: db.config.bootstrapToken,
-      name: "OpenAI QA",
-      login: "openai-qa",
+      name: "Routing QA",
+      login: "routing-qa",
       password: randomUUID(),
     })
   ).id;
 });
+
 afterAll(async () => {
   await db?.close();
 });
 
-describe("OpenAI native tools orchestration / provider contract fixture and real PostgreSQL", () => {
-  it("compares a distinct multi-vehicle alternative and commits only the best candidate ID", async () => {
+describe("deterministic Google routing with real PostgreSQL", () => {
+  it("uses no LLM and replaces a concentrated Google proposal with the best complete measured candidate", async () => {
     await saveRoutingSettings(db.pool, actor, {
       depotAddress: "Bodega",
       depotLocation: { latitude: 20, longitude: -103, placeId: "warehouse" },
@@ -44,7 +47,7 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
     });
     let plan = await createPlan(db.pool, actor, {
       date: "2026-09-12",
-      label: "IA QA",
+      label: "Deterministic QA",
     });
     plan = await saveDeparture(db.pool, actor, plan.id, {
       departureTime: "08:00",
@@ -55,10 +58,10 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
       vehicles.push(
         await createVehicle(db.pool, actor, {
           id: randomUUID(),
-          name: `IA camioneta ${index}`,
+          name: `Camioneta ${index}`,
           brand: "Ford",
           model: "2026",
-          plate: `OPENAI-QA-${index}`,
+          plate: `ROUTING-QA-${index}`,
           mileage: 0,
           fuel: "Gasolina",
           available: true,
@@ -68,13 +71,13 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
       vehicleIds: vehicles.map((vehicle) => vehicle.id),
       expectedVersion: plan.version,
     });
-    const sourceShipment: SourceShipment = {
+    const shipment: SourceShipment = {
       pickingId: 1,
       pickingName: "WH/OUT/1",
       orderId: 1,
       orderName: "S1",
       partnerId: 1,
-      customerName: "Cliente",
+      customerName: "Cliente privado",
       address: "Bodega",
       validatedAt: "2026-09-12T08:00:00Z",
       promisedAt: null,
@@ -89,19 +92,20 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
         },
       ],
     };
-    const secondSourceShipment: SourceShipment = {
-      ...sourceShipment,
-      pickingId: 2,
-      pickingName: "WH/OUT/2",
-      orderId: 2,
-      orderName: "S2",
-      partnerId: 2,
-      customerName: "PII segundo cliente",
-      lines: [{ ...sourceShipment.lines[0], moveId: 2, productId: 2 }],
-    };
     const page: ImportPage = {
       fingerprint: source,
-      shipments: [sourceShipment, secondSourceShipment],
+      shipments: [
+        shipment,
+        {
+          ...shipment,
+          pickingId: 2,
+          pickingName: "WH/OUT/2",
+          orderId: 2,
+          orderName: "S2",
+          partnerId: 2,
+          lines: [{ ...shipment.lines[0], moveId: 2, productId: 2 }],
+        },
+      ],
       nextCursor: 2,
       ceiling: 2,
       hasMore: false,
@@ -127,109 +131,15 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
         location: {
           latitude: 20,
           longitude: -103,
-          placeId: `same-as-warehouse-${customer.odoo_partner_id}`,
+          placeId: `warehouse-${customer.odoo_partner_id}`,
         },
         windows: [],
         expectedVersion: Number(customer.version),
       });
+
     const before = await orderBoard(db.pool, plan.id);
-    let openAICalls = 0,
-      googleCalls = 0,
-      selectedCandidateId = "";
-    const routingLogs: RoutingLogEntry[] = [];
-    const openAIFetch: typeof fetch = async (input, init) => {
-      expect(String(input)).toBe("https://api.openai.com/v1/responses");
-      expect(init).not.toHaveProperty("signal");
-      expect((init?.headers as Record<string, string>).Authorization).toBe(
-        "Bearer test-key",
-      );
-      const request = JSON.parse(String(init?.body));
-      expect(request).not.toHaveProperty("max_output_tokens");
-      expect(request.reasoning).toEqual({ effort: "high" });
-      expect(JSON.stringify(request)).not.toContain("PII segundo cliente");
-      expect(
-        request.tools.every((tool: { strict?: boolean }) => tool.strict),
-      ).toBe(true);
-      openAICalls++;
-      if (openAICalls === 1)
-        return new Response(
-          JSON.stringify({
-            status: "completed",
-            output: [
-              {
-                type: "function_call",
-                name: "get_google_proposal",
-                arguments: "{}",
-                call_id: "google-call",
-              },
-            ],
-          }),
-          { status: 200 },
-        );
-      if (openAICalls === 2) {
-        const googleOutput = JSON.parse(
-          request.input
-            .filter(
-              (item: { type?: string }) => item.type === "function_call_output",
-            )
-            .at(-1).output,
-        );
-        expect(googleOutput).toMatchObject({
-          feasible: true,
-          unusedVehicles: 1,
-        });
-        return new Response(
-          JSON.stringify({
-            status: "completed",
-            output: [
-              {
-                type: "function_call",
-                name: "evaluate_candidate",
-                arguments: JSON.stringify({
-                  routes: [
-                    {
-                      vehicleId: before.vehicles[0].id,
-                      shipmentIds: [before.shipments[0].id],
-                    },
-                    {
-                      vehicleId: before.vehicles[1].id,
-                      shipmentIds: [before.shipments[1].id],
-                    },
-                  ],
-                }),
-                call_id: "evaluate-call",
-              },
-            ],
-          }),
-          { status: 200 },
-        );
-      }
-      const toolOutput = request.input
-        .filter(
-          (item: { type?: string }) => item.type === "function_call_output",
-        )
-        .at(-1);
-      if (openAICalls === 3) {
-        selectedCandidateId = JSON.parse(toolOutput.output).candidateId;
-        return new Response(
-          JSON.stringify({
-            status: "completed",
-            output: [
-              {
-                type: "function_call",
-                name: "commit_candidate",
-                arguments: JSON.stringify({
-                  candidateId: selectedCandidateId,
-                }),
-                call_id: "commit-call",
-              },
-            ],
-          }),
-          { status: 200 },
-        );
-      }
-      throw new Error("UNEXPECTED_OPENAI_CALL");
-    };
+    let googleCalls = 0;
+    const logs: RoutingLogEntry[] = [];
     const googleFetch: typeof fetch = async (input, init) => {
       googleCalls++;
       expect(String(input)).toContain(
@@ -238,6 +148,11 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
       expect((init?.headers as Record<string, string>).Authorization).toBe(
         "Bearer google-token",
       );
+      const request = JSON.parse(String(init?.body));
+      expect(request.searchMode).toBe("CONSUME_ALL_AVAILABLE_TIME");
+      expect(request.model.globalDurationCostPerHour).toBeGreaterThan(0);
+      expect(JSON.stringify(request)).toContain("loadDemands");
+      expect(JSON.stringify(request)).not.toContain("OpenAI");
       return new Response(
         JSON.stringify({
           routes: [
@@ -284,20 +199,14 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
         { status: 200 },
       );
     };
-    const result = await planRouteWithOpenAI(
+
+    const result = await planRouteDeterministically(
       db.pool,
       actor,
       plan.id,
       { expectedVersion: before.plan.version },
       "UTC",
       {
-        openAIConfig: {
-          apiKey: "test-key",
-          model: "test-model",
-          organization: null,
-          project: null,
-          reasoningEffort: "high",
-        },
         googleConfig: {
           projectId: "qa-project",
           credentials: {
@@ -308,34 +217,22 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
             token_uri: "https://oauth2.googleapis.com/token",
           },
         },
-        openAIFetch,
         googleFetch,
         googleToken: async () => "google-token",
         requestId: "routing-request-qa",
-        logSink: (entry) => routingLogs.push(entry),
+        logSink: (entry) => logs.push(entry),
       },
     );
-    expect(openAICalls).toBe(3);
+
     expect(googleCalls).toBe(1);
     expect(result).toMatchObject({
       current: true,
       metrics: { performedShipmentCount: 2 },
-      routes: [
-        {
-          vehicleId: before.vehicles[0].id,
-          departureAt: "2026-09-12T08:00:00.000Z",
-          finishedAt: "2026-09-12T08:00:00.000Z",
-        },
-        {
-          vehicleId: before.vehicles[1].id,
-          departureAt: "2026-09-12T08:00:00.000Z",
-          finishedAt: "2026-09-12T08:00:00.000Z",
-        },
-      ],
     });
+    expect(result?.routes.map((route) => route.stops.length)).toEqual([1, 1]);
     expect(
       (await orderBoard(db.pool, plan.id)).shipments.map(
-        (shipment) => shipment.vehicle_id,
+        (item) => item.vehicle_id,
       ),
     ).toEqual(before.vehicles.map((vehicle) => vehicle.id));
     const audit = (
@@ -345,61 +242,42 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
       )
     ).rows[0].details;
     expect(audit).toMatchObject({
-      planner: "openai-native-tools",
-      model: "test-model",
-      reasoningEffort: "high",
-      toolCalls: 3,
+      planner: "google-deterministic-v1",
       evaluatedCandidates: 2,
+      candidateSources: ["Google", "balance"],
+      chosenSource: "balance",
+      logisticsPolicy: "priority-window-balanced-v3",
+      score: {
+        priorityConflicts: 0,
+        lateStops: 0,
+        unusedVehicles: 0,
+        maxOrders: 1,
+        orderImbalance: 0,
+      },
     });
-    expect(routingLogs[0]).toMatchObject({
-      event: "routing.request.received",
-      system: "Ana Rutas",
-      requestId: "routing-request-qa",
-      planId: plan.id,
-    });
-    expect(routingLogs.at(-1)).toMatchObject({
+    expect(logs.map((entry) => entry.system)).not.toContain(
+      "OpenAI Responses API",
+    );
+    expect(logs.some((entry) => entry.event.startsWith("routing.openai"))).toBe(
+      false,
+    );
+    expect(logs.at(-1)).toMatchObject({
       event: "routing.completed",
       system: "PostgreSQL",
       details: { assignedOrders: 2, skippedOrders: 0 },
     });
-    expect(routingLogs.map((entry) => entry.event)).toEqual(
-      expect.arrayContaining([
-        "routing.batch.prepared",
-        "routing.lease.acquired",
-        "routing.openai.started",
-        "routing.openai.completed",
-        "routing.openai.requested_google",
-        "routing.google.started",
-        "routing.google.completed",
-        "routing.roads.started",
-        "routing.roads.progress",
-        "routing.candidate.evaluated",
-        "routing.openai.candidate_received",
-        "routing.openai.commit_requested",
-        "routing.database.started",
-      ]),
-    );
-    expect(new Set(routingLogs.map((entry) => entry.system))).toEqual(
-      new Set([
-        "Ana Rutas",
-        "OpenAI Responses API",
-        "Google Route Optimization",
-        "Google Routes API",
-        "PostgreSQL",
-      ]),
-    );
-    const serializedLogs = JSON.stringify(routingLogs);
+    const serializedLogs = JSON.stringify(logs);
     for (const privateValue of [
-      "test-key",
       "private_key",
-      "PII segundo cliente",
-      "same-as-warehouse",
+      "Cliente privado",
+      "warehouse-1",
+      "warehouse-2",
     ])
       expect(serializedLogs).not.toContain(privateValue);
 
     const failedLogs: RoutingLogEntry[] = [];
     await expect(
-      planRouteWithOpenAI(
+      planRouteDeterministically(
         db.pool,
         actor,
         plan.id,
@@ -414,7 +292,6 @@ describe("OpenAI native tools orchestration / provider contract fixture and real
     expect(failedLogs.at(-1)).toMatchObject({
       event: "routing.failed",
       level: "error",
-      requestId: "routing-failed-qa",
       details: { errorCode: "VERSION_CONFLICT" },
     });
   });

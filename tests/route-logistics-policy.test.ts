@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OrderBoard, Shipment } from "../src/core/orders-contract";
 import {
+  balancedCandidate,
   compareLogisticsScores,
   hasRoutingAlternatives,
   logisticsScoreKeys,
@@ -8,18 +9,17 @@ import {
   prioritizeCandidate,
   priorityConflictIds,
   priorityGroups,
+  routeLoads,
   type LogisticsScore,
   type RoutingCandidate,
 } from "../src/core/route-logistics-policy";
 import { buildGoogleOptimizationRequest } from "../src/core/route-optimization-google";
 import {
-  candidateCommitDecision,
-  evaluateCandidate,
-  parseCandidate,
-  planningSnapshot,
-  proposalCandidate,
-  toolResult,
-} from "../src/core/route-ai-planner";
+  deterministicPlanningSnapshot as planningSnapshot,
+  evaluateRoutingCandidate as evaluateCandidate,
+  googleProposalCandidate as proposalCandidate,
+  parseRoutingCandidate as parseCandidate,
+} from "../src/core/route-candidate-evaluator";
 import { calculateManualRoutes } from "../src/core/route-road";
 import {
   allocationSignature,
@@ -111,7 +111,7 @@ describe("logistics precedence and physical-stop quality", () => {
     const snapshot = planningSnapshot(board(), settings, "America/Mexico_City");
     expect(snapshot.timezone).toBe("America/Mexico_City");
     expect(snapshot.policy).toEqual({
-      version: "priority-per-route-v1",
+      version: "priority-window-balanced-v3",
       priorityScope: "per_vehicle",
       compareAlternatives: true,
       scoreOrder: [
@@ -124,6 +124,281 @@ describe("logistics precedence and physical-stop quality", () => {
         "waitSeconds",
         "travelSeconds",
         "distanceMeters",
+        "maxOrders",
+        "orderImbalance",
+        "maxDestinations",
+        "destinationImbalance",
+      ],
+    });
+  });
+
+  it("rejects malformed, duplicate, foreign, incomplete and split candidates", () => {
+    const source = board();
+    const valid: RoutingCandidate = {
+      routes: [
+        { vehicleId: "v1", shipmentIds: ["high", "medium"] },
+        { vehicleId: "v2", shipmentIds: ["schedule"] },
+      ],
+    };
+    expect(parseCandidate(valid, source)).toEqual(valid);
+    for (const malformed of [
+      null,
+      [],
+      "candidate",
+      {},
+      { routes: [] },
+      { routes: "candidate" },
+      {
+        routes: [
+          { vehicleId: "foreign", shipmentIds: ["high", "medium"] },
+          { vehicleId: "v2", shipmentIds: ["schedule"] },
+        ],
+      },
+      {
+        routes: [
+          { vehicleId: "v1", shipmentIds: ["high", "medium"] },
+          { vehicleId: "v1", shipmentIds: ["schedule"] },
+        ],
+      },
+      {
+        routes: [
+          { vehicleId: "v1", shipmentIds: null },
+          { vehicleId: "v2", shipmentIds: ["schedule"] },
+        ],
+      },
+      {
+        routes: [
+          { vehicleId: "v1", shipmentIds: ["foreign", "medium"] },
+          { vehicleId: "v2", shipmentIds: ["schedule"] },
+        ],
+      },
+      {
+        routes: [
+          { vehicleId: "v1", shipmentIds: ["high", "medium"] },
+          { vehicleId: "v2", shipmentIds: ["high"] },
+        ],
+      },
+      {
+        routes: [
+          { vehicleId: "v1", shipmentIds: ["high", "medium"] },
+          { vehicleId: "v2", shipmentIds: [] },
+        ],
+      },
+    ])
+      expect(() => parseCandidate(malformed, source)).toThrow(
+        "ROUTING_CANDIDATE_INVALID",
+      );
+
+    source.shipments.push({
+      ...source.shipments[2],
+      id: "high-same-destination",
+    });
+    expect(() =>
+      parseCandidate(
+        {
+          routes: [
+            { vehicleId: "v1", shipmentIds: ["high", "medium"] },
+            {
+              vehicleId: "v2",
+              shipmentIds: ["high-same-destination", "schedule"],
+            },
+          ],
+        },
+        source,
+      ),
+    ).toThrow("ROUTING_CUSTOMER_GROUP_INVALID");
+  });
+
+  it("measures a 15/15/15/15 baseline and rejects 33/20/5/2 for sixty independent orders", async () => {
+    const source = board();
+    source.vehicles = Array.from({ length: 4 }, (_, index) => ({
+      ...source.vehicles[0],
+      id: `v${index + 1}`,
+      name: `v${index + 1}`,
+      plate: `v${index + 1}`,
+    }));
+    source.shipments = Array.from({ length: 60 }, (_, index) =>
+      shipment(`order-${index + 1}`, index + 1, "schedule"),
+    );
+    const baseline = balancedCandidate(
+      source.shipments,
+      source.vehicles.map((vehicle) => vehicle.id),
+    );
+    expect(routeLoads(source.shipments, baseline).routes).toMatchObject(
+      [15, 15, 15, 15].map((orders) => ({ orders, destinations: orders })),
+    );
+    const unbalanced: RoutingCandidate = {
+      routes: source.vehicles.map((vehicle, index) => ({
+        vehicleId: vehicle.id,
+        shipmentIds: source.shipments
+          .slice([0, 33, 53, 58][index], [33, 53, 58, 60][index])
+          .map((item) => item.id),
+      })),
+    };
+    const [balancedEvaluation, unbalancedEvaluation] = await Promise.all([
+      evaluateCandidate(source, baseline, settings, "UTC"),
+      evaluateCandidate(source, unbalanced, settings, "UTC"),
+    ]);
+    expect(balancedEvaluation.score).toMatchObject({
+      maxOrders: 15,
+      orderImbalance: 0,
+      maxDestinations: 15,
+      destinationImbalance: 0,
+    });
+    expect(unbalancedEvaluation.score).toMatchObject({
+      unusedVehicles: 0,
+      maxOrders: 33,
+      orderImbalance: 31,
+      maxDestinations: 33,
+      destinationImbalance: 31,
+    });
+    expect(
+      compareLogisticsScores(
+        balancedEvaluation.score,
+        unbalancedEvaluation.score,
+      ),
+    ).toBeLessThan(0);
+  });
+
+  it("measures real makespan and driver-time imbalance before raw stop counts", async () => {
+    const source = board();
+    source.shipments.find((item) => item.id === "high")!.latitude = 21;
+    source.shipments.find((item) => item.id === "medium")!.longitude = -102;
+    const measured = await evaluateCandidate(
+      source,
+      {
+        routes: [
+          { vehicleId: "v1", shipmentIds: ["high"] },
+          { vehicleId: "v2", shipmentIds: ["medium", "schedule"] },
+        ],
+      },
+      settings,
+      "UTC",
+      async () => {},
+      async (from, to) => {
+        const longLeg = from.latitude === 21 || to.latitude === 21;
+        const seconds = longLeg ? 100 : 50;
+        return {
+          distance: seconds * 10,
+          seconds,
+          polyline: `road-${seconds}`,
+          token: null,
+          trafficMode: "forecast" as const,
+        };
+      },
+    );
+    expect(measured.score).toMatchObject({
+      unusedVehicles: 0,
+      makespanSeconds: 200,
+      imbalanceSeconds: 100,
+      waitSeconds: 0,
+      travelSeconds: 300,
+      distanceMeters: 3000,
+    });
+
+    const single = board();
+    single.shipments = [single.shipments[0]];
+    const oneDestination = await evaluateCandidate(
+      single,
+      {
+        routes: [
+          { vehicleId: "v1", shipmentIds: ["schedule"] },
+          { vehicleId: "v2", shipmentIds: [] },
+        ],
+      },
+      settings,
+      "UTC",
+    );
+    expect(oneDestination.unusedVehicles).toBe(0);
+  });
+
+  it("balances the best attainable load without splitting repeated orders from one destination", () => {
+    const source = board();
+    source.vehicles = Array.from({ length: 4 }, (_, index) => ({
+      ...source.vehicles[0],
+      id: `v${index + 1}`,
+    }));
+    source.shipments = [
+      ...Array.from({ length: 8 }, (_, index) =>
+        shipment(`group-a-${index}`, 1, "high"),
+      ),
+      ...Array.from({ length: 4 }, (_, index) =>
+        shipment(`group-b-${index}`, 2, "medium"),
+      ),
+      ...Array.from({ length: 4 }, (_, index) =>
+        shipment(`group-c-${index}`, 3, "schedule"),
+      ),
+      ...Array.from({ length: 4 }, (_, index) =>
+        shipment(`group-d-${index}`, 4, "schedule"),
+      ),
+    ];
+    const baseline = balancedCandidate(
+      source.shipments,
+      source.vehicles.map((vehicle) => vehicle.id),
+    );
+    expect(routeLoads(source.shipments, baseline).routes).toMatchObject([
+      { orders: 8, destinations: 1 },
+      { orders: 4, destinations: 1 },
+      { orders: 4, destinations: 1 },
+      { orders: 4, destinations: 1 },
+    ]);
+    expect(
+      baseline.routes.filter((route) =>
+        route.shipmentIds.some((id) => id.startsWith("group-a-")),
+      ),
+    ).toHaveLength(1);
+    expect(routeLoads([], { routes: [] })).toEqual({
+      routes: [],
+      maxOrders: 0,
+      orderImbalance: 0,
+      maxDestinations: 0,
+      destinationImbalance: 0,
+    });
+    expect(
+      balancedCandidate(
+        [],
+        source.vehicles.map((vehicle) => vehicle.id),
+      ).routes.every((route) => route.shipmentIds.length === 0),
+    ).toBe(true);
+  });
+  it("assigns uneven groups largest-first and resolves equal sizes by priority", () => {
+    const source = board();
+    source.shipments = [
+      shipment("small-schedule", 1, "schedule"),
+      ...Array.from({ length: 3 }, (_, index) =>
+        shipment(`large-high-${index}`, 2, "high"),
+      ),
+      ...Array.from({ length: 2 }, (_, index) =>
+        shipment(`medium-${index}`, 3, "medium"),
+      ),
+    ];
+    expect(balancedCandidate(source.shipments, ["v1", "v2"])).toEqual({
+      routes: [
+        {
+          vehicleId: "v1",
+          shipmentIds: ["large-high-0", "large-high-1", "large-high-2"],
+        },
+        {
+          vehicleId: "v2",
+          shipmentIds: ["medium-0", "medium-1", "small-schedule"],
+        },
+      ],
+    });
+
+    source.shipments = [
+      shipment("schedule-0", 1, "schedule"),
+      shipment("schedule-1", 1, "schedule"),
+      shipment("high-0", 2, "high"),
+      shipment("high-1", 2, "high"),
+      shipment("medium-0", 3, "medium"),
+    ];
+    expect(balancedCandidate(source.shipments, ["v1", "v2"])).toEqual({
+      routes: [
+        {
+          vehicleId: "v1",
+          shipmentIds: ["high-0", "high-1", "medium-0"],
+        },
+        { vehicleId: "v2", shipmentIds: ["schedule-0", "schedule-1"] },
       ],
     });
   });
@@ -148,6 +423,19 @@ describe("logistics precedence and physical-stop quality", () => {
       "UTC",
     );
     expect(result.candidate).toEqual(normalized);
+    expect(result.board.shipments).toHaveLength(source.shipments.length);
+    expect(new Set(result.board.shipments.map((item) => item.id)).size).toBe(
+      source.shipments.length,
+    );
+    expect(
+      result.board.shipments
+        .filter((item) => item.vehicle_id === "v1")
+        .map((item) => [item.id, item.position]),
+    ).toEqual([
+      ["high", 1],
+      ["medium", 2],
+      ["schedule", 3],
+    ]);
     expect(result.score.priorityConflicts).toBe(0);
     expect(result.result.routes[0].stops.map((s) => s.shipmentId)).toEqual([
       "high",
@@ -255,7 +543,11 @@ describe("logistics precedence and physical-stop quality", () => {
     source.shipments[2].deliveryWindows = [
       { startMinute: 360, endMinute: 420 },
     ];
-    source.shipments.push({ ...source.shipments[2], id: "high2" });
+    source.shipments.push({
+      ...source.shipments[2],
+      id: "high2",
+      deliveryWindows: [],
+    });
     source.shipments[1].deliveryWindows = [
       { startMinute: 300, endMinute: 400 },
       { startMinute: 540, endMinute: 600 },
@@ -273,18 +565,16 @@ describe("logistics precedence and physical-stop quality", () => {
       lateSeconds: 3600,
       waitSeconds: 3600,
     });
-    const feedback = toolResult(result);
-    expect(feedback.routes[0].stops).toMatchObject([
+    expect(result.result.routes[0].stops).toMatchObject([
       {
         shipmentId: "high",
         eta: "2026-09-12T08:00:00.000Z",
         lateSeconds: 3600,
-        priority: "high",
       },
       {
         shipmentId: "high2",
         eta: "2026-09-12T08:00:00.000Z",
-        lateSeconds: 3600,
+        lateSeconds: 0,
       },
       {
         shipmentId: "medium",
@@ -294,28 +584,7 @@ describe("logistics precedence and physical-stop quality", () => {
       },
       { shipmentId: "schedule", lateSeconds: 0 },
     ]);
-    expect(JSON.stringify(feedback)).not.toContain("Private");
-    expect(feedback.timezone).toBe("UTC");
-    expect(feedback.routes[0]).toMatchObject({
-      destinations: 3,
-      idleUntilFleetReturnSeconds: 0,
-      travelSeconds: 0,
-    });
-    expect(feedback.routes[1].idleUntilFleetReturnSeconds).toBe(3600);
-    expect(feedback.routes[0].stops).toMatchObject([
-      {
-        closingSlackSeconds: -3600,
-        destinationId: "high",
-        groupPriority: "high",
-      },
-      {
-        closingSlackSeconds: -3600,
-        destinationId: "high",
-        groupPriority: "high",
-      },
-      { arrivalAt: "2026-09-12T08:00:00.000Z", closingSlackSeconds: 3600 },
-      { closingSlackSeconds: null },
-    ]);
+    expect(result.timezone).toBe("UTC");
   });
 
   it("improves measured lateness by changing allocation even when both candidates have correct identical priorities", async () => {
@@ -373,11 +642,9 @@ describe("logistics precedence and physical-stop quality", () => {
       0,
     );
     expect(split.result.metrics.performedShipmentCount).toBe(3);
-    expect(toolResult(bad).routes[0].stops[0]).toMatchObject({
-      arrivalAt: "2026-09-12T08:00:00.000Z",
+    expect(bad.result.routes[0].stops[0]).toMatchObject({
       eta: "2026-09-12T12:00:00.000Z",
       waitDurationSeconds: 14400,
-      closingSlackSeconds: 3600,
     });
   });
 
@@ -399,9 +666,6 @@ describe("logistics precedence and physical-stop quality", () => {
     );
     expect(measured.lateStops).toBe(3);
     expect(measured.score.lateSeconds).toBe(3 * (1439 - 480) * 60);
-    expect(candidateCommitDecision(measured, measured, true)).toEqual({
-      chosen: measured,
-    });
     const window = buildGoogleOptimizationRequest(
       source,
       settings,
@@ -557,14 +821,6 @@ describe("logistics precedence and physical-stop quality", () => {
     expect(hasRoutingAlternatives(source)).toBe(false);
     source.shipments = [];
     expect(hasRoutingAlternatives(source)).toBe(false);
-    const chosen = { id: "best" };
-    expect(candidateCommitDecision(chosen, chosen, false)).toHaveProperty(
-      "error",
-    );
-    expect(candidateCommitDecision(chosen, chosen, true)).toEqual({ chosen });
-    expect(
-      candidateCommitDecision(chosen, { id: "another" }, true),
-    ).toHaveProperty("error");
   });
 
   it.each(logisticsScoreKeys)(
@@ -633,7 +889,9 @@ describe("Google grouped seed / pure request and response mapping", () => {
     expect(lateWindow.startTime).toBe("2026-09-12T08:00:00.000Z");
     expect(lateWindow.softEndTime).toBe(lateWindow.startTime);
     expect(lateWindow.endTime).toBe(request.model.globalEndTime);
-    expect(lateWindow.costPerHourAfterSoftEndTime).toBe(7200);
+    expect(lateWindow.costPerHourAfterSoftEndTime).toBeGreaterThan(
+      request.model.vehicles[0].loadLimits.orders.costPerUnitAboveSoftMax,
+    );
     const multiple = request.model.shipments[1].deliveries[0].timeWindows![0];
     expect(multiple.startTime).toBe("2026-09-12T10:00:00.000Z");
     expect(multiple.softEndTime).toBe("2026-09-12T16:00:00.000Z");

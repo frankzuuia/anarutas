@@ -16,6 +16,16 @@ producción. Los informes QA conservan la evidencia previa al commit/push.
 - [x] LP-T05 (LP01..16): puertas locales verdes: 361 pruebas, cobertura, mutación dirigida 197/197 más consulta transaccional 4/4, PostgreSQL, E2E local, build, tipos, lint y auditoría. Ver QA-LOGISTICA-PRIORIDADES.md y QA-INCIDENCIAS-PANEL.md; no certifica integración live.
 - [x] LP-T06 (BL-062 / LP13..16): evidencia independiente de reparto y secuencia, holguras y comparación contra la semilla. Salida 23:59 con todas las ventanas vencidas conserva todas las entregas.
 - [ ] LP-T07: ejecutar caso real con proveedores en develop, comprobar ambos experimentos, precedencia, retrasos, cobertura exacta y medir costo/latencia. Pendiente después del deploy manual; avance a develop autorizado para esta prueba.
+- [x] LP-T08 (BL-064 / LP17..20): regresión live 33/20/5/2 corregida localmente con score de carga por pedidos/destinos, línea base balanceada obligatoria, feedback/logs por unidad y candado de confirmación. 368/368 pruebas, política y observabilidad con cobertura total, mutación dirigida 235/235, build, lint, tipos, E2E local y auditoría verdes. Sin commit/push/deploy; requieren nueva autorización explícita.
+
+## Ruteo determinista sin LLM — BLOQUE-RUTEO-DETERMINISTA.md
+
+- [x] RD-T01 (BL-065..068 / RD01..08): autopsia, referencias oficiales, reglas, escenarios, flujo y puertas; GREEN LIGHT y MATCH PERFECT documental.
+- [x] RD-T02: OpenAI retirado del endpoint; orquestador Google determinista conserva lease, versión, cobertura y guardado atómico.
+- [x] RD-T03: modelo Google con makespan y balance blando dinámico, sin límite duro ni umbral de 100 pedidos.
+- [x] RD-T04: score prioridad → ventanas → flota → jornada/recorrido → carga como desempate, conservando grupos indivisibles.
+- [x] RD-T05: 332/332 pruebas, PostgreSQL real sin OpenAI, Gherkin, cobertura 93.05% statements/94.54% líneas, mutación crítica 96.96%, lint, tipos, build y diff auditados. Ver `QA-RUTEO-DETERMINISTA.md`.
+- [ ] RD-T06: commit/push a `develop` sólo con autorización explícita; deploy manual y smoke real del usuario.
 
 ## Incidencias del panel — BLOQUE-INCIDENCIAS-LLEGADA.md
 
@@ -29,7 +39,7 @@ producción. Los informes QA conservan la evidencia previa al commit/push.
 ## Observabilidad de ruteo — BLOQUE-OBSERVABILIDAD-RUTEO.md
 
 - [x] RO-T01 (BL-055/RO01): logger estructurado para stdout/stderr con mensaje natural, sistema, etapa, requestId, planId y duración.
-- [x] RO-T02 (BL-056/RO01): avance conectado a Ana Rutas, OpenAI, Google Route Optimization, Google Routes y PostgreSQL, incluido progreso agregado de tramos.
+- [x] RO-T02 (BL-056/RO01): avance histórico conectado a los sistemas entonces vigentes; el flujo actual informa Ana Rutas, Google Route Optimization, Google Routes y PostgreSQL, sin LLM.
 - [x] RO-T03 (BL-057/RO01): lista cerrada de métricas, cero PII/secretos y logging fail-open; pruebas unitarias e integración del recorrido completo.
 - [x] RO-T04: 332 pruebas, cobertura, mutación 100%, lint, tipos, build, auditoría y E2E local verdes; evidencia en `QA-OBSERVABILIDAD-RUTEO.md`.
 - [ ] RO-T05: smoke visible en EasyPanel develop después del deploy manual; confirmar secuencia completa y privacidad con la corrida real.
@@ -37,7 +47,7 @@ producción. Los informes QA conservan la evidencia previa al commit/push.
 ## Resiliencia de volumen — BLOQUE-RUTEO-VOLUMEN.md
 
 - [x] RV-T01 (BL-051 / V01..04): cobertura exacta antes de medir y dentro de la transacción; regresión del lote actual de 61 pedidos con PostgreSQL real, sin convertir esa cantidad en límite.
-- [x] RV-T02 (BL-052..054 / V05..10): retirar abortos locales de OpenAI/Routes, enviar el deadline REST exigido por Google, convertir ventanas/prioridades en preferencias y permitir confirmar desde el primer candidato completo medido.
+- [x] RV-T02 (BL-052..054 / V05..10): retirar abortos locales arbitrarios, enviar el deadline REST exigido por Google, convertir ventanas/prioridades en preferencias y permitir confirmar desde el primer candidato completo medido.
 - [x] RV-T03: 330 pruebas, PostgreSQL real con 61 pedidos, cobertura, mutación dirigida 100%, lint, tipos, build, auditoría y E2E local verdes; evidencia en `QA-RUTEO-VOLUMEN.md`.
 - [ ] RV-T04: smoke facturable con los 61 pedidos reales en `develop` después del deploy manual del usuario; confirmar 61 asignados, cero omitidos y grupos de cliente intactos.
 
@@ -71,10 +81,11 @@ consultas de consumo en el mapa. Google Billing/BigQuery es la autoridad y Postg
 - [x] G-T06 (todas / G01-10): 293 pruebas, PostgreSQL real, Gherkin, E2E, seguridad, 90.40% statements, 93.80% mutación, lint, typecheck y build verdes. Evidencia en `QA-BLOQUE-5C-CONSUMO-GOOGLE.md`.
 - [ ] G-T07: configurar Standard + Pricing export e IAM en develop; smoke oficial y evidencia antes de promoción.
 
-## Bloque 5B — recálculo automático y OpenAI
+## Bloque 5B histórico — recálculo automático y OpenAI (sustituido)
 
-Especificación: BLOQUE-5B-RECALCULO-IA.md. Reglas confirmadas por el usuario: OpenAI,
-hora de salida configurable por administrador y Alta→Media→Por horario obligatorio.
+Especificación histórica: BLOQUE-5B-RECALCULO-IA.md. La hora de salida y el recálculo
+durable permanecen; el planificador OpenAI quedó retirado por BL-065..068 y
+`BLOQUE-RUTEO-DETERMINISTA.md`.
 
 - [x] R-T01 (BL-032 / R01-03): hora de salida por plan, migración aditiva, API versionada y formulario 24 h.
 - [x] R-T02 (BL-033 / R04-07, R09): recálculo durable después de ediciones, invalidación de puntos y compare-and-swap.

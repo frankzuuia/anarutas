@@ -27,7 +27,7 @@ import {
 // Opt-in replay of a real case. The caller supplies points/preferences read from
 // Ana Rutas; orders are reread in Odoo and every provider call is real. No external
 // writes: only the disposable loopback PostgreSQL installation is changed.
-test("real customer-group planning through browser, OpenAI, Google and isolated PostgreSQL", async ({
+test("real deterministic customer-group planning through browser, Google and isolated PostgreSQL", async ({
   browser,
 }) => {
   test.skip(
@@ -172,7 +172,7 @@ test("real customer-group planning through browser, OpenAI, Google and isolated 
     );
     await page
       .getByRole("button", {
-        name: "Armar ruta con OpenAI y Google",
+        name: "Armar ruta con optimización vial de Google",
         exact: true,
       })
       .click();
@@ -228,17 +228,15 @@ test("real customer-group planning through browser, OpenAI, Google and isolated 
     expect(audit[0].details.deliveryGroups).toBe(customers.length);
     expect(audit[0].details.logisticsPolicy).toBe(logisticsPolicyVersion);
     expect(audit[0].details.score.priorityConflicts).toBe(0);
-    expect(audit[0].details.search.complete).toBe(true);
-    expect(audit[0].details.search.missing).toEqual([]);
+    expect(audit[0].details.planner).toBe("google-deterministic-v1");
     if (hasRoutingAlternatives(before))
-      expect(audit[0].details.comparedLogistics).toBeGreaterThan(1);
+      expect(audit[0].details.evaluatedCandidates).toBeGreaterThan(1);
     console.log(
       JSON.stringify({
         liveRouting: "PASS",
         durationMs: Date.now() - startedAt,
         groups: customers.length,
         shipments: after.shipments.length,
-        toolCalls: audit[0].details.toolCalls,
         evaluatedCandidates: audit[0].details.evaluatedCandidates,
         routes: after.vehicles.map((v) => ({
           orders: after.shipments

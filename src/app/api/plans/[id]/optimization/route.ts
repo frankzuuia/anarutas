@@ -1,5 +1,5 @@
 import { getPlanOptimization } from "@/core/route-optimization";
-import { planRouteWithOpenAI } from "@/core/route-ai-planner";
+import { planRouteDeterministically } from "@/core/route-deterministic-planner";
 import { body, endpoint, json, principal } from "@/server/http";
 
 export function GET(
@@ -20,7 +20,7 @@ export function POST(
     const input = await body(request);
     const { pool, user, config } = await principal();
     return json(
-      await planRouteWithOpenAI(
+      await planRouteDeterministically(
         pool,
         user.id,
         (await context.params).id,

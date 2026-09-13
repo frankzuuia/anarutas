@@ -7,11 +7,10 @@ const config = {
     ".next/**",
   ],
   mutate: [
-    "src/core/openai-routing-config.ts",
     "src/core/route-road.ts:29-109",
     "src/core/route-road.ts:153-181",
-    "src/core/route-ai-planner.ts:59-180",
-    "src/core/route-ai-planner.ts:203-225",
+    "src/core/route-candidate-evaluator.ts:34-184",
+    "src/core/route-deterministic-planner.ts:98-443",
     "src/core/route-fingerprint.ts",
   ],
   testRunner: "vitest",

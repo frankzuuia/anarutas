@@ -2,7 +2,6 @@ export type RoutingLogLevel = "info" | "warning" | "error";
 
 export type RoutingLogSystem =
   | "Ana Rutas"
-  | "OpenAI Responses API"
   | "Google Route Optimization"
   | "Google Routes API"
   | "PostgreSQL";
@@ -13,10 +12,6 @@ export type RoutingLogDetails = Partial<{
   deliveryGroups: number;
   vehicles: number;
   solverTimeoutSeconds: number;
-  model: string;
-  reasoningEffort: string;
-  cycle: number;
-  toolCalls: number;
   evaluatedCandidates: number;
   stepDurationMs: number;
   segmentsCompleted: number;
@@ -28,6 +23,13 @@ export type RoutingLogDetails = Partial<{
   lateSeconds: number;
   priorityConflicts: number;
   unusedVehicles: number;
+  ordersPerRoute: number[];
+  destinationsPerRoute: number[];
+  chosenOrdersPerRoute: number[];
+  maxOrders: number;
+  orderImbalance: number;
+  maxDestinations: number;
+  destinationImbalance: number;
   distanceMeters: number;
   durationSeconds: number;
   errorCode: string;
@@ -53,10 +55,6 @@ const routingDetailKeys = [
   "deliveryGroups",
   "vehicles",
   "solverTimeoutSeconds",
-  "model",
-  "reasoningEffort",
-  "cycle",
-  "toolCalls",
   "evaluatedCandidates",
   "stepDurationMs",
   "segmentsCompleted",
@@ -68,6 +66,13 @@ const routingDetailKeys = [
   "lateSeconds",
   "priorityConflicts",
   "unusedVehicles",
+  "ordersPerRoute",
+  "destinationsPerRoute",
+  "chosenOrdersPerRoute",
+  "maxOrders",
+  "orderImbalance",
+  "maxDestinations",
+  "destinationImbalance",
   "distanceMeters",
   "durationSeconds",
   "errorCode",

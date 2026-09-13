@@ -256,13 +256,13 @@ describe("Google Route Optimization contract", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("builds a complete road seed with soft deadlines and without weight fields", () => {
+  it("builds a complete balanced road model without hard business capacities", () => {
     const request = buildGoogleOptimizationRequest(
       board(),
       settings,
       "America/Mexico_City",
     );
-    expect(request).toEqual({
+    expect(request).toMatchObject({
       timeout: "5s",
       considerRoadTraffic: true,
       populatePolylines: true,
@@ -284,7 +284,7 @@ describe("Google Route Optimization contract", () => {
                   startTime: "2026-09-09T15:00:00.000Z",
                   endTime: "2027-09-08T13:30:00.000Z",
                   softEndTime: "2026-09-09T18:00:00.000Z",
-                  costPerHourAfterSoftEndTime: 3600,
+                  costPerHourAfterSoftEndTime: expect.any(Number),
                 },
               ],
             },
@@ -296,7 +296,7 @@ describe("Google Route Optimization contract", () => {
             travelMode: "DRIVING",
             startLocation: { latitude: 20.624, longitude: -103.354 },
             endLocation: { latitude: 20.624, longitude: -103.354 },
-            costPerHour: 1,
+            costPerTraveledHour: 1,
             startTimeWindows: [
               {
                 startTime: "2026-09-09T13:30:00.000Z",
@@ -309,8 +309,26 @@ describe("Google Route Optimization contract", () => {
     });
     expect(JSON.stringify(request)).toContain("softEndTime");
     expect(JSON.stringify(request)).not.toContain("precedenceRules");
-    expect(JSON.stringify(request)).not.toContain("loadLimit");
-    expect(JSON.stringify(request)).not.toContain("loadDemand");
+    expect(request.searchMode).toBe("CONSUME_ALL_AVAILABLE_TIME");
+    expect(request.model.globalDurationCostPerHour).toBe(2);
+    expect(
+      request.model.vehicles[0].loadLimits.orders.costPerUnitAboveSoftMax,
+    ).toBe(1);
+    expect(
+      request.model.vehicles[0].loadLimits.destinations.costPerUnitAboveSoftMax,
+    ).toBe(1);
+    expect(
+      request.model.shipments[0].deliveries[0].timeWindows?.[0]
+        .costPerHourAfterSoftEndTime,
+    ).toBe(21);
+    expect(JSON.stringify(request)).toContain("loadLimits");
+    expect(request.model.shipments.map((item) => item.loadDemands)).toEqual(
+      ids.map(() => ({
+        orders: { amount: "1" },
+        destinations: { amount: "1" },
+      })),
+    );
+    expect(JSON.stringify(request)).not.toContain("maxLoad");
     expect(request.model.vehicles[0].endLocation).toEqual(
       request.model.vehicles[0].startLocation,
     );
@@ -448,6 +466,11 @@ describe("Google Route Optimization contract", () => {
     );
     expect(filtered.model.shipments).toHaveLength(1);
     expect(filtered.model.shipments[0].label).toBe(value.shipments[0].id);
+    expect(filtered.model.vehicles[0].loadLimits.orders.softMaxLoad).toBe("1");
+    expect(
+      filtered.model.shipments[0].deliveries[0].timeWindows?.[0]
+        .costPerHourAfterSoftEndTime,
+    ).toBe(9);
     expect(() =>
       buildGoogleOptimizationRequest(
         {
@@ -471,6 +494,37 @@ describe("Google Route Optimization contract", () => {
     expect(optimizationTimeoutSeconds(10001)).toBe(1020);
     expect(optimizationTimeoutSeconds(20000)).toBe(1020);
     expect(optimizationTimeoutSeconds(1000000)).toBe(1800);
+  });
+
+  it("keeps every order above one hundred and derives soft balance without a hard cap", () => {
+    const source = board();
+    source.vehicles = Array.from({ length: 4 }, (_, index) => ({
+      ...vehicle,
+      id: `vehicle-${index + 1}`,
+      name: `Camioneta ${index + 1}`,
+      plate: `QA-${index + 1}`,
+    }));
+    source.shipments = Array.from({ length: 101 }, (_, index) => ({
+      ...shipment(`shipment-${index + 1}`, "schedule"),
+      pickingId: index + 1,
+      orderId: index + 1,
+      partnerId: index + 1,
+    }));
+
+    const request = buildGoogleOptimizationRequest(source, settings, "UTC");
+
+    expect(request.model.shipments).toHaveLength(101);
+    expect(request.timeout).toBe("180s");
+    expect(request.searchMode).toBe("CONSUME_ALL_AVAILABLE_TIME");
+    expect(
+      request.model.vehicles.map((item) => item.loadLimits.orders.softMaxLoad),
+    ).toEqual(["26", "26", "26", "26"]);
+    expect(
+      request.model.vehicles.map(
+        (item) => item.loadLimits.destinations.softMaxLoad,
+      ),
+    ).toEqual(["26", "26", "26", "26"]);
+    expect(JSON.stringify(request)).not.toContain("maxLoad");
   });
 
   it("accepts omitted protobuf zero indices and sanitizes route output", () => {

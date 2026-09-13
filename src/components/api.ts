@@ -28,18 +28,8 @@ export const errors: Record<string, string> = {
     "El último corte guardado no pasó la validación de integridad.",
   GOOGLE_CONSUMPTION_UNAVAILABLE:
     "Google no pudo actualizar el consumo. Se conserva el último corte oficial.",
-  ROUTING_AI_CONFIG_MISSING:
-    "Falta configurar la clave privada y el modelo de OpenAI para armar rutas.",
-  ROUTING_AI_CONFIG_INVALID: "La configuración privada de OpenAI no es válida.",
-  ROUTING_AI_DENIED:
-    "OpenAI rechazó la credencial del planificador. Revisa el proyecto y sus permisos.",
-  ROUTING_AI_QUOTA: "OpenAI alcanzó su límite de uso. El borrador no cambió.",
-  ROUTING_AI_UNAVAILABLE:
-    "OpenAI no pudo completar la planificación. El borrador no cambió.",
-  ROUTING_AI_RESPONSE_INVALID:
-    "OpenAI no completó el proceso de herramientas. El borrador no cambió.",
-  ROUTING_AI_CANDIDATE_INVALID:
-    "La propuesta de IA omitió, duplicó o usó datos ajenos al plan y fue rechazada.",
+  ROUTING_CANDIDATE_INVALID:
+    "La propuesta vial omitió, duplicó o usó datos ajenos al plan y fue rechazada.",
   ROUTING_CUSTOMER_GROUP_INVALID:
     "La propuesta separó pedidos del mismo cliente. No se guardó; vuelve a armar la ruta.",
   ROUTING_ROADS_CONFIG_MISSING:

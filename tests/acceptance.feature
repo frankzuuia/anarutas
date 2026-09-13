@@ -554,11 +554,11 @@ Feature: Ana Rutas independiente y portable
     And el primero espera ante un destino cerrado y después llega tarde a otros dos
     When se mide otro reparto que separa ese destino de las entregas tempranas
     Then el candidato con menos retrasos gana por sus métricas reales de horario
-    And la IA recibe llegada antes de espera holgura al cierre y jornada por camioneta
+    And Ana Rutas mide llegada antes de espera holgura al cierre y jornada por camioneta
 
   Scenario: LP14 LP15 comparar reparto y secuencia donde existan alternativas
     Given el mejor candidato medido admite otros repartos y permutaciones dentro del mismo nivel
-    When la IA intenta confirmar sin medir ambas dimensiones
+    When Ana Rutas intenta confirmar sin medir ambas dimensiones
     Then recibe qué comparación falta alrededor del mejor candidato
     And no confunde una permuta de nombres de camionetas con una mejora
     And si cambia el mejor reparto se revisa su secuencia
@@ -570,6 +570,25 @@ Feature: Ana Rutas independiente y portable
     When pulsa Armar ruta
     Then todos los pedidos de entrega se conservan en el candidato completo
     And los atrasos se miden y pueden guardarse sin bloquear la ruta por horario
+
+  Scenario: LP17 LP20 balance medido antes de confirmar
+    Given existen 60 pedidos de destinos distintos y 4 camionetas
+    And la propuesta vial reparte 33 20 5 y 2 pedidos
+    When Ana Rutas compara candidatos completos
+    Then mide también una línea base de 15 pedidos por camioneta
+    And no confirma la propuesta desigual como mejor por carecer de una métrica de carga
+    And los logs muestran pedidos y destinos por camioneta del resultado elegido
+
+  Scenario: LP18 grupos indivisibles durante el balance
+    Given varios pedidos pertenecen al mismo destino de entrega
+    When el servidor construye la línea base balanceada
+    Then conserva esos pedidos consecutivos en una sola camioneta
+    And minimiza la mejor distribución alcanzable sin inventar capacidad
+
+  Scenario: LP19 calles y ventanas entre cargas comparables
+    Given dos repartos tienen la misma carga máxima y dispersión
+    When ambos son medidos por calles y ventanas reales
+    Then gana lexicográficamente el de menos retrasos jornada espera viaje y distancia
 
   Scenario: IN01 IN02 IN07 consulta de incidencias sin modificar la ruta
     Given un administrador abre Incidencias y selecciona un plan
@@ -596,3 +615,28 @@ Feature: Ana Rutas independiente y portable
     When otra sesión modifica una ventana antes de terminar la lectura
     Then la consulta conserva un único snapshot coherente
     And la siguiente consulta detecta el cálculo obsoleto y no muestra ETA antiguas
+
+  Scenario: Armar ruta no consume un modelo generativo
+    Given un administrador tiene un plan con pedidos, salida y camionetas
+    When el administrador pulsa Armar ruta
+    Then Ana Rutas consulta Google Route Optimization sin llamar OpenAI
+    And compara las propuestas completas con una política determinista
+    And guarda todos los pedidos una sola vez
+
+  Scenario: Más de cien pedidos no constituyen un límite de negocio
+    Given un plan contiene 101 pedidos de entrega válidos
+    And dispone de cuatro camionetas
+    When el administrador pulsa Armar ruta
+    Then el modelo enviado a Google contiene los 101 pedidos
+    And el balance por pedidos y destinos es blando y dinámico
+    And ninguna capacidad máxima inventada permite omitirlos
+
+  Scenario: La política decide por prioridad antes que ventana y balance
+    Given existen entregas de prioridad Alta, Media y Por horario
+    And las ventanas pueden producir retrasos inevitables
+    When Ana Rutas compara dos rutas completas
+    Then primero gana la que no invierte prioridades
+    And después gana la que incumple menos ventanas
+    And después se comparan uso de flota, jornada y recorrido reales
+    And la carga sólo desempata soluciones viales equivalentes
+    And una ventana vencida nunca impide guardar la ruta completa

@@ -1,8 +1,16 @@
 # Bloque 1 — especificación y auditoría previa
 
-Política vigente: `BLOQUE-LOGISTICA-PRIORIDADES.md`, BL-058..062, LP01..16.
+Política vigente: `BLOQUE-RUTEO-DETERMINISTA.md`, BL-065..068, RD01..08.
+Armar ruta no llama OpenAI: Google aporta optimización vial y Ana Rutas aplica
+prioridad, ventanas, flota, balance y recorrido mediante comparación determinista.
+Sustituye la autoridad de OpenAI en BL-029/035/036/060 y conserva sus fronteras
+transaccionales, de seguridad y persistencia.
+
+Política histórica: `BLOQUE-LOGISTICA-PRIORIDADES.md`, BL-058..062/064, LP01..20.
 Prioridad por camioneta, horarios flexibles y comparación medida sustituyen
 prioridad flexible BL-028/054 y confirmación inmediata V10.
+BL-064 exige medir carga por pedidos/destinos y una línea base balanceada antes
+de confirmar; no es un límite de capacidad ni autoriza separar un destino.
 
 Panel Incidencias: `BLOQUE-INCIDENCIAS-LLEGADA.md`, BL-063, IN01..08.
 Sólo consulta de previsiones vigentes; sin eventos de llegada ficticios ni APK.
@@ -17,9 +25,10 @@ confirmación e incluye confirmed/assigned; manual BL-015 conserva done.
 MATCH PERFECT documental previo a construcción; producción 17 requiere preflight.
 Evidencia de implementación y QA: QA-SELECCION-PEDIDOS-ODOO.md.
 
-Extensión 5B: BL-032..036 y R01..14 en BLOQUE-5B-RECALCULO-IA.md sustituyen
+Histórico 5B: BL-032..036 y R01..14 en BLOQUE-5B-RECALCULO-IA.md sustituyeron
 la obsolescencia manual S39 por recálculo automático conservando el orden, y la salida
-libre por horario configurado por plan. OpenAI fue seleccionado por el usuario;
+libre por horario configurado por plan. La selección de OpenAI queda revocada por
+BL-065; el recálculo manual y durable permanece sin LLM.
 la precedencia Alta→Media→Por horario continúa obligatoria y cada camioneta vuelve
 al punto de salida con el regreso incluido en tiempo, distancia y mapa.
 
@@ -205,27 +214,29 @@ autoridad operativa vigente está formalizada en BL-054.
 | --- | ---------------------------------------- | ------------------- | ---------------------- | ---------------------------------------------- | --------------------------------------------- |
 | S32 | Admin, Maps activo, salida sin confirmar | Abre configuración  | Runtime + settings     | Dirección sugerida, ningún punto inventado     | Puede cerrar sin escritura                    |
 | S33 | Admin con salida vigente                 | Confirma otro punto | Settings/auditoría     | Versión y liga regeneradas                     | 409 conserva edición ajena                    |
-| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | OpenAI tools→Google→DB | Mejor candidato completo aplicado atómicamente | Servicio externo falla: cero cambio           |
+| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | Google→Ana Rutas→DB   | Mejor candidato completo aplicado atómicamente | Servicio externo falla: cero cambio           |
 | S35 | Ventanas/prioridades mezcladas           | Resolver modelo     | Route Optimization     | Lote completo; conflictos medidos como avisos  | Operador conserva autoridad sobre las salidas |
 | S36 | Otro admin cambia el plan durante Google | Aplicar respuesta   | Lock/version           | 409; resultado no aplicado                     | Actualizar y decidir de nuevo                 |
-| S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments   | Respuesta parcial rechazada; cero escritura    | OpenAI construye y mide un candidato completo |
+| S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments   | Respuesta parcial rechazada; cero escritura    | Base balanceada completa se mide por vialidad |
 | S38 | Ruta vigente                             | Ver mapa            | Run vigente            | Recorrido, ETA, km y duración reales           | Sin run vigente muestra puntos, no ruta falsa |
 | S39 | Ruta vigente                             | Movimiento manual   | Plan/job/version       | Conserva acomodo y recalcula calles/ETA        | Reintento durable sin redistribución          |
 | S40 | Origen incompleto o ambiguo              | Ubicar domicilio    | Google Geocoder        | Referencia visible; confirmar bloqueado        | Completar dirección o marcar punto exacto     |
 
 ### Data Flow
 
-El servidor obtiene configuración y snapshot desde PostgreSQL. OpenAI sólo recibe
-identidades opacas, coordenadas, ventanas y prioridades mediante tools nativas; Google
-mide los candidatos por vialidad real. El servidor valida cobertura, orden, prioridad,
-ventanas y versión, y sólo entonces aplica. El navegador recibe un contrato sanitizado;
-los route tokens permanecen privados para el endpoint de conductor futuro.
+El servidor obtiene configuración y snapshot desde PostgreSQL. Google Route
+Optimization recibe coordenadas, ventanas flexibles y demandas blandas dinámicas; Ana
+Rutas mide esa propuesta y una base balanceada por vialidad real. El servidor compara
+prioridad, ventanas, uso de flota, jornada, recorrido y carga como desempate, valida cobertura y
+versión, y sólo entonces aplica. El navegador recibe un contrato sanitizado; los route
+tokens permanecen privados para el endpoint de conductor futuro. Ningún LLM participa.
 
 ### Tables / APIs / Tools
 
-Migración v7 y contratos definidos en `BLOQUE-5B-RECALCULO-IA.md`. OpenAI orquesta la
-distribución, Route Optimization aporta una propuesta base y Routes API evalúa y
-recalcula cada tramo, incluido el regreso a bodega.
+Migración v7 y contratos históricos definidos en `BLOQUE-5B-RECALCULO-IA.md`.
+`BLOQUE-RUTEO-DETERMINISTA.md` sustituye la orquestación anterior: Route Optimization
+aporta la propuesta vial, Ana Rutas decide por score reproducible y Routes API mide la
+base alterna o recalcula cada tramo, incluido el regreso a bodega.
 
 ### Permissions / Tenant Boundaries
 
@@ -235,7 +246,7 @@ distinto al configurado.
 
 ### Integrations / Costs / Limits
 
-Timeout del solver dinámico por tamaño; sin abortos temporales locales de OpenAI/Routes según BL-052; tamaño de respuesta acotado; métricas de
+Timeout del solver dinámico por tamaño; sin abortos temporales locales arbitrarios según BL-052; tamaño de respuesta acotado; métricas de
 latencia/errores por código; cuotas y facturación observadas en Google Cloud. Polilíneas
 y tráfico se piden únicamente al confirmar Armar ruta.
 

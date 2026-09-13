@@ -1129,7 +1129,7 @@ export function OrdersBoard({
               !board.shipments.length ||
               !board.vehicles.length
             }
-            aria-label="Armar ruta con OpenAI y Google"
+            aria-label="Armar ruta con optimización vial de Google"
             onClick={() => void optimize()}
           >
             <Sparkles size={16} />

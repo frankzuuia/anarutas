@@ -9,8 +9,8 @@ const config = {
   mutate: [
     "src/core/route-delivery-groups.ts",
     "src/core/route-fingerprint.ts",
-    "src/core/route-ai-planner.ts:60-185",
-    "src/core/route-ai-planner.ts:206-250",
+    "src/core/route-candidate-evaluator.ts:34-80",
+    "src/core/route-candidate-evaluator.ts:222-237",
   ],
   testRunner: "vitest",
   vitest: { configFile: "vitest.delivery-groups.config.ts" },

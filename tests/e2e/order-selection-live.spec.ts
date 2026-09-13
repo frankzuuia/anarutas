@@ -71,7 +71,6 @@ test("live Odoo selection, exact persistence, retry, select-all, concurrency and
           RUTAS_TIMEZONE: "America/Mexico_City",
           RUTAS_GOOGLE_FINOPS_SERVICE_ACCOUNT_JSON_BASE64: "",
           RUTAS_GOOGLE_ROUTES_API_KEY: "",
-          RUTAS_OPENAI_API_KEY: "",
         },
       },
     );
