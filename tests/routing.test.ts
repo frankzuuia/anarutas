@@ -28,6 +28,8 @@ import {
 } from "../src/core/routing-settings";
 import { startPostgres } from "./helpers/postgres";
 import { calculateManualRoutes } from "../src/core/route-road";
+import { forecastIncidents } from "../src/core/route-incidents";
+import { readRouteIncidents } from "../src/core/route-incidents-query";
 import { saveDeparture } from "../src/core/departure";
 
 let db: Awaited<ReturnType<typeof startPostgres>>;
@@ -234,18 +236,22 @@ describe("routing settings and atomic optimization / real PostgreSQL", () => {
           },
           visits: [
             {
-              shipmentIndex: 1,
+              shipmentIndex: 0,
               eta: "2026-09-09T16:00:00.000Z",
               travelDistanceMeters: 7000,
               travelDurationSeconds: 1000,
               waitDurationSeconds: 120,
+              lateSeconds: 0,
+              priorityConflict: false,
             },
             {
-              shipmentIndex: 0,
+              shipmentIndex: 1,
               eta: "2026-09-09T17:00:00.000Z",
               travelDistanceMeters: 5500,
               travelDurationSeconds: 800,
               waitDurationSeconds: 0,
+              lateSeconds: 360,
+              priorityConflict: false,
             },
           ],
           transitions: [
@@ -263,6 +269,34 @@ describe("routing settings and atomic optimization / real PostgreSQL", () => {
         performedShipmentCount: 2,
       },
     };
+    const inverted = structuredClone(result);
+    inverted.routes[0].visits[0].shipmentIndex = 1;
+    inverted.routes[0].visits[1].shipmentIndex = 0;
+    await expect(
+      applyOptimizationResult(
+        db.pool,
+        actor,
+        plan.id,
+        before.plan.version,
+        (await getRoutingSettings(db.pool)).version,
+        before,
+        deliveries,
+        createHash("sha256").update("inverted-priorities").digest("hex"),
+        inverted,
+      ),
+    ).rejects.toMatchObject({
+      code: "ROUTING_RESPONSE_INVALID",
+      details: { field: "shipments.prioritySequence" },
+    });
+    expect(await orderBoard(db.pool, plan.id)).toEqual(before);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT id FROM route_optimization_runs WHERE plan_id=$1",
+          [plan.id],
+        )
+      ).rowCount,
+    ).toBe(0);
     const applied = await applyOptimizationResult(
       db.pool,
       actor,
@@ -282,9 +316,81 @@ describe("routing settings and atomic optimization / real PostgreSQL", () => {
     expect(JSON.stringify(applied)).not.toContain("private-android-token");
     const after = await orderBoard(db.pool, plan.id);
     expect(after.shipments.map((shipment) => shipment.id)).toEqual([
-      deliveries[1].id,
       deliveries[0].id,
+      deliveries[1].id,
     ]);
+    expect(applied!.routes[0].stops).toMatchObject([
+      { lateSeconds: 0, priorityConflict: false },
+      { lateSeconds: 360, priorityConflict: false },
+    ]);
+    expect(
+      (await getPlanOptimization(db.pool, plan.id))!.routes[0].stops,
+    ).toEqual(applied!.routes[0].stops);
+    const incidents = forecastIncidents(
+      after,
+      await getPlanOptimization(db.pool, plan.id),
+    );
+    expect(incidents.kind).toBe("ready");
+    expect(incidents.rows).toHaveLength(1);
+    expect(incidents.rows[0].lateSeconds).toBe(360);
+    expect(incidents.rows[0].orders).toEqual([deliveries[1].orderName]);
+    expect(await readRouteIncidents(db.pool, plan.id)).toEqual({
+      plan: after.plan,
+      ...incidents,
+    });
+    expect(await orderBoard(db.pool, plan.id)).toEqual(after);
+    await expect(readRouteIncidents(db.pool, "invalid")).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
+    // Real concurrent PostgreSQL sessions: pause the calculation read after the
+    // board snapshot, then edit a window. No query or provider is substituted.
+    const savedWindow = (
+      await db.pool.query(
+        "SELECT id,end_minute FROM route_customer_windows WHERE customer_id=$1",
+        [customerRows.rows[1].id],
+      )
+    ).rows[0];
+    const blocker = await db.pool.connect();
+    let pending: ReturnType<typeof readRouteIncidents> | undefined;
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query(
+        "LOCK TABLE route_optimization_runs IN ACCESS EXCLUSIVE MODE",
+      );
+      pending = readRouteIncidents(db.pool, plan.id);
+      void pending.catch(() => undefined);
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.pool.query(
+                `SELECT count(*)::int AS count FROM pg_locks
+                 WHERE relation='route_optimization_runs'::regclass
+                 AND mode='AccessShareLock' AND NOT granted`,
+              )
+            ).rows[0].count,
+          { timeout: 5000 },
+        )
+        .toBe(1);
+      await db.pool.query(
+        "UPDATE route_customer_windows SET end_minute=end_minute+1 WHERE id=$1",
+        [savedWindow.id],
+      );
+      await blocker.query("COMMIT");
+      expect(await pending).toEqual({ plan: after.plan, ...incidents });
+      expect(await readRouteIncidents(db.pool, plan.id)).toMatchObject({
+        kind: "stale",
+        rows: [],
+      });
+    } finally {
+      await blocker.query("ROLLBACK");
+      blocker.release();
+      await pending?.catch(() => undefined);
+      await db.pool.query(
+        "UPDATE route_customer_windows SET end_minute=$2 WHERE id=$1",
+        [savedWindow.id, savedWindow.end_minute],
+      );
+    }
     expect(
       after.shipments.every((shipment) => shipment.vehicle_id === vehicle.id),
     ).toBe(true);

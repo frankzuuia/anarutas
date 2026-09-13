@@ -7,6 +7,7 @@ import { readOrderBoard } from "./orders";
 import type { OrderBoard } from "./orders-contract";
 import { routeFingerprint } from "./route-fingerprint";
 import { assertDeliveryGroups } from "./route-delivery-groups";
+import { priorityConflictIds } from "./route-logistics-policy";
 import type { GoogleOptimizationResult } from "./route-optimization-google";
 import type {
   PublicOptimization,
@@ -41,7 +42,7 @@ function publicRoutes(value: unknown): PublicOptimizedRoute[] {
   });
 }
 
-async function currentRun(
+export async function readPlanOptimization(
   sql: Sql,
   planId: string,
 ): Promise<PublicOptimization | null> {
@@ -77,7 +78,7 @@ async function currentRun(
 }
 
 export async function getPlanOptimization(pool: Pool, planId: string) {
-  return transaction(pool, (sql) => currentRun(sql, planId));
+  return transaction(pool, (sql) => readPlanOptimization(sql, planId));
 }
 
 export async function lockRouteInputs(sql: Sql, planId: string) {
@@ -162,6 +163,8 @@ export async function applyOptimizationResult(
           travelDistanceMeters: visit.travelDistanceMeters,
           travelDurationSeconds: visit.travelDurationSeconds,
           waitDurationSeconds: visit.waitDurationSeconds,
+          lateSeconds: visit.lateSeconds,
+          priorityConflict: visit.priorityConflict,
         };
       });
       privateRoutes.push({
@@ -173,6 +176,7 @@ export async function applyOptimizationResult(
         metrics: route.metrics,
         stops,
         transitions: route.transitions,
+        trafficMode: route.trafficMode,
       });
     }
     const skipped = result.skipped.map((item) => ({
@@ -198,6 +202,17 @@ export async function applyOptimizationResult(
     )
       throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
         field: "shipments.completeCoverage",
+      });
+    if (
+      priorityConflictIds(board.shipments, {
+        routes: privateRoutes.map((route) => ({
+          vehicleId: route.vehicleId,
+          shipmentIds: route.stops.map((s) => s.shipmentId),
+        })),
+      }).size
+    )
+      throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
+        field: "shipments.prioritySequence",
       });
     const optimizedIdSet = new Set(optimizedIds);
     const remainingIds = board.shipments
@@ -290,6 +305,6 @@ export async function applyOptimizationResult(
     await sql.query("DELETE FROM route_recalculation_jobs WHERE plan_id=$1", [
       planId,
     ]);
-    return currentRun(sql, planId);
+    return readPlanOptimization(sql, planId);
   });
 }

@@ -1,5 +1,7 @@
 import { AppError } from "./errors";
-import type { OrderBoard, Shipment } from "./orders-contract";
+import type { OrderBoard } from "./orders-contract";
+import { priorityConflictIds } from "./route-logistics-policy";
+import { createRequestCache, roadLegCacheKey } from "./route-request-cache";
 import type {
   PublicOptimizedRoute,
   RouteMetrics,
@@ -16,6 +18,9 @@ export type RoadLeg = {
   trafficMode: "forecast" | "static";
 };
 export type CalculatedRoute = PublicOptimizedRoute & {
+  departureAt: string;
+  finishedAt: string;
+  trafficMode: "forecast" | "static";
   transitions: { encodedPolyline: string | null; routeToken: string | null }[];
 };
 export const emptyMetrics = (): RouteMetrics => ({
@@ -149,6 +154,14 @@ export async function requestRoadLeg(
   }
 }
 
+export function createRoadLegReader() {
+  const cached = createRequestCache<RoadLeg>();
+  return (from: Coordinate, to: Coordinate, departure: string) => {
+    const key = roadLegCacheKey(from, to, departure, Date.now());
+    return cached(key, () => requestRoadLeg(from, to, departure));
+  };
+}
+
 export function visitTiming(
   arrival: number,
   windows: { start: number; end: number }[],
@@ -179,6 +192,7 @@ export async function calculateManualRoutes(
   settings: RoutingSettings,
   timezone: string,
   onProgress: () => Promise<void> = async () => {},
+  readLeg = createRoadLegReader(),
 ) {
   if (!settings.depotLocation)
     throw new AppError("ROUTING_ORIGIN_REQUIRED", 409);
@@ -193,111 +207,117 @@ export async function calculateManualRoutes(
     latitude: settings.depotLocation.latitude,
     longitude: settings.depotLocation.longitude,
   };
-  const routes: CalculatedRoute[] = [];
-  const visited = new Map<
-    string,
-    { shipment: Shipment; stop: PublicOptimizedRoute["stops"][number] }
-  >();
-  for (const vehicle of board.vehicles) {
-    const shipments = board.shipments.filter(
-      (s) =>
-        s.vehicle_id === vehicle.id &&
-        s.fulfillmentMode === "delivery" &&
-        !s.customerArchived,
-    );
-    const metrics = emptyMetrics();
-    const route: CalculatedRoute = {
-      vehicleId: vehicle.id,
-      vehicleName: vehicle.name,
-      encodedPolyline: null,
-      segmentPolylines: [],
-      departureAt,
-      finishedAt: departureAt,
-      trafficMode: Date.parse(departureAt) > Date.now() ? "forecast" : "static",
-      metrics,
-      stops: [],
-      transitions: [],
-    };
-    let point = depot,
-      instant = Date.parse(departureAt);
-    const drive = async (to: Coordinate) => {
-      await onProgress();
-      if (point.latitude === to.latitude && point.longitude === to.longitude)
-        return;
-      const leg = await requestRoadLeg(
-        point,
-        to,
-        new Date(instant).toISOString(),
-      );
-      instant += leg.seconds * 1000;
-      metrics.travelDistanceMeters += leg.distance;
-      metrics.travelDurationSeconds += leg.seconds;
-      route.segmentPolylines!.push(leg.polyline);
-      route.transitions.push({
-        encodedPolyline: leg.polyline,
-        routeToken: leg.token,
-      });
-      if (leg.trafficMode === "static") route.trafficMode = "static";
-      point = to;
-    };
-    for (const shipment of shipments) {
-      if (
-        shipment.latitude === null ||
-        shipment.longitude === null ||
-        shipment.locationStatus === "pending"
-      )
-        throw new AppError("ROUTING_POINTS_REQUIRED", 409);
-      const beforeDistance = metrics.travelDistanceMeters,
-        beforeTime = metrics.travelDurationSeconds;
-      await drive({
-        latitude: shipment.latitude,
-        longitude: shipment.longitude,
-      });
-      const timing = visitTiming(
-        instant,
-        shipment.deliveryWindows.map((w) => ({
-          start: Date.parse(
-            localMinuteInstant(
-              board.plan.service_date,
-              w.startMinute,
-              timezone,
-            ),
-          ),
-          end: Date.parse(
-            localMinuteInstant(board.plan.service_date, w.endMinute, timezone),
-          ),
-        })),
-      );
-      instant = timing.eta;
-      metrics.waitDurationSeconds += timing.waitDurationSeconds;
-      const stop = {
-        shipmentId: shipment.id,
-        position: route.stops.length + 1,
-        eta: new Date(instant).toISOString(),
-        travelDistanceMeters: metrics.travelDistanceMeters - beforeDistance,
-        travelDurationSeconds: metrics.travelDurationSeconds - beforeTime,
-        waitDurationSeconds: timing.waitDurationSeconds,
-        lateSeconds: timing.lateSeconds,
-        priorityConflict: false,
+  const outcomes = await Promise.allSettled(
+    board.vehicles.map(async (vehicle) => {
+      const shipments = board.shipments
+        .filter(
+          (s) =>
+            s.vehicle_id === vehicle.id &&
+            s.fulfillmentMode === "delivery" &&
+            !s.customerArchived,
+        )
+        .sort((a, b) => a.position - b.position);
+      const metrics = emptyMetrics();
+      const route: CalculatedRoute = {
+        vehicleId: vehicle.id,
+        vehicleName: vehicle.name,
+        encodedPolyline: null,
+        segmentPolylines: [],
+        departureAt,
+        finishedAt: departureAt,
+        trafficMode:
+          Date.parse(departureAt) > Date.now() ? "forecast" : "static",
+        metrics,
+        stops: [],
+        transitions: [],
       };
-      route.stops.push(stop);
-      visited.set(shipment.id, { shipment, stop });
-    }
-    if (shipments.length) await drive(depot);
-    route.finishedAt = new Date(instant).toISOString();
-    metrics.totalDurationSeconds = Math.ceil(
-      (instant - Date.parse(departureAt)) / 1000,
-    );
-    metrics.performedShipmentCount = shipments.length;
-    routes.push(route);
-  }
-  const rank = { high: 0, medium: 1, schedule: 2 };
-  for (const current of visited.values())
-    current.stop.priorityConflict = [...visited.values()].some(
-      (other) =>
-        rank[other.shipment.priority] < rank[current.shipment.priority] &&
-        Date.parse(other.stop.eta) > Date.parse(current.stop.eta),
-    );
+      let point = depot,
+        instant = Date.parse(departureAt);
+      const drive = async (to: Coordinate) => {
+        await onProgress();
+        if (point.latitude === to.latitude && point.longitude === to.longitude)
+          return;
+        const leg = await readLeg(point, to, new Date(instant).toISOString());
+        instant += leg.seconds * 1000;
+        metrics.travelDistanceMeters += leg.distance;
+        metrics.travelDurationSeconds += leg.seconds;
+        route.segmentPolylines!.push(leg.polyline);
+        route.transitions.push({
+          encodedPolyline: leg.polyline,
+          routeToken: leg.token,
+        });
+        if (leg.trafficMode === "static") route.trafficMode = "static";
+        point = to;
+      };
+      for (const shipment of shipments) {
+        if (
+          shipment.latitude === null ||
+          shipment.longitude === null ||
+          shipment.locationStatus === "pending"
+        )
+          throw new AppError("ROUTING_POINTS_REQUIRED", 409);
+        const beforeDistance = metrics.travelDistanceMeters,
+          beforeTime = metrics.travelDurationSeconds;
+        await drive({
+          latitude: shipment.latitude,
+          longitude: shipment.longitude,
+        });
+        const timing = visitTiming(
+          instant,
+          shipment.deliveryWindows.map((w) => ({
+            start: Date.parse(
+              localMinuteInstant(
+                board.plan.service_date,
+                w.startMinute,
+                timezone,
+              ),
+            ),
+            end: Date.parse(
+              localMinuteInstant(
+                board.plan.service_date,
+                w.endMinute,
+                timezone,
+              ),
+            ),
+          })),
+        );
+        instant = timing.eta;
+        metrics.waitDurationSeconds += timing.waitDurationSeconds;
+        const stop = {
+          shipmentId: shipment.id,
+          position: route.stops.length + 1,
+          eta: new Date(instant).toISOString(),
+          travelDistanceMeters: metrics.travelDistanceMeters - beforeDistance,
+          travelDurationSeconds: metrics.travelDurationSeconds - beforeTime,
+          waitDurationSeconds: timing.waitDurationSeconds,
+          lateSeconds: timing.lateSeconds,
+          priorityConflict: false,
+        };
+        route.stops.push(stop);
+      }
+      if (shipments.length) await drive(depot);
+      route.finishedAt = new Date(instant).toISOString();
+      metrics.totalDurationSeconds = Math.ceil(
+        (instant - Date.parse(departureAt)) / 1000,
+      );
+      metrics.performedShipmentCount = shipments.length;
+      return route;
+    }),
+  );
+  // Drain every in-flight measurement before releasing the optimization lease.
+  const routes = outcomes.map((outcome) => {
+    if (outcome.status === "rejected") throw outcome.reason;
+    return outcome.value;
+  });
+  const conflicts = priorityConflictIds(board.shipments, {
+    routes: routes.map((route) => ({
+      vehicleId: route.vehicleId,
+      shipmentIds: route.stops.map((s) => s.shipmentId),
+    })),
+  });
+  for (const route of routes)
+    for (const stop of route.stops)
+      stop.priorityConflict = conflicts.has(stop.shipmentId);
   const metrics = emptyMetrics();
   for (const route of routes)
     for (const key of Object.keys(metrics) as (keyof RouteMetrics)[])

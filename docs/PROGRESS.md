@@ -1,5 +1,31 @@
 # Progreso — bloque 1
 
+## Avance autorizado a develop — 12/09/2026
+
+El usuario autorizó commit/push de logística e incidencias para probar en develop
+después de conocer las puertas locales verdes y la validación live pendiente.
+Deploy manual en EasyPanel a cargo del usuario; sin autorización para main ni
+producción. Los informes QA conservan la evidencia previa al commit/push.
+
+## Logística por prioridad — BLOQUE-LOGISTICA-PRIORIDADES.md
+
+- [x] LP-T01 (BL-058 / LP01..03,10): política de prioridad por destino/camioneta y diagnóstico compartido.
+- [x] LP-T02 (BL-059 / LP02,04): semilla Google agrupada con horarios flexibles y expansión exacta; contrato local validado, proveedor live en LP-T07.
+- [x] LP-T03 (BL-060 / LP04..07,09,11): herramientas con feedback por parada, comparación y logs.
+- [x] LP-T04 (BL-061 / LP07..10,12): reutilizar mediciones, medir flota en paralelo y guardar avisos.
+- [x] LP-T05 (LP01..16): puertas locales verdes: 361 pruebas, cobertura, mutación dirigida 197/197 más consulta transaccional 4/4, PostgreSQL, E2E local, build, tipos, lint y auditoría. Ver QA-LOGISTICA-PRIORIDADES.md y QA-INCIDENCIAS-PANEL.md; no certifica integración live.
+- [x] LP-T06 (BL-062 / LP13..16): evidencia independiente de reparto y secuencia, holguras y comparación contra la semilla. Salida 23:59 con todas las ventanas vencidas conserva todas las entregas.
+- [ ] LP-T07: ejecutar caso real con proveedores en develop, comprobar ambos experimentos, precedencia, retrasos, cobertura exacta y medir costo/latencia. Pendiente después del deploy manual; avance a develop autorizado para esta prueba.
+
+## Incidencias del panel — BLOQUE-INCIDENCIAS-LLEGADA.md
+
+- Regla confirmada: el chofer pulsa «Llegué» e inicia surtido; no equivale a pedido entregado. Kalamar 10:00–11:30 / llegada 12:00 → 30 min tarde, sin bloquear ruteo.
+- [x] IN-T01: usuario confirma que la APK aún no existe; implementar sólo consulta del panel, sin inventar eventos reales.
+- [x] IN-T02 (BL-063 / IN01..08): previsiones agrupadas por destino, consulta autenticada consistente, selector, búsqueda, refresh y estados explícitos; llegadas reales identificadas como pendientes.
+- [x] IN-T03: unidades y PostgreSQL real, carrera con edición concurrente de ventanas, 100% cobertura del modelo/consulta, mutación 58/58 y 4/4, E2E local y QA responsive. Evidencia y alcance en QA-INCIDENCIAS-PANEL.md.
+- [ ] IN-T04: comprobar tarjetas pobladas con cálculo real en develop después del deploy manual; avance a develop autorizado para esta prueba.
+- [ ] IN-T05: bloque móvil futuro: autenticación de chofer, evento idempotente Llegué, ventanas históricas y recepción offline. No incluido en la consulta del panel actual.
+
 ## Observabilidad de ruteo — BLOQUE-OBSERVABILIDAD-RUTEO.md
 
 - [x] RO-T01 (BL-055/RO01): logger estructurado para stdout/stderr con mensaje natural, sistema, etapa, requestId, planId y duración.

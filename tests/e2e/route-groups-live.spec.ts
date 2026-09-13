@@ -18,6 +18,11 @@ import {
   deliveryGroups,
 } from "../../src/core/route-delivery-groups";
 import { startPostgres, freePort } from "../helpers/postgres";
+import {
+  hasRoutingAlternatives,
+  logisticsPolicyVersion,
+  priorityConflictIds,
+} from "../../src/core/route-logistics-policy";
 
 // Opt-in replay of a real case. The caller supplies points/preferences read from
 // Ana Rutas; orders are reread in Odoo and every provider call is real. No external
@@ -189,6 +194,9 @@ test("real customer-group planning through browser, OpenAI, Google and isolated 
         .map((s) => s.id),
     }));
     assertDeliveryGroups(after.shipments, assignments);
+    expect(
+      priorityConflictIds(after.shipments, { routes: assignments }).size,
+    ).toBe(0);
     expect(after.shipments.every((s) => s.vehicle_id !== null)).toBe(true);
     for (const group of deliveryGroups(after.shipments)) {
       const members = after.shipments.filter((s) =>
@@ -218,6 +226,12 @@ test("real customer-group planning through browser, OpenAI, Google and isolated 
     ).rows;
     expect(audit).toHaveLength(1);
     expect(audit[0].details.deliveryGroups).toBe(customers.length);
+    expect(audit[0].details.logisticsPolicy).toBe(logisticsPolicyVersion);
+    expect(audit[0].details.score.priorityConflicts).toBe(0);
+    expect(audit[0].details.search.complete).toBe(true);
+    expect(audit[0].details.search.missing).toEqual([]);
+    if (hasRoutingAlternatives(before))
+      expect(audit[0].details.comparedLogistics).toBeGreaterThan(1);
     console.log(
       JSON.stringify({
         liveRouting: "PASS",

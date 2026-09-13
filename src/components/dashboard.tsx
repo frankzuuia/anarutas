@@ -15,6 +15,7 @@ import {
   Trash2,
   Building2,
   Gauge,
+  AlertTriangle,
 } from "lucide-react";
 import type { User } from "@/core/auth";
 import type { DeletedPlan, Plan } from "@/core/plans";
@@ -26,6 +27,7 @@ import { CreatePlanDialog } from "./create-plan-dialog";
 import { DeletePlanDialog } from "./delete-plan-dialog";
 import { CustomerPanel } from "./customer-panel";
 import { GoogleConsumptionPanel } from "./google-consumption-panel";
+import { IncidentsPanel } from "./incidents-panel";
 
 type Section =
   | "plans"
@@ -34,9 +36,11 @@ type Section =
   | "customers"
   | "users"
   | "audit"
+  | "incidents"
   | "consumption";
 const sections = [
   { id: "plans" as const, label: "Planificar rutas", icon: Route },
+  { id: "incidents" as const, label: "Incidencias", icon: AlertTriangle },
   { id: "vehicles" as const, label: "Camionetas", icon: Truck },
   { id: "drivers" as const, label: "Choferes", icon: Users },
   {
@@ -106,6 +110,7 @@ export function Dashboard({
   const [boardRevision, setBoardRevision] = useState(0);
   const [customerRevision, setCustomerRevision] = useState(0);
   const [consumptionRevision, setConsumptionRevision] = useState(0);
+  const [incidentsRevision, setIncidentsRevision] = useState(0);
   const [plans, setPlans] = useState<Plan[]>([]),
     [users, setUsers] = useState<User[]>([]),
     [audit, setAudit] = useState<AuditRow[]>([]);
@@ -131,6 +136,7 @@ export function Dashboard({
       if (section === "audit") setAudit(await api<AuditRow[]>("/api/audit"));
       if (section === "consumption")
         setConsumptionRevision((value) => value + 1);
+      if (section === "incidents") setIncidentsRevision((value) => value + 1);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -162,6 +168,7 @@ export function Dashboard({
         }),
       customers: () => Promise.resolve(),
       consumption: () => Promise.resolve(),
+      incidents: () => Promise.resolve(),
     };
     void requests[section]().catch(fail).finally(done);
     return () => {
@@ -337,7 +344,9 @@ export function Dashboard({
                           ? "Una cuenta por persona. Todos administran únicamente Ana Rutas."
                           : section === "audit"
                             ? "Actividad registrada con su autor y fecha."
-                            : "Métricas y cargos reales publicados por Google Cloud Billing, sin estimaciones internas."}
+                            : section === "incidents"
+                              ? "Retrasos previstos por destino, separados del registro de llegada del chofer."
+                              : "Métricas y cargos reales publicados por Google Cloud Billing, sin estimaciones internas."}
                 </p>
               </div>
               <button
@@ -375,6 +384,13 @@ export function Dashboard({
           )}
           {section === "customers" && (
             <CustomerPanel revision={customerRevision} />
+          )}
+          {section === "incidents" && (
+            <IncidentsPanel
+              revision={incidentsRevision}
+              timezone={timezone}
+              initialPlanId={selected?.id}
+            />
           )}
           {section === "consumption" && (
             <GoogleConsumptionPanel

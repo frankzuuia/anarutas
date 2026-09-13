@@ -1,5 +1,9 @@
 # Resiliencia y cobertura completa del ruteo por volumen
 
+Actualización vigente: BL-058..061 en `BLOQUE-LOGISTICA-PRIORIDADES.md` reemplazan
+la precedencia flexible y V10 de este bloque. Se corrige la secuencia antes de
+medir; los horarios siguen sin excluir entregas. Las demás reglas permanecen.
+
 Solicitud del 12 septiembre 2026: el lote cargado debe procesarse completo, sin
 un límite de cantidad creado por Ana Rutas. Ningún plazo local artificial puede
 cancelar silenciosamente a OpenAI o a Routes API antes del deadline físico del

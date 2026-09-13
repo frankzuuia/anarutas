@@ -96,6 +96,13 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(page).toHaveURL(`${origin}/login`);
   const denied = await first.request.get(`${origin}/api/plans`);
   expect(denied.status()).toBe(401);
+  expect(
+    (
+      await first.request.get(
+        `${origin}/api/plans/00000000-0000-0000-0000-000000000000/incidents`,
+      )
+    ).status(),
+  ).toBe(401);
   expect((await first.request.get(`${origin}/api/maps/config`)).status()).toBe(
     401,
   );
@@ -165,6 +172,59 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(
     page.getByRole("heading", { name: "Planificar rutas", exact: true }),
   ).toBeVisible();
+  const incidentRequests: string[] = [];
+  const captureIncidentRequest = (
+    request: import("@playwright/test").Request,
+  ) => {
+    if (request.url().includes("/api/"))
+      incidentRequests.push(request.method());
+  };
+  page.on("request", captureIncidentRequest);
+  await page.getByRole("button", { name: "Incidencias", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Incidencias", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Todavía no hay planes para consultar."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Los retrasos no bloquean la ruta.", { exact: false }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Llegadas reales", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Registro de llegadas pendiente" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Llegué", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Una llegada estimada no se registra como llegada real."),
+  ).toBeVisible();
+  await mkdir("reports/screenshots", { recursive: true });
+  for (const width of [375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: `reports/screenshots/incidents-${width}.png`,
+      fullPage: true,
+    });
+  }
+  await page
+    .getByRole("button", { name: "Retrasos previstos", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(
+    page.getByText("Todavía no hay planes para consultar."),
+  ).toBeVisible();
+  page.off("request", captureIncidentRequest);
+  expect(incidentRequests.length).toBeGreaterThan(0);
+  expect(incidentRequests.every((method) => method === "GET")).toBe(true);
   await page
     .getByRole("button", { name: "Control de consumo", exact: true })
     .click();
@@ -258,6 +318,16 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(
     page.getByText("Sin pedidos cargados", { exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Incidencias", exact: true }).click();
+  await expect(page.getByLabel("Plan de incidencias")).toContainText(
+    "Plan de validación",
+  );
+  await expect(
+    page.getByText("Este plan todavía no tiene una ruta calculada."),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Planificar rutas", exact: true })
+    .click();
   const originButton = page.getByRole("button", {
     name: "Configurar punto de salida",
     exact: true,

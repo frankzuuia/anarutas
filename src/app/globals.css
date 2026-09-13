@@ -13,6 +13,85 @@
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
+.incident-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.incident-filters label {
+  display: grid;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.incident-filters select {
+  width: 100%;
+}
+.incident-views {
+  flex-wrap: wrap;
+}
+.incident-views [aria-pressed="true"] {
+  border-color: var(--green);
+  background: var(--green-dark);
+}
+.incident-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.incident-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  overflow-wrap: anywhere;
+}
+.incident-card header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+.incident-card h2 {
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+.incident-card dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 16px 0 0;
+}
+.incident-card dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.incident-card dd {
+  margin: 4px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+.incident-card dd small {
+  display: block;
+  color: var(--muted);
+}
+.incidents-panel select:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .incident-filters {
+    flex-direction: column;
+  }
+  .incident-card dl {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .incident-views button {
+    flex: 1;
+  }
+}
 dialog.fleet-dialog.candidate-dialog {
   width: min(960px, calc(100vw - 24px));
 }

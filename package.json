@@ -24,6 +24,8 @@
     "test:mutation:customers": "stryker run stryker.customers.config.mjs",
     "test:mutation:routing": "stryker run stryker.routing.config.mjs",
     "test:mutation:route-observability": "stryker run stryker.route-observability.config.mjs",
+    "test:mutation:route-logistics": "stryker run stryker.route-logistics.config.mjs",
+    "test:mutation:route-incidents-query": "stryker run stryker.route-incidents-query.config.mjs",
     "test:mutation:routing-operations": "stryker run stryker.routing-operations.config.mjs",
     "test:mutation:google-consumption": "stryker run stryker.google-consumption.config.mjs",
     "test:mutation:order-candidates": "stryker run stryker.order-candidates.config.mjs",

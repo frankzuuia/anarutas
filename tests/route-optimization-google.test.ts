@@ -157,9 +157,11 @@ describe("Google Route Optimization contract", () => {
     const timeout = vi
       .spyOn(AbortSignal, "timeout")
       .mockReturnValue(new AbortController().signal);
-    const fetcher = vi.fn().mockResolvedValueOnce(
-      new Response(JSON.stringify({ routes: [] }), { status: 200 }),
-    );
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ routes: [] }), { status: 200 }),
+      );
     const request = {
       ...buildGoogleOptimizationRequest(
         board(),
@@ -169,15 +171,10 @@ describe("Google Route Optimization contract", () => {
       timeout: "60s",
     };
 
-    await requestGoogleOptimization(
-      "ana-rutas-develop",
-      credentials,
-      request,
-      {
-        fetch: fetcher as typeof fetch,
-        token: async () => "qa-oauth-token",
-      },
-    );
+    await requestGoogleOptimization("ana-rutas-develop", credentials, request, {
+      fetch: fetcher as typeof fetch,
+      token: async () => "qa-oauth-token",
+    });
 
     const options = fetcher.mock.calls[0][1] as RequestInit;
     expect(options.headers).toMatchObject({ "X-Server-Timeout": "60" });
@@ -199,9 +196,9 @@ describe("Google Route Optimization contract", () => {
     await expect(
       call({ ok: true, status: 200, body: null } as Response),
     ).rejects.toThrow("ROUTING_GOOGLE_UNAVAILABLE");
-    await expect(call(new Response("not-json", { status: 200 }))).rejects.toThrow(
-      "ROUTING_RESPONSE_INVALID",
-    );
+    await expect(
+      call(new Response("not-json", { status: 200 })),
+    ).rejects.toThrow("ROUTING_RESPONSE_INVALID");
 
     const json = new TextEncoder().encode(JSON.stringify({ routes: [] }));
     const maximum = 20 * 1024 * 1024;
@@ -259,7 +256,7 @@ describe("Google Route Optimization contract", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("builds a complete real-road seed without hard business windows, priorities or weight fields", () => {
+  it("builds a complete road seed with soft deadlines and without weight fields", () => {
     const request = buildGoogleOptimizationRequest(
       board(),
       settings,
@@ -282,6 +279,14 @@ describe("Google Route Optimization contract", () => {
                 latitude: 20.6597,
                 longitude: -103.3496,
               },
+              timeWindows: [
+                {
+                  startTime: "2026-09-09T15:00:00.000Z",
+                  endTime: "2027-09-08T13:30:00.000Z",
+                  softEndTime: "2026-09-09T18:00:00.000Z",
+                  costPerHourAfterSoftEndTime: 3600,
+                },
+              ],
             },
           ],
         })),
@@ -302,7 +307,7 @@ describe("Google Route Optimization contract", () => {
         ],
       },
     });
-    expect(JSON.stringify(request)).not.toContain("timeWindows");
+    expect(JSON.stringify(request)).toContain("softEndTime");
     expect(JSON.stringify(request)).not.toContain("precedenceRules");
     expect(JSON.stringify(request)).not.toContain("loadLimit");
     expect(JSON.stringify(request)).not.toContain("loadDemand");

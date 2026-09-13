@@ -123,11 +123,14 @@ describe("OpenAI candidate boundary", () => {
       version: 1,
       updatedAt: null,
     };
-    const context = planningSnapshot(board, settings);
+    const context = planningSnapshot(board, settings, "UTC");
     expect(context.deliveryGroups).toEqual(
-      board.shipments
-        .slice(0, 3)
-        .map((s) => ({ id: s.id, shipmentIds: [s.id] })),
+      board.shipments.slice(0, 3).map((s, rank) => ({
+        id: s.id,
+        shipmentIds: [s.id],
+        rank,
+        priority: s.priority,
+      })),
     );
     expect(context.shipments).toEqual(
       board.shipments.slice(0, 3).map((s) => ({
@@ -153,11 +156,13 @@ describe("OpenAI candidate boundary", () => {
       id: "archived",
       customerArchived: true,
     });
-    const grouped = planningSnapshot(repeated, settings);
+    const grouped = planningSnapshot(repeated, settings, "UTC");
     expect(grouped.deliveryGroups).toEqual([
       {
         id: board.shipments[0].id,
         shipmentIds: board.shipments.slice(0, 3).map((s) => s.id),
+        rank: 0,
+        priority: "high",
       },
     ]);
     expect(grouped.shipments).toHaveLength(3);
@@ -413,7 +418,7 @@ describe("OpenAI candidate boundary", () => {
       ).routes[0].shipmentIds,
     ).toEqual([board.shipments[2].id, board.shipments[1].id]);
   });
-  it("evaluates balance and global priority with deterministic zero-distance roads", async () => {
+  it("evaluates balance and per-route priority with exact zero-distance roads", async () => {
     const settings = {
       depotAddress: "Bodega",
       depotLocation: { latitude: 20, longitude: -103, placeId: "warehouse" },
@@ -491,10 +496,10 @@ describe("OpenAI candidate boundary", () => {
     );
     expect(conflict).toMatchObject({
       feasible: true,
-      priorityConflicts: 2,
+      priorityConflicts: 0,
       imbalanceSeconds: 7200,
       score: {
-        priorityConflicts: 2,
+        priorityConflicts: 0,
         makespanSeconds: 7200,
         imbalanceSeconds: 7200,
       },

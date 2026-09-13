@@ -1,5 +1,12 @@
 # Bloque 1 — especificación y auditoría previa
 
+Política vigente: `BLOQUE-LOGISTICA-PRIORIDADES.md`, BL-058..062, LP01..16.
+Prioridad por camioneta, horarios flexibles y comparación medida sustituyen
+prioridad flexible BL-028/054 y confirmación inmediata V10.
+
+Panel Incidencias: `BLOQUE-INCIDENCIAS-LLEGADA.md`, BL-063, IN01..08.
+Sólo consulta de previsiones vigentes; sin eventos de llegada ficticios ni APK.
+
 Corrección autorizada de ruteo: `BLOQUE-RUTEO-POR-CLIENTE.md`, BL-048..050 y
 RC01..10. Cliente/destino indivisible y consecutivo al armar ruta; el uso de
 flota se cuenta por grupos, sin cambiar pesos, ventanas ni prioridades.
@@ -228,7 +235,7 @@ distinto al configurado.
 
 ### Integrations / Costs / Limits
 
-Timeout dinámico por tamaño; AbortSignal local; tamaño de respuesta acotado; métricas de
+Timeout del solver dinámico por tamaño; sin abortos temporales locales de OpenAI/Routes según BL-052; tamaño de respuesta acotado; métricas de
 latencia/errores por código; cuotas y facturación observadas en Google Cloud. Polilíneas
 y tráfico se piden únicamente al confirmar Armar ruta.
 

@@ -506,3 +506,93 @@ Feature: Ana Rutas independiente y portable
     Then se guarda una sola optimización
     And repetir la versión anterior o usar un actor inactivo se rechaza
     And una edición manual posterior sigue conservando la decisión del administrador
+
+  Scenario: LP01 LP02 la prioridad gobierna cada recorrido antes de medir
+    Given una propuesta deja un destino Alta después de destinos Media y Por horario
+    And el destino Alta tiene varios pedidos
+    When Ana Rutas prepara la evaluación vial
+    Then mueve el grupo Alta completo al nivel inicial de su camioneta
+    And conserva la secuencia de destinos propuesta dentro de cada nivel
+    And Google mide las calles y ETA del orden corregido
+
+  Scenario: LP03 LP10 prioridad independiente y autoridad manual
+    Given una camioneta tiene un destino Alta que abre tarde
+    When otra camioneta empieza sus propias entregas
+    Then no espera a la primera camioneta por una barrera global de prioridad
+    When el operador cambia manualmente el orden
+    Then conserva ese orden y recalcula sus avisos de prioridad por recorrido
+
+  Scenario: LP04 LP07 LP12 retrasos medidos y guardados
+    Given un destino tiene varias ventanas y otro ya no puede llegar a su cierre
+    When la IA compara alternativas completas con precedencia correcta
+    Then recibe ETA espera y retraso por parada con las ventanas exactas
+    And se aplica el mejor candidato medido sin omitir entregas
+    And al releer el mapa conserva los mismos avisos y ETA
+
+  Scenario: LP05 LP06 comparación sustantiva antes de confirmar
+    Given existe más de una distribución u orden permitido
+    When la IA intenta confirmar la semilla sin comparar
+    Then recibe una solicitud recuperable de evaluar una alternativa distinta
+    And cambiar sólo nombres de camionetas no cuenta como alternativa
+    But un único destino no exige una comparación imposible
+
+  Scenario: LP08 LP09 reutilización y recuperación de mediciones
+    Given una corrida vuelve a consultar un tramo con origen destino y salida idénticos
+    When se mide la alternativa
+    Then reutiliza el resultado de esa misma corrida
+    And una medición fallida nunca queda almacenada como resultado válido
+    And un fallo o cambio concurrente no guarda un plan parcial
+
+  Scenario: LP11 modalidad visible en observabilidad
+    Given el lote contiene entregas y un cliente configurado como Recoge
+    When se prepara la ruta
+    Then los logs muestran los conteos de entregas recogidas y clientes archivados
+    And sólo las entregas elegibles se asignan a las camionetas
+
+  Scenario: LP13 logística no equivale a ordenar colores
+    Given dos candidatos completos respetan las mismas prioridades
+    And el primero espera ante un destino cerrado y después llega tarde a otros dos
+    When se mide otro reparto que separa ese destino de las entregas tempranas
+    Then el candidato con menos retrasos gana por sus métricas reales de horario
+    And la IA recibe llegada antes de espera holgura al cierre y jornada por camioneta
+
+  Scenario: LP14 LP15 comparar reparto y secuencia donde existan alternativas
+    Given el mejor candidato medido admite otros repartos y permutaciones dentro del mismo nivel
+    When la IA intenta confirmar sin medir ambas dimensiones
+    Then recibe qué comparación falta alrededor del mejor candidato
+    And no confunde una permuta de nombres de camionetas con una mejora
+    And si cambia el mejor reparto se revisa su secuencia
+    But si cada nivel sólo tiene un destino no exige permutarlo
+
+  Scenario: LP16 el horario no veta la salida del operador
+    Given el administrador configura salida a las 23:59
+    And todos los cierres de entrega ya pasaron
+    When pulsa Armar ruta
+    Then todos los pedidos de entrega se conservan en el candidato completo
+    And los atrasos se miden y pueden guardarse sin bloquear la ruta por horario
+
+  Scenario: IN01 IN02 IN07 consulta de incidencias sin modificar la ruta
+    Given un administrador abre Incidencias y selecciona un plan
+    When consulta los retrasos previstos o cambia a Llegadas reales
+    Then sólo se ejecutan lecturas autenticadas del plan y del cálculo guardado
+    And ninguna ETA se presenta como llegada real o entrega finalizada
+    And no se requiere construir la APK para consultar las previsiones
+
+  Scenario: IN03 IN04 previsión vigente por destino
+    Given un cliente tiene dos pedidos y 30 minutos de retraso previsto
+    When se consulta el resultado vigente de su plan
+    Then se muestra una incidencia prevista con ambos pedidos y sus 30 minutos
+    But si el cálculo está desactualizado no se mezcla con ventanas actuales
+    And si falta un cálculo de retraso no se declara puntual ese destino
+
+  Scenario: IN05 IN06 lectura recuperable y móvil
+    Given el administrador usa Incidencias con teclado o en una pantalla de 375 píxeles
+    When cambia el plan busca un pedido o pulsa Actualizar tras un error
+    Then los controles tienen etiquetas y el contenido no desborda la pantalla
+    And una respuesta anterior no sustituye los datos de la nueva selección
+
+  Scenario: IN08 edición de horarios durante la consulta
+    Given Incidencias está leyendo un plan con un cálculo vigente
+    When otra sesión modifica una ventana antes de terminar la lectura
+    Then la consulta conserva un único snapshot coherente
+    And la siguiente consulta detecta el cálculo obsoleto y no muestra ETA antiguas

@@ -5,8 +5,14 @@ import type { OrderBoard } from "./orders-contract";
 import type { GoogleServiceAccount } from "./routing-config";
 import type { RouteMetrics } from "./routing-contract";
 import type { RoutingSettings } from "./routing-contract";
+import { priorityGroups } from "./route-logistics-policy";
 
-type GoogleTimeWindow = { startTime: string; endTime: string };
+type GoogleTimeWindow = {
+  startTime: string;
+  endTime: string;
+  softEndTime?: string;
+  costPerHourAfterSoftEndTime?: number;
+};
 type GoogleOptimizationRequest = {
   timeout: string;
   considerRoadTraffic: true;
@@ -46,11 +52,14 @@ export type GoogleRouteResult = {
     travelDistanceMeters: number;
     travelDurationSeconds: number;
     waitDurationSeconds: number;
+    lateSeconds?: number;
+    priorityConflict?: boolean;
   }[];
   transitions: {
     encodedPolyline: string | null;
     routeToken: string | null;
   }[];
+  trafficMode?: "forecast" | "static";
 };
 
 export type GoogleOptimizationResult = {
@@ -147,26 +156,71 @@ export function buildGoogleOptimizationRequest(
   const end = new Date(
     Date.parse(start) + 364 * 24 * 60 * 60 * 1000,
   ).toISOString();
+  const byId = new Map(deliveries.map((shipment) => [shipment.id, shipment]));
+  const groups = priorityGroups(deliveries);
   return {
-    timeout: `${optimizationTimeoutSeconds(deliveries.length)}s`,
+    timeout: `${optimizationTimeoutSeconds(groups.length)}s`,
     considerRoadTraffic: true,
     populatePolylines: true,
     populateTransitionPolylines: true,
     model: {
       globalStartTime: start,
       globalEndTime: end,
-      shipments: deliveries.map((shipment) => ({
-        label: shipment.id,
-        deliveries: [
-          {
-            label: shipment.id,
-            arrivalLocation: {
-              latitude: shipment.latitude!,
-              longitude: shipment.longitude!,
+      shipments: groups.map((group) => {
+        const shipment = byId.get(group.id)!;
+        const windows = group.shipmentIds.flatMap(
+          (id) => byId.get(id)!.deliveryWindows,
+        );
+        // Google supports a soft deadline only with one window. This envelope is
+        // a seed; Routes evaluation checks every exact local window afterwards.
+        const opening = windows.length
+          ? localMinuteInstant(
+              board.plan.service_date,
+              Math.min(...windows.map((w) => w.startMinute)),
+              timezone,
+            )
+          : start;
+        const closing = windows.length
+          ? localMinuteInstant(
+              board.plan.service_date,
+              Math.max(...windows.map((w) => w.endMinute)),
+              timezone,
+            )
+          : end;
+        const startTime = new Date(
+          Math.max(Date.parse(start), Date.parse(opening)),
+        ).toISOString();
+        return {
+          label: group.id,
+          deliveries: [
+            {
+              label: group.id,
+              arrivalLocation: {
+                latitude: shipment.latitude!,
+                longitude: shipment.longitude!,
+              },
+              ...(windows.length
+                ? {
+                    timeWindows: [
+                      {
+                        startTime,
+                        endTime: end,
+                        softEndTime: new Date(
+                          Math.max(Date.parse(startTime), Date.parse(closing)),
+                        ).toISOString(),
+                        // One unit/hour of route time below; one late second outweighs an
+                        // hour of aggregate fleet travel in the seed. Final choice is
+                        // lexicographic, not this surrogate cost and not a currency.
+                        costPerHourAfterSoftEndTime:
+                          3600 * board.vehicles.length,
+                      },
+                    ],
+                  }
+                : {}),
             },
-          },
-        ],
-      })),
+          ],
+        };
+      }),
       vehicles: board.vehicles.map((vehicle) => ({
         label: vehicle.id,
         travelMode: "DRIVING",
