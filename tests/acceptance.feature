@@ -511,9 +511,10 @@ Feature: Ana Rutas independiente y portable
     Given una propuesta deja un destino Alta después de destinos Media y Por horario
     And el destino Alta tiene varios pedidos
     When Ana Rutas prepara la evaluación vial
-    Then mueve el grupo Alta completo al nivel inicial de su camioneta
-    And conserva la secuencia de destinos propuesta dentro de cada nivel
-    And Google mide las calles y ETA del orden corregido
+    Then fija cada grupo completo a la camioneta propuesta
+    And envía a Google precedencias Alta Media y Por horario sólo para esa camioneta
+    And Google vuelve a optimizar calles ventanas y ETA dentro de cada nivel
+    And Ana Rutas nunca reordena después la secuencia calculada
 
   Scenario: LP03 LP10 prioridad independiente y autoridad manual
     Given una camioneta tiene un destino Alta que abre tarde
@@ -563,6 +564,26 @@ Feature: Ana Rutas independiente y portable
     And no confunde una permuta de nombres de camionetas con una mejora
     And si cambia el mejor reparto se revisa su secuencia
     But si cada nivel sólo tiene un destino no exige permutarlo
+
+  Scenario: SV01 regresión del zigzag causado por prioridad posterior
+    Given Google propone una distribución cuya parada prioritaria no está al inicio
+    And el resto de destinos forma un recorrido vial continuo
+    When Ana Rutas aplica la precedencia obligatoria
+    Then solicita una segunda optimización con la distribución fijada
+    And Google decide el orden vial dentro de cada nivel
+    And ningún sort local mueve paradas sobre una polilínea ya calculada
+
+  Scenario: SV02 la precedencia no crea una barrera entre camionetas
+    Given cada camioneta tiene sus propios destinos Alta Media y Por horario
+    When se construyen las reglas de la segunda optimización
+    Then sólo se relacionan destinos asignados a la misma camioneta
+    And una unidad puede continuar aunque otra espere la apertura de un destino
+
+  Scenario: SV03 el refinamiento externo falla
+    Given la primera distribución es completa pero Google rechaza la secuenciación
+    When el servidor intenta confirmar el resultado
+    Then no guarda ninguna parte de la nueva ruta
+    And el borrador conserva su última versión válida
 
   Scenario: LP16 el horario no veta la salida del operador
     Given el administrador configura salida a las 23:59

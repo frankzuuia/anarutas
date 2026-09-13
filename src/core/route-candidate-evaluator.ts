@@ -7,7 +7,6 @@ import {
   hasRoutingAlternatives,
   logisticsPolicyVersion,
   logisticsScoreKeys,
-  prioritizeCandidate,
   priorityGroups,
   routeLoads,
   type LogisticsScore,
@@ -32,7 +31,7 @@ export type CandidateEvaluation = {
 };
 
 function candidateRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value))
+  if (!value || Array.isArray(value))
     throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
   return value as Record<string, unknown>;
 }
@@ -113,8 +112,6 @@ export async function evaluateRoutingCandidate(
   readLeg = createRoadLegReader(),
 ): Promise<CandidateEvaluation> {
   candidate = parseRoutingCandidate(candidate, board);
-  assertDeliveryGroups(board.shipments, candidate.routes);
-  candidate = prioritizeCandidate(board.shipments, candidate);
   const planned = candidateBoard(board, candidate);
   const result = await calculateManualRoutes(
     planned,
@@ -132,9 +129,7 @@ export async function evaluateRoutingCandidate(
     lateSeconds: Math.max(
       ...group.shipmentIds.map((id) => byId.get(id)!.lateSeconds ?? 0),
     ),
-    priorityConflict: group.shipmentIds.some(
-      (id) => byId.get(id)!.priorityConflict,
-    ),
+    priorityConflict: byId.get(group.id)!.priorityConflict,
   }));
   const lateStops = stops.filter((stop) => stop.lateSeconds > 0).length;
   const lateSeconds = stops.reduce(

@@ -6,7 +6,6 @@ import {
   hasRoutingAlternatives,
   logisticsScoreKeys,
   logisticsSignature,
-  prioritizeCandidate,
   priorityConflictIds,
   priorityGroups,
   routeLoads,
@@ -111,7 +110,7 @@ describe("logistics precedence and physical-stop quality", () => {
     const snapshot = planningSnapshot(board(), settings, "America/Mexico_City");
     expect(snapshot.timezone).toBe("America/Mexico_City");
     expect(snapshot.policy).toEqual({
-      version: "priority-window-balanced-v3",
+      version: "priority-road-sequenced-v4",
       priorityScope: "per_vehicle",
       compareAlternatives: true,
       scoreOrder: [
@@ -148,6 +147,14 @@ describe("logistics precedence and physical-stop quality", () => {
       {},
       { routes: [] },
       { routes: "candidate" },
+      {
+        routes: [
+          {
+            vehicleId: "v1",
+            shipmentIds: ["high", "medium", "schedule"],
+          },
+        ],
+      },
       {
         routes: [
           { vehicleId: "foreign", shipmentIds: ["high", "medium"] },
@@ -402,66 +409,70 @@ describe("logistics precedence and physical-stop quality", () => {
       ],
     });
   });
-  it("repairs the reported priority-at-bottom case before measuring, even at identical ETAs", async () => {
+  it("preserves a measured road sequence and exposes priority violations instead of silently rearranging it", async () => {
     const source = board();
+    source.shipments.push(
+      {
+        ...source.shipments[0],
+        id: "pickup",
+        fulfillmentMode: "pickup",
+      },
+      {
+        ...source.shipments[0],
+        id: "archived",
+        customerArchived: true,
+      },
+    );
     const input = candidate(["schedule", "medium", "high"]);
     const original = structuredClone(input);
     expect(priorityConflictIds(source.shipments, input)).toEqual(
       new Set(["medium", "high"]),
     );
-    const normalized = prioritizeCandidate(source.shipments, input);
-    expect(normalized).toEqual(candidate(["high", "medium", "schedule"]));
-    expect(input).toEqual(original);
-    expect(prioritizeCandidate(source.shipments, normalized)).toEqual(
-      normalized,
-    );
-    expect(priorityConflictIds(source.shipments, normalized).size).toBe(0);
     const result = await evaluateCandidate(
       source,
       parseCandidate(input, source),
       settings,
       "UTC",
     );
-    expect(result.candidate).toEqual(normalized);
+    expect(result.candidate).toEqual(original);
+    expect(input).toEqual(original);
     expect(result.board.shipments).toHaveLength(source.shipments.length);
     expect(new Set(result.board.shipments.map((item) => item.id)).size).toBe(
       source.shipments.length,
     );
     expect(
       result.board.shipments
+        .filter((item) => ["pickup", "archived"].includes(item.id))
+        .map((item) => [item.id, item.vehicle_id]),
+    ).toEqual([
+      ["pickup", null],
+      ["archived", null],
+    ]);
+    expect(
+      result.board.shipments
         .filter((item) => item.vehicle_id === "v1")
         .map((item) => [item.id, item.position]),
     ).toEqual([
-      ["high", 1],
+      ["schedule", 1],
       ["medium", 2],
-      ["schedule", 3],
+      ["high", 3],
     ]);
-    expect(result.score.priorityConflicts).toBe(0);
+    expect(result.score.priorityConflicts).toBe(2);
     expect(result.result.routes[0].stops.map((s) => s.shipmentId)).toEqual([
-      "high",
-      "medium",
       "schedule",
+      "medium",
+      "high",
     ]);
     expect(new Set(result.result.routes[0].stops.map((s) => s.eta)).size).toBe(
       1,
     );
   });
 
-  it("preserves model sequence within tiers and uses the strongest priority of an intact customer group", () => {
+  it("uses the strongest priority of an intact customer group when detecting conflicts", () => {
     const source = board();
     source.shipments.push(
       shipment("high2", 3, "schedule"),
       shipment("schedule2", 4, "schedule"),
-    );
-    const input = candidate([
-      "schedule2",
-      "schedule",
-      "high2",
-      "high",
-      "medium",
-    ]);
-    expect(prioritizeCandidate(source.shipments, input)).toEqual(
-      candidate(["high", "high2", "medium", "schedule2", "schedule"]),
     );
     expect(
       priorityGroups(source.shipments).find((g) => g.id === "high"),
@@ -499,6 +510,38 @@ describe("logistics precedence and physical-stop quality", () => {
       "2026-09-12T08:00:00.000Z",
     );
     expect(result.imbalanceSeconds).toBe(7200);
+  });
+
+  it("counts an unused truck when destinations equal trucks and excludes it from active-driver time imbalance", async () => {
+    const source = board();
+    source.shipments = source.shipments.slice(0, 2);
+    source.shipments[0].latitude = 21;
+    source.shipments[1].longitude = -102;
+    const result = await evaluateCandidate(
+      source,
+      {
+        routes: [
+          {
+            vehicleId: "v1",
+            shipmentIds: source.shipments.map((item) => item.id),
+          },
+          { vehicleId: "v2", shipmentIds: [] },
+        ],
+      },
+      settings,
+      "UTC",
+      async () => {},
+      async () => ({
+        distance: 100,
+        seconds: 100,
+        polyline: "road",
+        token: null,
+        trafficMode: "static",
+      }),
+    );
+    expect(result.unusedVehicles).toBe(1);
+    expect(result.imbalanceSeconds).toBe(0);
+    expect(result.score.makespanSeconds).toBe(300);
   });
 
   it("keeps manual order and reports its priority conflict rather than silently rearranging it", async () => {
@@ -554,7 +597,7 @@ describe("logistics precedence and physical-stop quality", () => {
     ];
     const result = await evaluateCandidate(
       source,
-      candidate(["schedule", "high", "high2", "medium"]),
+      candidate(["high", "high2", "medium", "schedule"]),
       settings,
       "UTC",
     );

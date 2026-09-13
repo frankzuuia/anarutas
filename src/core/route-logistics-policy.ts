@@ -1,7 +1,7 @@
 import type { OrderBoard, Shipment } from "./orders-contract";
 import { deliveryGroups } from "./route-delivery-groups";
 
-export const logisticsPolicyVersion = "priority-window-balanced-v3";
+export const logisticsPolicyVersion = "priority-road-sequenced-v4";
 export const priorityOrder = ["high", "medium", "schedule"] as const;
 export type RoutingCandidate = {
   routes: { vehicleId: string; shipmentIds: string[] }[];
@@ -16,31 +16,6 @@ export function priorityGroups(shipments: Shipment[]) {
     );
     return { ...group, rank, priority: priorityOrder[rank] };
   });
-}
-
-// Applies the operator's explicit precedence, not a heuristic assignment. The
-// model still chooses trucks and the sequence within each priority tier.
-export function prioritizeCandidate(
-  shipments: Shipment[],
-  candidate: RoutingCandidate,
-): RoutingCandidate {
-  const groups = priorityGroups(shipments);
-  const byShipment = new Map(
-    groups.flatMap((g) => g.shipmentIds.map((id) => [id, g] as const)),
-  );
-  return {
-    routes: candidate.routes.map((route) => {
-      const orderedGroups = [
-        ...new Set(route.shipmentIds.map((id) => byShipment.get(id)!)),
-      ];
-      return {
-        vehicleId: route.vehicleId,
-        shipmentIds: orderedGroups
-          .sort((a, b) => a.rank - b.rank)
-          .flatMap((g) => g.shipmentIds),
-      };
-    }),
-  };
 }
 
 export function priorityConflictIds(
@@ -130,12 +105,12 @@ export function balancedCandidate(
     route.shipmentIds.push(...group.shipmentIds);
     route.orders += group.shipmentIds.length;
   }
-  return prioritizeCandidate(shipments, {
+  return {
     routes: routes.map(({ vehicleId, shipmentIds }) => ({
       vehicleId,
       shipmentIds,
     })),
-  });
+  };
 }
 
 export const logisticsScoreKeys = [

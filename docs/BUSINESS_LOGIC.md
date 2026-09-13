@@ -1,10 +1,14 @@
 # Ana Rutas — bloque 1 aprobado
 
-Política vigente: BL-065..068 en `BLOQUE-RUTEO-DETERMINISTA.md`. **Armar ruta**
+Política vigente: BL-069..071 en `BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md`, que
+complementa BL-065..068 de `BLOQUE-RUTEO-DETERMINISTA.md`. **Armar ruta**
 no llama LLM; Google y Ana Rutas resuelven mediante optimización y validación
 deterministas. Alta → Media →
 Por horario por camioneta, destinos indivisibles y horarios flexibles medidos.
-Sustituye reglas anteriores que aceptaban inversiones de prioridad.
+La precedencia se incorpora en una segunda optimización vial con la asignación
+fijada; queda prohibido reordenar manualmente una ruta que Google ya calculó.
+Sustituye reglas anteriores que aceptaban inversiones de prioridad o corregían
+el color después de optimizar las calles.
 Compara separadamente reparto entre camionetas y orden de visitas; el horario
 nunca veta una salida ni convierte una entrega tardía en pedido omitido. Después
 de prioridad, ventanas y uso de flota mandan la jornada y las calles reales; el
@@ -27,7 +31,8 @@ salidas validadas/pendientes; flota sólo al confirmar. Manual BL-015 independie
 Resiliencia de volumen vigente: BL-051..054 en `BLOQUE-RUTEO-VOLUMEN.md`.
 El lote cargado se valida y persiste con cobertura exacta, sin límite de negocio,
 sin abortos locales arbitrarios y sin resultados parciales. Los horarios
-generan avisos; BL-058 exige normalizar prioridades antes de medir y guardar.
+generan avisos; BL-069 exige optimizar las prioridades dentro del proveedor
+vial antes de medir y guardar, nunca ordenarlas después.
 
 Observabilidad de ruteo vigente: BL-055..057 en
 `BLOQUE-OBSERVABILIDAD-RUTEO.md`. EasyPanel recibe progreso natural y
@@ -77,14 +82,14 @@ Bloque 2A autorizado: BL-007..010 (camionetas, choferes, asignación actual y do
 
 ## Extensión aprobada — optimización Google
 
-| Regla             | Actor / negocio                                                                    | Dirección técnica / datos                                                                          | Permiso y auditoría                                         | Validación                                                                        |
-| ----------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| BL-026 Salida     | Administrador configura el origen de todas las rutas                               | Dirección editable y coordenada confirmada; salida y regreso a la misma bodega                     | Sesión activa, versión y `routing.settings.updated`         | Dirección sin punto bloquea optimización; rango geográfico estricto               |
-| BL-027 Modelo     | Administrador arma el plan con datos reales, sin peso                              | Camionetas del plan, coordenadas confirmadas, ventanas, prioridad y día civil local                | Modelo construido sólo en servidor; Google OAuth privado    | Sin flota/pedidos/puntos no llama Google; ninguna capacidad inventada             |
-| BL-028 Prioridad  | Alta, Media y Por horario ordenan cada camioneta según BL-058, sin omitir entregas | Precedencia por destino normalizada antes de medir; horarios flexibles medidos                     | Política única auditable, no elegida por el navegador       | Cero inversiones en generación automática; atrasos se informan y el lote continúa |
-| BL-029 Aplicación | Google propone y Ana Rutas compara contra una base balanceada; gana el menor score determinista completo | Snapshot por versión y aplicación transaccional; métricas/ETA/polilínea persistidas | `plan.optimized`; actor, planificador y candidatos medidos | Cambio concurrente devuelve 409; reintento no duplica                             |
-| BL-030 Navegación | Web muestra recorridos reales y APK futura podrá navegar cada tramo                | Polilíneas visibles; route tokens privados; recálculo manual incluye regreso                       | Sólo endpoints autenticados; tokens no salen en tablero web | Movimiento manual conserva acomodo y recalcula sin redistribuir                   |
-| BL-031 Precisión  | El origen debe representar un domicilio real, no la primera coincidencia           | Geocodificación restringida al país; acepta domicilio preciso o ajuste manual explícito            | Misma sesión y guardado versionado de BL-026                | Parcial/aproximada sólo centra el mapa; edición limpia la propuesta               |
+| Regla             | Actor / negocio                                                                                          | Dirección técnica / datos                                                               | Permiso y auditoría                                         | Validación                                                                        |
+| ----------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| BL-026 Salida     | Administrador configura el origen de todas las rutas                                                     | Dirección editable y coordenada confirmada; salida y regreso a la misma bodega          | Sesión activa, versión y `routing.settings.updated`         | Dirección sin punto bloquea optimización; rango geográfico estricto               |
+| BL-027 Modelo     | Administrador arma el plan con datos reales, sin peso                                                    | Camionetas del plan, coordenadas confirmadas, ventanas, prioridad y día civil local     | Modelo construido sólo en servidor; Google OAuth privado    | Sin flota/pedidos/puntos no llama Google; ninguna capacidad inventada             |
+| BL-028 Prioridad  | Alta, Media y Por horario ordenan cada camioneta según BL-058, sin omitir entregas                       | Precedencia por destino normalizada antes de medir; horarios flexibles medidos          | Política única auditable, no elegida por el navegador       | Cero inversiones en generación automática; atrasos se informan y el lote continúa |
+| BL-029 Aplicación | Google propone y Ana Rutas compara contra una base balanceada; gana el menor score determinista completo | Snapshot por versión y aplicación transaccional; métricas/ETA/polilínea persistidas     | `plan.optimized`; actor, planificador y candidatos medidos  | Cambio concurrente devuelve 409; reintento no duplica                             |
+| BL-030 Navegación | Web muestra recorridos reales y APK futura podrá navegar cada tramo                                      | Polilíneas visibles; route tokens privados; recálculo manual incluye regreso            | Sólo endpoints autenticados; tokens no salen en tablero web | Movimiento manual conserva acomodo y recalcula sin redistribuir                   |
+| BL-031 Precisión  | El origen debe representar un domicilio real, no la primera coincidencia                                 | Geocodificación restringida al país; acepta domicilio preciso o ajuste manual explícito | Misma sesión y guardado versionado de BL-026                | Parcial/aproximada sólo centra el mapa; edición limpia la propuesta               |
 
 ## Extensión aprobada — control de consumo oficial de Google
 

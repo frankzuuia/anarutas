@@ -5,6 +5,7 @@ import type { GoogleServiceAccount } from "../src/core/routing-config";
 import type { RoutingSettings } from "../src/core/routing-contract";
 import {
   buildGoogleOptimizationRequest,
+  buildGoogleSequencingRequest,
   localMinuteInstant,
   optimizationTimeoutSeconds,
   parseGoogleOptimizationResponse,
@@ -332,6 +333,179 @@ describe("Google Route Optimization contract", () => {
     expect(request.model.vehicles[0].endLocation).toEqual(
       request.model.vehicles[0].startLocation,
     );
+  });
+
+  it("fixes every destination to its assigned truck and delegates priority-respecting road order back to Google", () => {
+    const source = board();
+    source.vehicles.push({
+      ...vehicle,
+      id: "00000000-0000-4000-8000-000000000011",
+      name: "Ford 2026",
+      plate: "QA-002",
+    });
+    const candidate = {
+      routes: [
+        {
+          vehicleId: source.vehicles[0].id,
+          shipmentIds: [ids[2], ids[0]],
+        },
+        { vehicleId: source.vehicles[1].id, shipmentIds: [ids[1]] },
+      ],
+    };
+    const original = structuredClone(candidate);
+    const initial = buildGoogleOptimizationRequest(
+      source,
+      settings,
+      "America/Mexico_City",
+    );
+    const sequenced = buildGoogleSequencingRequest(
+      source,
+      settings,
+      "America/Mexico_City",
+      candidate,
+    );
+
+    expect(candidate).toEqual(original);
+    expect(
+      initial.model.shipments.every(
+        (item) => !("allowedVehicleIndices" in item),
+      ),
+    ).toBe(true);
+    expect(initial.model).not.toHaveProperty("precedenceRules");
+    expect(
+      sequenced.model.shipments.map((item) => item.allowedVehicleIndices),
+    ).toEqual([[0], [1], [0]]);
+    expect(sequenced.model.precedenceRules).toEqual([
+      {
+        firstIndex: 0,
+        firstIsDelivery: true,
+        secondIndex: 2,
+        secondIsDelivery: true,
+        offsetDuration: "1s",
+      },
+    ]);
+  });
+
+  it("creates only adjacent precedence tiers inside each truck, without a global priority barrier", () => {
+    const source = board();
+    source.vehicles.push({
+      ...vehicle,
+      id: "00000000-0000-4000-8000-000000000011",
+      name: "Ford 2026",
+      plate: "QA-002",
+    });
+    const sequenced = buildGoogleSequencingRequest(
+      source,
+      settings,
+      "America/Mexico_City",
+      {
+        routes: [
+          {
+            vehicleId: source.vehicles[0].id,
+            shipmentIds: [ids[2], ids[1], ids[0]],
+          },
+          { vehicleId: source.vehicles[1].id, shipmentIds: [] },
+        ],
+      },
+    );
+    expect(sequenced.model.precedenceRules).toEqual([
+      {
+        firstIndex: 0,
+        firstIsDelivery: true,
+        secondIndex: 1,
+        secondIsDelivery: true,
+        offsetDuration: "1s",
+      },
+      {
+        firstIndex: 1,
+        firstIsDelivery: true,
+        secondIndex: 2,
+        secondIsDelivery: true,
+        offsetDuration: "1s",
+      },
+    ]);
+    expect(sequenced.model.precedenceRules).not.toContainEqual(
+      expect.objectContaining({ firstIndex: 0, secondIndex: 2 }),
+    );
+  });
+
+  it("keeps repeated orders for one destination in one Google shipment and one fixed truck", () => {
+    const source = board();
+    source.vehicles.push({
+      ...vehicle,
+      id: "00000000-0000-4000-8000-000000000011",
+      name: "Ford 2026",
+      plate: "QA-002",
+    });
+    const repeatedId = "00000000-0000-4000-8000-000000000012";
+    source.shipments.push({ ...source.shipments[0], id: repeatedId });
+    const sequenced = buildGoogleSequencingRequest(
+      source,
+      settings,
+      "America/Mexico_City",
+      {
+        routes: [
+          {
+            vehicleId: source.vehicles[0].id,
+            shipmentIds: [ids[2], ids[0], repeatedId],
+          },
+          { vehicleId: source.vehicles[1].id, shipmentIds: [ids[1]] },
+        ],
+      },
+    );
+    expect(sequenced.model.shipments).toHaveLength(3);
+    expect(sequenced.model.shipments[0]).toMatchObject({
+      loadDemands: { orders: { amount: "2" } },
+      allowedVehicleIndices: [0],
+    });
+    expect(sequenced.model.precedenceRules).toEqual([
+      expect.objectContaining({ firstIndex: 0, secondIndex: 2 }),
+    ]);
+  });
+
+  it("rejects incomplete, duplicate, foreign and split sequencing assignments before calling Google", () => {
+    const source = board();
+    source.vehicles.push({
+      ...vehicle,
+      id: "00000000-0000-4000-8000-000000000011",
+      name: "Ford 2026",
+      plate: "QA-002",
+    });
+    const build = (routes: { vehicleId: string; shipmentIds: string[] }[]) =>
+      buildGoogleSequencingRequest(source, settings, "America/Mexico_City", {
+        routes,
+      });
+    const valid = [
+      { vehicleId: source.vehicles[0].id, shipmentIds: [ids[0], ids[1]] },
+      { vehicleId: source.vehicles[1].id, shipmentIds: [ids[2]] },
+    ];
+    for (const routes of [
+      valid.slice(0, 1),
+      [
+        {
+          vehicleId: source.vehicles[0].id,
+          shipmentIds: [ids[0], ids[1], ids[2]],
+        },
+      ],
+      [valid[0], { ...valid[1], vehicleId: valid[0].vehicleId }],
+      [valid[0], { ...valid[1], vehicleId: "foreign-vehicle" }],
+      [{ ...valid[0], shipmentIds: [ids[0], "foreign-shipment"] }, valid[1]],
+      [valid[0], { ...valid[1], shipmentIds: [ids[0]] }],
+      [{ ...valid[0], shipmentIds: [ids[0]] }, valid[1]],
+    ])
+      expect(() => build(routes)).toThrow("ROUTING_CANDIDATE_INVALID");
+
+    const repeatedId = "00000000-0000-4000-8000-000000000012";
+    source.shipments.push({ ...source.shipments[0], id: repeatedId });
+    expect(() =>
+      build([
+        { vehicleId: source.vehicles[0].id, shipmentIds: [ids[0], ids[1]] },
+        {
+          vehicleId: source.vehicles[1].id,
+          shipmentIds: [repeatedId, ids[2]],
+        },
+      ]),
+    ).toThrow("ROUTING_CUSTOMER_GROUP_INVALID");
   });
 
   it("converts civil minutes through timezone offsets and DST", () => {

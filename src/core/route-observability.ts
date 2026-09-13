@@ -12,6 +12,11 @@ export type RoutingLogDetails = Partial<{
   deliveryGroups: number;
   vehicles: number;
   solverTimeoutSeconds: number;
+  allocationSource: "Google" | "balance";
+  precedenceRules: number;
+  skippedDestinations: number;
+  priorityConflictOrders: number;
+  assignmentChanged: boolean;
   evaluatedCandidates: number;
   stepDurationMs: number;
   segmentsCompleted: number;
@@ -55,6 +60,11 @@ const routingDetailKeys = [
   "deliveryGroups",
   "vehicles",
   "solverTimeoutSeconds",
+  "allocationSource",
+  "precedenceRules",
+  "skippedDestinations",
+  "priorityConflictOrders",
+  "assignmentChanged",
   "evaluatedCandidates",
   "stepDurationMs",
   "segmentsCompleted",

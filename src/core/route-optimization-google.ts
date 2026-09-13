@@ -2,10 +2,14 @@ import { GoogleAuth } from "google-auth-library";
 import { AppError } from "./errors";
 import { localMidnight } from "./orders-validation";
 import type { OrderBoard } from "./orders-contract";
+import { assertDeliveryGroups } from "./route-delivery-groups";
 import type { GoogleServiceAccount } from "./routing-config";
 import type { RouteMetrics } from "./routing-contract";
 import type { RoutingSettings } from "./routing-contract";
-import { priorityGroups } from "./route-logistics-policy";
+import {
+  priorityGroups,
+  type RoutingCandidate,
+} from "./route-logistics-policy";
 
 type GoogleTimeWindow = {
   startTime: string;
@@ -13,7 +17,15 @@ type GoogleTimeWindow = {
   softEndTime?: string;
   costPerHourAfterSoftEndTime?: number;
 };
-type GoogleOptimizationRequest = {
+type GooglePrecedenceRule = {
+  firstIndex: number;
+  firstIsDelivery: true;
+  secondIndex: number;
+  secondIsDelivery: true;
+  offsetDuration: "1s";
+};
+
+export type GoogleOptimizationRequest = {
   timeout: string;
   searchMode: "CONSUME_ALL_AVAILABLE_TIME";
   considerRoadTraffic: true;
@@ -34,6 +46,7 @@ type GoogleOptimizationRequest = {
         arrivalLocation: { latitude: number; longitude: number };
         timeWindows?: GoogleTimeWindow[];
       }[];
+      allowedVehicleIndices?: number[];
     }[];
     vehicles: {
       label: string;
@@ -53,6 +66,7 @@ type GoogleOptimizationRequest = {
       };
       startTimeWindows?: GoogleTimeWindow[];
     }[];
+    precedenceRules?: GooglePrecedenceRule[];
   };
 };
 
@@ -276,6 +290,88 @@ export function buildGoogleOptimizationRequest(
         },
         startTimeWindows: [{ startTime: start, endTime: start }],
       })),
+    },
+  };
+}
+
+export function buildGoogleSequencingRequest(
+  board: OrderBoard,
+  settings: RoutingSettings,
+  timezone: string,
+  candidate: RoutingCandidate,
+): GoogleOptimizationRequest {
+  const request = buildGoogleOptimizationRequest(board, settings, timezone);
+  const groups = priorityGroups(board.shipments);
+  const groupByShipment = new Map(
+    groups.flatMap((group, groupIndex) =>
+      group.shipmentIds.map((id) => [id, { group, groupIndex }] as const),
+    ),
+  );
+  const vehicleIndex = new Map(
+    board.vehicles.map((vehicle, index) => [vehicle.id, index]),
+  );
+  const assignedVehicle = new Map<number, number>();
+  const precedenceRules: GooglePrecedenceRule[] = [];
+  const seenShipments = new Set<string>();
+
+  if (candidate.routes.length !== board.vehicles.length)
+    throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
+  const seenVehicles = new Set<string>();
+  for (const route of candidate.routes) {
+    const assignedVehicleIndex = vehicleIndex.get(route.vehicleId);
+    if (assignedVehicleIndex === undefined || seenVehicles.has(route.vehicleId))
+      throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
+    seenVehicles.add(route.vehicleId);
+    for (const shipmentId of route.shipmentIds) {
+      const matched = groupByShipment.get(shipmentId);
+      if (!matched || seenShipments.has(shipmentId))
+        throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
+      seenShipments.add(shipmentId);
+    }
+    const routeGroupIndices = [
+      ...new Set(
+        route.shipmentIds.map(
+          (shipmentId) => groupByShipment.get(shipmentId)!.groupIndex,
+        ),
+      ),
+    ];
+    for (const groupIndex of routeGroupIndices)
+      assignedVehicle.set(groupIndex, assignedVehicleIndex);
+    const groupsByRank = new Map<number, number[]>();
+    for (const groupIndex of routeGroupIndices) {
+      const group = groups[groupIndex];
+      const rank = groupsByRank.get(group.rank) ?? [];
+      rank.push(groupIndex);
+      groupsByRank.set(group.rank, rank);
+    }
+    const presentRanks = [...groupsByRank.keys()].sort((a, b) => a - b);
+    for (let index = 1; index < presentRanks.length; index++) {
+      const previous = groupsByRank.get(presentRanks[index - 1])!;
+      const next = groupsByRank.get(presentRanks[index])!;
+      for (const firstIndex of previous)
+        for (const secondIndex of next)
+          precedenceRules.push({
+            firstIndex,
+            firstIsDelivery: true,
+            secondIndex,
+            secondIsDelivery: true,
+            offsetDuration: "1s",
+          });
+    }
+  }
+  if (seenShipments.size !== groupByShipment.size)
+    throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
+  assertDeliveryGroups(board.shipments, candidate.routes);
+
+  return {
+    ...request,
+    model: {
+      ...request.model,
+      shipments: request.model.shipments.map((shipment, shipmentIndex) => ({
+        ...shipment,
+        allowedVehicleIndices: [assignedVehicle.get(shipmentIndex)!],
+      })),
+      ...(precedenceRules.length ? { precedenceRules } : {}),
     },
   };
 }

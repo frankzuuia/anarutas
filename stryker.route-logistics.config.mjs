@@ -9,7 +9,7 @@ const config = {
   mutate: [
     "src/core/route-logistics-policy.ts",
     "src/core/route-candidate-evaluator.ts:34-184",
-    "src/core/route-optimization-google.ts:137-276",
+    "src/core/route-optimization-google.ts:137-391",
   ],
   testRunner: "vitest",
   vitest: { configFile: "vitest.route-logistics.config.ts" },

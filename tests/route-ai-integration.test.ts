@@ -12,6 +12,7 @@ import {
 import type { ImportPage, SourceShipment } from "../src/core/orders-contract";
 import { createPlan } from "../src/core/plans";
 import { planRouteDeterministically } from "../src/core/route-deterministic-planner";
+import type { GoogleOptimizationRequest } from "../src/core/route-optimization-google";
 import type { RoutingLogEntry } from "../src/core/route-observability";
 import { saveRoutingSettings } from "../src/core/routing-settings";
 import { startPostgres } from "./helpers/postgres";
@@ -139,6 +140,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
 
     const before = await orderBoard(db.pool, plan.id);
     let googleCalls = 0;
+    const googleRequests: GoogleOptimizationRequest[] = [];
     const logs: RoutingLogEntry[] = [];
     const googleFetch: typeof fetch = async (input, init) => {
       googleCalls++;
@@ -148,22 +150,89 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       expect((init?.headers as Record<string, string>).Authorization).toBe(
         "Bearer google-token",
       );
-      const request = JSON.parse(String(init?.body));
+      const request = JSON.parse(
+        String(init?.body),
+      ) as GoogleOptimizationRequest;
+      googleRequests.push(request);
       expect(request.searchMode).toBe("CONSUME_ALL_AVAILABLE_TIME");
       expect(request.model.globalDurationCostPerHour).toBeGreaterThan(0);
       expect(JSON.stringify(request)).toContain("loadDemands");
       expect(JSON.stringify(request)).not.toContain("OpenAI");
-      return new Response(
-        JSON.stringify({
-          routes: [
+      const assignments = request.model.shipments.map(
+        (item: { allowedVehicleIndices?: number[] }) =>
+          item.allowedVehicleIndices?.[0],
+      );
+      const split = assignments[0] === 0 && assignments[1] === 1;
+      const routes = split
+        ? [
             {
               vehicleIndex: 0,
               vehicleStartTime: "2026-09-12T08:00:00Z",
               vehicleEndTime: "2026-09-12T08:00:00Z",
-              visits: [
-                { shipmentIndex: 1, startTime: "2026-09-12T08:00:00Z" },
-                { shipmentIndex: 0, startTime: "2026-09-12T08:00:00Z" },
+              visits: [{ shipmentIndex: 0, startTime: "2026-09-12T08:00:00Z" }],
+              transitions: [
+                {
+                  travelDistanceMeters: 0,
+                  travelDuration: "0s",
+                  waitDuration: "0s",
+                },
               ],
+              metrics: {
+                performedShipmentCount: 1,
+                travelDistanceMeters: 0,
+                travelDuration: "0s",
+                waitDuration: "0s",
+                totalDuration: "0s",
+              },
+            },
+            {
+              vehicleIndex: 1,
+              vehicleStartTime: "2026-09-12T08:00:00Z",
+              vehicleEndTime: "2026-09-12T08:00:00Z",
+              visits: [{ shipmentIndex: 1, startTime: "2026-09-12T08:00:00Z" }],
+              transitions: [
+                {
+                  travelDistanceMeters: 0,
+                  travelDuration: "0s",
+                  waitDuration: "0s",
+                },
+              ],
+              metrics: {
+                performedShipmentCount: 1,
+                travelDistanceMeters: 0,
+                travelDuration: "0s",
+                waitDuration: "0s",
+                totalDuration: "0s",
+              },
+            },
+          ]
+        : [
+            {
+              vehicleIndex: 0,
+              vehicleStartTime: "2026-09-12T08:00:00Z",
+              vehicleEndTime: "2026-09-12T08:00:00Z",
+              visits:
+                assignments[0] === 0
+                  ? [
+                      {
+                        shipmentIndex: 0,
+                        startTime: "2026-09-12T08:00:00Z",
+                      },
+                      {
+                        shipmentIndex: 1,
+                        startTime: "2026-09-12T08:00:00Z",
+                      },
+                    ]
+                  : [
+                      {
+                        shipmentIndex: 1,
+                        startTime: "2026-09-12T08:00:00Z",
+                      },
+                      {
+                        shipmentIndex: 0,
+                        startTime: "2026-09-12T08:00:00Z",
+                      },
+                    ],
               transitions: [
                 {
                   travelDistanceMeters: 0,
@@ -185,7 +254,10 @@ describe("deterministic Google routing with real PostgreSQL", () => {
               },
             },
             { vehicleIndex: 1 },
-          ],
+          ];
+      return new Response(
+        JSON.stringify({
+          routes,
           metrics: {
             aggregatedRouteMetrics: {
               performedShipmentCount: 2,
@@ -224,7 +296,29 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       },
     );
 
-    expect(googleCalls).toBe(1);
+    expect(googleCalls).toBe(3);
+    expect(
+      (
+        googleRequests[0].model.shipments as {
+          allowedVehicleIndices?: number[];
+        }[]
+      ).every((item) => item.allowedVehicleIndices === undefined),
+    ).toBe(true);
+    expect(googleRequests[0].model).not.toHaveProperty("precedenceRules");
+    expect(
+      googleRequests[1].model.shipments.map(
+        (item) => item.allowedVehicleIndices!,
+      ),
+    ).toEqual([[0], [0]]);
+    expect(googleRequests[1].model.precedenceRules).toEqual([
+      expect.objectContaining({ firstIndex: 0, secondIndex: 1 }),
+    ]);
+    expect(
+      googleRequests[2].model.shipments.map(
+        (item) => item.allowedVehicleIndices!,
+      ),
+    ).toEqual([[0], [1]]);
+    expect(googleRequests[2].model).not.toHaveProperty("precedenceRules");
     expect(result).toMatchObject({
       current: true,
       metrics: { performedShipmentCount: 2 },
@@ -242,11 +336,11 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       )
     ).rows[0].details;
     expect(audit).toMatchObject({
-      planner: "google-deterministic-v1",
+      planner: "google-deterministic-v2",
       evaluatedCandidates: 2,
       candidateSources: ["Google", "balance"],
       chosenSource: "balance",
-      logisticsPolicy: "priority-window-balanced-v3",
+      logisticsPolicy: "priority-road-sequenced-v4",
       score: {
         priorityConflicts: 0,
         lateStops: 0,
@@ -261,6 +355,11 @@ describe("deterministic Google routing with real PostgreSQL", () => {
     expect(logs.some((entry) => entry.event.startsWith("routing.openai"))).toBe(
       false,
     );
+    expect(
+      logs.filter(
+        (entry) => entry.event === "routing.google.sequence.completed",
+      ),
+    ).toHaveLength(2);
     expect(logs.at(-1)).toMatchObject({
       event: "routing.completed",
       system: "PostgreSQL",

@@ -27,6 +27,15 @@ producción. Los informes QA conservan la evidencia previa al commit/push.
 - [x] RD-T05: 332/332 pruebas, PostgreSQL real sin OpenAI, Gherkin, cobertura 93.05% statements/94.54% líneas, mutación crítica 96.96%, lint, tipos, build y diff auditados. Ver `QA-RUTEO-DETERMINISTA.md`.
 - [ ] RD-T06: commit/push a `develop` sólo con autorización explícita; deploy manual y smoke real del usuario.
 
+## Secuencia vial con prioridad — BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md
+
+- [x] SV-T01 (BL-069..071 / SV01..08): autopsia visual y de logs del zigzag amarillo; causa localizada en el `sort` posterior a Google; referencia oficial y MATCH PERFECT documental.
+- [x] SV-T02: constructor puro de segunda optimización con asignación fija y precedencias por camioneta, sin barrera global ni límite propio de pedidos.
+- [x] SV-T03: `prioritizeCandidate` retirado del runtime; el evaluador conserva y mide exclusivamente la secuencia resuelta por Google.
+- [x] SV-T04: distribución → secuenciación → medición → comparación → guardado atómico, con deduplicación de asignaciones equivalentes.
+- [x] SV-T05: regresiones de no reordenamiento, precedencia por unidad, destinos agrupados, cobertura exacta, vehículos/pedidos inválidos y fallo seguro.
+- [x] SV-T06: 337/337 pruebas, cobertura 93.06% statements/94.50% líneas, mutación crítica 375/375 (100%), typecheck, lint, build y diff verdes. Commit/push a `develop` autorizados; deploy manual y smoke facturable pendientes, sin autorización para `main`.
+
 ## Incidencias del panel — BLOQUE-INCIDENCIAS-LLEGADA.md
 
 - Regla confirmada: el chofer pulsa «Llegué» e inicia surtido; no equivale a pedido entregado. Kalamar 10:00–11:30 / llegada 12:00 → 30 min tarde, sin bloquear ruteo.

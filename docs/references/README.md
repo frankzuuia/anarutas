@@ -13,5 +13,7 @@
 - BigQuery jobs.query: https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query
 - BigQuery IAM: https://cloud.google.com/bigquery/docs/access-control
 - Route Optimization usage and billing: https://developers.google.com/maps/documentation/route-optimization/usage-and-billing
+- Route Optimization `ShipmentModel.precedenceRules`: https://developers.google.com/maps/documentation/route-optimization/reference/rest/v1/ShipmentModel#PrecedenceRule
+- Route Optimization parameters (`allowedVehicleIndices`, visit duration and precedence): https://developers.google.com/maps/documentation/route-optimization/parameter-list
 
 Decisiones: el env privado se lee al atender solicitudes/arranque, nunca NEXT_PUBLIC ni next.config.env. API key Odoo tiene permisos de su usuario, no un modo mágico read-only. SQL y permisos permanecen en servidor, no quedan a criterio de un LLM.

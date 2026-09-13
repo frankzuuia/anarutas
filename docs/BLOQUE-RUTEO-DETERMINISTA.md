@@ -38,9 +38,10 @@ Fecha: 2026-09-13. Alcance exclusivo: Ana Rutas `develop`.
 ```text
 POST /plans/:id/optimization
   -> snapshot PostgreSQL + lease
-  -> optimizeTours de Google (tráfico, makespan y carga blanda)
-  -> expandir grupos de cliente
-  -> normalizar prioridad por camioneta
+  -> optimizeTours de Google (distribución, tráfico, makespan y carga blanda)
+  -> fijar una distribución candidata por camioneta
+  -> optimizeTours de Google con precedencias por unidad
+  -> expandir grupos de cliente sin reordenar la secuencia vial
   -> medir propuesta y base balanceada con Google Routes
   -> comparación lexicográfica determinista
   -> validación de cobertura/grupos/prioridad

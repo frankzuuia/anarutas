@@ -14,6 +14,7 @@ import {
 import { routeFingerprint } from "./route-fingerprint";
 import {
   buildGoogleOptimizationRequest,
+  buildGoogleSequencingRequest,
   parseGoogleOptimizationResponse,
   requestGoogleOptimization,
   type GoogleOptimizationResult,
@@ -22,9 +23,10 @@ import {
   balancedCandidate,
   compareLogisticsScores,
   logisticsPolicyVersion,
-  prioritizeCandidate,
+  priorityConflictIds,
   type RoutingCandidate,
 } from "./route-logistics-policy";
+import { allocationSignature } from "./route-logistics-search";
 import {
   acquireOptimizationLease,
   releaseOptimizationLease,
@@ -43,12 +45,6 @@ import { getRoutingSettings } from "./routing-settings";
 import type { PublicOptimization } from "./routing-contract";
 
 type Evaluation = Awaited<ReturnType<typeof evaluateRoutingCandidate>>;
-
-function candidateSignature(candidate: RoutingCandidate) {
-  return createHash("sha256")
-    .update(JSON.stringify(candidate.routes))
-    .digest("hex");
-}
 
 function asOptimizationResult(
   evaluation: Evaluation,
@@ -154,7 +150,7 @@ export async function planRouteDeterministically(
     const requestHash = createHash("sha256")
       .update(
         JSON.stringify({
-          provider: "google-deterministic-v1",
+          provider: "google-deterministic-v2",
           policy: logisticsPolicyVersion,
           fingerprint: routeFingerprint(board, settings.version),
         }),
@@ -262,11 +258,8 @@ export async function planRouteDeterministically(
         source: "Google" | "balance",
         rawCandidate: RoutingCandidate,
       ) => {
-        const candidate = prioritizeCandidate(
-          board.shipments,
-          parseRoutingCandidate(rawCandidate, board),
-        );
-        const signature = candidateSignature(candidate);
+        const candidate = parseRoutingCandidate(rawCandidate, board);
+        const signature = JSON.stringify(candidate.routes);
         if (measured.has(signature)) return;
         measured.add(signature);
         const segmentsTotal = candidate.routes.reduce(
@@ -283,7 +276,7 @@ export async function planRouteDeterministically(
           "routing.roads.started",
           "Google Routes API",
           "medición vial",
-          `Google Routes comenzó a medir la propuesta de ${source === "Google" ? "Google" : "balance"} ya ordenada por prioridad.`,
+          `Google Routes comenzó a medir la propuesta de ${source === "Google" ? "Google" : "balance"} después de que Google reoptimizó su secuencia vial con las prioridades obligatorias.`,
           {
             orders: deliveries.length,
             routes: candidate.routes.length,
@@ -346,9 +339,24 @@ export async function planRouteDeterministically(
         );
       };
 
+      const allocations: {
+        source: "Google" | "balance";
+        candidate: RoutingCandidate;
+      }[] = [];
+      const seenAllocations = new Set<string>();
+      const addAllocation = (
+        source: "Google" | "balance",
+        rawCandidate: RoutingCandidate,
+      ) => {
+        const candidate = parseRoutingCandidate(rawCandidate, board);
+        const signature = allocationSignature(candidate);
+        if (seenAllocations.has(signature)) return;
+        seenAllocations.add(signature);
+        allocations.push({ source, candidate });
+      };
       if (!googleResult.skipped.length) {
         try {
-          await measure("Google", googleProposalCandidate(board, googleResult));
+          addAllocation("Google", googleProposalCandidate(board, googleResult));
         } catch (error) {
           if (!(
             error instanceof AppError &&
@@ -363,18 +371,111 @@ export async function planRouteDeterministically(
             "routing.google.proposal_rejected",
             "Ana Rutas",
             "validación de cobertura",
-            "Ana Rutas descartó la propuesta de Google porque no conservó cobertura o grupos completos.",
+            "Ana Rutas descartó la distribución inicial de Google porque no conservó cobertura o grupos completos.",
             { errorCode: error.code },
           );
         }
       }
-      await measure(
+      addAllocation(
         "balance",
         balancedCandidate(
           board.shipments,
           board.vehicles.map((vehicle) => vehicle.id),
         ),
       );
+
+      for (const allocation of allocations) {
+        await renewOptimizationLease(pool, planId, lease, externalTimeout);
+        const sequencingRequest = buildGoogleSequencingRequest(
+          board,
+          settings,
+          timezone,
+          allocation.candidate,
+        );
+        progress(
+          "info",
+          "routing.google.sequence.started",
+          "Google Route Optimization",
+          "secuencia vial con prioridad",
+          `Google comenzó a ordenar por calles reales la distribución de ${allocation.source === "Google" ? "Google" : "balance"}; cada destino quedó fijo en su camioneta y las prioridades quedaron como precedencias por ruta.`,
+          {
+            allocationSource: allocation.source,
+            deliveryGroups: snapshot.deliveryGroups.length,
+            precedenceRules:
+              sequencingRequest.model.precedenceRules?.length ?? 0,
+            routes: allocation.candidate.routes.length,
+          },
+        );
+        const sequencingStarted = performance.now();
+        const rawSequence = await requestGoogleOptimization(
+          google.projectId,
+          google.credentials,
+          sequencingRequest,
+          {
+            fetch: dependencies.googleFetch,
+            token: dependencies.googleToken,
+          },
+        );
+        const sequencedResult = parseGoogleOptimizationResponse(
+          rawSequence,
+          snapshot.deliveryGroups.length,
+          board.vehicles.length,
+        );
+        if (sequencedResult.skipped.length) {
+          progress(
+            "warning",
+            "routing.google.sequence.rejected",
+            "Ana Rutas",
+            "validación de secuencia",
+            "Ana Rutas descartó una secuencia porque Google omitió destinos; no se guardó ningún resultado parcial.",
+            {
+              allocationSource: allocation.source,
+              skippedDestinations: sequencedResult.skipped.length,
+            },
+          );
+          continue;
+        }
+        const sequencedCandidate = parseRoutingCandidate(
+          googleProposalCandidate(board, sequencedResult),
+          board,
+        );
+        const assignmentChanged =
+          allocationSignature(sequencedCandidate) !==
+          allocationSignature(allocation.candidate);
+        const conflicts = priorityConflictIds(
+          board.shipments,
+          sequencedCandidate,
+        );
+        if (assignmentChanged || conflicts.size) {
+          progress(
+            "warning",
+            "routing.google.sequence.rejected",
+            "Ana Rutas",
+            "validación de secuencia",
+            "Ana Rutas descartó una secuencia porque no respetó la camioneta fija o la precedencia de prioridades.",
+            {
+              allocationSource: allocation.source,
+              assignmentChanged,
+              priorityConflictOrders: conflicts.size,
+            },
+          );
+          continue;
+        }
+        progress(
+          "info",
+          "routing.google.sequence.completed",
+          "Google Route Optimization",
+          "secuencia vial con prioridad",
+          `Google terminó la secuencia vial de la distribución de ${allocation.source === "Google" ? "Google" : "balance"} sin omitir destinos ni alterar camionetas.`,
+          {
+            allocationSource: allocation.source,
+            stepDurationMs: Math.round(performance.now() - sequencingStarted),
+            priorityConflictOrders: 0,
+            skippedDestinations: 0,
+          },
+        );
+        await measure(allocation.source, sequencedCandidate);
+      }
       const winner = [...evaluations].sort((left, right) =>
         compareLogisticsScores(left.value.score, right.value.score),
       )[0];
@@ -418,7 +519,7 @@ export async function planRouteDeterministically(
         requestHash,
         asOptimizationResult(winner.value, board),
         {
-          planner: "google-deterministic-v1",
+          planner: "google-deterministic-v2",
           evaluatedCandidates: evaluations.length,
           candidateSources: evaluations.map((item) => item.source),
           chosenSource: winner.source,
