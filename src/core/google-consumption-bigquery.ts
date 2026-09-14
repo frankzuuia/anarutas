@@ -270,8 +270,8 @@ SELECT
   CAST(NULL AS BIGNUMERIC) AS gross_cost,
   CAST(NULL AS BIGNUMERIC) AS credits,
   metadata.currency,
-  metadata.provider_export_time,
-  metadata.pricing_as_of_time,
+  CAST(metadata.provider_export_time AS STRING) AS provider_export_time,
+  CAST(metadata.pricing_as_of_time AS STRING) AS pricing_as_of_time,
   CAST(NULL AS STRING) AS pricing_unit,
   CAST(NULL AS BIGNUMERIC) AS free_limit,
   CAST(NULL AS BIGNUMERIC) AS next_tier_price,
@@ -290,8 +290,8 @@ SELECT
   u.gross_cost,
   u.credits,
   u.currency,
-  u.provider_export_time,
-  p.pricing_as_of_time,
+  CAST(u.provider_export_time AS STRING) AS provider_export_time,
+  CAST(p.pricing_as_of_time AS STRING) AS pricing_as_of_time,
   p.pricing_unit,
   p.free_limit,
   p.next_tier_price,
@@ -431,9 +431,17 @@ function number(value: string | null, nullable = false) {
 
 function instant(value: string | null, nullable = false) {
   if (value === null && nullable) return null;
-  if (value === null || !Number.isFinite(Date.parse(value)))
+  if (value === null || !value.trim().length)
     throw new AppError("GOOGLE_CONSUMPTION_RESPONSE_INVALID", 503);
-  return new Date(value).toISOString();
+  const normalized = value.trim();
+  const seconds = Number(normalized);
+  const milliseconds = Number.isFinite(seconds)
+    ? seconds * 1000
+    : Date.parse(normalized);
+  // ECMAScript Date only represents instants inside this closed range.
+  if (!Number.isFinite(milliseconds) || Math.abs(milliseconds) > 8.64e15)
+    throw new AppError("GOOGLE_CONSUMPTION_RESPONSE_INVALID", 503);
+  return new Date(milliseconds).toISOString();
 }
 
 function level(

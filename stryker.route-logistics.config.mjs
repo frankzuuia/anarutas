@@ -8,6 +8,7 @@ const config = {
   ],
   mutate: [
     "src/core/route-logistics-policy.ts",
+    "src/core/route-geographic-planner.ts",
     "src/core/route-candidate-evaluator.ts:34-184",
     "src/core/route-optimization-google.ts:137-391",
   ],

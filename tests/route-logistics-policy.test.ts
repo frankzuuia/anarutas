@@ -24,6 +24,10 @@ import {
   allocationSignature,
   logisticsComparison,
 } from "../src/core/route-logistics-search";
+import {
+  deadlineSequenceCandidate,
+  geographicBalancedCandidate,
+} from "../src/core/route-geographic-planner";
 
 // Pure domain cases. No network/provider substitutions: coincident points have
 // exactly zero road distance, and visit waiting is computed by the real engine.
@@ -110,7 +114,7 @@ describe("logistics precedence and physical-stop quality", () => {
     const snapshot = planningSnapshot(board(), settings, "America/Mexico_City");
     expect(snapshot.timezone).toBe("America/Mexico_City");
     expect(snapshot.policy).toEqual({
-      version: "priority-road-sequenced-v4",
+      version: "priority-geographic-sequenced-v5",
       priorityScope: "per_vehicle",
       compareAlternatives: true,
       scoreOrder: [
@@ -408,6 +412,462 @@ describe("logistics precedence and physical-stop quality", () => {
         { vehicleId: "v2", shipmentIds: ["schedule-0", "schedule-1"] },
       ],
     });
+  });
+
+  it("partitions a circular geographic sweep into balanced contiguous fleet sectors", () => {
+    const source = board();
+    source.vehicles = Array.from({ length: 4 }, (_, index) => ({
+      ...source.vehicles[0],
+      id: `v${index + 1}`,
+    }));
+    const points = [
+      [20, -102.9],
+      [20.001, -102.9],
+      [20.1, -103],
+      [20.1, -103.001],
+      [20, -103.1],
+      [19.999, -103.1],
+      [19.9, -103],
+      [19.9, -102.999],
+    ];
+    source.shipments = [4, 0, 6, 2, 5, 1, 7, 3].map((index) => ({
+      ...shipment(`zone-${index}`, index + 1, "schedule"),
+      latitude: points[index][0],
+      longitude: points[index][1],
+    }));
+    const result = geographicBalancedCandidate(
+      source.shipments,
+      source.vehicles.map((vehicle) => vehicle.id),
+      { latitude: 20, longitude: -103 },
+    );
+    expect(result).toEqual({
+      routes: [
+        { vehicleId: "v1", shipmentIds: ["zone-6", "zone-7"] },
+        { vehicleId: "v2", shipmentIds: ["zone-0", "zone-1"] },
+        { vehicleId: "v3", shipmentIds: ["zone-2", "zone-3"] },
+        { vehicleId: "v4", shipmentIds: ["zone-4", "zone-5"] },
+      ],
+    });
+    expect(routeLoads(source.shipments, result).routes).toMatchObject(
+      [2, 2, 2, 2].map((orders) => ({ orders, destinations: orders })),
+    );
+    for (const route of result.routes) {
+      const routePoints = route.shipmentIds.map((id) =>
+        source.shipments.find((item) => item.id === id),
+      );
+      expect(
+        new Set(
+          routePoints.map((item) => {
+            const latitude = item!.latitude!;
+            const longitude = item!.longitude!;
+            return Math.abs(latitude - 20) > Math.abs(longitude + 103)
+              ? latitude > 20
+                ? "north"
+                : "south"
+              : longitude > -103
+                ? "east"
+                : "west";
+          }),
+        ).size,
+      ).toBe(1);
+    }
+  });
+
+  it("isolates an indivisible heavy destination while preserving adjacent angular sectors", () => {
+    const source = board();
+    const definitions = [
+      ["east", 8, 20, -102.9],
+      ["north-east", 1, 20.08, -102.92],
+      ["north", 1, 20.1, -103],
+      ["west", 1, 20, -103.1],
+      ["south", 1, 19.9, -103],
+      ["south-east", 1, 19.92, -102.92],
+    ] as const;
+    source.shipments = definitions.flatMap(
+      ([name, orders, latitude, longitude], partnerIndex) =>
+        Array.from({ length: orders }, (_, orderIndex) => ({
+          ...shipment(`${name}-${orderIndex}`, partnerIndex + 1, "schedule"),
+          latitude,
+          longitude,
+        })),
+    );
+    expect(
+      geographicBalancedCandidate(source.shipments, ["v1", "v2", "v3"], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).toEqual({
+      routes: [
+        {
+          vehicleId: "v1",
+          shipmentIds: ["west-0", "south-0", "south-east-0"],
+        },
+        {
+          vehicleId: "v2",
+          shipmentIds: Array.from({ length: 8 }, (_, index) => `east-${index}`),
+        },
+        {
+          vehicleId: "v3",
+          shipmentIds: ["north-east-0", "north-0"],
+        },
+      ],
+    });
+  });
+
+  it("cuts a dense circular sweep at its true widest gap", () => {
+    const angles = [-3, -2.2, -1.4, -0.6, 0.35, 1.15, 1.95, 2.75];
+    const source = board();
+    source.shipments = [...angles.keys()].reverse().map((index) => ({
+      ...shipment(`angle-${index}`, index + 1, "schedule"),
+      latitude: 20 + Math.sin(angles[index]) * 0.1,
+      longitude: -103 + Math.cos(angles[index]) * 0.1,
+    }));
+    expect(
+      geographicBalancedCandidate(source.shipments, ["v1", "v2", "v3", "v4"], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).toEqual({
+      routes: [
+        { vehicleId: "v1", shipmentIds: ["angle-4", "angle-5"] },
+        { vehicleId: "v2", shipmentIds: ["angle-6", "angle-7"] },
+        { vehicleId: "v3", shipmentIds: ["angle-0", "angle-1"] },
+        { vehicleId: "v4", shipmentIds: ["angle-2", "angle-3"] },
+      ],
+    });
+  });
+
+  it("matches an independent exhaustive optimum for asymmetric group loads", () => {
+    const partitionCost = (
+      weights: number[],
+      parts: number,
+      cuts: number[],
+    ) => {
+      const count = weights.length;
+      const total = weights.reduce((sum, weight) => sum + weight, 0);
+      const boundaries = [0, ...cuts, count];
+      return boundaries.slice(1).reduce((cost, end, index) => {
+        const start = boundaries[index];
+        const orders = weights
+          .slice(start, end)
+          .reduce((sum, weight) => sum + weight, 0);
+        const destinations = end - start;
+        const orderDelta = orders * parts - total;
+        const destinationDelta = destinations * parts - count;
+        return (
+          cost +
+          orderDelta * orderDelta * (count + 1) * (count + 1) +
+          destinationDelta * destinationDelta
+        );
+      }, 0);
+    };
+    const optimalCuts = (weights: number[], parts: number) => {
+      let best: { cost: number; cuts: number[] } | null = null;
+      const choose = (cuts: number[], next: number) => {
+        if (cuts.length === parts - 1) {
+          const cost = partitionCost(weights, parts, cuts);
+          if (!best || cost < best.cost) best = { cost, cuts: [...cuts] };
+          return;
+        }
+        const remainingCuts = parts - 1 - cuts.length;
+        for (let cut = next; cut <= weights.length - remainingCuts; cut++)
+          choose([...cuts, cut], cut + 1);
+      };
+      choose([], 1);
+      return best!.cuts;
+    };
+    for (let encoded = 0; encoded < 3 ** 5; encoded++) {
+      let value = encoded;
+      const weights = Array.from({ length: 5 }, () => {
+        const weight = (value % 3) + 1;
+        value = Math.floor(value / 3);
+        return weight;
+      });
+      const source = board();
+      source.shipments = weights.flatMap((orders, groupIndex) =>
+        Array.from({ length: orders }, (_, orderIndex) => ({
+          ...shipment(
+            `group-${groupIndex}-${orderIndex}`,
+            groupIndex + 1,
+            "schedule",
+          ),
+          longitude: -102.99 + groupIndex * 0.001,
+        })),
+      );
+      const cuts = optimalCuts(weights, 3);
+      const boundaries = [0, ...cuts, weights.length];
+      const expected = boundaries
+        .slice(1)
+        .map((end, routeIndex) =>
+          Array.from(
+            { length: end - boundaries[routeIndex] },
+            (_, offset) => `group-${boundaries[routeIndex] + offset}`,
+          ),
+        );
+      const actual = geographicBalancedCandidate(
+        source.shipments,
+        ["v1", "v2", "v3"],
+        { latitude: 20, longitude: -103 },
+      ).routes.map((route) => [
+        ...new Set(
+          route.shipmentIds.map((id) => id.split("-").slice(0, 2).join("-")),
+        ),
+      ]);
+      expect(actual).toEqual(expected);
+    }
+  });
+
+  it("handles an empty workload, surplus fleet and exact coordinate boundaries", () => {
+    const source = board();
+    expect(
+      geographicBalancedCandidate([], ["v1", "v2"], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).toEqual({
+      routes: [
+        { vehicleId: "v1", shipmentIds: [] },
+        { vehicleId: "v2", shipmentIds: [] },
+      ],
+    });
+    expect(
+      geographicBalancedCandidate([source.shipments[0]], ["v1", "v2"], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).toEqual({
+      routes: [
+        { vehicleId: "v1", shipmentIds: ["schedule"] },
+        { vehicleId: "v2", shipmentIds: [] },
+      ],
+    });
+    expect(
+      geographicBalancedCandidate(source.shipments, [], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).toEqual({ routes: [] });
+    source.shipments[0].latitude = 90;
+    source.shipments[0].longitude = 180;
+    expect(() =>
+      geographicBalancedCandidate(source.shipments, ["v1"], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).not.toThrow();
+    source.shipments[0].longitude = 180.01;
+    expect(() =>
+      geographicBalancedCandidate(source.shipments, ["v1"], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).toThrow("ROUTING_POINTS_REQUIRED");
+  });
+
+  it("keeps customer groups intact and sequences priority before earliest deadline", () => {
+    const source = board();
+    source.vehicles = [source.vehicles[0]];
+    source.shipments = [
+      shipment("schedule", 1, "schedule"),
+      shipment("high-later", 2, "high"),
+      shipment("medium", 3, "medium"),
+      shipment("high-urgent", 4, "high"),
+      shipment("high-urgent-second", 4, "schedule"),
+    ];
+    source.shipments[1].deliveryWindows = [
+      { startMinute: 480, endMinute: 660 },
+    ];
+    source.shipments[3].deliveryWindows = [
+      { startMinute: 480, endMinute: 540 },
+    ];
+    source.shipments[4].deliveryWindows = [
+      { startMinute: 480, endMinute: 540 },
+    ];
+    const result = deadlineSequenceCandidate(
+      source.shipments,
+      {
+        routes: [
+          {
+            vehicleId: "v1",
+            shipmentIds: source.shipments.map((item) => item.id),
+          },
+        ],
+      },
+      { latitude: 20, longitude: -103 },
+    );
+    expect(result.routes[0].shipmentIds).toEqual([
+      "high-urgent",
+      "high-urgent-second",
+      "high-later",
+      "medium",
+      "schedule",
+    ]);
+    expect(
+      geographicBalancedCandidate(source.shipments, ["v1", "v2"], {
+        latitude: 20,
+        longitude: -103,
+      }).routes.filter((route) => route.shipmentIds.includes("high-urgent"))[0]
+        .shipmentIds,
+    ).toContain("high-urgent-second");
+  });
+
+  it("uses opening, angle, radius and stable identity as deadline tie breakers", () => {
+    const source = board();
+    source.shipments = [
+      ["west", 20, -103.1, 480],
+      ["far-east", 20, -102.9, 480],
+      ["near-east", 20, -102.99, 480],
+      ["same-b", 20.001, -102.99, 480],
+      ["same-a", 20.001, -102.99, 480],
+      ["opens-later", 19.9, -103, 500],
+    ].map(([id, latitude, longitude, startMinute], index) => ({
+      ...shipment(String(id), index + 1, "high"),
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+      deliveryWindows: [{ startMinute: Number(startMinute), endMinute: 600 }],
+    }));
+    expect(
+      deadlineSequenceCandidate(
+        source.shipments,
+        {
+          routes: [
+            {
+              vehicleId: "v1",
+              shipmentIds: source.shipments.map((item) => item.id).reverse(),
+            },
+          ],
+        },
+        { latitude: 20, longitude: -103 },
+      ).routes[0].shipmentIds,
+    ).toEqual([
+      "near-east",
+      "far-east",
+      "same-a",
+      "same-b",
+      "west",
+      "opens-later",
+    ]);
+  });
+
+  it("orders collinear deadline ties by radius even when input is reversed", () => {
+    const source = board();
+    source.shipments = [
+      shipment("far", 1, "high"),
+      shipment("near", 2, "high"),
+    ];
+    source.shipments[0].latitude = 20.02;
+    source.shipments[0].longitude = -102.98;
+    source.shipments[1].latitude = 20.01;
+    source.shipments[1].longitude = -102.99;
+    for (const item of source.shipments)
+      item.deliveryWindows = [{ startMinute: 480, endMinute: 600 }];
+    expect(
+      deadlineSequenceCandidate(
+        source.shipments,
+        {
+          routes: [{ vehicleId: "v1", shipmentIds: ["far", "near"] }],
+        },
+        { latitude: 20, longitude: -103 },
+      ).routes[0].shipmentIds,
+    ).toEqual(["near", "far"]);
+  });
+
+  it("uses the earliest member window for an indivisible customer group", () => {
+    const source = board();
+    source.shipments = [
+      shipment("group-first", 1, "high"),
+      shipment("group-second", 1, "high"),
+      shipment("competitor", 2, "high"),
+    ];
+    source.shipments[0].deliveryWindows = [
+      { startMinute: 480, endMinute: 540 },
+    ];
+    source.shipments[1].deliveryWindows = [
+      { startMinute: 520, endMinute: 700 },
+    ];
+    source.shipments[2].deliveryWindows = [
+      { startMinute: 500, endMinute: 600 },
+    ];
+    expect(
+      deadlineSequenceCandidate(
+        source.shipments,
+        {
+          routes: [
+            {
+              vehicleId: "v1",
+              shipmentIds: ["competitor", "group-first", "group-second"],
+            },
+          ],
+        },
+        { latitude: 20, longitude: -103 },
+      ).routes[0].shipmentIds,
+    ).toEqual(["group-first", "group-second", "competitor"]);
+  });
+
+  it("uses the earliest opening when customer deadlines are equal", () => {
+    const source = board();
+    source.shipments = [
+      shipment("group-first", 1, "high"),
+      shipment("group-second", 1, "high"),
+      shipment("competitor", 2, "high"),
+    ];
+    source.shipments[0].deliveryWindows = [
+      { startMinute: 480, endMinute: 600 },
+    ];
+    source.shipments[1].deliveryWindows = [
+      { startMinute: 520, endMinute: 600 },
+    ];
+    source.shipments[2].deliveryWindows = [
+      { startMinute: 500, endMinute: 600 },
+    ];
+    expect(
+      deadlineSequenceCandidate(
+        source.shipments,
+        {
+          routes: [
+            {
+              vehicleId: "v1",
+              shipmentIds: ["competitor", "group-first", "group-second"],
+            },
+          ],
+        },
+        { latitude: 20, longitude: -103 },
+      ).routes[0].shipmentIds,
+    ).toEqual(["group-first", "group-second", "competitor"]);
+  });
+
+  it("rejects missing geographic points instead of inventing a route", () => {
+    const source = board();
+    source.shipments[0].latitude = null;
+    expect(() =>
+      geographicBalancedCandidate(source.shipments, ["v1"], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).toThrow("ROUTING_POINTS_REQUIRED");
+    expect(() =>
+      geographicBalancedCandidate(source.shipments, ["v1"], {
+        latitude: 200,
+        longitude: -103,
+      }),
+    ).toThrow("ROUTING_ORIGIN_REQUIRED");
+    source.shipments[0].latitude = 90.01;
+    expect(() =>
+      geographicBalancedCandidate(source.shipments, ["v1"], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).toThrow("ROUTING_POINTS_REQUIRED");
+    source.shipments[0] = {
+      ...shipment("pending", 99, "schedule"),
+      locationStatus: "pending",
+    };
+    expect(() =>
+      geographicBalancedCandidate(source.shipments, ["v1"], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).toThrow("ROUTING_POINTS_REQUIRED");
   });
   it("preserves a measured road sequence and exposes priority violations instead of silently rearranging it", async () => {
     const source = board();

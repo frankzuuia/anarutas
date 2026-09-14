@@ -36,6 +36,13 @@ producción. Los informes QA conservan la evidencia previa al commit/push.
 - [x] SV-T05: regresiones de no reordenamiento, precedencia por unidad, destinos agrupados, cobertura exacta, vehículos/pedidos inválidos y fallo seguro.
 - [x] SV-T06: 337/337 pruebas, cobertura 93.06% statements/94.50% líneas, mutación crítica 375/375 (100%), typecheck, lint, build y diff verdes. Commit/push a `develop` autorizados; deploy manual y smoke facturable pendientes, sin autorización para `main`.
 
+## Corrección geográfica y FinOps — BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md
+
+- [x] GF-T01 (BL-072..076): autopsia del reparto balanceado sin coordenadas y del `TIMESTAMP` numérico de BigQuery; reglas, referencias y Gherkin registrados.
+- [x] GF-T02 (BL-072..075): partición geográfica balanceada, secuencia de fecha límite condicional y comparación vial completa.
+- [x] GF-T03 (BL-076): normalización segura del contrato temporal real y regresión del corte observado.
+- [x] GF-T04: 353/353 pruebas, cobertura 93.15% statements/94.57% líneas, núcleo geográfico 100% líneas, mutación geográfica 95.71%, FinOps 93.46%, tipos, lint, build y E2E panel verdes. Evidencia en `QA-RUTEO-GEOGRAFICO-FINOPS.md`; commit/push a `develop` autorizados y smoke facturable pendiente del deploy manual.
+
 ## Incidencias del panel — BLOQUE-INCIDENCIAS-LLEGADA.md
 
 - Regla confirmada: el chofer pulsa «Llegué» e inicia surtido; no equivale a pedido entregado. Kalamar 10:00–11:30 / llegada 12:00 → 30 min tarde, sin bloquear ruteo.
@@ -90,6 +97,7 @@ consultas de consumo en el mapa. Google Billing/BigQuery es la autoridad y Postg
 - [x] G-T06 (todas / G01-10): 293 pruebas, PostgreSQL real, Gherkin, E2E, seguridad, 90.40% statements, 93.80% mutación, lint, typecheck y build verdes. Evidencia en `QA-BLOQUE-5C-CONSUMO-GOOGLE.md`.
 - [ ] G-T07: configurar Standard + Pricing export e IAM en develop; smoke oficial y evidencia antes de promoción.
 - [x] G-T08: regresión develop del contrato real de Pricing Export: aceptar el recurso canónico `businessEntities/Maps`; el filtro anterior `Maps` producía `GOOGLE_CONSUMPTION_RESPONSE_INVALID` y ocultaba uso, cuota y restante aunque ambas tablas existieran.
+- [x] G-T09 (BL-076): aceptar el `TIMESTAMP` numérico real de BigQuery REST y forzar representación textual estable desde SQL; conserva validación estricta y último corte válido.
 
 ## Bloque 5B histórico — recálculo automático y OpenAI (sustituido)
 

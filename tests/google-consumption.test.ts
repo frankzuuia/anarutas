@@ -455,6 +455,32 @@ describe("Google BigQuery consumption contract", () => {
     });
   });
 
+  it("normalizes the fractional Unix seconds returned for BigQuery REST timestamps", () => {
+    const snapshot = aggregateConsumptionRows(
+      [
+        meta({
+          provider_export_time: "1789326939.568661",
+          pricing_as_of_time: "1789257600",
+        }),
+      ],
+      "ana-rutas-develop",
+    );
+    expect(snapshot.providerExportTime).toBe("2026-09-13T19:15:39.568Z");
+    expect(snapshot.pricingAsOfTime).toBe("2026-09-13T00:00:00.000Z");
+  });
+
+  it.each(["", " ", "Infinity", "9000000000000"])(
+    "rejects an invalid provider timestamp %j",
+    (value) => {
+      expect(() =>
+        aggregateConsumptionRows(
+          [meta({ pricing_as_of_time: value })],
+          "project",
+        ),
+      ).toThrow("GOOGLE_CONSUMPTION_RESPONSE_INVALID");
+    },
+  );
+
   it.each(["current_period", "currency", "pricing_as_of_time"] as const)(
     "rejects missing required metadata field %s",
     (field) => {

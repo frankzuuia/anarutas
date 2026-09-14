@@ -1,7 +1,8 @@
 # Ana Rutas — bloque 1 aprobado
 
-Política vigente: BL-069..071 en `BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md`, que
-complementa BL-065..068 de `BLOQUE-RUTEO-DETERMINISTA.md`. **Armar ruta**
+Política vigente: BL-072..076 en `BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md`,
+BL-069..071 en `BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md`, y BL-065..068 de
+`BLOQUE-RUTEO-DETERMINISTA.md`. **Armar ruta**
 no llama LLM; Google y Ana Rutas resuelven mediante optimización y validación
 deterministas. Alta → Media →
 Por horario por camioneta, destinos indivisibles y horarios flexibles medidos.
@@ -15,6 +16,9 @@ de prioridad, ventanas y uso de flota mandan la jornada y las calles reales; el
 conteo de pedidos/destinos es guía blanda y desempate, nunca una ruta artificial.
 BL-064 agrega balance verificable de pedidos y destinos por unidad: el servidor
 mide una línea base dinámica con grupos indivisibles y ninguna capacidad inventada.
+BL-072 reemplaza esa base ciega a coordenadas por sectores geográficos
+contiguos alrededor de la bodega; BL-074 mide además una secuencia de fecha
+límite cuando la propuesta vial conserva retrasos. Ninguna ventana bloquea el lote.
 
 BL-065..068 sustituyen a BL-029/035/036/060 donde asignaban autoridad a OpenAI.
 Toda explicación generativa queda fuera del ruteo: prioridad, ventanas, uso de flota,

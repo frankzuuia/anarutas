@@ -20,13 +20,16 @@ import {
   type GoogleOptimizationResult,
 } from "./route-optimization-google";
 import {
-  balancedCandidate,
   compareLogisticsScores,
   logisticsPolicyVersion,
   priorityConflictIds,
   type RoutingCandidate,
 } from "./route-logistics-policy";
 import { allocationSignature } from "./route-logistics-search";
+import {
+  deadlineSequenceCandidate,
+  geographicBalancedCandidate,
+} from "./route-geographic-planner";
 import {
   acquireOptimizationLease,
   releaseOptimizationLease,
@@ -276,7 +279,7 @@ export async function planRouteDeterministically(
           "routing.roads.started",
           "Google Routes API",
           "medición vial",
-          `Google Routes comenzó a medir la propuesta de ${source === "Google" ? "Google" : "balance"} después de que Google reoptimizó su secuencia vial con las prioridades obligatorias.`,
+          `Google Routes comenzó a medir la propuesta de ${source === "Google" ? "Google" : "balance geográfico"} después de ordenar su secuencia con las prioridades obligatorias.`,
           {
             orders: deliveries.length,
             routes: candidate.routes.length,
@@ -315,7 +318,7 @@ export async function planRouteDeterministically(
           "routing.candidate.evaluated",
           "Ana Rutas",
           "comparación determinista",
-          `Ana Rutas midió la propuesta de ${source === "Google" ? "Google" : "balance"}: ${value.load.routes.map((route) => route.orders).join("/")} pedidos por camioneta, ${value.lateStops} destinos tarde y ${value.unusedVehicles} camionetas sin uso.`,
+          `Ana Rutas midió la propuesta de ${source === "Google" ? "Google" : "balance geográfico"}: ${value.load.routes.map((route) => route.orders).join("/")} pedidos por camioneta, ${value.lateStops} destinos tarde y ${value.unusedVehicles} camionetas sin uso.`,
           {
             stepDurationMs: Math.round(performance.now() - started),
             evaluatedCandidates: evaluations.length,
@@ -378,9 +381,10 @@ export async function planRouteDeterministically(
       }
       addAllocation(
         "balance",
-        balancedCandidate(
+        geographicBalancedCandidate(
           board.shipments,
           board.vehicles.map((vehicle) => vehicle.id),
+          settings.depotLocation!,
         ),
       );
 
@@ -397,7 +401,7 @@ export async function planRouteDeterministically(
           "routing.google.sequence.started",
           "Google Route Optimization",
           "secuencia vial con prioridad",
-          `Google comenzó a ordenar por calles reales la distribución de ${allocation.source === "Google" ? "Google" : "balance"}; cada destino quedó fijo en su camioneta y las prioridades quedaron como precedencias por ruta.`,
+          `Google comenzó a ordenar por calles reales la distribución de ${allocation.source === "Google" ? "Google" : "balance geográfico"}; cada destino quedó fijo en su camioneta y las prioridades quedaron como precedencias por ruta.`,
           {
             allocationSource: allocation.source,
             deliveryGroups: snapshot.deliveryGroups.length,
@@ -466,7 +470,7 @@ export async function planRouteDeterministically(
           "routing.google.sequence.completed",
           "Google Route Optimization",
           "secuencia vial con prioridad",
-          `Google terminó la secuencia vial de la distribución de ${allocation.source === "Google" ? "Google" : "balance"} sin omitir destinos ni alterar camionetas.`,
+          `Google terminó la secuencia vial de la distribución de ${allocation.source === "Google" ? "Google" : "balance geográfico"} sin omitir destinos ni alterar camionetas.`,
           {
             allocationSource: allocation.source,
             stepDurationMs: Math.round(performance.now() - sequencingStarted),
@@ -475,6 +479,31 @@ export async function planRouteDeterministically(
           },
         );
         await measure(allocation.source, sequencedCandidate);
+      }
+      if (evaluations.some((evaluation) => evaluation.value.lateStops > 0)) {
+        progress(
+          "info",
+          "routing.deadline.started",
+          "Ana Rutas",
+          "reparación de ventanas",
+          "Ana Rutas detectó retrasos y medirá también una secuencia por prioridad y hora límite, sin cambiar pedidos de camioneta.",
+          {
+            evaluatedCandidates: evaluations.length,
+            lateStops: evaluations.reduce(
+              (total, item) => total + item.value.lateStops,
+              0,
+            ),
+          },
+        );
+        for (const allocation of allocations)
+          await measure(
+            allocation.source,
+            deadlineSequenceCandidate(
+              board.shipments,
+              allocation.candidate,
+              settings.depotLocation!,
+            ),
+          );
       }
       const winner = [...evaluations].sort((left, right) =>
         compareLogisticsScores(left.value.score, right.value.score),
@@ -485,7 +514,7 @@ export async function planRouteDeterministically(
         "routing.logistics.compared",
         "Ana Rutas",
         "comparación determinista",
-        `Ana Rutas eligió la propuesta de ${winner.source === "Google" ? "Google" : "balance"} por prioridad, ventanas, uso de flota, jornada y calles reales; la carga sólo desempató soluciones viales equivalentes y no intervino ningún LLM.`,
+        `Ana Rutas eligió la propuesta de ${winner.source === "Google" ? "Google" : "balance geográfico"} por prioridad, ventanas, uso de flota, jornada y calles reales; no intervino ningún LLM.`,
         {
           evaluatedCandidates: evaluations.length,
           lateStops: winner.value.lateStops,

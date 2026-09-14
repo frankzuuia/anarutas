@@ -162,50 +162,35 @@ describe("deterministic Google routing with real PostgreSQL", () => {
         (item: { allowedVehicleIndices?: number[] }) =>
           item.allowedVehicleIndices?.[0],
       );
-      const split = assignments[0] === 0 && assignments[1] === 1;
+      const split =
+        assignments.every((assignment) => assignment !== undefined) &&
+        assignments[0] !== assignments[1];
       const routes = split
-        ? [
-            {
-              vehicleIndex: 0,
-              vehicleStartTime: "2026-09-12T08:00:00Z",
-              vehicleEndTime: "2026-09-12T08:00:00Z",
-              visits: [{ shipmentIndex: 0, startTime: "2026-09-12T08:00:00Z" }],
-              transitions: [
-                {
-                  travelDistanceMeters: 0,
-                  travelDuration: "0s",
-                  waitDuration: "0s",
-                },
-              ],
-              metrics: {
-                performedShipmentCount: 1,
+        ? [0, 1].map((vehicleIndex) => ({
+            vehicleIndex,
+            vehicleStartTime: "2026-09-12T08:00:00Z",
+            vehicleEndTime: "2026-09-12T08:00:00Z",
+            visits: [
+              {
+                shipmentIndex: assignments.indexOf(vehicleIndex),
+                startTime: "2026-09-12T08:00:00Z",
+              },
+            ],
+            transitions: [
+              {
                 travelDistanceMeters: 0,
                 travelDuration: "0s",
                 waitDuration: "0s",
-                totalDuration: "0s",
               },
+            ],
+            metrics: {
+              performedShipmentCount: 1,
+              travelDistanceMeters: 0,
+              travelDuration: "0s",
+              waitDuration: "0s",
+              totalDuration: "0s",
             },
-            {
-              vehicleIndex: 1,
-              vehicleStartTime: "2026-09-12T08:00:00Z",
-              vehicleEndTime: "2026-09-12T08:00:00Z",
-              visits: [{ shipmentIndex: 1, startTime: "2026-09-12T08:00:00Z" }],
-              transitions: [
-                {
-                  travelDistanceMeters: 0,
-                  travelDuration: "0s",
-                  waitDuration: "0s",
-                },
-              ],
-              metrics: {
-                performedShipmentCount: 1,
-                travelDistanceMeters: 0,
-                travelDuration: "0s",
-                waitDuration: "0s",
-                totalDuration: "0s",
-              },
-            },
-          ]
+          }))
         : [
             {
               vehicleIndex: 0,
@@ -313,11 +298,11 @@ describe("deterministic Google routing with real PostgreSQL", () => {
     expect(googleRequests[1].model.precedenceRules).toEqual([
       expect.objectContaining({ firstIndex: 0, secondIndex: 1 }),
     ]);
-    expect(
-      googleRequests[2].model.shipments.map(
-        (item) => item.allowedVehicleIndices!,
-      ),
-    ).toEqual([[0], [1]]);
+    const geographicAssignments = googleRequests[2].model.shipments.map(
+      (item) => item.allowedVehicleIndices!,
+    );
+    expect(geographicAssignments).toHaveLength(2);
+    expect(new Set(geographicAssignments.flat()).size).toBe(2);
     expect(googleRequests[2].model).not.toHaveProperty("precedenceRules");
     expect(result).toMatchObject({
       current: true,
@@ -325,10 +310,12 @@ describe("deterministic Google routing with real PostgreSQL", () => {
     });
     expect(result?.routes.map((route) => route.stops.length)).toEqual([1, 1]);
     expect(
-      (await orderBoard(db.pool, plan.id)).shipments.map(
-        (item) => item.vehicle_id,
+      new Set(
+        (await orderBoard(db.pool, plan.id)).shipments.map(
+          (item) => item.vehicle_id,
+        ),
       ),
-    ).toEqual(before.vehicles.map((vehicle) => vehicle.id));
+    ).toEqual(new Set(before.vehicles.map((vehicle) => vehicle.id)));
     const audit = (
       await db.pool.query(
         "SELECT details FROM route_audit WHERE action='plan.optimized' AND entity_id=$1 ORDER BY id DESC LIMIT 1",
@@ -340,7 +327,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       evaluatedCandidates: 2,
       candidateSources: ["Google", "balance"],
       chosenSource: "balance",
-      logisticsPolicy: "priority-road-sequenced-v4",
+      logisticsPolicy: "priority-geographic-sequenced-v5",
       score: {
         priorityConflicts: 0,
         lateStops: 0,
