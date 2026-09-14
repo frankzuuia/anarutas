@@ -110,7 +110,6 @@ export function Dashboard({
   const [boardRevision, setBoardRevision] = useState(0);
   const [customerRevision, setCustomerRevision] = useState(0);
   const [consumptionRevision, setConsumptionRevision] = useState(0);
-  const [incidentsRevision, setIncidentsRevision] = useState(0);
   const [plans, setPlans] = useState<Plan[]>([]),
     [users, setUsers] = useState<User[]>([]),
     [audit, setAudit] = useState<AuditRow[]>([]);
@@ -136,7 +135,6 @@ export function Dashboard({
       if (section === "audit") setAudit(await api<AuditRow[]>("/api/audit"));
       if (section === "consumption")
         setConsumptionRevision((value) => value + 1);
-      if (section === "incidents") setIncidentsRevision((value) => value + 1);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -345,7 +343,7 @@ export function Dashboard({
                           : section === "audit"
                             ? "Actividad registrada con su autor y fecha."
                             : section === "incidents"
-                              ? "Retrasos previstos por destino, separados del registro de llegada del chofer."
+                              ? "Incidencias reales registradas por la llegada del chofer. Los pronósticos no se contabilizan."
                               : "Métricas y cargos reales publicados por Google Cloud Billing, sin estimaciones internas."}
                 </p>
               </div>
@@ -385,13 +383,7 @@ export function Dashboard({
           {section === "customers" && (
             <CustomerPanel revision={customerRevision} />
           )}
-          {section === "incidents" && (
-            <IncidentsPanel
-              revision={incidentsRevision}
-              timezone={timezone}
-              initialPlanId={selected?.id}
-            />
-          )}
+          {section === "incidents" && <IncidentsPanel />}
           {section === "consumption" && (
             <GoogleConsumptionPanel
               revision={consumptionRevision}

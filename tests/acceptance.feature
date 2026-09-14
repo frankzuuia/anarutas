@@ -613,31 +613,24 @@ Feature: Ana Rutas independiente y portable
     When ambos son medidos por calles y ventanas reales
     Then gana lexicográficamente el de menos retrasos jornada espera viaje y distancia
 
-  Scenario: IN01 IN02 IN07 consulta de incidencias sin modificar la ruta
-    Given un administrador abre Incidencias y selecciona un plan
-    When consulta los retrasos previstos o cambia a Llegadas reales
-    Then sólo se ejecutan lecturas autenticadas del plan y del cálculo guardado
-    And ninguna ETA se presenta como llegada real o entrega finalizada
-    And no se requiere construir la APK para consultar las previsiones
+  Scenario: IN01 Incidencias no convierte pronósticos en hechos
+    Given la APK del chofer todavía no está conectada
+    When un administrador abre Incidencias
+    Then se muestra que no existen incidencias reales registradas
+    And no se consulta el cálculo de retrasos previstos del plan
+    And ninguna ETA de Google se presenta como incidencia, llegada o entrega finalizada
 
-  Scenario: IN03 IN04 previsión vigente por destino
-    Given un cliente tiene dos pedidos y 30 minutos de retraso previsto
-    When se consulta el resultado vigente de su plan
-    Then se muestra una incidencia prevista con ambos pedidos y sus 30 minutos
-    But si el cálculo está desactualizado no se mezcla con ventanas actuales
-    And si falta un cálculo de retraso no se declara puntual ese destino
+  Scenario: IN02 llegada real pendiente de la APK
+    Given un recorrido puede tener una ETA posterior a la ventana de recepción
+    When todavía no existe un evento real «Llegué» del chofer
+    Then el retraso previsto puede participar en la optimización
+    But no aparece en Incidencias ni se persiste como retraso real
 
-  Scenario: IN05 IN06 lectura recuperable y móvil
-    Given el administrador usa Incidencias con teclado o en una pantalla de 375 píxeles
-    When cambia el plan busca un pedido o pulsa Actualizar tras un error
-    Then los controles tienen etiquetas y el contenido no desborda la pantalla
-    And una respuesta anterior no sustituye los datos de la nueva selección
-
-  Scenario: IN08 edición de horarios durante la consulta
-    Given Incidencias está leyendo un plan con un cálculo vigente
-    When otra sesión modifica una ventana antes de terminar la lectura
-    Then la consulta conserva un único snapshot coherente
-    And la siguiente consulta detecta el cálculo obsoleto y no muestra ETA antiguas
+  Scenario: IN03 módulo de incidencias accesible y móvil
+    Given el administrador abre Incidencias con teclado o en una pantalla de 375 píxeles
+    When consulta el estado actual o pulsa Actualizar
+    Then el contenido no desborda la pantalla
+    And se explica que la llegada real se conectará desde la APK sin mostrar datos simulados
 
   Scenario: Armar ruta no consume un modelo generativo
     Given un administrador tiene un plan con pedidos, salida y camionetas

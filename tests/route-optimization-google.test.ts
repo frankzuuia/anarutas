@@ -335,6 +335,45 @@ describe("Google Route Optimization contract", () => {
     );
   });
 
+  it("sends each delivery coordinate to Google and never uses the customer name as a destination", () => {
+    const source = board();
+    source.shipments = [
+      {
+        ...shipment(ids[0], "schedule"),
+        customerName: "KANEISHI",
+        address: "Sucursal Norte, Zapopan",
+        latitude: 20.712355,
+        longitude: -103.378432,
+      },
+      {
+        ...shipment(ids[1], "schedule"),
+        customerName: "KANEISHI",
+        address: "Sucursal Sur, Tlajomulco",
+        latitude: 20.569447,
+        longitude: -103.453153,
+      },
+    ];
+
+    const request = buildGoogleOptimizationRequest(
+      source,
+      settings,
+      "America/Mexico_City",
+    );
+
+    expect(
+      request.model.shipments.map(
+        (entry) => entry.deliveries[0].arrivalLocation,
+      ),
+    ).toEqual([
+      { latitude: 20.712355, longitude: -103.378432 },
+      { latitude: 20.569447, longitude: -103.453153 },
+    ]);
+    expect(JSON.stringify(request.model.shipments)).not.toContain("KANEISHI");
+    expect(JSON.stringify(request.model.shipments)).not.toContain(
+      "Sucursal Norte",
+    );
+  });
+
   it("fixes every destination to its assigned truck and delegates priority-respecting road order back to Google", () => {
     const source = board();
     source.vehicles.push({

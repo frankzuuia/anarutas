@@ -176,8 +176,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   const captureIncidentRequest = (
     request: import("@playwright/test").Request,
   ) => {
-    if (request.url().includes("/api/"))
-      incidentRequests.push(request.method());
+    if (request.url().includes("/api/")) incidentRequests.push(request.url());
   };
   page.on("request", captureIncidentRequest);
   await page.getByRole("button", { name: "Incidencias", exact: true }).click();
@@ -185,23 +184,22 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     page.getByRole("heading", { name: "Incidencias", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Todavía no hay planes para consultar."),
+    page.getByRole("heading", {
+      name: "Sin incidencias reales registradas",
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
-    page.getByText("Los retrasos no bloquean la ruta.", { exact: false }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Llegadas reales", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Registro de llegadas pendiente" }),
+    page.getByText("Las ETA, ventanas y previsiones de Google no crean", {
+      exact: false,
+    }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Llegué", exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByText("Una llegada estimada no se registra como llegada real."),
-  ).toBeVisible();
+    page.getByRole("button", { name: "Retrasos previstos", exact: true }),
+  ).toHaveCount(0);
   await mkdir("reports/screenshots", { recursive: true });
   for (const width of [375, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -215,16 +213,19 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
       fullPage: true,
     });
   }
-  await page
-    .getByRole("button", { name: "Retrasos previstos", exact: true })
-    .click();
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(
-    page.getByText("Todavía no hay planes para consultar."),
+    page.getByRole("heading", {
+      name: "Sin incidencias reales registradas",
+      exact: true,
+    }),
   ).toBeVisible();
   page.off("request", captureIncidentRequest);
-  expect(incidentRequests.length).toBeGreaterThan(0);
-  expect(incidentRequests.every((method) => method === "GET")).toBe(true);
+  expect(
+    incidentRequests.filter((url) =>
+      /\/api\/plans\/[^/]+\/incidents/u.test(url),
+    ),
+  ).toEqual([]);
   await page
     .getByRole("button", { name: "Control de consumo", exact: true })
     .click();
@@ -319,11 +320,11 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     page.getByText("Sin pedidos cargados", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Incidencias", exact: true }).click();
-  await expect(page.getByLabel("Plan de incidencias")).toContainText(
-    "Plan de validación",
-  );
   await expect(
-    page.getByText("Este plan todavía no tiene una ruta calculada."),
+    page.getByRole("heading", {
+      name: "Sin incidencias reales registradas",
+      exact: true,
+    }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Planificar rutas", exact: true })
