@@ -12,7 +12,9 @@ pareja aunque recorriera calles innecesarias.
 
 ## Contrato corregido
 
-- Política `priority-geographic-sequenced-v7`.
+- Política histórica certificada `priority-geographic-sequenced-v7`; el bloque
+  posterior de búsqueda global la sustituye por
+  `priority-geographic-sequenced-v8` sin retirar estas invariantes.
 - Cada coordenada confirmada es una unidad indivisible de asignación. Los clientes
   conservan identidad, `partnerId`, pedidos, tarjetas y números de parada.
 - Una propuesta Google que divide el punto se consolida donde ya está la mayoría

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import type { OrderBoard, Shipment } from "../src/core/orders-contract";
 import {
   balancedCandidate,
@@ -29,6 +30,8 @@ import {
   colocatedSequenceCandidate,
   deadlineSequenceCandidate,
   geographicBalancedCandidate,
+  geographicClusterCandidate,
+  spatialSequenceCandidate,
 } from "../src/core/route-geographic-planner";
 
 // Pure domain cases. No network/provider substitutions: coincident points have
@@ -116,7 +119,7 @@ describe("logistics precedence and physical-stop quality", () => {
     const snapshot = planningSnapshot(board(), settings, "America/Mexico_City");
     expect(snapshot.timezone).toBe("America/Mexico_City");
     expect(snapshot.policy).toEqual({
-      version: "priority-geographic-sequenced-v7",
+      version: "priority-geographic-sequenced-v8",
       priorityScope: "per_vehicle",
       compareAlternatives: true,
       scoreOrder: [
@@ -830,6 +833,645 @@ describe("logistics precedence and physical-stop quality", () => {
         ],
       }).routes[0].shipmentIds,
     ).toEqual(["cocos", "metate", "metate-second", "middle"]);
+  });
+
+  it("removes a distant detour between nearby independent stops without merging them", () => {
+    const source = board();
+    source.vehicles = [source.vehicles[0]];
+    source.shipments = [
+      ["punto-sur-a", 101, 20, -102.99],
+      ["north-detour", 102, 20.1, -103],
+      ["punto-sur-b", 103, 20, -102.989],
+      ["nearby-finish", 104, 20, -102.98],
+    ].map(([id, partnerId, latitude, longitude]) => ({
+      ...shipment(String(id), Number(partnerId), "schedule"),
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+    }));
+    const result = spatialSequenceCandidate(
+      source.shipments,
+      {
+        routes: [
+          {
+            vehicleId: "v1",
+            shipmentIds: source.shipments.map((item) => item.id),
+          },
+        ],
+      },
+      { latitude: 20, longitude: -103 },
+    );
+    expect(result.routes[0].shipmentIds).toEqual([
+      "punto-sur-a",
+      "punto-sur-b",
+      "nearby-finish",
+      "north-detour",
+    ]);
+  });
+
+  it("keeps customers at the same physical point contiguous after spatial search", () => {
+    const source = board();
+    source.vehicles = [source.vehicles[0]];
+    source.shipments = [
+      ["same-a", 111, 20, -102.99],
+      ["far", 112, 20.1, -103],
+      ["same-b", 113, 20, -102.99],
+      ["near", 114, 20, -102.98],
+    ].map(([id, partnerId, latitude, longitude]) => ({
+      ...shipment(String(id), Number(partnerId), "schedule"),
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+    }));
+    const result = spatialSequenceCandidate(
+      source.shipments,
+      {
+        routes: [
+          {
+            vehicleId: "v1",
+            shipmentIds: source.shipments.map((item) => item.id),
+          },
+        ],
+      },
+      { latitude: 20, longitude: -103 },
+    );
+    expect(result.routes[0].shipmentIds).toEqual([
+      "same-a",
+      "same-b",
+      "near",
+      "far",
+    ]);
+  });
+
+  it("converges from an alternating north-south sequence without crossing priorities", () => {
+    const source = board();
+    source.vehicles = [source.vehicles[0]];
+    source.shipments = [
+      ["north-far", 201, 20.08, "high"],
+      ["south-far", 202, 19.92, "high"],
+      ["north-mid", 203, 20.05, "high"],
+      ["south-mid", 204, 19.95, "high"],
+      ["north-near", 205, 20.02, "schedule"],
+      ["south-near", 206, 19.98, "schedule"],
+    ].map(([id, partnerId, latitude, priority]) => ({
+      ...shipment(
+        String(id),
+        Number(partnerId),
+        priority as Shipment["priority"],
+      ),
+      latitude: Number(latitude),
+    }));
+    const result = spatialSequenceCandidate(
+      source.shipments,
+      {
+        routes: [
+          {
+            vehicleId: "v1",
+            shipmentIds: source.shipments.map((item) => item.id),
+          },
+        ],
+      },
+      { latitude: 20, longitude: -103 },
+    );
+    expect(priorityConflictIds(source.shipments, result).size).toBe(0);
+    expect(result.routes[0].shipmentIds).toEqual([
+      "north-far",
+      "north-mid",
+      "south-far",
+      "south-mid",
+      "south-near",
+      "north-near",
+    ]);
+  });
+
+  it("executes a two-opt reversal when relocate alone is locally exhausted", () => {
+    const source = board();
+    source.vehicles = [source.vehicles[0]];
+    source.shipments = [
+      ["a", 80, 11],
+      ["b", -85, -85],
+      ["c", 86, 29],
+      ["d", -88, 30],
+      ["e", -45, 38],
+      ["f", 14, 98],
+      ["g", 92, 74],
+      ["h", -82, 24],
+    ].map(([id, x, y], index) => ({
+      ...shipment(String(id), 220 + index, "schedule"),
+      latitude: 20 + Number(y) / 100,
+      longitude: -103 + Number(x) / 100,
+    }));
+    const result = spatialSequenceCandidate(
+      source.shipments,
+      {
+        routes: [
+          {
+            vehicleId: "v1",
+            shipmentIds: source.shipments.map((item) => item.id),
+          },
+        ],
+      },
+      { latitude: 20, longitude: -103 },
+    );
+    expect(result.routes[0].shipmentIds).toEqual([
+      "a",
+      "c",
+      "g",
+      "f",
+      "e",
+      "d",
+      "h",
+      "b",
+    ]);
+  });
+
+  it("includes the return to the depot when improving the visit sequence", () => {
+    const source = board();
+    source.shipments = [
+      ["a", -100, 27],
+      ["b", 28, 28],
+      ["c", -99, 76],
+      ["d", 93, -32],
+      ["e", -70, -90],
+      ["f", 55, -26],
+      ["g", -90, -81],
+    ].map(([id, x, y], index) => ({
+      ...shipment(String(id), 260 + index, "schedule"),
+      latitude: 20 + Number(y) / 100,
+      longitude: -103 + Number(x) / 100,
+    }));
+    expect(
+      spatialSequenceCandidate(
+        source.shipments,
+        {
+          routes: [
+            {
+              vehicleId: "v1",
+              shipmentIds: source.shipments.map((item) => item.id),
+            },
+          ],
+        },
+        { latitude: 20, longitude: -103 },
+      ).routes[0].shipmentIds,
+    ).toEqual(["c", "a", "g", "e", "f", "d", "b"]);
+  });
+
+  it("builds a balanced multi-centre allocation and keeps exact points indivisible", () => {
+    const source = board();
+    source.vehicles = ["v1", "v2", "v3", "v4"].map((id) => ({
+      ...source.vehicles[0],
+      id,
+    }));
+    source.shipments = [
+      ["north-a", 301, 20.08, -103],
+      ["north-b", 302, 20.081, -103],
+      ["south-a", 303, 19.92, -103],
+      ["south-b", 304, 19.919, -103],
+      ["east-a", 305, 20, -102.92],
+      ["east-b", 306, 20, -102.919],
+      ["west-a", 307, 20, -103.08],
+      ["west-b", 308, 20, -103.081],
+      ["west-same-point", 309, 20, -103.081],
+    ].map(([id, partnerId, latitude, longitude]) => ({
+      ...shipment(String(id), Number(partnerId), "schedule"),
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+    }));
+    const result = geographicClusterCandidate(
+      source.shipments,
+      source.vehicles.map((vehicle) => vehicle.id),
+      { latitude: 20, longitude: -103 },
+    );
+    expect(result).toEqual({
+      routes: [
+        { vehicleId: "v1", shipmentIds: ["north-a", "north-b"] },
+        { vehicleId: "v2", shipmentIds: ["south-a", "south-b"] },
+        { vehicleId: "v3", shipmentIds: ["east-a", "east-b"] },
+        {
+          vehicleId: "v4",
+          shipmentIds: ["west-a", "west-b", "west-same-point"],
+        },
+      ],
+    });
+    expect(
+      geographicClusterCandidate(
+        [...source.shipments].reverse(),
+        source.vehicles.map((vehicle) => vehicle.id),
+        { latitude: 20, longitude: -103 },
+      ),
+    ).toEqual(result);
+    expect(routeLoads(source.shipments, result).maxOrders).toBe(3);
+  });
+
+  it("improves a greedy multi-centre seed through relocate and swap until stable", () => {
+    const source = board();
+    const points = [
+      ["a", -100, -11],
+      ["b", -55, -69],
+      ["c", -9, -55],
+      ["d", 51, 53],
+      ["e", -6, 28],
+      ["f", 4, 5],
+      ["g", 80, 53],
+      ["h", -87, 40],
+      ["i", 81, 83],
+      ["j", -31, -14],
+    ];
+    source.shipments = points.map(([id, x, y], index) => ({
+      ...shipment(String(id), 400 + index, "schedule"),
+      latitude: 20 + Number(y) / 100,
+      longitude: -103 + Number(x) / 100,
+    }));
+    expect(
+      geographicClusterCandidate(source.shipments, ["v1", "v2", "v3"], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).toEqual({
+      routes: [
+        { vehicleId: "v1", shipmentIds: ["g", "i", "d"] },
+        { vehicleId: "v2", shipmentIds: ["j", "c", "f", "e"] },
+        { vehicleId: "v3", shipmentIds: ["a", "b", "h"] },
+      ],
+    });
+  });
+
+  it("uses a swap when relocation alone cannot improve balanced clusters", () => {
+    const source = board();
+    const points = [
+      ["a", -100, -50],
+      ["b", -34, -3],
+      ["c", 78, -20],
+      ["d", 91, 21],
+      ["e", 0, -76],
+      ["f", 37, -28],
+      ["g", -5, 6],
+      ["h", -17, 27],
+      ["i", -93, 5],
+    ];
+    source.shipments = points.map(([id, x, y], index) => ({
+      ...shipment(String(id), 450 + index, "schedule"),
+      latitude: 20 + Number(y) / 100,
+      longitude: -103 + Number(x) / 100,
+    }));
+    expect(
+      geographicClusterCandidate(source.shipments, ["v1", "v2", "v3"], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).toEqual({
+      routes: [
+        { vehicleId: "v1", shipmentIds: ["a", "e", "i"] },
+        { vehicleId: "v2", shipmentIds: ["f", "c", "d"] },
+        { vehicleId: "v3", shipmentIds: ["b", "h", "g"] },
+      ],
+    });
+  });
+
+  it("uses the strongest priority and earliest deadline at a shared point", () => {
+    const sameSchedule = shipment("a-same-schedule", 510, "schedule");
+    sameSchedule.longitude = -102.99;
+    sameSchedule.deliveryWindows = [{ startMinute: 480, endMinute: 720 }];
+    const sameHigh = shipment("z-same-high", 511, "high");
+    sameHigh.longitude = -102.99;
+    const highLate = shipment("high-late", 515, "high");
+    highLate.latitude = 20.02;
+    highLate.deliveryWindows = [{ startMinute: 480, endMinute: 750 }];
+    const medium = shipment("medium-cluster", 512, "medium");
+    medium.latitude = 19.99;
+    const late = shipment("late", 513, "schedule");
+    late.latitude = 20.01;
+    late.deliveryWindows = [{ startMinute: 480, endMinute: 700 }];
+    const early = shipment("early", 514, "schedule");
+    early.longitude = -103.01;
+    early.deliveryWindows = [{ startMinute: 480, endMinute: 600 }];
+    expect(
+      geographicClusterCandidate(
+        [sameSchedule, sameHigh, highLate, medium, late, early],
+        ["v1"],
+        { latitude: 20, longitude: -103 },
+      ).routes[0].shipmentIds,
+    ).toEqual([
+      "z-same-high",
+      "a-same-schedule",
+      "high-late",
+      "medium-cluster",
+      "early",
+      "late",
+    ]);
+  });
+
+  it("balances weighted customer groups before minimizing cluster dispersion", () => {
+    const repeated = (
+      prefix: string,
+      partnerId: number,
+      count: number,
+      longitude: number,
+    ) =>
+      Array.from({ length: count }, (_, index) => ({
+        ...shipment(`${prefix}-${index + 1}`, partnerId, "schedule"),
+        longitude,
+      }));
+    const shipments = [
+      ...repeated("west-heavy", 520, 4, -103.08),
+      ...repeated("east-heavy", 521, 3, -102.92),
+      ...repeated("east-light", 522, 2, -102.91),
+      ...repeated("west-light", 523, 1, -103.09),
+    ];
+    const result = geographicClusterCandidate(shipments, ["v1", "v2"], {
+      latitude: 20,
+      longitude: -103,
+    });
+    expect(result.routes.map((route) => route.shipmentIds.length)).toEqual([
+      5, 5,
+    ]);
+    expect(result.routes).toEqual([
+      {
+        vehicleId: "v1",
+        shipmentIds: [
+          "east-heavy-1",
+          "east-heavy-2",
+          "east-heavy-3",
+          "east-light-1",
+          "east-light-2",
+        ],
+      },
+      {
+        vehicleId: "v2",
+        shipmentIds: [
+          "west-heavy-1",
+          "west-heavy-2",
+          "west-heavy-3",
+          "west-heavy-4",
+          "west-light-1",
+        ],
+      },
+    ]);
+  });
+
+  it("matches the deterministic multi-centre regression corpus", () => {
+    const expected = [
+      [
+        "c0p3m0,c0p3m1,c0p4m0,c0p2m0",
+        "c0p6m0,c0p0m0,c0p7m0,c0p7m1",
+        "c0p1m0,c0p1m1,c0p5m0,c0p5m1",
+      ],
+      [
+        "c1p5m0,c1p3m0,c1p0m0,c1p0m1",
+        "c1p6m0,c1p6m1,c1p4m0,c1p4m1",
+        "c1p2m0,c1p2m1,c1p7m0,c1p1m0",
+      ],
+      [
+        "c2p1m0,c2p1m1,c2p2m0,c2p0m0",
+        "c2p7m0,c2p7m1,c2p3m0,c2p3m1",
+        "c2p4m0,c2p5m0,c2p5m1,c2p6m0",
+      ],
+      [
+        "c3p3m0,c3p1m0,c3p4m0,c3p4m1",
+        "c3p6m0,c3p6m1,c3p2m0,c3p2m1",
+        "c3p0m0,c3p0m1,c3p7m0,c3p5m0",
+      ],
+      [
+        "c4p2m0,c4p6m0,c4p0m0,c4p4m0",
+        "c4p5m0,c4p5m1,c4p7m0,c4p7m1",
+        "c4p3m0,c4p3m1,c4p1m0,c4p1m1",
+      ],
+      [
+        "c5p7m0,c5p4m0,c5p4m1,c5p3m0",
+        "c5p1m0,c5p5m0,c5p0m0,c5p0m1",
+        "c5p2m0,c5p2m1,c5p6m0,c5p6m1",
+      ],
+      [
+        "c6p3m0,c6p3m1,c6p6m0,c6p4m0",
+        "c6p0m0,c6p7m0,c6p7m1,c6p2m0",
+        "c6p1m0,c6p1m1,c6p5m0,c6p5m1",
+      ],
+      [
+        "c7p5m0,c7p0m0,c7p0m1,c7p7m0",
+        "c7p2m0,c7p2m1,c7p3m0,c7p1m0",
+        "c7p6m0,c7p6m1,c7p4m0,c7p4m1",
+      ],
+      [
+        "c8p4m0,c8p2m0,c8p3m0,c8p3m1",
+        "c8p7m0,c8p7m1,c8p0m0,c8p6m0",
+        "c8p1m0,c8p1m1,c8p5m0,c8p5m1",
+      ],
+      [
+        "c9p4m0,c9p4m1,c9p2m0,c9p2m1",
+        "c9p6m0,c9p6m1,c9p1m0,c9p7m0",
+        "c9p3m0,c9p0m0,c9p0m1,c9p5m0",
+      ],
+      [
+        "c10p2m0,c10p0m0,c10p1m0,c10p1m1",
+        "c10p5m0,c10p5m1,c10p3m0,c10p3m1",
+        "c10p6m0,c10p7m0,c10p7m1,c10p4m0",
+      ],
+      [
+        "c11p4m0,c11p4m1,c11p1m0,c11p5m0",
+        "c11p7m0,c11p2m0,c11p2m1,c11p3m0",
+        "c11p6m0,c11p6m1,c11p0m0,c11p0m1",
+      ],
+    ];
+    const random = (seed: number) => {
+      let state = seed;
+      return () => (state = (state * 48271) % 2147483647) / 2147483647;
+    };
+    for (let caseIndex = 0; caseIndex < expected.length; caseIndex++) {
+      const next = random(1000 + caseIndex);
+      const shipments: Shipment[] = [];
+      for (let point = 0; point < 8; point++) {
+        const latitude = 20 + (next() * 2 - 1) * 0.12;
+        const longitude = -103 + (next() * 2 - 1) * 0.12;
+        const weight = 1 + ((point + caseIndex) % 2);
+        const priority = ["high", "medium", "schedule"][
+          (point + caseIndex) % 3
+        ] as Shipment["priority"];
+        const deadline = 540 + Math.floor(next() * 300);
+        for (let member = 0; member < weight; member++) {
+          const item = shipment(
+            `c${caseIndex}p${point}m${member}`,
+            caseIndex * 100 + point,
+            priority,
+          );
+          item.latitude = latitude;
+          item.longitude = longitude;
+          item.deliveryWindows = [{ startMinute: 480, endMinute: deadline }];
+          shipments.push(item);
+        }
+      }
+      expect(
+        geographicClusterCandidate(shipments, ["v1", "v2", "v3"], {
+          latitude: 20,
+          longitude: -103,
+        }).routes.map((route) => route.shipmentIds.join(",")),
+      ).toEqual(expected[caseIndex]);
+    }
+  });
+
+  it("matches the deterministic priority sequence regression corpus", () => {
+    const expected = [
+      "s0p2,s0p0,s0p1,s0p4,s0p3,s0p7,s0p6,s0p5",
+      "s1p1,s1p2,s1p0,s1p3,s1p4,s1p7,s1p6,s1p5",
+      "s2p1,s2p2,s2p0,s2p3,s2p4,s2p7,s2p6,s2p5",
+      "s3p0,s3p2,s3p1,s3p4,s3p3,s3p7,s3p5,s3p6",
+      "s4p2,s4p1,s4p0,s4p4,s4p3,s4p7,s4p6,s4p5",
+      "s5p1,s5p0,s5p2,s5p3,s5p4,s5p5,s5p7,s5p6",
+      "s6p2,s6p1,s6p0,s6p3,s6p4,s6p7,s6p6,s6p5",
+      "s7p1,s7p0,s7p2,s7p3,s7p4,s7p5,s7p6,s7p7",
+      "s8p0,s8p1,s8p2,s8p4,s8p3,s8p5,s8p6,s8p7",
+      "s9p2,s9p0,s9p1,s9p3,s9p4,s9p5,s9p7,s9p6",
+      "s10p2,s10p0,s10p1,s10p3,s10p4,s10p5,s10p6,s10p7",
+      "s11p0,s11p2,s11p1,s11p3,s11p4,s11p5,s11p6,s11p7",
+    ];
+    for (let caseIndex = 0; caseIndex < expected.length; caseIndex++) {
+      let state = 5000 + caseIndex;
+      const next = () => (state = (state * 48271) % 2147483647) / 2147483647;
+      const shipments = Array.from({ length: 8 }, (_, point) => {
+        const item = shipment(
+          `s${caseIndex}p${point}`,
+          caseIndex * 100 + point,
+          point < 3 ? "high" : point < 5 ? "medium" : "schedule",
+        );
+        item.latitude = 20 + (next() * 2 - 1) * 0.13;
+        item.longitude = -103 + (next() * 2 - 1) * 0.13;
+        item.deliveryWindows = [
+          { startMinute: 480, endMinute: 540 + Math.floor(next() * 300) },
+        ];
+        return item;
+      });
+      expect(
+        spatialSequenceCandidate(
+          shipments,
+          {
+            routes: [
+              {
+                vehicleId: "v1",
+                shipmentIds: shipments.map((item) => item.id),
+              },
+            ],
+          },
+          { latitude: 20, longitude: -103 },
+        ).routes[0].shipmentIds.join(","),
+      ).toBe(expected[caseIndex]);
+    }
+  });
+
+  it("preserves the allocation and sequence fingerprint across broad geometries", () => {
+    const outputs: string[] = [];
+    const random = (seed: number) => {
+      let state = seed;
+      return () => (state = (state * 48271) % 2147483647) / 2147483647;
+    };
+    for (let caseIndex = 0; caseIndex < 40; caseIndex++) {
+      const next = random(1000 + caseIndex);
+      const shipments: Shipment[] = [];
+      for (let point = 0; point < 8; point++) {
+        const latitude = 20 + (next() * 2 - 1) * 0.12;
+        const longitude = -103 + (next() * 2 - 1) * 0.12;
+        const weight = 1 + ((point + caseIndex) % 3);
+        const priority = ["high", "medium", "schedule"][
+          (point + caseIndex) % 3
+        ] as Shipment["priority"];
+        const deadline = 540 + Math.floor(next() * 300);
+        for (let member = 0; member < weight; member++) {
+          const item = shipment(
+            `c${caseIndex}p${point}m${member}`,
+            caseIndex * 100 + point,
+            priority,
+          );
+          item.latitude = latitude;
+          item.longitude = longitude;
+          item.deliveryWindows = [{ startMinute: 480, endMinute: deadline }];
+          shipments.push(item);
+        }
+      }
+      outputs.push(
+        JSON.stringify(
+          geographicClusterCandidate(shipments, ["v1", "v2", "v3"], {
+            latitude: 20,
+            longitude: -103,
+          }).routes.map((route) => route.shipmentIds),
+        ),
+      );
+    }
+    for (let caseIndex = 0; caseIndex < 40; caseIndex++) {
+      const next = random(5000 + caseIndex);
+      const shipments = Array.from({ length: 8 }, (_, point) => {
+        const item = shipment(
+          `s${caseIndex}p${point}`,
+          caseIndex * 100 + point,
+          point < 3 ? "high" : point < 5 ? "medium" : "schedule",
+        );
+        item.latitude = 20 + (next() * 2 - 1) * 0.13;
+        item.longitude = -103 + (next() * 2 - 1) * 0.13;
+        item.deliveryWindows = [
+          { startMinute: 480, endMinute: 540 + Math.floor(next() * 300) },
+        ];
+        return item;
+      });
+      outputs.push(
+        JSON.stringify(
+          spatialSequenceCandidate(
+            shipments,
+            {
+              routes: [
+                {
+                  vehicleId: "v1",
+                  shipmentIds: shipments.map((item) => item.id),
+                },
+              ],
+            },
+            { latitude: 20, longitude: -103 },
+          ).routes[0].shipmentIds,
+        ),
+      );
+    }
+    expect(createHash("sha256").update(outputs.join("\n")).digest("hex")).toBe(
+      "5c1af47ff8efd512470206cd27cf37743254dcdc7facfbfe24ebce7c264e19ff",
+    );
+  });
+
+  it("preserves empty and surplus fleet lanes without inventing deliveries", () => {
+    expect(
+      geographicClusterCandidate([], ["v1", "v2"], {
+        latitude: 20,
+        longitude: -103,
+      }),
+    ).toEqual({
+      routes: [
+        { vehicleId: "v1", shipmentIds: [] },
+        { vehicleId: "v2", shipmentIds: [] },
+      ],
+    });
+    expect(
+      geographicClusterCandidate(
+        [shipment("only", 500, "schedule")],
+        ["v1", "v2", "v3"],
+        { latitude: 20, longitude: -103 },
+      ),
+    ).toEqual({
+      routes: [
+        { vehicleId: "v1", shipmentIds: ["only"] },
+        { vehicleId: "v2", shipmentIds: [] },
+        { vehicleId: "v3", shipmentIds: [] },
+      ],
+    });
+    expect(
+      geographicClusterCandidate(
+        [shipment("unassigned", 501, "schedule")],
+        [],
+        { latitude: 20, longitude: -103 },
+      ),
+    ).toEqual({ routes: [] });
+  });
+
+  it("rejects an invalid depot before spatial search", () => {
+    expect(() =>
+      spatialSequenceCandidate(board().shipments, candidate([]), {
+        latitude: Number.NaN,
+        longitude: -103,
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "ROUTING_ORIGIN_REQUIRED", status: 409 }),
+    );
   });
 
   it("never compacts colocated customers across priority tiers", () => {

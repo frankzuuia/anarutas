@@ -689,3 +689,29 @@ Feature: Ana Rutas independiente y portable
     Then Ana Rutas mide también la atención contigua en una sola visita física
     But si la compactación crea una inversión conserva los niveles separados
     And todavía compacta repeticiones seguras dentro de cada nivel
+
+  Scenario: MG01 búsqueda vial sin seis candidatos fijos
+    Given existen pedidos válidos y varias camionetas disponibles
+    When Ana Rutas prepara alternativas completas
+    Then compara semillas independientes de Google barrido circular y clúster multicentro
+    And explora relocate swap y 2-opt mientras exista una mejora estricta
+    And recalcula con Google Routes cada alternativa única antes de elegir
+    And el número de pedidos no limita el espacio de búsqueda
+
+  Scenario: MG02 no regresar a una zona visitada para evitar espera
+    Given dos entregas cercanas de la misma prioridad quedaron separadas por destinos lejanos
+    When una alternativa las vuelve consecutivas
+    Then conserva clientes tarjetas y números de parada independientes
+    And gana solamente si prioridad tardanza y operación completas mejoran
+
+  Scenario: MG03 reparto global sin cruces de ciudad evitables
+    Given dos camionetas mezclan destinos de zonas opuestas
+    When swap o relocate intercambia puntos físicos completos
+    Then conserva cobertura grupos y uso de flota
+    And mide el reparto mejorado antes de guardarlo
+
+  Scenario: MG04 una ventana nunca veta la ruta
+    Given las ventanas ya vencieron o son incompatibles
+    When el administrador pulsa Armar ruta
+    Then todos los pedidos elegibles permanecen asignados
+    And los retrasos participan en el score sin bloquear el guardado

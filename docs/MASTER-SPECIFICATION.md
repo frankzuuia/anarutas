@@ -1,6 +1,7 @@
 # Bloque 1 — especificación y auditoría previa
 
-Política vigente: `BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md`, BL-072..076;
+Política vigente: `BLOQUE-BUSQUEDA-GLOBAL-VIAL.md`, BL-078..082, MG01..08;
+`BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md`, BL-072..076;
 `BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md`, BL-069..071, SV01..08; y
 `BLOQUE-RUTEO-DETERMINISTA.md`, BL-065..068, RD01..08.
 Armar ruta no llama OpenAI: Google aporta optimización vial y Ana Rutas aplica
@@ -15,6 +16,13 @@ BL-072..075 añaden una asignación geográfica balanceada por sectores contiguo
 y una secuencia de fecha límite como alternativa medible, sin retirar la
 propuesta global de Google ni flexibilizar cobertura, grupo de cliente o
 precedencia. BL-076 corrige el contrato temporal real de BigQuery REST.
+
+BL-078..082 incorporan tres semillas independientes —Google global, barrido
+circular y clúster multicentro— y una búsqueda determinista hasta convergencia.
+La vecindad mueve grupos/puntos completos entre camionetas y aplica
+`relocate/2-opt` dentro de cada prioridad; toda alternativa única se vuelve a
+medir con Google Routes para comparar métricas viales y guardar polilíneas. No se
+fusionan clientes cercanos ni se convierte una ventana en restricción dura.
 
 Política histórica: `BLOQUE-LOGISTICA-PRIORIDADES.md`, BL-058..062/064, LP01..20.
 Prioridad por camioneta, horarios flexibles y comparación medida sustituyen

@@ -16,6 +16,15 @@ producción. Los informes QA conservan la evidencia previa al commit/push.
 - [x] PF-QA: 367/367 pruebas, cobertura global 94.62% líneas, núcleo geográfico 100% líneas/96.66% ramas, mutación logística 98.32%, tipos, lint, build, E2E y auditoría de dependencias verdes.
 - [ ] PF-T05: deploy manual y nueva auditoría facturable en develop; comparar kilómetros, tardanzas, retornos y puntos compartidos contra la corrida v32.
 
+## Búsqueda global geográfica multisemilla — 14/09/2026
+
+- [x] MG-T01 (BL-078..082 / MG01..08): autopsia live de 397.9 km; causa localizada en dos repartos y hasta tres secuencias sin vecindad global. GREEN LIGHT y MATCH PERFECT documental.
+- [x] MG-T02: tercera semilla multicentro con puntos físicos indivisibles, balance dinámico y mejora `relocate/swap` hasta convergencia, sin matriz N×N ni consumo cuadrático.
+- [x] MG-T03: búsqueda de secuencia `relocate/2-opt` hasta convergencia dentro de cada nivel de prioridad, conservando cobertura, grupos, puntos y precedencias.
+- [x] MG-T04: deduplicación por firma, recálculo vial exacto de cada alternativa con Google Routes, logs naturales y guardado transaccional existente.
+- [x] MG-QA: 382/382 pruebas, PostgreSQL real, Gherkin y regresiones; cobertura global 93.74% statements/94.92% líneas y planificador geográfico 99.7% statements/95.37% ramas; mutación dirigida 95.53%, tipos, lint, build, E2E local y dependencias verdes. Evidencia en `QA-BUSQUEDA-GLOBAL-VIAL.md`.
+- [x] MG-T05: cambio versionado y enviado a `develop`; deploy y smoke facturable permanecen manuales.
+
 ## Logística por prioridad — BLOQUE-LOGISTICA-PRIORIDADES.md
 
 - [x] LP-T01 (BL-058 / LP01..03,10): política de prioridad por destino/camioneta y diagnóstico compartido.

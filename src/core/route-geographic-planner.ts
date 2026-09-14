@@ -75,10 +75,346 @@ function physicalGeographicGroups(shipments: Shipment[], depot: Point) {
     const key = pointKey(group);
     points.set(key, [...(points.get(key) ?? []), group]);
   }
-  return [...points.values()].map((members): GeographicGroup => ({
-    ...members[0],
-    shipmentIds: members.flatMap((member) => member.shipmentIds),
+  return [...points.values()].map((members): GeographicGroup => {
+    members.sort(
+      (left, right) =>
+        left.rank - right.rank ||
+        left.firstDeadline - right.firstDeadline ||
+        left.id.localeCompare(right.id),
+    );
+    const rank = Math.min(...members.map((member) => member.rank));
+    return {
+      ...members[0],
+      rank,
+      priority: ["high", "medium", "schedule"][
+        rank
+      ] as GeographicGroup["priority"],
+      shipmentIds: members.flatMap((member) => member.shipmentIds),
+      firstDeadline: Math.min(...members.map((member) => member.firstDeadline)),
+    };
+  });
+}
+
+function squaredMeters(left: Point, right: Point) {
+  const latitude = ((left.latitude + right.latitude) / 2) * (Math.PI / 180);
+  const north = (left.latitude - right.latitude) * 111_320;
+  const east =
+    (left.longitude - right.longitude) * 111_320 * Math.cos(latitude);
+  return north * north + east * east;
+}
+
+function geodesicRouteMeters(groups: GeographicGroup[], depot: Point) {
+  let meters = 0;
+  let previous = depot;
+  for (const group of groups) {
+    meters += Math.sqrt(squaredMeters(previous, group.point));
+    previous = group.point;
+  }
+  meters += Math.sqrt(squaredMeters(previous, depot));
+  return meters;
+}
+
+function converge(maximumTransitions: number, improve: () => boolean) {
+  // Stryker disable next-line all: generic operational fuse; domain mutations
+  // belong in the supplied step, while this loop only guarantees termination.
+  for (let transition = 0; transition < maximumTransitions; transition++) {
+    if (!improve()) return;
+  }
+}
+
+function nondecreasingPriority(groups: GeographicGroup[]) {
+  return groups.every(
+    (group, index) => index === 0 || groups[index - 1].rank <= group.rank,
+  );
+}
+
+function routeGroups(groups: GeographicGroup[], candidate: RoutingCandidate) {
+  const byShipment = new Map(
+    groups.flatMap((group) =>
+      group.shipmentIds.map((id) => [id, group] as const),
+    ),
+  );
+  return candidate.routes.map((route) => ({
+    vehicleId: route.vehicleId,
+    groups: [...new Set(route.shipmentIds.map((id) => byShipment.get(id)!))],
   }));
+}
+
+function expandedCandidate(
+  routes: { vehicleId: string; groups: GeographicGroup[] }[],
+): RoutingCandidate {
+  return {
+    routes: routes.map((route) => ({
+      vehicleId: route.vehicleId,
+      shipmentIds: route.groups.flatMap((group) => group.shipmentIds),
+    })),
+  };
+}
+
+// Google remains the road authority. This deterministic neighbourhood only
+// proposes a shorter geometry inside each mandatory priority tier; every result
+// is measured again with Google Routes before it is eligible to win.
+export function spatialSequenceCandidate(
+  shipments: Shipment[],
+  candidate: RoutingCandidate,
+  depot: Point,
+): RoutingCandidate {
+  const groups = geographicGroups(shipments, depot);
+  const compacted = colocatedSequenceCandidate(shipments, candidate);
+  const routes = routeGroups(groups, compacted).map((route) => {
+    let current = route.groups;
+    let currentMeters = geodesicRouteMeters(current, depot);
+    const maximumTransitions = Math.max(1, current.length * current.length);
+    converge(maximumTransitions, () => {
+      let best = current;
+      let bestMeters = currentMeters;
+      for (let from = 0; from < current.length; from++) {
+        const remaining = current.filter((_, index) => index !== from);
+        for (let to = 0; to <= remaining.length; to++) {
+          const moved = [
+            ...remaining.slice(0, to),
+            current[from],
+            ...remaining.slice(to),
+          ];
+          if (!nondecreasingPriority(moved)) continue;
+          const meters = geodesicRouteMeters(moved, depot);
+          if (meters + 0.001 < bestMeters) {
+            best = moved;
+            bestMeters = meters;
+          }
+        }
+      }
+      // Stryker disable next-line EqualityOperator: <= adds one empty iteration.
+      for (let start = 0; start < current.length; start++)
+        for (let end = start + 1; end < current.length; end++) {
+          if (current[start].rank !== current[end].rank) break;
+          const reversed = [
+            ...current.slice(0, start),
+            ...current.slice(start, end + 1).reverse(),
+            ...current.slice(end + 1),
+          ];
+          const meters = geodesicRouteMeters(reversed, depot);
+          if (meters + 0.001 < bestMeters) {
+            best = reversed;
+            bestMeters = meters;
+          }
+        }
+      // Stryker disable next-line ConditionalExpression,BooleanLiteral: another
+      // fuse iteration cannot change a converged candidate.
+      if (best === current) return false;
+      current = best;
+      currentMeters = bestMeters;
+      return true;
+    });
+    return { vehicleId: route.vehicleId, groups: current };
+  });
+  return colocatedSequenceCandidate(shipments, expandedCandidate(routes));
+}
+
+function centroid(groups: GeographicGroup[]) {
+  const orders = groups.reduce(
+    (total, group) => total + group.shipmentIds.length,
+    0,
+  );
+  return {
+    latitude:
+      groups.reduce(
+        (total, group) =>
+          total + group.point.latitude * group.shipmentIds.length,
+        0,
+      ) / orders,
+    longitude:
+      groups.reduce(
+        (total, group) =>
+          total + group.point.longitude * group.shipmentIds.length,
+        0,
+      ) / orders,
+  };
+}
+
+function partitionScore(partitions: GeographicGroup[][]) {
+  const orders = partitions.map((partition) =>
+    partition.reduce((total, group) => total + group.shipmentIds.length, 0),
+  );
+  const dispersion = partitions.reduce((total, partition) => {
+    if (!partition.length) return total;
+    const center = centroid(partition);
+    return (
+      total +
+      partition.reduce(
+        (subtotal, group) =>
+          subtotal +
+          squaredMeters(group.point, center) * group.shipmentIds.length,
+        0,
+      )
+    );
+  }, 0);
+  return [
+    Math.max(...orders),
+    Math.max(...orders) - Math.min(...orders),
+    dispersion,
+  ];
+}
+
+function compareNumberTuple(left: number[], right: number[]) {
+  for (let index = 0; index < left.length; index++) {
+    const difference = left[index] - right[index];
+    if (difference) return difference;
+  }
+  return 0;
+}
+
+function farthestSeeds(groups: GeographicGroup[], count: number, depot: Point) {
+  const stable = [...groups].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  );
+  const seeds = [
+    [...stable].sort(
+      (left, right) =>
+        squaredMeters(right.point, depot) - squaredMeters(left.point, depot) ||
+        left.id.localeCompare(right.id),
+    )[0],
+  ];
+  while (seeds.length < count) {
+    const remaining = stable.filter((group) => !seeds.includes(group));
+    seeds.push(
+      remaining.sort((left, right) => {
+        const leftDistance = Math.min(
+          ...seeds.map((seed) => squaredMeters(left.point, seed.point)),
+        );
+        const rightDistance = Math.min(
+          ...seeds.map((seed) => squaredMeters(right.point, seed.point)),
+        );
+        return rightDistance - leftDistance || left.id.localeCompare(right.id);
+      })[0],
+    );
+  }
+  return seeds;
+}
+
+// A second, independent allocation seed avoids the radial wedges produced by a
+// circular sweep. Farthest-first centres are filled to the dynamic average and
+// then improved by complete relocate/swap neighbourhoods until convergence.
+export function geographicClusterCandidate(
+  shipments: Shipment[],
+  vehicleIds: string[],
+  depot: Point,
+): RoutingCandidate {
+  const groups = physicalGeographicGroups(shipments, depot);
+  const usedVehicles = Math.min(vehicleIds.length, groups.length);
+  if (!usedVehicles)
+    return {
+      routes: vehicleIds.map((vehicleId) => ({ vehicleId, shipmentIds: [] })),
+    };
+  const seeds = farthestSeeds(groups, usedVehicles, depot);
+  let partitions = seeds.map((seed) => [seed]);
+  const seedSet = new Set(seeds);
+  const totalOrders = groups.reduce(
+    (total, group) => total + group.shipmentIds.length,
+    0,
+  );
+  const targetOrders = Math.ceil(totalOrders / usedVehicles);
+  const remaining = groups
+    .filter((group) => !seedSet.has(group))
+    .sort(
+      (left, right) =>
+        right.shipmentIds.length - left.shipmentIds.length ||
+        left.id.localeCompare(right.id),
+    );
+  for (const group of remaining) {
+    const choices = partitions.map((partition, index) => {
+      const orders = partition.reduce(
+        (total, member) => total + member.shipmentIds.length,
+        0,
+      );
+      const projected = orders + group.shipmentIds.length;
+      return {
+        index,
+        overload: Math.max(0, projected - targetOrders),
+        distance: squaredMeters(group.point, centroid(partition)),
+        orders,
+      };
+    });
+    choices.sort(
+      (left, right) =>
+        left.overload - right.overload ||
+        left.distance - right.distance ||
+        left.orders - right.orders ||
+        left.index - right.index,
+    );
+    partitions[choices[0].index].push(group);
+  }
+  let score = partitionScore(partitions);
+  const maximumTransitions = Math.max(1, groups.length * groups.length);
+  converge(maximumTransitions, () => {
+    let best = partitions;
+    let bestScore = score;
+    for (let source = 0; source < partitions.length; source++)
+      for (
+        let destination = 0;
+        destination < partitions.length;
+        destination++
+      ) {
+        if (source === destination) continue;
+        for (let index = 0; index < partitions[source].length; index++) {
+          const moved = partitions.map((partition) => [...partition]);
+          const [group] = moved[source].splice(index, 1);
+          moved[destination].push(group);
+          const candidateScore = partitionScore(moved);
+          const comparison = compareNumberTuple(candidateScore, bestScore);
+          if (comparison < 0) {
+            best = moved;
+            bestScore = candidateScore;
+          }
+        }
+      }
+    // Stryker disable next-line EqualityOperator: <= adds one empty iteration.
+    for (let left = 0; left < partitions.length; left++)
+      for (let right = left + 1; right < partitions.length; right++)
+        for (
+          let leftIndex = 0;
+          leftIndex < partitions[left].length;
+          leftIndex++
+        )
+          for (
+            let rightIndex = 0;
+            rightIndex < partitions[right].length;
+            rightIndex++
+          ) {
+            const swapped = partitions.map((partition) => [...partition]);
+            [swapped[left][leftIndex], swapped[right][rightIndex]] = [
+              swapped[right][rightIndex],
+              swapped[left][leftIndex],
+            ];
+            const candidateScore = partitionScore(swapped);
+            const comparison = compareNumberTuple(candidateScore, bestScore);
+            if (comparison < 0) {
+              best = swapped;
+              bestScore = candidateScore;
+            }
+          }
+    // Stryker disable next-line ConditionalExpression,BooleanLiteral: another
+    // fuse iteration cannot change a converged partition.
+    if (best === partitions) return false;
+    partitions = best;
+    score = bestScore;
+    return true;
+  });
+  return {
+    routes: vehicleIds.map((vehicleId, index) => ({
+      vehicleId,
+      shipmentIds: (partitions[index] ?? [])
+        .sort(
+          (left, right) =>
+            left.rank - right.rank ||
+            left.firstDeadline - right.firstDeadline ||
+            left.angle - right.angle ||
+            left.radius - right.radius ||
+            left.id.localeCompare(right.id),
+        )
+        .flatMap((group) => group.shipmentIds),
+    })),
+  };
 }
 
 // A circular sweep needs a cut. Starting immediately after the widest empty

@@ -1,6 +1,7 @@
 # Ana Rutas — bloque 1 aprobado
 
-Política vigente: BL-072..076 en `BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md`,
+Política vigente: BL-078..082 en `BLOQUE-BUSQUEDA-GLOBAL-VIAL.md`,
+BL-072..076 en `BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md`,
 BL-069..071 en `BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md`, y BL-065..068 de
 `BLOQUE-RUTEO-DETERMINISTA.md`. **Armar ruta**
 no llama LLM; Google y Ana Rutas resuelven mediante optimización y validación
@@ -25,6 +26,12 @@ camionetas diferentes si representan la misma parada física. Después de
 prioridad, retrasos y uso de flota, el objetivo operativo combina conducción
 total y jornada máxima; viaje y distancia anteceden al equilibrio y la espera.
 La compactación entre prioridades sólo se mide cuando conserva cero inversiones.
+BL-078..082 sustituyen la comparación cerrada de hasta seis candidatos por tres
+semillas independientes y búsqueda `relocate/swap/2-opt` hasta convergencia. La
+cantidad de alternativas nace de los datos y de mejoras estrictas, no de un
+máximo fijo; los finalistas se recalculan con Google Routes para ETA, regreso,
+distancia y mapa antes del guardado. Se descarta una matriz N×N porque su consumo
+crece cuadráticamente sin mejorar la autoridad vial final de Google.
 
 BL-065..068 sustituyen a BL-029/035/036/060 donde asignaban autoridad a OpenAI.
 Toda explicación generativa queda fuera del ruteo: prioridad, ventanas, uso de flota,

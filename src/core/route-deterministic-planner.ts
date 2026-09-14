@@ -31,6 +31,8 @@ import {
   colocatedSequenceCandidate,
   deadlineSequenceCandidate,
   geographicBalancedCandidate,
+  geographicClusterCandidate,
+  spatialSequenceCandidate,
 } from "./route-geographic-planner";
 import {
   acquireOptimizationLease,
@@ -50,6 +52,13 @@ import { getRoutingSettings } from "./routing-settings";
 import type { PublicOptimization } from "./routing-contract";
 
 type Evaluation = Awaited<ReturnType<typeof evaluateRoutingCandidate>>;
+type AllocationSource = "Google" | "balance" | "cluster";
+
+function sourceLabel(source: AllocationSource) {
+  if (source === "Google") return "Google";
+  if (source === "cluster") return "clúster geográfico";
+  return "balance geográfico";
+}
 
 function asOptimizationResult(
   evaluation: Evaluation,
@@ -256,12 +265,11 @@ export async function planRouteDeterministically(
         },
       );
 
-      const evaluations: { source: "Google" | "balance"; value: Evaluation }[] =
-        [];
+      const evaluations: { source: AllocationSource; value: Evaluation }[] = [];
       const measured = new Set<string>();
       const readLeg = dependencies.readLeg ?? createRoadLegReader();
       const measure = async (
-        source: "Google" | "balance",
+        source: AllocationSource,
         rawCandidate: RoutingCandidate,
       ) => {
         const candidate = parseRoutingCandidate(rawCandidate, board);
@@ -282,7 +290,7 @@ export async function planRouteDeterministically(
           "routing.roads.started",
           "Google Routes API",
           "medición vial",
-          `Google Routes comenzó a medir la propuesta de ${source === "Google" ? "Google" : "balance geográfico"} después de ordenar su secuencia con las prioridades obligatorias.`,
+          `Google Routes comenzó a medir la propuesta de ${sourceLabel(source)} después de ordenar su secuencia con las prioridades obligatorias.`,
           {
             orders: deliveries.length,
             routes: candidate.routes.length,
@@ -321,7 +329,7 @@ export async function planRouteDeterministically(
           "routing.candidate.evaluated",
           "Ana Rutas",
           "comparación determinista",
-          `Ana Rutas midió la propuesta de ${source === "Google" ? "Google" : "balance geográfico"}: ${value.load.routes.map((route) => route.orders).join("/")} pedidos por camioneta, ${value.lateStops} destinos tarde y ${value.unusedVehicles} camionetas sin uso.`,
+          `Ana Rutas midió la propuesta de ${sourceLabel(source)}: ${value.load.routes.map((route) => route.orders).join("/")} pedidos por camioneta, ${value.lateStops} destinos tarde y ${value.unusedVehicles} camionetas sin uso.`,
           {
             stepDurationMs: Math.round(performance.now() - started),
             evaluatedCandidates: evaluations.length,
@@ -346,12 +354,12 @@ export async function planRouteDeterministically(
       };
 
       const allocations: {
-        source: "Google" | "balance";
+        source: AllocationSource;
         candidate: RoutingCandidate;
       }[] = [];
       const seenAllocations = new Set<string>();
       const addAllocation = (
-        source: "Google" | "balance",
+        source: AllocationSource,
         rawCandidate: RoutingCandidate,
       ) => {
         const parsed = parseRoutingCandidate(rawCandidate, board);
@@ -403,6 +411,22 @@ export async function planRouteDeterministically(
           settings.depotLocation!,
         ),
       );
+      addAllocation(
+        "cluster",
+        geographicClusterCandidate(
+          board.shipments,
+          board.vehicles.map((vehicle) => vehicle.id),
+          settings.depotLocation!,
+        ),
+      );
+      progress(
+        "info",
+        "routing.cluster.prepared",
+        "Ana Rutas",
+        "búsqueda geográfica",
+        "Ana Rutas terminó un clúster balanceado con intercambios entre zonas hasta convergencia; no usó un número fijo de intentos ni fusionó clientes.",
+        { routes: board.vehicles.length },
+      );
 
       for (const allocation of allocations) {
         await renewOptimizationLease(pool, planId, lease, externalTimeout);
@@ -417,7 +441,7 @@ export async function planRouteDeterministically(
           "routing.google.sequence.started",
           "Google Route Optimization",
           "secuencia vial con prioridad",
-          `Google comenzó a ordenar por calles reales la distribución de ${allocation.source === "Google" ? "Google" : "balance geográfico"}; cada destino quedó fijo en su camioneta y las prioridades quedaron como precedencias por ruta.`,
+          `Google comenzó a ordenar por calles reales la distribución de ${sourceLabel(allocation.source)}; cada destino quedó fijo en su camioneta y las prioridades quedaron como precedencias por ruta.`,
           {
             allocationSource: allocation.source,
             deliveryGroups: snapshot.deliveryGroups.length,
@@ -486,7 +510,7 @@ export async function planRouteDeterministically(
           "routing.google.sequence.completed",
           "Google Route Optimization",
           "secuencia vial con prioridad",
-          `Google terminó la secuencia vial de la distribución de ${allocation.source === "Google" ? "Google" : "balance geográfico"} sin omitir destinos ni alterar camionetas.`,
+          `Google terminó la secuencia vial de la distribución de ${sourceLabel(allocation.source)} sin omitir destinos ni alterar camionetas.`,
           {
             allocationSource: allocation.source,
             stepDurationMs: Math.round(performance.now() - sequencingStarted),
@@ -494,7 +518,6 @@ export async function planRouteDeterministically(
             skippedDestinations: 0,
           },
         );
-        await measure(allocation.source, sequencedCandidate);
         const compacted = colocatedSequenceCandidate(
           board.shipments,
           sequencedCandidate,
@@ -510,7 +533,22 @@ export async function planRouteDeterministically(
             "compactación de paradas",
             "Ana Rutas detectó que una camioneta salía de un punto físico para volver después. Medirá también la variante que atiende juntos los clientes ubicados exactamente en ese punto cuando conserva la precedencia de prioridades.",
           );
-        await measure(allocation.source, compacted);
+        const spatial = spatialSequenceCandidate(
+          board.shipments,
+          compacted,
+          settings.depotLocation!,
+        );
+        if (JSON.stringify(spatial.routes) !== JSON.stringify(compacted.routes))
+          progress(
+            "info",
+            "routing.spatial_search.prepared",
+            "Ana Rutas",
+            "búsqueda de secuencia",
+            "Ana Rutas aplicó relocate y 2-opt dentro de las prioridades hasta que ninguna mejora geométrica adicional fue posible; Google Routes medirá el resultado antes de decidir.",
+            { allocationSource: allocation.source },
+          );
+        await measure(allocation.source, sequencedCandidate);
+        await measure(allocation.source, spatial);
       }
       if (evaluations.some((evaluation) => evaluation.value.lateStops > 0)) {
         progress(
@@ -536,7 +574,11 @@ export async function planRouteDeterministically(
           await measure(allocation.source, deadline);
           await measure(
             allocation.source,
-            colocatedSequenceCandidate(board.shipments, deadline),
+            spatialSequenceCandidate(
+              board.shipments,
+              deadline,
+              settings.depotLocation!,
+            ),
           );
         }
       }
@@ -549,7 +591,7 @@ export async function planRouteDeterministically(
         "routing.logistics.compared",
         "Ana Rutas",
         "comparación determinista",
-        `Ana Rutas eligió la propuesta de ${winner.source === "Google" ? "Google" : "balance geográfico"} por prioridad, ventanas, uso de flota, jornada y calles reales; no intervino ningún LLM.`,
+        `Ana Rutas eligió la propuesta de ${sourceLabel(winner.source)} por prioridad, ventanas, uso de flota, jornada y calles reales; no intervino ningún LLM.`,
         {
           evaluatedCandidates: evaluations.length,
           lateStops: winner.value.lateStops,
