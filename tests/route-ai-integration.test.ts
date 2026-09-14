@@ -130,7 +130,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
         deliveryAddress: "Bodega",
         mapUrl: null,
         location: {
-          latitude: 20,
+          latitude: 20 + (Number(customer.odoo_partner_id) - 1) * 0.01,
           longitude: -103,
           placeId: `warehouse-${customer.odoo_partner_id}`,
         },
@@ -276,6 +276,13 @@ describe("deterministic Google routing with real PostgreSQL", () => {
         },
         googleFetch,
         googleToken: async () => "google-token",
+        readLeg: async () => ({
+          distance: 100,
+          seconds: 10,
+          polyline: "integration-road",
+          token: null,
+          trafficMode: "forecast",
+        }),
         requestId: "routing-request-qa",
         logSink: (entry) => logs.push(entry),
       },
@@ -327,7 +334,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       evaluatedCandidates: 2,
       candidateSources: ["Google", "balance"],
       chosenSource: "balance",
-      logisticsPolicy: "priority-geographic-sequenced-v6",
+      logisticsPolicy: "priority-geographic-sequenced-v7",
       score: {
         priorityConflicts: 0,
         lateStops: 0,
@@ -347,6 +354,16 @@ describe("deterministic Google routing with real PostgreSQL", () => {
         (entry) => entry.event === "routing.google.sequence.completed",
       ),
     ).toHaveLength(2);
+    expect(
+      logs.find((entry) => entry.event === "routing.logistics.compared"),
+    ).toMatchObject({
+      details: {
+        operationalSeconds: expect.any(Number),
+        travelSeconds: expect.any(Number),
+        makespanSeconds: expect.any(Number),
+        distanceMeters: expect.any(Number),
+      },
+    });
     expect(logs.at(-1)).toMatchObject({
       event: "routing.completed",
       system: "PostgreSQL",

@@ -475,6 +475,7 @@ Feature: Ana Rutas independiente y portable
     Given dos sucursales tienen el mismo nombre o coordenadas pero distinto partnerId
     When se construyen los grupos del plan
     Then siguen siendo destinos independientes
+    And si comparten la coordenada confirmada viajan en una sola camioneta como una parada física
 
   Scenario: RC04 RC06 contar clientes elegibles para uso de flota
     Given hay varios pedidos de un solo cliente y dos camionetas
@@ -611,7 +612,8 @@ Feature: Ana Rutas independiente y portable
   Scenario: LP19 calles y ventanas entre cargas comparables
     Given dos repartos tienen la misma carga máxima y dispersión
     When ambos son medidos por calles y ventanas reales
-    Then gana lexicográficamente el de menos retrasos jornada espera viaje y distancia
+    Then gana el de menos retrasos y después el menor costo combinado de conducción y jornada máxima
+    And viaje y distancia se comparan antes que equilibrio y espera cosméticos
 
   Scenario: IN01 Incidencias no convierte pronósticos en hechos
     Given la APK del chofer todavía no está conectada
@@ -672,3 +674,18 @@ Feature: Ana Rutas independiente y portable
     Then mide también una secuencia con ambos clientes contiguos
     And Google Routes vuelve a calcular calles ETA ventanas y regreso para esa secuencia
     And la variante sólo gana si mejora la política logística completa
+
+  Scenario: PM03 una parada física es indivisible durante el reparto
+    Given clientes distintos comparten exactamente la misma coordenada confirmada
+    And Google inicialmente los reparte entre camionetas distintas
+    When Ana Rutas fija la distribución antes de secuenciar
+    Then reúne todos sus pedidos en la camioneta que requiere menos movimientos
+    And en empate usa la unidad menos cargada y un desempate estable
+    And conserva por separado cliente partnerId pedido tarjeta y número de parada
+
+  Scenario: PM04 compactación segura entre prioridades
+    Given una camioneta volvería al mismo punto en niveles de prioridad distintos
+    When atenderlos juntos conserva Alta Media y Por horario sin inversiones
+    Then Ana Rutas mide también la atención contigua en una sola visita física
+    But si la compactación crea una inversión conserva los niveles separados
+    And todavía compacta repeticiones seguras dentro de cada nivel

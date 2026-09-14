@@ -239,8 +239,11 @@ Optimization recibe coordenadas, ventanas flexibles y demandas blandas dinámica
 Ana Rutas toma cada distribución completa, fija sus destinos a las camionetas,
 genera precedencias Alta→Media→Por horario sólo dentro de cada unidad y pide a
 Google una segunda optimización de secuencia. El servidor mide las propuestas ya
-secuenciadas, compara prioridad, ventanas, uso de flota, jornada, recorrido y carga
-como desempate, valida cobertura y versión, y sólo entonces aplica. El navegador recibe un contrato sanitizado; los route
+secuenciadas. Antes de fijar cada reparto consolida en una misma camioneta todos
+los clientes con la misma coordenada confirmada, sin fusionar sus identidades.
+Compara prioridad, ventanas, uso de flota, costo combinado de conducción y jornada
+máxima, viaje, distancia y después equilibrio/carga, valida cobertura y versión,
+y sólo entonces aplica. El navegador recibe un contrato sanitizado; los route
 tokens permanecen privados para el endpoint de conductor futuro. Ningún LLM participa.
 
 ### Tables / APIs / Tools

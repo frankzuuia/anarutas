@@ -31,6 +31,9 @@ export type RoutingLogDetails = Partial<{
   ordersPerRoute: number[];
   destinationsPerRoute: number[];
   chosenOrdersPerRoute: number[];
+  operationalSeconds: number;
+  travelSeconds: number;
+  makespanSeconds: number;
   maxOrders: number;
   orderImbalance: number;
   maxDestinations: number;
@@ -79,6 +82,9 @@ const routingDetailKeys = [
   "ordersPerRoute",
   "destinationsPerRoute",
   "chosenOrdersPerRoute",
+  "operationalSeconds",
+  "travelSeconds",
+  "makespanSeconds",
   "maxOrders",
   "orderImbalance",
   "maxDestinations",

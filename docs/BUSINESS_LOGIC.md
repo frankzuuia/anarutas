@@ -19,6 +19,12 @@ mide una línea base dinámica con grupos indivisibles y ninguna capacidad inven
 BL-072 reemplaza esa base ciega a coordenadas por sectores geográficos
 contiguos alrededor de la bodega; BL-074 mide además una secuencia de fecha
 límite cuando la propuesta vial conserva retrasos. Ninguna ventana bloquea el lote.
+BL-077 convierte la coordenada confirmada en unidad indivisible del reparto:
+clientes distintos conservan identidad y pedidos, pero no pueden viajar en
+camionetas diferentes si representan la misma parada física. Después de
+prioridad, retrasos y uso de flota, el objetivo operativo combina conducción
+total y jornada máxima; viaje y distancia anteceden al equilibrio y la espera.
+La compactación entre prioridades sólo se mide cuando conserva cero inversiones.
 
 BL-065..068 sustituyen a BL-029/035/036/060 donde asignaban autoridad a OpenAI.
 Toda explicación generativa queda fuera del ruteo: prioridad, ventanas, uso de flota,

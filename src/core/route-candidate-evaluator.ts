@@ -149,6 +149,8 @@ export async function evaluateRoutingCandidate(
       ? result.routes.filter((route) => !route.stops.length).length
       : 0;
   const load = routeLoads(board.shipments, candidate);
+  const makespanSeconds = Math.max(0, ...durations);
+  const travelSeconds = result.metrics.travelDurationSeconds;
   return {
     id: randomUUID(),
     timezone,
@@ -166,15 +168,16 @@ export async function evaluateRoutingCandidate(
       lateStops,
       lateSeconds,
       unusedVehicles,
+      operationalSeconds: travelSeconds + makespanSeconds,
+      travelSeconds,
+      distanceMeters: result.metrics.travelDistanceMeters,
       maxOrders: load.maxOrders,
       orderImbalance: load.orderImbalance,
       maxDestinations: load.maxDestinations,
       destinationImbalance: load.destinationImbalance,
-      makespanSeconds: Math.max(0, ...durations),
+      makespanSeconds,
       imbalanceSeconds,
       waitSeconds: result.metrics.waitDurationSeconds,
-      travelSeconds: result.metrics.travelDurationSeconds,
-      distanceMeters: result.metrics.travelDistanceMeters,
     },
   };
 }

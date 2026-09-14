@@ -7,6 +7,15 @@ después de conocer las puertas locales verdes y la validación live pendiente.
 Deploy manual en EasyPanel a cargo del usuario; sin autorización para main ni
 producción. Los informes QA conservan la evidencia previa al commit/push.
 
+## Parada física y objetivo operativo — 14/09/2026
+
+- [x] PF-T01: autopsia live de Prueba 2 confirmó Hotel Moto/Vincent Chapalita en la misma coordenada pero camionetas distintas y Abarrotes Franco visitado dos veces.
+- [x] PF-T02: cada coordenada confirmada es indivisible durante el reparto; clientes, `partnerId`, pedidos y tarjetas permanecen independientes.
+- [x] PF-T03: compactación entre prioridades sólo cuando mantiene cero inversiones; fallback continúa compactando dentro de cada nivel.
+- [x] PF-T04: score v7 conserva prioridad, tardanzas y uso de flota; después minimiza conducción total más jornada máxima, viaje y distancia antes que equilibrio/espera.
+- [x] PF-QA: 367/367 pruebas, cobertura global 94.62% líneas, núcleo geográfico 100% líneas/96.66% ramas, mutación logística 98.32%, tipos, lint, build, E2E y auditoría de dependencias verdes.
+- [ ] PF-T05: deploy manual y nueva auditoría facturable en develop; comparar kilómetros, tardanzas, retornos y puntos compartidos contra la corrida v32.
+
 ## Logística por prioridad — BLOQUE-LOGISTICA-PRIORIDADES.md
 
 - [x] LP-T01 (BL-058 / LP01..03,10): política de prioridad por destino/camioneta y diagnóstico compartido.

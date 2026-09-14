@@ -1,6 +1,7 @@
 import { AppError } from "./errors";
 import type { Shipment } from "./orders-contract";
 import {
+  priorityConflictIds,
   priorityGroups,
   type RoutingCandidate,
 } from "./route-logistics-policy";
@@ -59,6 +60,25 @@ function geographicGroups(shipments: Shipment[], depot: Point) {
         : Number.POSITIVE_INFINITY,
     };
   });
+}
+
+function pointKey(group: GeographicGroup) {
+  return `${group.point.latitude},${group.point.longitude}`;
+}
+
+// Allocation works with physical delivery stops rather than customer labels.
+// Distinct customers retain their own IDs and cards, but a confirmed coordinate
+// is an indivisible visit for the fleet partition.
+function physicalGeographicGroups(shipments: Shipment[], depot: Point) {
+  const points = new Map<string, GeographicGroup[]>();
+  for (const group of geographicGroups(shipments, depot)) {
+    const key = pointKey(group);
+    points.set(key, [...(points.get(key) ?? []), group]);
+  }
+  return [...points.values()].map((members): GeographicGroup => ({
+    ...members[0],
+    shipmentIds: members.flatMap((member) => member.shipmentIds),
+  }));
 }
 
 // A circular sweep needs a cut. Starting immediately after the widest empty
@@ -139,7 +159,7 @@ export function geographicBalancedCandidate(
   vehicleIds: string[],
   depot: Point,
 ): RoutingCandidate {
-  const groups = circularSweep(geographicGroups(shipments, depot));
+  const groups = circularSweep(physicalGeographicGroups(shipments, depot));
   const usedVehicles = Math.min(vehicleIds.length, groups.length);
   const partitions = usedVehicles
     ? balancedPartitions(groups, usedVehicles)
@@ -152,6 +172,63 @@ export function geographicBalancedCandidate(
       ),
     })),
   };
+}
+
+// Google assigns customer destinations independently. If two different
+// customers share the same confirmed point, consolidate that physical stop on
+// the lane that requires the fewest moved orders, then prefer its lower current
+// load and let the sequencing request optimize the road order with it fixed.
+export function colocatedAllocationCandidate(
+  shipments: Shipment[],
+  candidate: RoutingCandidate,
+): RoutingCandidate {
+  const groups = geographicGroups(shipments, { latitude: 0, longitude: 0 });
+  const byShipment = new Map(
+    groups.flatMap((group) =>
+      group.shipmentIds.map((id) => [id, group] as const),
+    ),
+  );
+  const byPoint = new Map<string, GeographicGroup[]>();
+  for (const group of groups) {
+    const key = pointKey(group);
+    byPoint.set(key, [...(byPoint.get(key) ?? []), group]);
+  }
+  const routes = candidate.routes.map((route) => ({
+    vehicleId: route.vehicleId,
+    shipmentIds: [...route.shipmentIds],
+  }));
+  for (const pointGroups of byPoint.values()) {
+    const pointIds = new Set(pointGroups.flatMap((group) => group.shipmentIds));
+    const routeIndices = routes.flatMap((route, index) =>
+      route.shipmentIds.some((id) => pointIds.has(id)) ? [index] : [],
+    );
+    // Stryker disable next-line ConditionalExpression: one route already satisfies the invariant; re-inserting the same IDs is observably identical.
+    if (routeIndices.length < 2) continue;
+    const pointOrders = (routeIndex: number) =>
+      routes[routeIndex].shipmentIds.filter((id) => pointIds.has(id)).length;
+    const target = routeIndices.sort(
+      (left, right) =>
+        pointOrders(right) - pointOrders(left) ||
+        routes[left].shipmentIds.length - routes[right].shipmentIds.length ||
+        left - right,
+    )[0];
+    const originalTarget = routes[target].shipmentIds;
+    const insertion = originalTarget.findIndex((id) => pointIds.has(id));
+    const orderedGroups = [
+      ...new Set(
+        routes.flatMap((route) =>
+          route.shipmentIds
+            .filter((id) => pointIds.has(id))
+            .map((id) => byShipment.get(id)!),
+        ),
+      ),
+    ].sort((left, right) => left.rank - right.rank);
+    const orderedIds = orderedGroups.flatMap((group) => group.shipmentIds);
+    for (const route of routes)
+      route.shipmentIds = route.shipmentIds.filter((id) => !pointIds.has(id));
+    routes[target].shipmentIds.splice(insertion, 0, ...orderedIds);
+  }
+  return { routes };
 }
 
 // A safe alternative for a measured route that still arrives late. It keeps
@@ -215,13 +292,17 @@ export function colocatedSequenceCandidate(
       throw new AppError("ROUTING_POINTS_REQUIRED", 409);
     return `${shipment.latitude},${shipment.longitude}`;
   };
-  const compact = (routeGroups: (typeof groups)[number][]) => {
+  const compact = (
+    routeGroups: (typeof groups)[number][],
+    withinPriorityTier: boolean,
+  ) => {
     const result: (typeof groups)[number][] = [];
     for (let start = 0; start < routeGroups.length;) {
       let end = start + 1;
       while (
         end < routeGroups.length &&
-        routeGroups[end].rank === routeGroups[start].rank
+        (!withinPriorityTier ||
+          routeGroups[end].rank === routeGroups[start].rank)
       )
         end++;
       const tier = routeGroups.slice(start, end);
@@ -241,15 +322,21 @@ export function colocatedSequenceCandidate(
     }
     return result;
   };
-  return {
+  const build = (withinPriorityTier: boolean): RoutingCandidate => ({
     routes: candidate.routes.map((route) => {
       const routeGroups = [
         ...new Set(route.shipmentIds.map((id) => byShipment.get(id)!)),
       ];
       return {
         vehicleId: route.vehicleId,
-        shipmentIds: compact(routeGroups).flatMap((group) => group.shipmentIds),
+        shipmentIds: compact(routeGroups, withinPriorityTier).flatMap(
+          (group) => group.shipmentIds,
+        ),
       };
     }),
-  };
+  });
+  const acrossPriorities = build(false);
+  return priorityConflictIds(shipments, acrossPriorities).size
+    ? build(true)
+    : acrossPriorities;
 }

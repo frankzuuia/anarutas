@@ -25,6 +25,7 @@ import {
   logisticsComparison,
 } from "../src/core/route-logistics-search";
 import {
+  colocatedAllocationCandidate,
   colocatedSequenceCandidate,
   deadlineSequenceCandidate,
   geographicBalancedCandidate,
@@ -115,7 +116,7 @@ describe("logistics precedence and physical-stop quality", () => {
     const snapshot = planningSnapshot(board(), settings, "America/Mexico_City");
     expect(snapshot.timezone).toBe("America/Mexico_City");
     expect(snapshot.policy).toEqual({
-      version: "priority-geographic-sequenced-v6",
+      version: "priority-geographic-sequenced-v7",
       priorityScope: "per_vehicle",
       compareAlternatives: true,
       scoreOrder: [
@@ -123,11 +124,12 @@ describe("logistics precedence and physical-stop quality", () => {
         "lateStops",
         "lateSeconds",
         "unusedVehicles",
+        "operationalSeconds",
+        "travelSeconds",
+        "distanceMeters",
         "makespanSeconds",
         "imbalanceSeconds",
         "waitSeconds",
-        "travelSeconds",
-        "distanceMeters",
         "maxOrders",
         "orderImbalance",
         "maxDestinations",
@@ -301,6 +303,7 @@ describe("logistics precedence and physical-stop quality", () => {
     );
     expect(measured.score).toMatchObject({
       unusedVehicles: 0,
+      operationalSeconds: 500,
       makespanSeconds: 200,
       imbalanceSeconds: 100,
       waitSeconds: 0,
@@ -472,6 +475,94 @@ describe("logistics precedence and physical-stop quality", () => {
         ).size,
       ).toBe(1);
     }
+  });
+
+  it("keeps distinct customers at one confirmed physical stop on one truck", () => {
+    const source = board();
+    source.shipments = [
+      shipment("hotel", 10, "high"),
+      shipment("vincent", 11, "schedule"),
+      shipment("north", 12, "schedule"),
+      shipment("south", 13, "schedule"),
+    ];
+    source.shipments[2].latitude = 20.1;
+    source.shipments[3].latitude = 19.9;
+    const repaired = colocatedAllocationCandidate(source.shipments, {
+      routes: [
+        { vehicleId: "v1", shipmentIds: ["north", "hotel"] },
+        { vehicleId: "v2", shipmentIds: ["vincent", "south"] },
+      ],
+    });
+    expect(repaired.routes).toEqual([
+      { vehicleId: "v1", shipmentIds: ["north", "hotel", "vincent"] },
+      { vehicleId: "v2", shipmentIds: ["south"] },
+    ]);
+    expect(
+      geographicBalancedCandidate(source.shipments, ["v1", "v2"], {
+        latitude: 20,
+        longitude: -103,
+      }).routes.filter(
+        (route) =>
+          route.shipmentIds.includes("hotel") ||
+          route.shipmentIds.includes("vincent"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("repairs a split point with minimum movement, then lower lane load", () => {
+    const source = board();
+    source.shipments = [
+      shipment("schedule-at-point", 20, "schedule"),
+      shipment("high-at-point", 21, "high"),
+      shipment("medium-at-point", 22, "medium"),
+      shipment("other", 23, "schedule"),
+    ];
+    source.shipments[3].latitude = 21;
+    expect(
+      colocatedAllocationCandidate(source.shipments, {
+        routes: [
+          { vehicleId: "v1", shipmentIds: ["medium-at-point"] },
+          {
+            vehicleId: "v2",
+            shipmentIds: ["schedule-at-point", "high-at-point", "other"],
+          },
+        ],
+      }).routes,
+    ).toEqual([
+      { vehicleId: "v1", shipmentIds: [] },
+      {
+        vehicleId: "v2",
+        shipmentIds: [
+          "high-at-point",
+          "medium-at-point",
+          "schedule-at-point",
+          "other",
+        ],
+      },
+    ]);
+
+    source.shipments = [
+      shipment("same-a", 30, "schedule"),
+      shipment("same-b", 31, "schedule"),
+      shipment("other-a", 32, "schedule"),
+      shipment("other-b", 33, "schedule"),
+    ];
+    source.shipments[2].latitude = 21;
+    source.shipments[3].latitude = 22;
+    expect(
+      colocatedAllocationCandidate(source.shipments, {
+        routes: [
+          {
+            vehicleId: "v1",
+            shipmentIds: ["other-a", "same-a", "other-b"],
+          },
+          { vehicleId: "v2", shipmentIds: ["same-b"] },
+        ],
+      }).routes,
+    ).toEqual([
+      { vehicleId: "v1", shipmentIds: ["other-a", "other-b"] },
+      { vehicleId: "v2", shipmentIds: ["same-a", "same-b"] },
+    ]);
   });
 
   it("isolates an indivisible heavy destination while preserving adjacent angular sectors", () => {
@@ -760,6 +851,82 @@ describe("logistics precedence and physical-stop quality", () => {
         ],
       }).routes[0].shipmentIds,
     ).toEqual(["high", "medium", "same-point-schedule"]);
+  });
+
+  it("still compacts within a tier when cross-tier compaction would invert priority", () => {
+    const source = board();
+    source.vehicles = [source.vehicles[0]];
+    source.shipments = [
+      shipment("high-at-point-a", 1, "high"),
+      shipment("high-at-point-b", 2, "high"),
+      shipment("second-high-at-point-a", 3, "high"),
+      shipment("medium", 4, "medium"),
+      shipment("schedule-at-point-a", 5, "schedule"),
+    ];
+    source.shipments[1].latitude = 20.1;
+    source.shipments[3].latitude = 20.2;
+    expect(
+      colocatedSequenceCandidate(source.shipments, {
+        routes: [
+          {
+            vehicleId: "v1",
+            shipmentIds: source.shipments.map((item) => item.id),
+          },
+        ],
+      }).routes[0].shipmentIds,
+    ).toEqual([
+      "high-at-point-a",
+      "second-high-at-point-a",
+      "high-at-point-b",
+      "medium",
+      "schedule-at-point-a",
+    ]);
+  });
+
+  it("compacts colocated priority tiers when doing so creates no priority inversion", () => {
+    const source = board();
+    source.vehicles = [source.vehicles[0]];
+    source.shipments = [
+      shipment("high", 1, "high"),
+      shipment("middle-place", 2, "schedule"),
+      shipment("same-point-schedule", 3, "schedule"),
+    ];
+    source.shipments[1].latitude = 21;
+    expect(
+      colocatedSequenceCandidate(source.shipments, {
+        routes: [
+          {
+            vehicleId: "v1",
+            shipmentIds: ["high", "middle-place", "same-point-schedule"],
+          },
+        ],
+      }).routes[0].shipmentIds,
+    ).toEqual(["high", "same-point-schedule", "middle-place"]);
+  });
+
+  it("prefers lower combined driving and longest-shift cost over cosmetic balance", () => {
+    const zero = Object.fromEntries(
+      logisticsScoreKeys.map((key) => [key, 0]),
+    ) as LogisticsScore;
+    const direct = {
+      ...zero,
+      operationalSeconds: 10_000,
+      travelSeconds: 6_000,
+      distanceMeters: 80_000,
+      makespanSeconds: 4_000,
+      imbalanceSeconds: 2_000,
+      waitSeconds: 1_000,
+    };
+    const zigzag = {
+      ...zero,
+      operationalSeconds: 10_001,
+      travelSeconds: 7_000,
+      distanceMeters: 90_000,
+      makespanSeconds: 3_001,
+      imbalanceSeconds: 0,
+      waitSeconds: 0,
+    };
+    expect(compareLogisticsScores(direct, zigzag)).toBeLessThan(0);
   });
 
   it("rejects every incomplete point before building a colocated candidate", () => {

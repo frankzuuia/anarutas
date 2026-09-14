@@ -27,6 +27,7 @@ import {
 } from "./route-logistics-policy";
 import { allocationSignature } from "./route-logistics-search";
 import {
+  colocatedAllocationCandidate,
   colocatedSequenceCandidate,
   deadlineSequenceCandidate,
   geographicBalancedCandidate,
@@ -100,6 +101,7 @@ export async function planRouteDeterministically(
     googleToken?: () => Promise<string>;
     requestId?: string;
     logSink?: RoutingLogSink;
+    readLeg?: ReturnType<typeof createRoadLegReader>;
   } = {},
 ): Promise<PublicOptimization | null> {
   const planId = uuid(planIdRaw);
@@ -257,7 +259,7 @@ export async function planRouteDeterministically(
       const evaluations: { source: "Google" | "balance"; value: Evaluation }[] =
         [];
       const measured = new Set<string>();
-      const readLeg = createRoadLegReader();
+      const readLeg = dependencies.readLeg ?? createRoadLegReader();
       const measure = async (
         source: "Google" | "balance",
         rawCandidate: RoutingCandidate,
@@ -352,7 +354,20 @@ export async function planRouteDeterministically(
         source: "Google" | "balance",
         rawCandidate: RoutingCandidate,
       ) => {
-        const candidate = parseRoutingCandidate(rawCandidate, board);
+        const parsed = parseRoutingCandidate(rawCandidate, board);
+        const candidate = parseRoutingCandidate(
+          colocatedAllocationCandidate(board.shipments, parsed),
+          board,
+        );
+        if (allocationSignature(parsed) !== allocationSignature(candidate))
+          progress(
+            "info",
+            "routing.colocation.assignment_repaired",
+            "Ana Rutas",
+            "distribución por punto físico",
+            "Ana Rutas reunió en una sola camioneta clientes distintos que comparten exactamente el mismo punto confirmado, sin fusionar sus pedidos ni identidades.",
+            { allocationSource: source },
+          );
         const signature = allocationSignature(candidate);
         if (seenAllocations.has(signature)) return;
         seenAllocations.add(signature);
@@ -493,7 +508,7 @@ export async function planRouteDeterministically(
             "routing.colocation.prepared",
             "Ana Rutas",
             "compactación de paradas",
-            "Ana Rutas detectó que una camioneta salía de un punto físico para volver después. Medirá también la variante que atiende juntos los clientes ubicados exactamente en ese punto, sin mezclar prioridades.",
+            "Ana Rutas detectó que una camioneta salía de un punto físico para volver después. Medirá también la variante que atiende juntos los clientes ubicados exactamente en ese punto cuando conserva la precedencia de prioridades.",
           );
         await measure(allocation.source, compacted);
       }
@@ -542,6 +557,10 @@ export async function planRouteDeterministically(
           chosenOrdersPerRoute: winner.value.load.routes.map(
             (route) => route.orders,
           ),
+          operationalSeconds: winner.value.score.operationalSeconds,
+          travelSeconds: winner.value.score.travelSeconds,
+          makespanSeconds: winner.value.score.makespanSeconds,
+          distanceMeters: winner.value.score.distanceMeters,
         },
       );
       progress(
