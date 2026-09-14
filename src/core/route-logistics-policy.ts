@@ -1,7 +1,7 @@
 import type { OrderBoard, Shipment } from "./orders-contract";
 import { deliveryGroups } from "./route-delivery-groups";
 
-export const logisticsPolicyVersion = "priority-geographic-sequenced-v5";
+export const logisticsPolicyVersion = "priority-geographic-sequenced-v6";
 export const priorityOrder = ["high", "medium", "schedule"] as const;
 export type RoutingCandidate = {
   routes: { vehicleId: string; shipmentIds: string[] }[];

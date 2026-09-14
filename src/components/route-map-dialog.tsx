@@ -7,6 +7,7 @@ import type {
   PublicOptimization,
   RoutingSettings,
 } from "@/core/routing-contract";
+import { groupRouteMapStops, nextOpenMarker } from "@/core/route-map-markers";
 import { api, errors } from "./api";
 import { loadGoogleMaps } from "./google-maps";
 
@@ -203,8 +204,7 @@ export function RouteMapDialog({
     const markers: google.maps.marker.AdvancedMarkerElement[] = [];
     const routeLines: google.maps.Polyline[] = [];
     const info = new google.maps.InfoWindow();
-    // Keep colocated orders as separate records; one pin exposes all at that exact point.
-    const groups = new globalThis.Map<string, Shipment[]>();
+    let openMarkerKey: string | null = null;
     if (origin?.depotLocation) {
       const position = {
         lat: origin.depotLocation.latitude,
@@ -223,22 +223,22 @@ export function RouteMapDialog({
         }),
       );
     }
-    for (const shipment of visible) {
-      const position = locations[shipment.id]?.position;
-      if (!position) continue;
-      const key = JSON.stringify(position);
-      groups.set(key, [...(groups.get(key) || []), shipment]);
-    }
-    for (const orders of groups.values()) {
-      const position = locations[orders[0].id].position!;
+    const markerGroups = groupRouteMapStops(
+      visible.flatMap((shipment) => {
+        const position = locations[shipment.id]?.position;
+        return position
+          ? [{ shipment, position, stopNumber: stopNumber(shipment) }]
+          : [];
+      }),
+    );
+    for (const group of markerGroups) {
+      const orders = group.stops.map((stop) => stop.shipment);
+      const position = group.position;
       bounds.extend(position);
       const pin = document.createElement("div");
       pin.className = "map-pin";
       pin.style.background = color(laneIndex(orders[0]));
-      pin.textContent =
-        orders.length === 1
-          ? String(stopNumber(orders[0]))
-          : `${orders.length} pedidos`;
+      pin.textContent = group.label;
       const marker = new google.maps.marker.AdvancedMarkerElement({
         map: currentMap,
         position,
@@ -248,6 +248,12 @@ export function RouteMapDialog({
           .join(" / "),
       });
       marker.addListener("click", () => {
+        const next = nextOpenMarker(openMarkerKey, group.key);
+        if (next === null) {
+          info.close();
+          openMarkerKey = null;
+          return;
+        }
         const content = document.createElement("div");
         content.style.color = "#17221b";
         for (const s of orders) {
@@ -256,10 +262,14 @@ export function RouteMapDialog({
           content.append(p);
         }
         info.setContent(content);
+        openMarkerKey = next;
         info.open({ map: currentMap, anchor: marker });
       });
       markers.push(marker);
     }
+    const closeInfo = info.addListener("closeclick", () => {
+      openMarkerKey = null;
+    });
     if (optimization?.current) {
       for (const optimizedRoute of optimization.routes) {
         if (filter !== "all" && optimizedRoute.vehicleId !== filter) continue;
@@ -292,6 +302,7 @@ export function RouteMapDialog({
     });
     return () => {
       idle.remove();
+      closeInfo.remove();
       info.close();
       markers.forEach((marker) => {
         google.maps.event.clearInstanceListeners(marker);

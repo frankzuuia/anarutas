@@ -189,3 +189,67 @@ export function deadlineSequenceCandidate(
     }),
   };
 }
+
+// Google optimizes the general sequence, while this produces an additional
+// candidate for an obvious physical invariant: within one priority tier, a
+// truck must not leave an exact delivery point and return to it later. The
+// candidate is always remeasured by Google Routes before it can win.
+export function colocatedSequenceCandidate(
+  shipments: Shipment[],
+  candidate: RoutingCandidate,
+): RoutingCandidate {
+  const byId = new Map(shipments.map((shipment) => [shipment.id, shipment]));
+  const groups = priorityGroups(shipments);
+  const byShipment = new Map(
+    groups.flatMap((group) =>
+      group.shipmentIds.map((id) => [id, group] as const),
+    ),
+  );
+  const pointKey = (group: (typeof groups)[number]) => {
+    const shipment = byId.get(group.id)!;
+    if (
+      shipment.latitude === null ||
+      shipment.longitude === null ||
+      shipment.locationStatus === "pending"
+    )
+      throw new AppError("ROUTING_POINTS_REQUIRED", 409);
+    return `${shipment.latitude},${shipment.longitude}`;
+  };
+  const compact = (routeGroups: (typeof groups)[number][]) => {
+    const result: (typeof groups)[number][] = [];
+    for (let start = 0; start < routeGroups.length;) {
+      let end = start + 1;
+      while (
+        end < routeGroups.length &&
+        routeGroups[end].rank === routeGroups[start].rank
+      )
+        end++;
+      const tier = routeGroups.slice(start, end);
+      const byPoint = new Map<string, (typeof groups)[number][]>();
+      for (const group of tier) {
+        const key = pointKey(group);
+        byPoint.set(key, [...(byPoint.get(key) ?? []), group]);
+      }
+      const emitted = new Set<string>();
+      for (const group of tier) {
+        const key = pointKey(group);
+        if (emitted.has(key)) continue;
+        emitted.add(key);
+        result.push(...byPoint.get(key)!);
+      }
+      start = end;
+    }
+    return result;
+  };
+  return {
+    routes: candidate.routes.map((route) => {
+      const routeGroups = [
+        ...new Set(route.shipmentIds.map((id) => byShipment.get(id)!)),
+      ];
+      return {
+        vehicleId: route.vehicleId,
+        shipmentIds: compact(routeGroups).flatMap((group) => group.shipmentIds),
+      };
+    }),
+  };
+}

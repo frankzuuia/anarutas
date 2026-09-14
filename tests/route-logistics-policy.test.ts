@@ -25,6 +25,7 @@ import {
   logisticsComparison,
 } from "../src/core/route-logistics-search";
 import {
+  colocatedSequenceCandidate,
   deadlineSequenceCandidate,
   geographicBalancedCandidate,
 } from "../src/core/route-geographic-planner";
@@ -114,7 +115,7 @@ describe("logistics precedence and physical-stop quality", () => {
     const snapshot = planningSnapshot(board(), settings, "America/Mexico_City");
     expect(snapshot.timezone).toBe("America/Mexico_City");
     expect(snapshot.policy).toEqual({
-      version: "priority-geographic-sequenced-v5",
+      version: "priority-geographic-sequenced-v6",
       priorityScope: "per_vehicle",
       compareAlternatives: true,
       scoreOrder: [
@@ -709,6 +710,86 @@ describe("logistics precedence and physical-stop quality", () => {
       }).routes.filter((route) => route.shipmentIds.includes("high-urgent"))[0]
         .shipmentIds,
     ).toContain("high-urgent-second");
+  });
+
+  it("offers a measured candidate that avoids returning to an exact physical point", () => {
+    const source = board();
+    source.vehicles = [source.vehicles[0]];
+    source.shipments = [
+      shipment("cocos", 132, "schedule"),
+      shipment("middle", 200, "schedule"),
+      shipment("metate", 75, "schedule"),
+      shipment("metate-second", 75, "schedule"),
+    ];
+    source.shipments[0].latitude = 20.709614;
+    source.shipments[0].longitude = -103.411964;
+    source.shipments[1].latitude = 20.72;
+    source.shipments[1].longitude = -103.4;
+    source.shipments[2].latitude = 20.709614;
+    source.shipments[2].longitude = -103.411964;
+    source.shipments[3].latitude = 20.709614;
+    source.shipments[3].longitude = -103.411964;
+    expect(
+      colocatedSequenceCandidate(source.shipments, {
+        routes: [
+          {
+            vehicleId: "v1",
+            shipmentIds: ["cocos", "middle", "metate", "metate-second"],
+          },
+        ],
+      }).routes[0].shipmentIds,
+    ).toEqual(["cocos", "metate", "metate-second", "middle"]);
+  });
+
+  it("never compacts colocated customers across priority tiers", () => {
+    const source = board();
+    source.vehicles = [source.vehicles[0]];
+    source.shipments = [
+      shipment("high", 1, "high"),
+      shipment("medium", 2, "medium"),
+      shipment("same-point-schedule", 3, "schedule"),
+    ];
+    source.shipments[1].latitude = 21;
+    expect(
+      colocatedSequenceCandidate(source.shipments, {
+        routes: [
+          {
+            vehicleId: "v1",
+            shipmentIds: ["high", "medium", "same-point-schedule"],
+          },
+        ],
+      }).routes[0].shipmentIds,
+    ).toEqual(["high", "medium", "same-point-schedule"]);
+  });
+
+  it("rejects every incomplete point before building a colocated candidate", () => {
+    for (const invalid of [
+      { latitude: null },
+      { longitude: null },
+      { locationStatus: "pending" as const },
+    ]) {
+      const source = board();
+      Object.assign(source.shipments[0], invalid);
+      expect(() =>
+        colocatedSequenceCandidate(source.shipments, {
+          routes: [
+            {
+              vehicleId: "v1",
+              shipmentIds: source.shipments.map((item) => item.id),
+            },
+            { vehicleId: "v2", shipmentIds: [] },
+          ],
+        }),
+      ).toThrow("ROUTING_POINTS_REQUIRED");
+    }
+  });
+
+  it("preserves an empty route without inventing a stop", () => {
+    expect(
+      colocatedSequenceCandidate([], {
+        routes: [{ vehicleId: "v1", shipmentIds: [] }],
+      }),
+    ).toEqual({ routes: [{ vehicleId: "v1", shipmentIds: [] }] });
   });
 
   it("uses opening, angle, radius and stable identity as deadline tie breakers", () => {

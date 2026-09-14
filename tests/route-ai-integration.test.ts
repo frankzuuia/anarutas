@@ -327,7 +327,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       evaluatedCandidates: 2,
       candidateSources: ["Google", "balance"],
       chosenSource: "balance",
-      logisticsPolicy: "priority-geographic-sequenced-v5",
+      logisticsPolicy: "priority-geographic-sequenced-v6",
       score: {
         priorityConflicts: 0,
         lateStops: 0,

@@ -656,3 +656,19 @@ Feature: Ana Rutas independiente y portable
     And después se comparan uso de flota, jornada y recorrido reales
     And la carga sólo desempata soluciones viales equivalentes
     And una ventana vencida nunca impide guardar la ruta completa
+
+  Scenario: PM01 clientes distintos en el mismo punto conservan su identidad
+    Given dos clientes distintos tienen exactamente la misma coordenada confirmada
+    When el administrador abre el mapa
+    Then el pin muestra los números reales de ambas paradas
+    And no los presenta como si fueran varios pedidos del mismo cliente
+    When pulsa dos veces el mismo pin
+    Then la segunda pulsación cierra la ficha blanca
+
+  Scenario: PM02 una camioneta no abandona un punto para regresar sin necesidad
+    Given una ruta visita dos clientes del mismo punto físico dentro del mismo nivel de prioridad
+    And otra parada quedó intercalada entre ambos
+    When Ana Rutas compara alternativas antes de guardar
+    Then mide también una secuencia con ambos clientes contiguos
+    And Google Routes vuelve a calcular calles ETA ventanas y regreso para esa secuencia
+    And la variante sólo gana si mejora la política logística completa

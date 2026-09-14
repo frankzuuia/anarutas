@@ -27,6 +27,7 @@ import {
 } from "./route-logistics-policy";
 import { allocationSignature } from "./route-logistics-search";
 import {
+  colocatedSequenceCandidate,
   deadlineSequenceCandidate,
   geographicBalancedCandidate,
 } from "./route-geographic-planner";
@@ -479,6 +480,22 @@ export async function planRouteDeterministically(
           },
         );
         await measure(allocation.source, sequencedCandidate);
+        const compacted = colocatedSequenceCandidate(
+          board.shipments,
+          sequencedCandidate,
+        );
+        if (
+          JSON.stringify(compacted.routes) !==
+          JSON.stringify(sequencedCandidate.routes)
+        )
+          progress(
+            "info",
+            "routing.colocation.prepared",
+            "Ana Rutas",
+            "compactación de paradas",
+            "Ana Rutas detectó que una camioneta salía de un punto físico para volver después. Medirá también la variante que atiende juntos los clientes ubicados exactamente en ese punto, sin mezclar prioridades.",
+          );
+        await measure(allocation.source, compacted);
       }
       if (evaluations.some((evaluation) => evaluation.value.lateStops > 0)) {
         progress(
@@ -495,15 +512,18 @@ export async function planRouteDeterministically(
             ),
           },
         );
-        for (const allocation of allocations)
+        for (const allocation of allocations) {
+          const deadline = deadlineSequenceCandidate(
+            board.shipments,
+            allocation.candidate,
+            settings.depotLocation!,
+          );
+          await measure(allocation.source, deadline);
           await measure(
             allocation.source,
-            deadlineSequenceCandidate(
-              board.shipments,
-              allocation.candidate,
-              settings.depotLocation!,
-            ),
+            colocatedSequenceCandidate(board.shipments, deadline),
           );
+        }
       }
       const winner = [...evaluations].sort((left, right) =>
         compareLogisticsScores(left.value.score, right.value.score),
