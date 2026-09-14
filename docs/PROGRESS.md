@@ -89,6 +89,7 @@ consultas de consumo en el mapa. Google Billing/BigQuery es la autoridad y Postg
 - [x] G-T05 (BL-040 / G01, G06-10): navegación y pantalla responsive con costo, créditos, historial y medidores independientes; mapa intacto.
 - [x] G-T06 (todas / G01-10): 293 pruebas, PostgreSQL real, Gherkin, E2E, seguridad, 90.40% statements, 93.80% mutación, lint, typecheck y build verdes. Evidencia en `QA-BLOQUE-5C-CONSUMO-GOOGLE.md`.
 - [ ] G-T07: configurar Standard + Pricing export e IAM en develop; smoke oficial y evidencia antes de promoción.
+- [x] G-T08: regresión develop del contrato real de Pricing Export: aceptar el recurso canónico `businessEntities/Maps`; el filtro anterior `Maps` producía `GOOGLE_CONSUMPTION_RESPONSE_INVALID` y ocultaba uso, cuota y restante aunque ambas tablas existieran.
 
 ## Bloque 5B histórico — recálculo automático y OpenAI (sustituido)
 

@@ -255,6 +255,18 @@ function ReadyPanel({
                       {levelText[sku.level]}
                     </span>
                   </header>
+                  <p className="consumption-usage-summary">
+                    <strong>{formatNumber(sku.usage)}</strong>
+                    {sku.freeLimit === null ? (
+                      " usos publicados; Google no publicó una cuota sin cargo"
+                    ) : (
+                      <>
+                        {" "}
+                        de {formatNumber(sku.freeLimit)} usos incluidos · quedan{" "}
+                        {formatNumber(sku.remaining ?? 0)}
+                      </>
+                    )}
+                  </p>
                   <div className="consumption-progress-line">
                     <span
                       className={`consumption-progress ${sku.level}`}

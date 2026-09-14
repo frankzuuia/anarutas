@@ -2601,6 +2601,15 @@ button.route-optimize:hover:not(:disabled) {
 .consumption-sku header small {
   font-size: 10px;
 }
+.consumption-usage-summary {
+  margin: 0;
+  color: #d8e5dc;
+  font-size: 12px;
+}
+.consumption-usage-summary strong {
+  color: #f2fff6;
+  font-size: 16px;
+}
 .consumption-level {
   flex: 0 0 auto;
   padding: 2px 7px;

@@ -280,13 +280,14 @@ describe("Google BigQuery consumption contract", () => {
     }
   });
 
-  it("builds a provider query that filters Maps pricing and parameterizes the target project", () => {
+  it("uses Google's canonical Maps business-entity resource and parameterizes the target project", () => {
     const query = consumptionQuery(
       config(),
       "gcp_billing_export_v1_account",
       "cloud_pricing_export",
     );
-    expect(query).toContain("business_entity_name = 'Maps'");
+    expect(query).toContain("business_entity_name = 'businessEntities/Maps'");
+    expect(query).not.toContain("business_entity_name = 'Maps'");
     expect(query).toContain("b.project.id = @mapsProjectId");
     expect(query).toContain("b.export_time >= TIMESTAMP(");
     expect(query).toContain("US/Pacific");

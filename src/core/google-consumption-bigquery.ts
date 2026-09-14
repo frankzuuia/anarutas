@@ -211,7 +211,7 @@ export function consumptionQuery(
 WITH latest_prices AS (
   SELECT *
   FROM ${pricing}
-  WHERE business_entity_name = 'Maps'
+  WHERE business_entity_name = 'businessEntities/Maps'
   QUALIFY ROW_NUMBER() OVER (PARTITION BY sku.id ORDER BY export_time DESC) = 1
 ), price_summary AS (
   SELECT

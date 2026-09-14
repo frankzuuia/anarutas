@@ -15,12 +15,12 @@ la cuenta de facturación.
 
 ## Reglas de negocio
 
-| Regla                 | Actor / negocio                                                       | Dirección técnica / datos                                                                                            | Permiso y auditoría                                         | Validación                                                                                                      |
-| --------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| BL-037 Fuente oficial | Administrador consulta uso y costo confirmado                         | Cloud Billing Standard + Pricing export; filtro por `project.id` de Maps y SKUs cuyo `business_entity_name` sea Maps | Cuenta FinOps sólo servidor; lectura autenticada            | Sin export/configuración se muestra estado no configurado, nunca cero inventado                                 |
-| BL-038 Acumulación    | Administrador necesita saber cuánto resta antes del siguiente escalón | Suma por `usage_start_time`, SKU y ciclo mensual de Google; costo bruto + créditos = neto                            | La caché no es autoridad y conserva `export_time`           | Reintentos y correcciones recalculan y sustituyen; no acumulan dos veces                                        |
-| BL-039 Actualización  | El panel debe reflejar lo último que Google haya publicado            | Sincronización durable periódica y actualización manual; consulta con caché y límite de bytes                        | Evento de solicitud/éxito sin secretos ni consulta completa | Una sola sincronización concurrente; resultado anterior sigue visible ante fallo y queda marcado desactualizado |
-| BL-040 Presentación   | El administrador compara cuotas independientes y costo real           | Medidor global de costo, historial y tarjeta por SKU con uso, escalón, porcentaje y restante                         | Sesión activa; ningún secreto en navegador                  | Moneda, fuente y hora visibles; color acompañado por texto; responsive y sin cambios al mapa                    |
+| Regla                 | Actor / negocio                                                       | Dirección técnica / datos                                                                                                                       | Permiso y auditoría                                         | Validación                                                                                                      |
+| --------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| BL-037 Fuente oficial | Administrador consulta uso y costo confirmado                         | Cloud Billing Standard + Pricing export; filtro por `project.id` de Maps y SKUs cuyo recurso `business_entity_name` sea `businessEntities/Maps` | Cuenta FinOps sólo servidor; lectura autenticada            | Sin export/configuración se muestra estado no configurado, nunca cero inventado                                 |
+| BL-038 Acumulación    | Administrador necesita saber cuánto resta antes del siguiente escalón | Suma por `usage_start_time`, SKU y ciclo mensual de Google; costo bruto + créditos = neto                                                       | La caché no es autoridad y conserva `export_time`           | Reintentos y correcciones recalculan y sustituyen; no acumulan dos veces                                        |
+| BL-039 Actualización  | El panel debe reflejar lo último que Google haya publicado            | Sincronización durable periódica y actualización manual; consulta con caché y límite de bytes                                                   | Evento de solicitud/éxito sin secretos ni consulta completa | Una sola sincronización concurrente; resultado anterior sigue visible ante fallo y queda marcado desactualizado |
+| BL-040 Presentación   | El administrador compara cuotas independientes y costo real           | Medidor global de costo, historial y tarjeta por SKU con uso, escalón, porcentaje y restante                                                    | Sesión activa; ningún secreto en navegador                  | Moneda, fuente y hora visibles; color acompañado por texto; responsive y sin cambios al mapa                    |
 
 ## Matriz de escenarios
 
@@ -102,7 +102,8 @@ cost y Pricing data export de la misma cuenta de facturación.
 - Costo confirmado: bruto, créditos y neto en la moneda retornada por Google.
 - Historial diario/mensual accesible, sin dependencia de una librería de gráficas nueva.
 - Una tarjeta por SKU realmente usado; uso, límite gratuito, restante, porcentaje y
-  siguiente precio publicados por Google.
+  siguiente precio publicados por Google. La lectura principal usa el formato `usados
+  de incluidos · quedan restantes`, sin sumar cuotas incompatibles.
 - Estados semánticos: dentro de cuota, atención, cerca del cobro, cobrando, sin pricing
   y desactualizado. El texto siempre acompaña al color.
 - No se modifica `route-map-dialog.tsx` ni la experiencia de mapa.

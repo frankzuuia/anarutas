@@ -429,8 +429,10 @@ Feature: Ana Rutas independiente y portable
   Scenario: Mostrar únicamente consumo oficial de Google
     Given Cloud Billing exporta Standard usage cost y Pricing data al dataset configurado
     When el actualizador de Ana Rutas consulta BigQuery
-    Then filtra únicamente el proyecto Google Maps de esta instalación
+    Then reconoce el recurso canónico businessEntities/Maps publicado por Pricing Export
+    And filtra únicamente el proyecto Google Maps de esta instalación
     And muestra uso, cuota, restante, costo bruto, créditos y costo neto de los SKUs publicados
+    And resume cada SKU como usos realizados de usos incluidos y cantidad restante
     And registra la hora del último corte de Google y de la tabla de precios
     And no calcula consumo a partir de clics, pedidos o movimientos internos
 

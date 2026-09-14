@@ -80,7 +80,22 @@ para este cálculo. Los límites monetarios, signos de crédito y umbrales exact
 - Estado anterior disponible durante una caída. No se garantiza tiempo real: la hora de
   `export_time` de Google siempre prevalece sobre la hora de sincronización de Ana Rutas.
 
-## Smoke vivo pendiente en develop
+## Regresión real detectada el 2026-09-13
+
+- PostgreSQL registró `GOOGLE_CONSUMPTION_RESPONSE_INVALID`, sin fotografía previa.
+- El dataset real contiene Standard usage cost y Pricing Export y la cuenta FinOps pudo
+  consultarlos desde el contenedor desplegado.
+- Pricing Export publica Maps como el recurso canónico `businessEntities/Maps`; el
+  filtro anterior `Maps` devolvía cero precios y provocaba que el agregador rechazara la
+  respuesta.
+- El corte estándar confirmó SKUs reales de Routes, Route Optimization, Dynamic Maps y
+  Geocoding con costo neto cero. Ningún valor fue estimado desde pedidos internos.
+- Regresión: prueba contractual del filtro canónico, escenario Gherkin y resumen visual
+  `usados de incluidos · quedan restantes`.
+- Evidencia local posterior: 337 pruebas, typecheck, lint y build verdes; mutation
+  testing FinOps 93.80%, por encima de la puerta de 90%.
+
+## Smoke del endpoint pendiente después de desplegar develop
 
 1. Habilitar BigQuery API en el proyecto de consulta.
 2. Crear un dataset dedicado y activar Standard usage cost + Pricing data export desde
