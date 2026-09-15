@@ -651,12 +651,14 @@ export function OrdersBoard({
   revision,
   onPlan,
   onBusy,
+  onPendingValidationCount,
 }: {
   plan: Plan;
   timezone: string;
   revision: number;
   onPlan: (plan: Plan) => void;
   onBusy: (busy: boolean) => void;
+  onPendingValidationCount: (planId: string, count: number) => void;
 }) {
   const [board, setBoard] = useState<OrderBoard | null>(null);
   const [modal, setModal] = useState(false);
@@ -682,8 +684,14 @@ export function OrdersBoard({
     (data: OrderBoard) => {
       setBoard(data);
       onPlan(data.plan);
+      onPendingValidationCount(
+        data.plan.id,
+        data.shipments.filter(
+          (shipment) => shipment.fulfillmentStatus === "pending_validation",
+        ).length,
+      );
     },
-    [onPlan],
+    [onPendingValidationCount, onPlan],
   );
   const refresh = useCallback(
     async () => update(await api<OrderBoard>(endpoint)),
@@ -1165,24 +1173,6 @@ export function OrdersBoard({
       {notice && (
         <p className="notice" role="status">
           {notice}
-        </p>
-      )}
-      {board?.shipments.some(
-        (s) => s.fulfillmentStatus === "pending_validation",
-      ) && (
-        <p className="notice" role="status">
-          Hay{" "}
-          {
-            board.shipments.filter(
-              (s) => s.fulfillmentStatus === "pending_validation",
-            ).length
-          }{" "}
-          {board.shipments.filter(
-            (s) => s.fulfillmentStatus === "pending_validation",
-          ).length === 1
-            ? "pedido pendiente"
-            : "pedidos pendientes"}{" "}
-          de validación en Odoo.
         </p>
       )}
       {board && (

@@ -114,10 +114,24 @@ export function Dashboard({
     [users, setUsers] = useState<User[]>([]),
     [audit, setAudit] = useState<AuditRow[]>([]);
   const [selected, setSelected] = useState<Plan | null>(null);
+  const [pendingValidation, setPendingValidation] = useState<{
+    planId: string;
+    count: number;
+  } | null>(null);
   const adoptPlan = useCallback((plan: Plan) => {
     setSelected(plan);
     setPlans((previous) => previous.map((p) => (p.id === plan.id ? plan : p)));
   }, []);
+  const adoptPendingValidationCount = useCallback(
+    (planId: string, count: number) => {
+      setPendingValidation((previous) =>
+        previous?.planId === planId && previous.count === count
+          ? previous
+          : { planId, count },
+      );
+    },
+    [],
+  );
   const [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [loading, setLoading] = useState(true),
@@ -456,6 +470,11 @@ export function Dashboard({
                         key={`${selected.id}-${selected.version}`}
                         plan={selected}
                         busy={busy}
+                        pendingValidationCount={
+                          pendingValidation?.planId === selected.id
+                            ? pendingValidation.count
+                            : null
+                        }
                         onSubmit={saveDraft}
                       />
                       <OrdersBoard
@@ -465,6 +484,7 @@ export function Dashboard({
                         revision={boardRevision}
                         onPlan={adoptPlan}
                         onBusy={setBusy}
+                        onPendingValidationCount={adoptPendingValidationCount}
                       />
                     </>
                   ) : (

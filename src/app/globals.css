@@ -1908,6 +1908,22 @@ tr:last-child td {
   color: var(--muted);
   white-space: nowrap;
 }
+.draft-validation-status {
+  min-width: 0;
+  max-width: min(360px, 42vw);
+  margin: 0;
+  padding: 4px 9px;
+  border: 1px solid #315c42;
+  border-radius: 999px;
+  background: #14271c;
+  color: #b6f3d0;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+}
 .planner-board-panel .note-line {
   padding: 6px 12px;
   font-size: 11px;
@@ -2368,6 +2384,21 @@ button.route-optimize:hover:not(:disabled) {
   }
   .planner-command-bar .planner-timezone {
     display: none;
+  }
+  .draft-heading {
+    flex-wrap: wrap;
+  }
+  .draft-title {
+    order: 1;
+    flex: 1 1 calc(100% - 92px);
+  }
+  .draft-heading > .badge {
+    order: 2;
+  }
+  .draft-validation-status {
+    order: 3;
+    flex: 1 1 100%;
+    max-width: 100%;
   }
   .orders-lanes {
     height: 65dvh;

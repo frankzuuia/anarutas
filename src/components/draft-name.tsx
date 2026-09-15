@@ -6,10 +6,12 @@ import type { Plan } from "@/core/plans";
 export function DraftName({
   plan,
   busy,
+  pendingValidationCount,
   onSubmit,
 }: {
   plan: Plan;
   busy: boolean;
+  pendingValidationCount: number | null;
   onSubmit: FormEventHandler<HTMLFormElement>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -40,6 +42,20 @@ export function DraftName({
             Cambiar nombre
           </button>
         </div>
+        {pendingValidationCount !== null && pendingValidationCount > 0 && (
+          <p
+            className="draft-validation-status"
+            role="status"
+            aria-live="polite"
+            title={`${pendingValidationCount} ${pendingValidationCount === 1 ? "pedido pendiente" : "pedidos pendientes"} de validación en Odoo`}
+          >
+            {pendingValidationCount}{" "}
+            {pendingValidationCount === 1
+              ? "pedido pendiente"
+              : "pedidos pendientes"}{" "}
+            de validación en Odoo
+          </p>
+        )}
         <span className="badge amber">Borrador · v{plan.version}</span>
       </div>
       <div className="panel-body draft-details" hidden={!editing}>

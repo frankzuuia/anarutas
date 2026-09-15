@@ -745,3 +745,11 @@ Feature: Ana Rutas independiente y portable
     Then todos los destinos elegibles entran en las solicitudes permitidas
     And el timeout del solver nace del tamaño real del lote
     And un cambio concurrente impide el guardado obsoleto sin dañar el borrador vigente
+
+  Scenario: S41 pendientes de validación visibles sin cubrir el tablero
+    Given el borrador contiene pedidos pendientes de validación en Odoo
+    When Ana Rutas carga el tablero
+    Then muestra el conteo real dentro del encabezado antes de la versión
+    And no coloca el estado sobre las tarjetas ni agrega un temporizador
+    When el conteo llega a cero
+    Then retira el estado del encabezado

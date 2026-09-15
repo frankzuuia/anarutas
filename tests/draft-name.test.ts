@@ -10,11 +10,16 @@ const plan = {
   service_date: "2026-09-08",
   updated_at: "2026-09-08T12:00:00Z",
 };
-function render(label = plan.label, busy = false) {
+function render(
+  label = plan.label,
+  busy = false,
+  pendingValidationCount: number | null = null,
+) {
   return renderToStaticMarkup(
     createElement(DraftName, {
       plan: { ...plan, label },
       busy,
+      pendingValidationCount,
       onSubmit: () => {
         throw new Error("Rendering must not submit");
       },
@@ -41,5 +46,22 @@ describe("draft name presentation", () => {
   it("prevents opening another edit during an operation", () => {
     expect(render(plan.label, true)).toContain('disabled=""');
     expect(render()).not.toContain('disabled=""');
+  });
+  it("places the live Odoo validation count in the draft heading", () => {
+    const html = render(plan.label, false, 5);
+    const statusIndex = html.indexOf('class="draft-validation-status"');
+    const versionIndex = html.indexOf("Borrador · v3");
+    expect(statusIndex).toBeGreaterThan(-1);
+    expect(statusIndex).toBeLessThan(versionIndex);
+    expect(html).toContain("5 pedidos pendientes de validación en Odoo");
+    expect(html).not.toContain("Hay 5 pedidos");
+  });
+  it("uses singular text and hides an empty validation state", () => {
+    expect(render(plan.label, false, 1)).toContain(
+      "1 pedido pendiente de validación en Odoo",
+    );
+    expect(render(plan.label, false, 0)).not.toContain(
+      "draft-validation-status",
+    );
   });
 });

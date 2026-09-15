@@ -225,6 +225,21 @@ Al crear o abrir un borrador, su nombre ya guardado se muestra como título, con
 
 Validación S18: unidades de presentación/escape de texto; navegador real con PostgreSQL para apertura, cancelación, teclado, persistencia, conflicto concurrente, cambio de borrador y tamaños 375/768/1024/1440. Se conservan las pruebas existentes de seguridad e idempotencia. GREEN LIGHT para este ajuste acotado; T08 en PROGRESS corresponde a S18, sin nueva integración.
 
+### Estado de validación Odoo integrado al encabezado (S41 / BL-006)
+
+El conteo persistente de pedidos pendientes de validación deja de ser una
+notificación flotante. El tablero sigue calculándolo desde el estado real de cada
+pedido y lo publica dentro del encabezado del borrador, antes de su versión, sin
+temporizador ni superposición sobre tarjetas. Un conteo cero no presenta el estado;
+el singular y el plural corresponden al valor recibido. En pantallas angostas el
+estado ocupa una segunda línea dentro del mismo encabezado y nunca sale del flujo.
+
+Validación S41: unidad de presentación para cero, uno y varios pendientes; navegador
+real con PostgreSQL para comprobar su ubicación dentro del encabezado y ausencia en
+el contenedor de avisos flotantes; typecheck, lint y build. La corrección no consulta
+ni escribe Odoo, no cambia la API, la persistencia, el armado de ruta ni las
+notificaciones transitorias de operaciones.
+
 Build/types/lint; auditoría npm; unidades para configuración/seguridad; integración con servidor PostgreSQL real local desechable; E2E login/setup/borrador/acceso; Gherkin; mutation testing para predicados críticos. Objetivo por riesgo: 100% de predicados de autorización/origin/expiración y al menos 85% líneas en core; no declarar verde por promedio si falta escenario crítico. Registrar latencias y errores reales sin afirmar SLO de producción desde localhost. No commit/push/deploy hasta evidencia o excepción aprobada.
 
 ## Veredicto previo
@@ -242,17 +257,18 @@ autoridad operativa vigente está formalizada en BL-054.
 
 ### Scenario Matrix
 
-| ID  | Actor / precondición                     | Disparador          | Lectura/escritura    | Resultado                                      | Fallo y recuperación                               |
-| --- | ---------------------------------------- | ------------------- | -------------------- | ---------------------------------------------- | -------------------------------------------------- |
-| S32 | Admin, Maps activo, salida sin confirmar | Abre configuración  | Runtime + settings   | Dirección sugerida, ningún punto inventado     | Puede cerrar sin escritura                         |
-| S33 | Admin con salida vigente                 | Confirma otro punto | Settings/auditoría   | Versión y liga regeneradas                     | 409 conserva edición ajena                         |
-| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | Google→Ana Rutas→DB  | Mejor candidato completo aplicado atómicamente | Segunda Fleet falla: guarda la línea base completa |
-| S35 | Ventanas/prioridades mezcladas           | Resolver modelo     | Route Optimization   | Lote completo; conflictos medidos como avisos  | Operador conserva autoridad sobre las salidas      |
-| S36 | Otro admin cambia el plan durante Google | Aplicar respuesta   | Lock/version         | 409; resultado no aplicado                     | Actualizar y decidir de nuevo                      |
-| S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments | Respuesta parcial rechazada; cero escritura    | Base balanceada completa se mide por vialidad      |
-| S38 | Ruta vigente                             | Ver mapa            | Run vigente          | Recorrido, ETA, km y duración reales           | Sin run vigente muestra puntos, no ruta falsa      |
-| S39 | Ruta vigente                             | Movimiento manual   | Plan/job/version     | Conserva acomodo y recalcula calles/ETA        | Reintento durable sin redistribución               |
-| S40 | Origen incompleto o ambiguo              | Ubicar domicilio    | Google Geocoder      | Referencia visible; confirmar bloqueado        | Completar dirección o marcar punto exacto          |
+| ID  | Actor / precondición                     | Disparador          | Lectura/escritura    | Resultado                                        | Fallo y recuperación                                   |
+| --- | ---------------------------------------- | ------------------- | -------------------- | ------------------------------------------------ | ------------------------------------------------------ |
+| S32 | Admin, Maps activo, salida sin confirmar | Abre configuración  | Runtime + settings   | Dirección sugerida, ningún punto inventado       | Puede cerrar sin escritura                             |
+| S33 | Admin con salida vigente                 | Confirma otro punto | Settings/auditoría   | Versión y liga regeneradas                       | 409 conserva edición ajena                             |
+| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | Google→Ana Rutas→DB  | Mejor candidato completo aplicado atómicamente   | Segunda Fleet falla: guarda la línea base completa     |
+| S35 | Ventanas/prioridades mezcladas           | Resolver modelo     | Route Optimization   | Lote completo; conflictos medidos como avisos    | Operador conserva autoridad sobre las salidas          |
+| S36 | Otro admin cambia el plan durante Google | Aplicar respuesta   | Lock/version         | 409; resultado no aplicado                       | Actualizar y decidir de nuevo                          |
+| S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments | Respuesta parcial rechazada; cero escritura      | Base balanceada completa se mide por vialidad          |
+| S38 | Ruta vigente                             | Ver mapa            | Run vigente          | Recorrido, ETA, km y duración reales             | Sin run vigente muestra puntos, no ruta falsa          |
+| S39 | Ruta vigente                             | Movimiento manual   | Plan/job/version     | Conserva acomodo y recalcula calles/ETA          | Reintento durable sin redistribución                   |
+| S40 | Origen incompleto o ambiguo              | Ubicar domicilio    | Google Geocoder      | Referencia visible; confirmar bloqueado          | Completar dirección o marcar punto exacto              |
+| S41 | Existen pendientes de validación Odoo    | Cargar tablero      | PostgreSQL local     | Conteo dentro del encabezado, sin cubrir pedidos | Cero lo oculta; ancho angosto lo acomoda en otra línea |
 
 ### Data Flow
 

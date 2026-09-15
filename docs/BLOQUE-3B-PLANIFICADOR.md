@@ -14,6 +14,10 @@ scroll independiente, mapa de entregas y notas picker sin modificar Five/V3/Luna
   una sola fila. Fecha y nombre del plan comparten encabezado; el formulario de alta
   sólo ocupa espacio mientras su modal está abierto. Confirmaciones son flotantes y
   se retiran automáticamente, por lo que no desplazan pedidos ni camionetas.
+- El conteo persistente de pedidos pendientes de validación Odoo no es una
+  confirmación transitoria: vive dentro del encabezado del borrador, antes de la
+  versión, y desaparece sólo cuando el conteo llega a cero. En pantallas angostas
+  baja dentro del mismo encabezado; nunca usa posición fija ni cubre tarjetas.
 - En escritorio de 768 px de alto el inicio de las columnas queda antes de 180 px y
   se muestran al menos seis tarjetas completas cerradas, cada una de hasta 80 px.
   Abrir una tarjeta puede hacerla crecer deliberadamente; el desplazamiento continúa
@@ -78,6 +82,8 @@ No se modificó Odoo ni el flujo que escribe cotizaciones/QR.
 E2E usa PostgreSQL real y navegador; no simula Google. Escenarios de 7 camionetas y
 25 pedidos, tamaños 375/768/1024/1440/1920, scroll local, menú, notas escapadas,
 modal sin configuración, autenticación, concurrencia y regresión de flota/cuentas.
+El estado de validación verifica cero, singular y plural mediante render real de
+React; no introduce consultas ni escrituras adicionales en Odoo.
 La prueba de densidad usa 768 px de alto, exige documento sin scroll, columnas antes
 de 180 px, más de 250 px útiles por carril, al menos seis pedidos completos visibles
 y tarjetas cerradas de hasta 80 px. También abre y cierra una tarjeta real y verifica

@@ -198,6 +198,10 @@ durable permanecen; el planificador OpenAI quedó retirado por BL-065..068 y
 - Modal Google preparado; integración live pendiente de configuración del propietario.
 - Notas Studio por contrato QR verificado mediante lectura; sin cambios en Five.
 - Evidencia y límites en BLOQUE-3B-PLANIFICADOR.md.
+- [x] T22 (BL006 / S41): el conteo dinámico de pendientes de validación Odoo
+      dejó de ser una notificación fija que cubría pedidos y ahora vive en el encabezado
+      del borrador; contempla cero, singular, plural y ajuste responsive sin cambiar Odoo,
+      pedidos ni ruteo. Unidad, navegador real con PostgreSQL, tipos, lint y build verdes.
 
 ## Bloque 3A autorizado — BLOQUE-3-PEDIDOS.md
 

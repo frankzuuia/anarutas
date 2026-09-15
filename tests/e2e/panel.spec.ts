@@ -1086,6 +1086,8 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
       customerName: `Pedido QA ${i + 1}`,
       address: exemplar.address,
       validatedAt: exemplar.validatedAt,
+      fulfillmentStatus:
+        i < 5 ? ("pending_validation" as const) : ("validated" as const),
       promisedAt: null,
       backorderId: null,
       lines: exemplar.lines,
@@ -1098,6 +1100,18 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   });
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(page.locator(".order-lane")).toHaveCount(8);
+  const pendingValidationStatus = page.locator(
+    ".draft-heading .draft-validation-status",
+  );
+  await expect(pendingValidationStatus).toHaveText(
+    "5 pedidos pendientes de validación en Odoo",
+  );
+  await expect(pendingValidationStatus).toHaveCSS("position", "static");
+  await expect(
+    page.locator(".orders-section > .notice").filter({
+      hasText: "pedidos pendientes de validación en Odoo",
+    }),
+  ).toHaveCount(0);
   const highPriority = page.locator(".shipment-priority.high").first();
   const mediumPriority = page.locator(".shipment-priority.medium").first();
   await expect(highPriority).toHaveText("Prioridad alta");
