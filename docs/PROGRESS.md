@@ -239,7 +239,7 @@ No se incluyen cambios a repositorio five, sus entornos, vendedores, precios o V
 ## Bloque 3C autorizado — carga manual y retiro recuperable
 
 - [x] T15 (BL015 / S25): carga manual atómica de hasta 50 folios `S` exactos fuera de fecha, reutilizando el adaptador Odoo sólo lectura y compatible por capacidades.
-- [x] T16 (BL016 / S26): bote por pedido, confirmación accesible y DELETE transaccional versionado; una recarga Odoo puede recuperar el pedido.
+- [x] T16 (BL016 / S26): bote por pedido, confirmación accesible y DELETE transaccional versionado; una recarga Odoo puede recuperar el pedido. El control visual compacto queda en su propia esquina, mantiene el objetivo táctil y no cubre prioridad ni horario.
 - [ ] T17 (BL015-016 / S25-26): unidades, PostgreSQL real, contrato estático Odoo, E2E, Gherkin, cobertura, mutación y seguridad verdes; falta smoke read-only de la ruta manual contra develop 19.4 y preflight de producción 17. Evidencia local en `QA-BLOQUE-3C-PEDIDOS-MANUALES.md`.
 
 ## Bloque 3D autorizado — independencia, reutilización y borrado de plan

@@ -2026,17 +2026,17 @@ button.lane-remove:hover:not(:disabled) {
   overflow: hidden;
 }
 .shipment-card-head {
-  display: flex;
-  align-items: stretch;
+  position: relative;
+  display: block;
 }
 .shipment-toggle {
   display: grid;
   grid-template-columns: 27px minmax(0, 1fr) 14px;
   align-items: center;
-  gap: 7px;
+  gap: 2px 7px;
   width: 100%;
   min-height: 0;
-  padding: 7px 8px;
+  padding: 6px 34px 6px 8px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -2080,8 +2080,9 @@ button.lane-remove:hover:not(:disabled) {
   font-size: 9px;
   line-height: 1.2;
 }
-.shipment-summary .shipment-tags {
-  margin-top: 4px;
+.shipment-toggle > .shipment-tags {
+  grid-column: 1 / -1;
+  width: calc(100% + 26px);
 }
 .shipment-chevron {
   color: var(--muted);
@@ -2091,18 +2092,35 @@ button.lane-remove:hover:not(:disabled) {
   transform: rotate(180deg);
 }
 button.shipment-remove {
-  align-self: center;
-  flex: 0 0 30px;
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
   width: 30px;
   min-width: 30px;
   min-height: 30px;
-  margin-right: 5px;
-  padding: 0;
-  border-color: #762b32;
-  background: #3a1519;
+  margin: 0;
+  padding: 4px;
+  align-items: flex-start;
+  justify-content: flex-end;
+  border: 0;
+  background: transparent;
   color: #ff9ca4;
 }
+.shipment-remove-visual {
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+  border: 1px solid #762b32;
+  border-radius: 5px;
+  background: #3a1519;
+}
 button.shipment-remove:hover:not(:disabled) {
+  background: transparent;
+}
+button.shipment-remove:hover:not(:disabled) .shipment-remove-visual {
   border-color: #e04f59;
   background: #b4232e;
   color: #fff;
@@ -2135,7 +2153,7 @@ button.shipment-remove:hover:not(:disabled) {
 }
 .shipment-card .shipment-tags {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 3px;
   margin: 0;
 }
@@ -2399,6 +2417,10 @@ button.route-optimize:hover:not(:disabled) {
     order: 3;
     flex: 1 1 100%;
     max-width: 100%;
+  }
+  .shipment-toggle {
+    grid-template-rows: minmax(36px, auto) auto;
+    padding-right: 48px;
   }
   .orders-lanes {
     height: 65dvh;

@@ -165,6 +165,12 @@ no escriben; aceptar envía el ID interno y expectedVersion. En una sola transac
 revalida actor, bloquea plan y tarjeta, comprueba versión, elimina la copia de Ana
 Rutas, normaliza posiciones, incrementa versión y audita. No existe exclusión
 permanente: volver a cargar desde Odoo puede recuperar la tarjeta eliminada.
+El bote visual ocupa 21 px en la esquina superior derecha. Su área interactiva
+permanece separada de nombre, horario y prioridad, y conserva 44 px en dispositivos
+táctiles. Las etiquetas usan una fila propia de ancho completo y se dividen cuando el
+carril no permite mostrarlas juntas; ninguna queda debajo del control destructivo.
+El estado compacto «Pendiente Odoo» conserva la condición completa en el encabezado
+del borrador y evita sacrificar la legibilidad del horario o de la prioridad.
 
 ### S27: cargas independientes (BL-005, BL-013, BL-015)
 

@@ -1149,6 +1149,28 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
           .slice(0, 4)
           .map((card) => card.getBoundingClientRect().height),
       );
+      const cardControlsDoNotOverlap = Array.from(
+        list.querySelectorAll<HTMLElement>(".shipment-card"),
+      )
+        .slice(0, 4)
+        .every((card) => {
+          const cardBox = card.getBoundingClientRect();
+          const remove = card.querySelector<HTMLElement>(".shipment-remove")!;
+          const visual = card.querySelector<HTMLElement>(
+            ".shipment-remove-visual",
+          )!;
+          const tags = card.querySelector<HTMLElement>(".shipment-tags")!;
+          const removeBox = remove.getBoundingClientRect();
+          const visualBox = visual.getBoundingClientRect();
+          const tagsBox = tags.getBoundingClientRect();
+          return (
+            visualBox.width <= 22 &&
+            visualBox.height <= 22 &&
+            removeBox.right <= cardBox.right &&
+            removeBox.top >= cardBox.top &&
+            removeBox.bottom <= tagsBox.top
+          );
+        });
       const oldY = window.scrollY;
       list.scrollTop = 350;
       return {
@@ -1160,6 +1182,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
         height: window.innerHeight,
         lanesHeight: lanes.getBoundingClientRect().height,
         lanesTop: lanes.getBoundingClientRect().top,
+        cardControlsDoNotOverlap,
       };
     });
     expect(dimensions.listScroll).toBeGreaterThan(0);
@@ -1169,6 +1192,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     expect(dimensions.lanesTop).toBeLessThan(180);
     expect(dimensions.visibleCards).toBeGreaterThanOrEqual(6);
     expect(dimensions.maxCardHeight).toBeLessThanOrEqual(80);
+    expect(dimensions.cardControlsDoNotOverlap).toBe(true);
     await page.screenshot({
       path: `reports/screenshots/planner-seven-${width}.png`,
       fullPage: true,

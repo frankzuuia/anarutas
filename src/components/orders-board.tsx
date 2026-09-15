@@ -956,36 +956,36 @@ export function OrdersBoard({
               <small>
                 Pedido {s.orderName} · {s.lines.length} partidas
               </small>
-              <span className="shipment-tags">
-                <span className="badge">
-                  {s.fulfillmentStatus === "pending_validation"
-                    ? "Pendiente de validar"
-                    : "Validado"}
-                </span>
-                <span className="badge">
-                  {s.deliveryWindows.length
-                    ? s.deliveryWindows
-                        .map(
-                          (window) =>
-                            `${minuteText(window.startMinute)}–${minuteText(window.endMinute)}`,
-                        )
-                        .join(" / ")
-                    : "Sin horario"}
-                </span>
-                <span className={`badge shipment-priority ${s.priority}`}>
-                  {s.priority === "high"
-                    ? "Prioridad alta"
-                    : s.priority === "medium"
-                      ? "Prioridad media"
-                      : "Por horario"}
-                </span>
-              </span>
             </span>
             <ChevronDown
               className="shipment-chevron"
               size={14}
               aria-hidden="true"
             />
+            <span className="shipment-tags">
+              <span className="badge">
+                {s.fulfillmentStatus === "pending_validation"
+                  ? "Pendiente Odoo"
+                  : "Validado"}
+              </span>
+              <span className="badge">
+                {s.deliveryWindows.length
+                  ? s.deliveryWindows
+                      .map(
+                        (window) =>
+                          `${minuteText(window.startMinute)}–${minuteText(window.endMinute)}`,
+                      )
+                      .join(" / ")
+                  : "Sin horario"}
+              </span>
+              <span className={`badge shipment-priority ${s.priority}`}>
+                {s.priority === "high"
+                  ? "Prioridad alta"
+                  : s.priority === "medium"
+                    ? "Prioridad media"
+                    : "Por horario"}
+              </span>
+            </span>
           </button>
           <button
             type="button"
@@ -995,7 +995,9 @@ export function OrdersBoard({
             aria-label={`Eliminar pedido ${s.orderName} del ruteo`}
             onClick={() => setRemoveShipmentTarget(s)}
           >
-            <Trash2 size={14} aria-hidden="true" />
+            <span className="shipment-remove-visual" aria-hidden="true">
+              <Trash2 size={12} />
+            </span>
           </button>
         </div>
         {expanded && (

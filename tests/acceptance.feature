@@ -265,6 +265,7 @@ Feature: Ana Rutas independiente y portable
     Given un pedido de Odoo está cargado y puede estar asignado a una camioneta
     When el administrador pulsa su bote rojo y acepta la confirmación
     Then sólo se elimina la tarjeta de Ana Rutas y se conserva Odoo sin cambios
+    And el bote permanece en su esquina sin cubrir horario ni prioridad
     And el orden restante se normaliza en una transacción versionada y auditada
     When vuelve a cargar desde Odoo una consulta que contiene ese pedido
     Then la tarjeta puede incorporarse nuevamente sin duplicarse

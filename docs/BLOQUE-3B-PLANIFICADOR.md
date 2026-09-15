@@ -39,6 +39,9 @@ scroll independiente, mapa de entregas y notas picker sin modificar Five/V3/Luna
   la relación de la camioneta con el plan, incrementa versión y audita la cantidad
   desasignada dentro de una transacción. La unidad sigue en la flota y no se consulta
   ni modifica Odoo. Cancelar o Escape no escribe y restaura el foco al disparador.
+- En cada pedido el bote visual mide 21 px y ocupa la esquina superior derecha sin
+  cubrir nombre, horario ni prioridad. El área táctil accesible permanece en 44 px;
+  las etiquetas disponen de una fila completa y pueden partirse sin desbordarse.
 - Mapa modal de pantalla completa, Escape, foco restaurado, filtros por camioneta,
   números de parada y agrupación visual de pedidos en coordenadas idénticas.
   Direcciones vacías, ambiguas y fallidas se señalan sin inventar coordenadas.
