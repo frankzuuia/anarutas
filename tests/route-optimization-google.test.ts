@@ -299,6 +299,7 @@ describe("Google Route Optimization contract", () => {
             startLocation: { latitude: 20.624, longitude: -103.354 },
             endLocation: { latitude: 20.624, longitude: -103.354 },
             costPerTraveledHour: 1,
+            costPerKilometer: 1,
             startTimeWindows: [
               {
                 startTime: "2026-09-09T13:30:00.000Z",
@@ -322,7 +323,16 @@ describe("Google Route Optimization contract", () => {
     expect(
       request.model.shipments[0].deliveries[0].timeWindows?.[0]
         .costPerHourAfterSoftEndTime,
-    ).toBe(21);
+    ).toBe(63);
+    expect(
+      request.model.shipments.map(
+        (item) =>
+          item.deliveries[0].timeWindows?.[0].costPerHourAfterSoftEndTime,
+      ),
+    ).toEqual([63, 42, 21]);
+    expect(
+      request.model.shipments.every((item) => !("penaltyCost" in item)),
+    ).toBe(true);
     expect(JSON.stringify(request)).toContain("loadLimits");
     expect(request.model.shipments.map((item) => item.loadDemands)).toEqual(
       ids.map(() => ({
@@ -845,7 +855,7 @@ describe("Google Route Optimization contract", () => {
     expect(
       filtered.model.shipments[0].deliveries[0].timeWindows?.[0]
         .costPerHourAfterSoftEndTime,
-    ).toBe(9);
+    ).toBe(27);
     expect(() =>
       buildGoogleOptimizationRequest(
         {

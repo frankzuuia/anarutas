@@ -18,7 +18,7 @@ import {
 } from "./route-fleet-budget";
 import {
   buildGoogleOptimizationRequest,
-  buildGoogleSequencingRequest,
+  buildGoogleRefinementRequest,
   parseGoogleOptimizationResponse,
   requestGoogleOptimization,
   type GoogleOptimizationRequest,
@@ -27,13 +27,11 @@ import {
 import {
   compareLogisticsScores,
   logisticsPolicyVersion,
-  priorityConflictIds,
   type RoutingCandidate,
 } from "./route-logistics-policy";
 import { allocationSignature } from "./route-logistics-search";
 import {
   colocatedAllocationCandidate,
-  colocatedSequenceCandidate,
   deadlineSequenceCandidate,
   geographicBalancedCandidate,
   geographicClusterCandidate,
@@ -65,7 +63,9 @@ function sourceLabel(source: AllocationSource) {
   return "balance geográfico";
 }
 
-const recoverableSequencingErrors = new Set([
+const recoverableOptimizationErrors = new Set([
+  "ROUTING_CONFIG_MISSING",
+  "ROUTING_CONFIG_INVALID",
   "ROUTING_GOOGLE_UNAVAILABLE",
   "ROUTING_GOOGLE_QUOTA",
   "ROUTING_GOOGLE_DENIED",
@@ -73,11 +73,12 @@ const recoverableSequencingErrors = new Set([
   "ROUTING_CANDIDATE_INVALID",
   "ROUTING_CUSTOMER_GROUP_INVALID",
   "ROUTING_MODEL_INVALID",
+  "ROUTING_MODEL_REJECTED",
 ]);
 
-function recoverableSequencingError(error: unknown): error is AppError {
+function recoverableOptimizationError(error: unknown): error is AppError {
   return (
-    error instanceof AppError && recoverableSequencingErrors.has(error.code)
+    error instanceof AppError && recoverableOptimizationErrors.has(error.code)
   );
 }
 
@@ -186,7 +187,7 @@ export async function planRouteDeterministically(
     const requestHash = createHash("sha256")
       .update(
         JSON.stringify({
-          provider: "google-deterministic-v4-two-fleet-requests",
+          provider: "google-deterministic-v5-one-fleet-warm-start",
           policy: logisticsPolicyVersion,
           fingerprint: routeFingerprint(board, settings.version),
         }),
@@ -224,7 +225,6 @@ export async function planRouteDeterministically(
       { expectedVersion },
     );
     try {
-      const google = dependencies.googleConfig ?? readGoogleRoutingConfig();
       let fleetRoutingRequests = 0;
       let fleetRoutingShipmentUnits = 0;
       const requestFleetRouting = async (
@@ -245,6 +245,7 @@ export async function planRouteDeterministically(
           );
           return null;
         }
+        const google = dependencies.googleConfig ?? readGoogleRoutingConfig();
         fleetRoutingRequests++;
         fleetRoutingShipmentUnits += request.model.shipments.length;
         return requestGoogleOptimization(
@@ -257,64 +258,6 @@ export async function planRouteDeterministically(
           },
         );
       };
-      await renewOptimizationLease(pool, planId, lease, externalTimeout);
-      progress(
-        "info",
-        "routing.google.started",
-        "Google Route Optimization",
-        "optimización vial",
-        `Google comenzó la solicitud Fleet Routing 1 de un máximo de 2 para distribuir ${deliveries.length} pedidos entre ${board.vehicles.length} camionetas.`,
-        {
-          orders: deliveries.length,
-          deliveryGroups: snapshot.deliveryGroups.length,
-          vehicles: board.vehicles.length,
-          solverTimeoutSeconds,
-          fleetRoutingRequests: 1,
-          fleetRoutingRequestLimit: maximumFleetRoutingRequests,
-          fleetRoutingShipmentUnits: snapshot.deliveryGroups.length,
-        },
-      );
-      const googleStarted = performance.now();
-      const raw = await requestFleetRouting(googleRequest);
-      const googleResult = parseGoogleOptimizationResponse(
-        raw,
-        snapshot.deliveryGroups.length,
-        board.vehicles.length,
-      );
-      const googleAssignedOrders = googleResult.routes
-        .flatMap((route) => route.visits)
-        .reduce(
-          (total, visit) =>
-            total +
-            snapshot.deliveryGroups[visit.shipmentIndex].shipmentIds.length,
-          0,
-        );
-      const googleSkippedOrders = googleResult.skipped.reduce(
-        (total, item) =>
-          total +
-          snapshot.deliveryGroups[item.shipmentIndex].shipmentIds.length,
-        0,
-      );
-      progress(
-        googleResult.skipped.length ? "warning" : "info",
-        "routing.google.completed",
-        "Google Route Optimization",
-        "optimización vial",
-        googleResult.skipped.length
-          ? `Google terminó con ${googleResult.skipped.length} destinos sin asignar; Ana Rutas no los perderá y medirá una distribución completa.`
-          : `Google terminó una propuesta con todos los destinos. Ana Rutas verificará prioridad, ventanas y balance antes de guardarla.`,
-        {
-          stepDurationMs: Math.round(performance.now() - googleStarted),
-          assignedOrders: googleAssignedOrders,
-          skippedOrders: googleSkippedOrders,
-          routes: googleResult.routes.length,
-          distanceMeters: googleResult.metrics.travelDistanceMeters,
-          durationSeconds: googleResult.metrics.totalDurationSeconds,
-          fleetRoutingRequests,
-          fleetRoutingRequestLimit: maximumFleetRoutingRequests,
-          fleetRoutingShipmentUnits,
-        },
-      );
 
       const evaluations: { source: AllocationSource; value: Evaluation }[] = [];
       const measured = new Set<string>();
@@ -434,28 +377,6 @@ export async function planRouteDeterministically(
         allocations.push(allocation);
         return allocation;
       };
-      if (!googleResult.skipped.length) {
-        try {
-          addAllocation("Google", googleProposalCandidate(board, googleResult));
-        } catch (error) {
-          if (!(
-            error instanceof AppError &&
-            [
-              "ROUTING_CANDIDATE_INVALID",
-              "ROUTING_CUSTOMER_GROUP_INVALID",
-            ].includes(error.code)
-          ))
-            throw error;
-          progress(
-            "warning",
-            "routing.google.proposal_rejected",
-            "Ana Rutas",
-            "validación de cobertura",
-            "Ana Rutas descartó la distribución inicial de Google porque no conservó cobertura o grupos completos.",
-            { errorCode: error.code },
-          );
-        }
-      }
       addAllocation(
         "balance",
         geographicBalancedCandidate(
@@ -481,138 +402,12 @@ export async function planRouteDeterministically(
         { routes: board.vehicles.length },
       );
 
-      const sequenceAndMeasure = async (
-        allocation: (typeof allocations)[number],
-      ) => {
-        await renewOptimizationLease(pool, planId, lease, externalTimeout);
-        const sequencingRequest = buildGoogleSequencingRequest(
-          board,
-          settings,
-          timezone,
-          allocation.candidate,
-        );
-        progress(
-          "info",
-          "routing.google.sequence.started",
-          "Google Route Optimization",
-          "secuencia vial con prioridad",
-          `Google comenzó la solicitud Fleet Routing ${fleetRoutingRequests + 1} de un máximo de ${maximumFleetRoutingRequests}: ordenará por calles reales únicamente el mejor reparto local ya medido.`,
-          {
-            allocationSource: allocation.source,
-            deliveryGroups: snapshot.deliveryGroups.length,
-            precedenceRules:
-              sequencingRequest.model.precedenceRules?.length ?? 0,
-            routes: allocation.candidate.routes.length,
-            fleetRoutingRequests: fleetRoutingRequests + 1,
-            fleetRoutingRequestLimit: maximumFleetRoutingRequests,
-            fleetRoutingShipmentUnits:
-              fleetRoutingShipmentUnits +
-              sequencingRequest.model.shipments.length,
-          },
-        );
-        const sequencingStarted = performance.now();
-        const rawSequence = await requestFleetRouting(sequencingRequest);
-        if (rawSequence === null) return false;
-        const sequencedResult = parseGoogleOptimizationResponse(
-          rawSequence,
-          snapshot.deliveryGroups.length,
-          board.vehicles.length,
-        );
-        if (sequencedResult.skipped.length) {
-          progress(
-            "warning",
-            "routing.google.sequence.rejected",
-            "Ana Rutas",
-            "validación de secuencia",
-            "Ana Rutas descartó una secuencia porque Google omitió destinos; no se guardó ningún resultado parcial.",
-            {
-              allocationSource: allocation.source,
-              skippedDestinations: sequencedResult.skipped.length,
-            },
-          );
-          return false;
-        }
-        const sequencedCandidate = parseRoutingCandidate(
-          googleProposalCandidate(board, sequencedResult),
-          board,
-        );
-        const assignmentChanged =
-          allocationSignature(sequencedCandidate) !==
-          allocationSignature(allocation.candidate);
-        const conflicts = priorityConflictIds(
-          board.shipments,
-          sequencedCandidate,
-        );
-        if (assignmentChanged || conflicts.size) {
-          progress(
-            "warning",
-            "routing.google.sequence.rejected",
-            "Ana Rutas",
-            "validación de secuencia",
-            "Ana Rutas descartó una secuencia porque no respetó la camioneta fija o la precedencia de prioridades.",
-            {
-              allocationSource: allocation.source,
-              assignmentChanged,
-              priorityConflictOrders: conflicts.size,
-            },
-          );
-          return false;
-        }
-        progress(
-          "info",
-          "routing.google.sequence.completed",
-          "Google Route Optimization",
-          "secuencia vial con prioridad",
-          `Google terminó la secuencia vial de la distribución de ${sourceLabel(allocation.source)} sin omitir destinos ni alterar camionetas.`,
-          {
-            allocationSource: allocation.source,
-            stepDurationMs: Math.round(performance.now() - sequencingStarted),
-            priorityConflictOrders: 0,
-            skippedDestinations: 0,
-            fleetRoutingRequests,
-            fleetRoutingRequestLimit: maximumFleetRoutingRequests,
-            fleetRoutingShipmentUnits,
-          },
-        );
-        const compacted = colocatedSequenceCandidate(
-          board.shipments,
-          sequencedCandidate,
-        );
-        if (
-          JSON.stringify(compacted.routes) !==
-          JSON.stringify(sequencedCandidate.routes)
-        )
-          progress(
-            "info",
-            "routing.colocation.prepared",
-            "Ana Rutas",
-            "compactación de paradas",
-            "Ana Rutas detectó que una camioneta salía de un punto físico para volver después. Medirá también la variante que atiende juntos los clientes ubicados exactamente en ese punto cuando conserva la precedencia de prioridades.",
-          );
-        const spatial = spatialSequenceCandidate(
-          board.shipments,
-          compacted,
-          settings.depotLocation!,
-        );
-        if (JSON.stringify(spatial.routes) !== JSON.stringify(compacted.routes))
-          progress(
-            "info",
-            "routing.spatial_search.prepared",
-            "Ana Rutas",
-            "búsqueda de secuencia",
-            "Ana Rutas aplicó relocate y 2-opt dentro de las prioridades hasta que ninguna mejora geométrica adicional fue posible; Google Routes medirá el resultado antes de decidir.",
-            { allocationSource: allocation.source },
-          );
-        await measure(allocation.source, sequencedCandidate);
-        await measure(allocation.source, spatial);
-        return true;
-      };
       progress(
         "info",
         "routing.local.preselection.started",
         "Ana Rutas",
         "preselección sin Fleet Routing",
-        "Ana Rutas comparará Google, balance y clúster con prioridad, ventanas y calles medidas antes de gastar la segunda y última solicitud Fleet Routing.",
+        "Ana Rutas comparará balance y clúster con prioridad, ventanas y calles medidas para entregar a Google una solución inicial completa dentro de la única solicitud Fleet Routing.",
         {
           routes: board.vehicles.length,
           fleetRoutingRequests,
@@ -642,53 +437,136 @@ export async function planRouteDeterministically(
       if (!preliminaryWinner)
         throw new AppError("ROUTING_RESPONSE_INVALID", 503);
 
-      const groupByShipment = new Map(
-        snapshot.deliveryGroups.flatMap((group) =>
-          group.shipmentIds.map(
-            (shipmentId) => [shipmentId, group.id] as const,
-          ),
-        ),
-      );
-      const requiresFleetSequencing =
-        preliminaryWinner.value.candidate.routes.some(
-          (route) =>
-            new Set(
-              route.shipmentIds.map((shipmentId) =>
-                groupByShipment.get(shipmentId)!,
-              ),
-            ).size > 1,
+      try {
+        const optimizedRequest = buildGoogleRefinementRequest(
+          board,
+          settings,
+          timezone,
+          preliminaryWinner.value.candidate,
+          preliminaryWinner.value.result,
         );
-      if (requiresFleetSequencing) {
-        try {
-          await sequenceAndMeasure({
-            source: preliminaryWinner.source,
-            candidate: preliminaryWinner.value.candidate,
-          });
-        } catch (error) {
-          if (!recoverableSequencingError(error)) throw error;
-          progress(
-            "warning",
-            "routing.google.sequence.unavailable",
-            "Ana Rutas",
-            "secuencia vial con prioridad",
-            "La segunda solicitud Fleet Routing no pudo completarse. Ana Rutas conservará el mejor reparto completo que ya midió, sin intentar una tercera solicitud.",
-            {
-              errorCode: error.code,
-              evaluatedCandidates: evaluations.length,
-              fleetRoutingRequests,
-              fleetRoutingRequestLimit: maximumFleetRoutingRequests,
-              fleetRoutingShipmentUnits,
-            },
-          );
-        }
-      } else {
+        await renewOptimizationLease(pool, planId, lease, externalTimeout);
         progress(
           "info",
-          "routing.google.sequence.not_required",
-          "Ana Rutas",
-          "ahorro de Fleet Routing",
-          "Cada camioneta finalista tiene como máximo un destino; Ana Rutas omitió la segunda solicitud Fleet Routing porque no existe una secuencia que optimizar.",
+          "routing.google.started",
+          "Google Route Optimization",
+          "optimización global única",
+          `Google comenzó la única solicitud Fleet Routing con los ${snapshot.deliveryGroups.length} destinos y el mejor reparto local ya medido como solución inicial.`,
           {
+            allocationSource: preliminaryWinner.source,
+            orders: deliveries.length,
+            deliveryGroups: snapshot.deliveryGroups.length,
+            vehicles: board.vehicles.length,
+            solverTimeoutSeconds,
+            fleetRoutingRequests: fleetRoutingRequests + 1,
+            fleetRoutingRequestLimit: maximumFleetRoutingRequests,
+            fleetRoutingShipmentUnits:
+              fleetRoutingShipmentUnits +
+              optimizedRequest.model.shipments.length,
+          },
+        );
+        const googleStarted = performance.now();
+        const raw = await requestFleetRouting(optimizedRequest);
+        if (raw === null) throw new AppError("ROUTING_GOOGLE_UNAVAILABLE", 503);
+        const googleResult = parseGoogleOptimizationResponse(
+          raw,
+          snapshot.deliveryGroups.length,
+          board.vehicles.length,
+        );
+        const googleAssignedOrders = googleResult.routes
+          .flatMap((route) => route.visits)
+          .reduce(
+            (total, visit) =>
+              total +
+              snapshot.deliveryGroups[visit.shipmentIndex].shipmentIds.length,
+            0,
+          );
+        const googleSkippedOrders = googleResult.skipped.reduce(
+          (total, item) =>
+            total +
+            snapshot.deliveryGroups[item.shipmentIndex].shipmentIds.length,
+          0,
+        );
+        progress(
+          googleResult.skipped.length ? "warning" : "info",
+          "routing.google.completed",
+          "Google Route Optimization",
+          "optimización global única",
+          googleResult.skipped.length
+            ? `Google terminó la única solicitud con ${googleResult.skipped.length} destinos omitidos. Ana Rutas descartará esa propuesta y conservará la ruta local completa.`
+            : "Google terminó la única solicitud con todos los destinos. Ana Rutas medirá su propuesta antes de decidir.",
+          {
+            stepDurationMs: Math.round(performance.now() - googleStarted),
+            assignedOrders: googleAssignedOrders,
+            skippedOrders: googleSkippedOrders,
+            routes: googleResult.routes.length,
+            distanceMeters: googleResult.metrics.travelDistanceMeters,
+            durationSeconds: googleResult.metrics.totalDurationSeconds,
+            fleetRoutingRequests,
+            fleetRoutingRequestLimit: maximumFleetRoutingRequests,
+            fleetRoutingShipmentUnits,
+          },
+        );
+        if (!googleResult.skipped.length) {
+          try {
+            const proposed = parseRoutingCandidate(
+              googleProposalCandidate(board, googleResult),
+              board,
+            );
+            const googleCandidate = parseRoutingCandidate(
+              colocatedAllocationCandidate(board.shipments, proposed),
+              board,
+            );
+            if (
+              allocationSignature(proposed) !==
+              allocationSignature(googleCandidate)
+            )
+              progress(
+                "info",
+                "routing.colocation.assignment_repaired",
+                "Ana Rutas",
+                "distribución por punto físico",
+                "Ana Rutas reunió en una sola camioneta los clientes que comparten exactamente el mismo punto confirmado, sin fusionar sus identidades.",
+                { allocationSource: "Google" },
+              );
+            await measure("Google", googleCandidate);
+            const deadline = deadlineSequenceCandidate(
+              board.shipments,
+              googleCandidate,
+              settings.depotLocation!,
+            );
+            await measure("Google", deadline);
+            await measure(
+              "Google",
+              spatialSequenceCandidate(
+                board.shipments,
+                deadline,
+                settings.depotLocation!,
+              ),
+            );
+          } catch (error) {
+            if (!recoverableOptimizationError(error)) throw error;
+            progress(
+              "warning",
+              "routing.google.proposal_rejected",
+              "Ana Rutas",
+              "validación de cobertura",
+              "Ana Rutas descartó la propuesta de Google porque no conservó cobertura o grupos completos; se mantiene la solución local.",
+              { errorCode: error.code },
+            );
+          }
+        }
+      } catch (error) {
+        if (!recoverableOptimizationError(error)) throw error;
+        progress(
+          "warning",
+          "routing.google.unavailable",
+          "Ana Rutas",
+          "optimización global única",
+          "La única solicitud Fleet Routing no pudo completarse. Ana Rutas conservará el mejor reparto local completo ya medido y no hará otra solicitud.",
+          {
+            errorCode: error.code,
+            evaluatedCandidates: evaluations.length,
             fleetRoutingRequests,
             fleetRoutingRequestLimit: maximumFleetRoutingRequests,
             fleetRoutingShipmentUnits,
@@ -745,7 +623,7 @@ export async function planRouteDeterministically(
         requestHash,
         asOptimizationResult(winner.value, board),
         {
-          planner: "google-deterministic-v4-two-fleet-requests",
+          planner: "google-deterministic-v5-one-fleet-warm-start",
           evaluatedCandidates: evaluations.length,
           candidateSources: evaluations.map((item) => item.source),
           chosenSource: winner.source,

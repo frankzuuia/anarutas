@@ -63,6 +63,9 @@ solicitudes Fleet Routing.
 - [x] FC-T03: fallo o intento adicional conserva el mejor candidato completo y nunca bloquea el guardado.
 - [x] FC-T04: movimientos manuales conservan camioneta/orden y usan cero Fleet Routing; sólo recalculan tramos/ETA.
 - [x] FC-T05: 385/385 pruebas, cobertura global 95.29% líneas, presupuesto Fleet 100%, mutación 5/5 (100%), tipos, lint, build, E2E local y dependencias verdes. Commit/push `develop` autorizados en este bloque; deploy y auditoría EasyPanel manuales.
+- [x] FC-T06 (FC08..FC14): contrato oficial revisado en tres pasadas; el ganador local medido se inyecta en una única solicitud global y el modelo incorpora costo por kilómetro y atraso ponderado por prioridad.
+- [x] FC-T07: máximo central reducido a una solicitud; fallo, omisión o respuesta inválida conserva la ruta local completa sin reintento. Movimientos manuales permanecen en cero Fleet Routing.
+- [x] FC-T08: 385/385 pruebas, integración PostgreSQL real 2/2, cobertura global 95.43% líneas, Google 97.58% líneas/95.94% ramas, mutación Fleet 100% y logística 97.67%, tipos, lint, build, E2E aislado y dependencias verdes. Commit/push autorizados únicamente a `develop`; deploy y smoke facturable permanecen manuales.
 
 ## Secuencia vial con prioridad — BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md
 

@@ -5,10 +5,10 @@ import {
 } from "../src/core/route-fleet-budget";
 
 describe("Fleet Routing request budget", () => {
-  it("allows only the first two requests and never a third", () => {
-    expect(maximumFleetRoutingRequests).toBe(2);
+  it("allows only the first request and never a second", () => {
+    expect(maximumFleetRoutingRequests).toBe(1);
     expect(fleetRoutingRequestAllowed(0)).toBe(true);
-    expect(fleetRoutingRequestAllowed(1)).toBe(true);
+    expect(fleetRoutingRequestAllowed(1)).toBe(false);
     expect(fleetRoutingRequestAllowed(2)).toBe(false);
     expect(fleetRoutingRequestAllowed(3)).toBe(false);
   });

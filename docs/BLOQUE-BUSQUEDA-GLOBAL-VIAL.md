@@ -23,13 +23,13 @@ transacción; amplía la búsqueda sin introducir LLM, mocks ni límites de pedi
 
 ## Reglas de negocio
 
-| ID     | Regla                                                                                                                                                                                                                                                                      |
-| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| BL-078 | Ana Rutas genera tres semillas completas e independientes: reparto global de Google, barrido circular balanceado y clúster multicentro balanceado. El clúster intercambia puntos completos hasta convergencia y evita depender de un único corte angular.                  |
-| BL-079 | Cada reparto produce secuencias deterministas con precedencias y mejora geométrica `relocate/2-opt` dentro de cada nivel de prioridad. Google Routes las mide y sólo el reparto ganador puede usar la segunda solicitud Fleet Routing. No existe máximo de pedidos propio. |
-| BL-080 | La búsqueda conserva cobertura exacta, grupos de cliente, puntos físicos indivisibles y precedencia Alta → Media → Por horario. Las ventanas son blandas: el retraso se minimiza y se registra, pero nunca bloquea ni omite una entrega.                                   |
-| BL-081 | Clientes cercanos continúan como paradas, tarjetas y números independientes. La búsqueda puede volverlos consecutivos cuando reduce el recorrido completo; sólo coordenadas exactamente iguales son indivisibles para la asignación.                                       |
-| BL-082 | Toda alternativa única se recalcula con Google Routes para ETA, regreso, distancia y polilíneas antes de poder ganar. EasyPanel publica semillas, convergencia y comparaciones sin nombres, domicilios, coordenadas ni secretos.                                           |
+| ID     | Regla                                                                                                                                                                                                                                                                     |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BL-078 | Ana Rutas genera tres semillas completas e independientes: reparto global de Google, barrido circular balanceado y clúster multicentro balanceado. El clúster intercambia puntos completos hasta convergencia y evita depender de un único corte angular.                 |
+| BL-079 | Cada reparto produce secuencias deterministas y mejora geométrica `relocate/2-opt` dentro de cada nivel de prioridad. Google Routes las mide y el ganador local se inyecta como solución inicial en la única solicitud Fleet Routing. No existe máximo de pedidos propio. |
+| BL-080 | La búsqueda conserva cobertura exacta, grupos de cliente, puntos físicos indivisibles y precedencia Alta → Media → Por horario. Las ventanas son blandas: el retraso se minimiza y se registra, pero nunca bloquea ni omite una entrega.                                  |
+| BL-081 | Clientes cercanos continúan como paradas, tarjetas y números independientes. La búsqueda puede volverlos consecutivos cuando reduce el recorrido completo; sólo coordenadas exactamente iguales son indivisibles para la asignación.                                      |
+| BL-082 | Toda alternativa única se recalcula con Google Routes para ETA, regreso, distancia y polilíneas antes de poder ganar. EasyPanel publica semillas, convergencia y comparaciones sin nombres, domicilios, coordenadas ni secretos.                                          |
 
 ## Escenarios
 

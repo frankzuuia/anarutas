@@ -1,15 +1,15 @@
 # Bloque 1 — especificación y auditoría previa
 
-Política vigente: `BLOQUE-CONTROL-COSTO-FLEET-ROUTING.md`, FC01..FC07;
+Política vigente: `BLOQUE-CONTROL-COSTO-FLEET-ROUTING.md`, FC08..FC14;
 `BLOQUE-BUSQUEDA-GLOBAL-VIAL.md`, BL-078..082, MG01..08;
 `BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md`, BL-072..076;
 `BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md`, BL-069..071, SV01..08; y
 `BLOQUE-RUTEO-DETERMINISTA.md`, BL-065..068, RD01..08.
 Armar ruta no llama OpenAI: Google aporta optimización vial y Ana Rutas aplica
 prioridad, ventanas, flota, balance y recorrido mediante comparación determinista.
-La distribución se propone primero; todas las asignaciones se preseleccionan con
-prioridad, ventanas y calles medidas, y sólo el único finalista puede volver a
-Google con precedencias por camioneta.
+Las distribuciones locales se preseleccionan con prioridad, ventanas y calles
+medidas; el único finalista se entrega a Google como solución inicial dentro de
+la única solicitud global, sin fijar camionetas ni crear precedencias masivas.
 Sustituye la autoridad de OpenAI en BL-029/035/036/060 y conserva sus fronteras
 transaccionales, de seguridad y persistencia.
 
@@ -25,10 +25,10 @@ La vecindad mueve grupos/puntos completos entre camionetas y aplica
 medir con Google Routes para comparar métricas viales y guardar polilíneas. No se
 fusionan clientes cercanos ni se convierte una ventana en restricción dura.
 
-FC01..FC07 conservan el ganador preliminar como línea base y eliminan la
-amplificación de costo: una semilla global más una única secuenciación opcional
-del finalista son el máximo por armado. Un fallo de la segunda solicitud no
-bloquea el guardado y un movimiento manual consume cero Fleet Routing.
+FC08..FC14 conservan el ganador local como línea base y eliminan la amplificación
+de costo: una única optimización global con warm start es el máximo por armado.
+Un fallo de esa llamada no bloquea el guardado, no existe reintento Fleet y un
+movimiento manual consume cero Fleet Routing.
 
 Política histórica: `BLOQUE-LOGISTICA-PRIORIDADES.md`, BL-058..062/064, LP01..20.
 Prioridad por camioneta, horarios flexibles y comparación medida sustituyen

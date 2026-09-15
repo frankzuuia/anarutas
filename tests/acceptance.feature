@@ -716,28 +716,28 @@ Feature: Ana Rutas independiente y portable
     Then todos los pedidos elegibles permanecen asignados
     And los retrasos participan en el score sin bloquear el guardado
 
-  Scenario: FC01 FC02 FC03 máximo dos solicitudes Fleet Routing por armado
+  Scenario: FC08 FC09 FC10 una sola solicitud Fleet Routing por armado
     Given Ana Rutas tiene el lote completo y varias semillas de reparto
     When el administrador pulsa Armar ruta
-    Then envía una solicitud Fleet Routing global con todos los destinos
-    And preselecciona Google balance y clúster sin más solicitudes Fleet Routing
-    And sólo el mejor reparto medido puede consumir la segunda y última solicitud
+    Then preselecciona balance y clúster sin solicitudes Fleet Routing
+    And inyecta el mejor reparto completo en una única solicitud global con todos los destinos
+    And Google puede mejorar asignación y secuencia sin omitir pedidos
 
-  Scenario: FC04 FC05 el máximo de costo nunca bloquea la ruta
+  Scenario: FC11 FC12 el máximo de costo nunca bloquea la ruta
     Given ya existe un candidato local completo y medido
-    When la segunda solicitud falla o código futuro intenta una tercera
+    When la única solicitud falla o código futuro intenta una segunda
     Then Ana Rutas conserva y guarda el mejor candidato completo
-    And no envía una tercera solicitud Fleet Routing
+    And no envía una segunda solicitud Fleet Routing
     And registra solicitudes usadas máximo y unidades destino sin datos privados
 
-  Scenario: FC06 un movimiento manual nunca vuelve a planear la flota
+  Scenario: FC13 un movimiento manual nunca vuelve a planear la flota
     Given el administrador ya armó una ruta
     When mueve reordena o cambia un pedido de camioneta
     Then PostgreSQL conserva exactamente su decisión manual
     And sólo recalcula tramos y ETA del acomodo elegido
     And no llama Fleet Routing ni redistribuye los demás pedidos
 
-  Scenario: FC07 el volumen no es un límite de pedidos
+  Scenario: FC14 el volumen no es un límite de pedidos
     Given el lote completo puede superar cien pedidos y el plan conserva una versión
     When Ana Rutas arma y guarda la ruta
     Then todos los destinos elegibles entran en las solicitudes permitidas

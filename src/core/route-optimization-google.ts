@@ -8,6 +8,7 @@ import type { RouteMetrics } from "./routing-contract";
 import type { RoutingSettings } from "./routing-contract";
 import {
   priorityGroups,
+  priorityOrder,
   type RoutingCandidate,
 } from "./route-logistics-policy";
 
@@ -65,6 +66,7 @@ export type GoogleOptimizationRequest = {
       startLocation: { latitude: number; longitude: number };
       endLocation: { latitude: number; longitude: number };
       costPerTraveledHour: number;
+      costPerKilometer: number;
       loadLimits: {
         orders: {
           softMaxLoad: string;
@@ -264,10 +266,10 @@ export function buildGoogleOptimizationRequest(
                         softEndTime: new Date(
                           Math.max(Date.parse(startTime), Date.parse(closing)),
                         ).toISOString(),
-                        // One unit/hour of route time below; one late second outweighs an
-                        // hour of aggregate fleet travel in the seed. Final choice is
-                        // lexicographic, not this surrogate cost and not a currency.
-                        costPerHourAfterSoftEndTime: lateCost,
+                        // The surrogate grows with the real batch and priority tier.
+                        // Final choice remains lexicographic, not this cost and not a currency.
+                        costPerHourAfterSoftEndTime:
+                          lateCost * (priorityOrder.length - group.rank),
                       },
                     ],
                   }
@@ -288,6 +290,9 @@ export function buildGoogleOptimizationRequest(
           longitude: settings.depotLocation!.longitude,
         },
         costPerTraveledHour: 1,
+        // Google optimizes only the costs present in the model. Time alone can
+        // prefer a fast but unnecessarily long road; distance must participate.
+        costPerKilometer: 1,
         // Soft limits guide allocation but never forbid a complete route.
         loadLimits: {
           orders: {
@@ -312,44 +317,12 @@ export function buildGoogleSequencingRequest(
   candidate: RoutingCandidate,
 ): GoogleOptimizationRequest {
   const request = buildGoogleOptimizationRequest(board, settings, timezone);
-  const groups = priorityGroups(board.shipments);
-  const groupByShipment = new Map(
-    groups.flatMap((group, groupIndex) =>
-      group.shipmentIds.map((id) => [id, { group, groupIndex }] as const),
-    ),
-  );
-  const vehicleIndex = new Map(
-    board.vehicles.map((vehicle, index) => [vehicle.id, index]),
-  );
-  const assignedVehicle = new Map<number, number>();
+  const { groups, assignedVehicle, routeGroupIndices } =
+    validateCandidateAssignment(board, candidate);
   const precedenceRules: GooglePrecedenceRule[] = [];
-  const seenShipments = new Set<string>();
-
-  if (candidate.routes.length !== board.vehicles.length)
-    throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
-  const seenVehicles = new Set<string>();
-  for (const route of candidate.routes) {
-    const assignedVehicleIndex = vehicleIndex.get(route.vehicleId);
-    if (assignedVehicleIndex === undefined || seenVehicles.has(route.vehicleId))
-      throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
-    seenVehicles.add(route.vehicleId);
-    for (const shipmentId of route.shipmentIds) {
-      const matched = groupByShipment.get(shipmentId);
-      if (!matched || seenShipments.has(shipmentId))
-        throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
-      seenShipments.add(shipmentId);
-    }
-    const routeGroupIndices = [
-      ...new Set(
-        route.shipmentIds.map(
-          (shipmentId) => groupByShipment.get(shipmentId)!.groupIndex,
-        ),
-      ),
-    ];
-    for (const groupIndex of routeGroupIndices)
-      assignedVehicle.set(groupIndex, assignedVehicleIndex);
+  for (const groupIndices of routeGroupIndices) {
     const groupsByRank = new Map<number, number[]>();
-    for (const groupIndex of routeGroupIndices) {
+    for (const groupIndex of groupIndices) {
       const group = groups[groupIndex];
       const rank = groupsByRank.get(group.rank) ?? [];
       rank.push(groupIndex);
@@ -370,9 +343,6 @@ export function buildGoogleSequencingRequest(
           });
     }
   }
-  if (seenShipments.size !== groupByShipment.size)
-    throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
-  assertDeliveryGroups(board.shipments, candidate.routes);
 
   return {
     ...request,
@@ -384,6 +354,60 @@ export function buildGoogleSequencingRequest(
       })),
       ...(precedenceRules.length ? { precedenceRules } : {}),
     },
+  };
+}
+
+function validateCandidateAssignment(
+  board: OrderBoard,
+  candidate: RoutingCandidate,
+) {
+  const groups = priorityGroups(board.shipments);
+  const groupByShipment = new Map(
+    groups.flatMap((group, groupIndex) =>
+      group.shipmentIds.map((id) => [id, { group, groupIndex }] as const),
+    ),
+  );
+  const vehicleIndex = new Map(
+    board.vehicles.map((vehicle, index) => [vehicle.id, index]),
+  );
+  const assignedVehicle = new Map<number, number>();
+  const groupsByRoute: number[][] = [];
+  const seenShipments = new Set<string>();
+
+  if (candidate.routes.length !== board.vehicles.length)
+    throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
+  const seenVehicles = new Set<string>();
+  for (const route of candidate.routes) {
+    const assignedVehicleIndex = vehicleIndex.get(route.vehicleId);
+    if (assignedVehicleIndex === undefined || seenVehicles.has(route.vehicleId))
+      throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
+    seenVehicles.add(route.vehicleId);
+    for (const shipmentId of route.shipmentIds) {
+      const matched = groupByShipment.get(shipmentId);
+      if (!matched || seenShipments.has(shipmentId))
+        throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
+      seenShipments.add(shipmentId);
+    }
+    const groupIndices = [
+      ...new Set(
+        route.shipmentIds.map(
+          (shipmentId) => groupByShipment.get(shipmentId)!.groupIndex,
+        ),
+      ),
+    ];
+    for (const groupIndex of groupIndices)
+      assignedVehicle.set(groupIndex, assignedVehicleIndex);
+    groupsByRoute.push(groupIndices);
+  }
+  if (seenShipments.size !== groupByShipment.size)
+    throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
+  assertDeliveryGroups(board.shipments, candidate.routes);
+  return {
+    groups,
+    groupByShipment,
+    vehicleIndex,
+    assignedVehicle,
+    routeGroupIndices: groupsByRoute,
   };
 }
 
@@ -406,19 +430,13 @@ export function buildGoogleRefinementRequest(
   candidate: RoutingCandidate,
   measured: MeasuredRoutingResult,
 ): GoogleOptimizationRequest {
-  // Reuse the strict assignment/group validator, then deliberately build the
-  // unrestricted model: refinement must be able to move complete destinations.
-  buildGoogleSequencingRequest(board, settings, timezone, candidate);
+  // Validate the warm start without constructing the sequencing-only
+  // precedence graph; the global request remains linear in the number of stops.
+  const { groups, groupByShipment, vehicleIndex } = validateCandidateAssignment(
+    board,
+    candidate,
+  );
   const request = buildGoogleOptimizationRequest(board, settings, timezone);
-  const groups = priorityGroups(board.shipments);
-  const groupByShipment = new Map(
-    groups.flatMap((group, shipmentIndex) =>
-      group.shipmentIds.map((id) => [id, { group, shipmentIndex }] as const),
-    ),
-  );
-  const vehicleIndex = new Map(
-    board.vehicles.map((vehicle, index) => [vehicle.id, index]),
-  );
   const measuredByVehicle = new Map(
     measured.routes.map((route) => [route.vehicleId, route] as const),
   );
@@ -450,16 +468,16 @@ export function buildGoogleRefinementRequest(
     let previous = start;
     const visits = route.shipmentIds.flatMap((shipmentId) => {
       const matched = groupByShipment.get(shipmentId);
-      if (!matched || injectedGroups.has(matched.shipmentIndex)) return [];
+      if (!matched || injectedGroups.has(matched.groupIndex)) return [];
       const startTime = stopTime.get(shipmentId);
       const instant = Date.parse(startTime ?? "");
       if (!Number.isFinite(instant) || instant < previous || instant > finish)
         throw new AppError("ROUTING_MODEL_INVALID", 503);
       previous = instant;
-      injectedGroups.add(matched.shipmentIndex);
+      injectedGroups.add(matched.groupIndex);
       return [
         {
-          shipmentIndex: matched.shipmentIndex,
+          shipmentIndex: matched.groupIndex,
           isPickup: false as const,
           visitRequestIndex: 0 as const,
           startTime: startTime!,

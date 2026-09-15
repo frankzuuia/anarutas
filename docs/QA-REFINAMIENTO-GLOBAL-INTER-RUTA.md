@@ -1,6 +1,6 @@
 # QA — refinamiento global entre camionetas
 
-> Evidencia histórica sustituida por FC01..FC07. El refinamiento Fleet adicional
+> Evidencia histórica sustituida por FC08..FC14. El refinamiento Fleet adicional
 > ya no pertenece al runtime; consulte `QA-CONTROL-COSTO-FLEET-ROUTING.md`.
 
 Fecha: 2026-09-14. Rama: `develop`. Alcance: BL-083..086 / IR01..08.
@@ -34,20 +34,20 @@ No se ejecutó un smoke facturable: requiere el deploy manual del usuario en
 
 ## Puertas ejecutadas
 
-| Puerta | Resultado |
-| ------ | --------- |
-| Suite Vitest | 36 archivos, **383/383** pruebas |
-| Cobertura global | 93.57% statements, 86.85% branches, 97.39% functions, **94.76% lines** |
-| Cobertura `route-optimization-google.ts` | 97.74% statements, **96.39% branches**, 97.82% functions, **97.58% lines** |
-| Mutation testing logístico | **97.57% total / 97.78% cubierto**; 912 killed, 11 timeout, 21 survived, 2 no coverage |
-| Mutación contrato Google | **100%**, 181/181 detectados |
-| Mutación política/evaluador | **100%**, 182/182 detectados |
-| TypeScript | verde |
-| ESLint | verde |
-| Next.js production build | verde, 16/16 páginas generadas |
-| Dependencias runtime | `npm audit --omit=dev`: **0 vulnerabilidades** |
-| Playwright local | **1 passed / 2 live skipped** por ausencia deliberada de configuración externa |
-| Diff | `git diff --check` verde; archivo privado local excluido del staging |
+| Puerta                                   | Resultado                                                                              |
+| ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| Suite Vitest                             | 36 archivos, **383/383** pruebas                                                       |
+| Cobertura global                         | 93.57% statements, 86.85% branches, 97.39% functions, **94.76% lines**                 |
+| Cobertura `route-optimization-google.ts` | 97.74% statements, **96.39% branches**, 97.82% functions, **97.58% lines**             |
+| Mutation testing logístico               | **97.57% total / 97.78% cubierto**; 912 killed, 11 timeout, 21 survived, 2 no coverage |
+| Mutación contrato Google                 | **100%**, 181/181 detectados                                                           |
+| Mutación política/evaluador              | **100%**, 182/182 detectados                                                           |
+| TypeScript                               | verde                                                                                  |
+| ESLint                                   | verde                                                                                  |
+| Next.js production build                 | verde, 16/16 páginas generadas                                                         |
+| Dependencias runtime                     | `npm audit --omit=dev`: **0 vulnerabilidades**                                         |
+| Playwright local                         | **1 passed / 2 live skipped** por ausencia deliberada de configuración externa         |
+| Diff                                     | `git diff --check` verde; archivo privado local excluido del staging                   |
 
 Los 21 mutantes sobrevivientes pertenecen al planificador geográfico v8 previo;
 el núcleo nuevo de Google obtuvo 100%. El score total supera el umbral obligatorio

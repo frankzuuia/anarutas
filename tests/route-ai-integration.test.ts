@@ -254,7 +254,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       },
     );
 
-    expect(googleCalls).toBe(2);
+    expect(googleCalls).toBe(1);
     expect(
       (
         googleRequests[0].model.shipments as {
@@ -263,15 +263,12 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       ).every((item) => item.allowedVehicleIndices === undefined),
     ).toBe(true);
     expect(googleRequests[0].model).not.toHaveProperty("precedenceRules");
-    const geographicAssignments = googleRequests[1].model.shipments.map(
-      (item) => item.allowedVehicleIndices!,
-    );
-    expect(geographicAssignments).toHaveLength(3);
+    expect(googleRequests[0].injectedFirstSolutionRoutes).toHaveLength(2);
     expect(
-      geographicAssignments.every((assignment) => assignment.length === 1),
-    ).toBe(true);
-    expect(new Set(geographicAssignments.flat()).size).toBe(2);
-    expect(googleRequests[1]).not.toHaveProperty("injectedFirstSolutionRoutes");
+      googleRequests[0].injectedFirstSolutionRoutes?.flatMap(
+        (route) => route.visits,
+      ),
+    ).toHaveLength(3);
     expect(result).toMatchObject({
       current: true,
       metrics: { performedShipmentCount: 3 },
@@ -293,14 +290,14 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       )
     ).rows[0].details;
     expect(audit).toMatchObject({
-      planner: "google-deterministic-v4-two-fleet-requests",
+      planner: "google-deterministic-v5-one-fleet-warm-start",
       evaluatedCandidates: 2,
-      candidateSources: ["Google", "balance"],
+      candidateSources: ["balance", "Google"],
       chosenSource: "balance",
-      fleetRoutingRequests: 2,
-      fleetRoutingRequestLimit: 2,
-      fleetRoutingShipmentUnits: 6,
-      logisticsPolicy: "priority-geographic-refined-v9",
+      fleetRoutingRequests: 1,
+      fleetRoutingRequestLimit: 1,
+      fleetRoutingShipmentUnits: 3,
+      logisticsPolicy: "priority-geographic-refined-v10-one-fleet-warm-start",
       score: {
         priorityConflicts: 0,
         lateStops: 0,
@@ -316,12 +313,10 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       false,
     );
     expect(
-      logs.filter(
-        (entry) => entry.event === "routing.google.sequence.completed",
-      ),
+      logs.filter((entry) => entry.event === "routing.google.started"),
     ).toHaveLength(1);
     expect(
-      logs.some((entry) => entry.event.startsWith("routing.google.refinement")),
+      logs.some((entry) => entry.event.startsWith("routing.google.sequence")),
     ).toBe(false);
     expect(
       logs.find((entry) => entry.event === "routing.logistics.compared"),
@@ -339,9 +334,9 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       details: {
         assignedOrders: 3,
         skippedOrders: 0,
-        fleetRoutingRequests: 2,
-        fleetRoutingRequestLimit: 2,
-        fleetRoutingShipmentUnits: 6,
+        fleetRoutingRequests: 1,
+        fleetRoutingRequestLimit: 1,
+        fleetRoutingShipmentUnits: 3,
       },
     });
     const serializedLogs = JSON.stringify(logs);
@@ -356,22 +351,12 @@ describe("deterministic Google routing with real PostgreSQL", () => {
 
     const current = await orderBoard(db.pool, plan.id);
     const fallbackLogs: RoutingLogEntry[] = [];
-    let rejectedSequencing = 0;
-    const failingSequencingFetch: typeof fetch = async (input, init) => {
-      const request = JSON.parse(
-        String(init?.body),
-      ) as GoogleOptimizationRequest;
-      if (
-        request.model.shipments.every(
-          (shipment) => shipment.allowedVehicleIndices !== undefined,
-        )
-      ) {
-        rejectedSequencing++;
-        return new Response(JSON.stringify({ error: "provider unavailable" }), {
-          status: 503,
-        });
-      }
-      return googleFetch(input, init);
+    let rejectedOptimization = 0;
+    const failingOptimizationFetch: typeof fetch = async () => {
+      rejectedOptimization++;
+      return new Response(JSON.stringify({ error: "provider unavailable" }), {
+        status: 503,
+      });
     };
     await expect(
       planRouteDeterministically(
@@ -391,7 +376,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
               token_uri: "https://oauth2.googleapis.com/token",
             },
           },
-          googleFetch: failingSequencingFetch,
+          googleFetch: failingOptimizationFetch,
           googleToken: async () => "google-token",
           readLeg: async () => ({
             distance: 100,
@@ -408,17 +393,17 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       current: true,
       metrics: { performedShipmentCount: 3 },
     });
-    expect(rejectedSequencing).toBe(1);
+    expect(rejectedOptimization).toBe(1);
     expect(
       fallbackLogs.find(
-        (entry) => entry.event === "routing.google.sequence.unavailable",
+        (entry) => entry.event === "routing.google.unavailable",
       ),
     ).toMatchObject({
       level: "warning",
       details: {
         errorCode: "ROUTING_GOOGLE_UNAVAILABLE",
-        fleetRoutingRequests: 2,
-        fleetRoutingRequestLimit: 2,
+        fleetRoutingRequests: 1,
+        fleetRoutingRequestLimit: 1,
       },
     });
     expect(fallbackLogs.at(-1)?.event).toBe("routing.completed");
@@ -444,7 +429,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
     });
   });
 
-  it("skips the second Fleet Routing request when no truck has a sequence to optimize", async () => {
+  it("uses one warm-started Fleet Routing request even for one destination", async () => {
     let plan = await createPlan(db.pool, actor, {
       date: "2026-09-13",
       label: "Single stop Fleet budget QA",
@@ -595,13 +580,11 @@ describe("deterministic Google routing with real PostgreSQL", () => {
     expect(result?.metrics.performedShipmentCount).toBe(1);
     expect(googleCalls).toBe(1);
     expect(
-      logs.find(
-        (entry) => entry.event === "routing.google.sequence.not_required",
-      ),
+      logs.find((entry) => entry.event === "routing.google.started"),
     ).toMatchObject({
       details: {
         fleetRoutingRequests: 1,
-        fleetRoutingRequestLimit: 2,
+        fleetRoutingRequestLimit: 1,
         fleetRoutingShipmentUnits: 1,
       },
     });

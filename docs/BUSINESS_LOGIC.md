@@ -1,6 +1,6 @@
 # Ana Rutas — bloque 1 aprobado
 
-Política vigente: FC01..FC07 en `BLOQUE-CONTROL-COSTO-FLEET-ROUTING.md`,
+Política vigente: FC08..FC14 en `BLOQUE-CONTROL-COSTO-FLEET-ROUTING.md`,
 BL-078..082 en `BLOQUE-BUSQUEDA-GLOBAL-VIAL.md`,
 BL-072..076 en `BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md`,
 BL-069..071 en `BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md`, y BL-065..068 de
@@ -33,11 +33,13 @@ cantidad de alternativas nace de los datos y de mejoras estrictas, no de un
 máximo fijo; las alternativas se recalculan con Google Routes para ETA, regreso,
 distancia y mapa antes del guardado. Se descarta una matriz N×N porque su consumo
 crece cuadráticamente sin mejorar la autoridad vial final de Google.
-FC01..FC07 conservan todas esas semillas pero eliminan la amplificación de costo:
-primero compiten mediante prioridad, ventanas, búsqueda local y Google Routes.
-Sólo el ganador preliminar puede usar una segunda y última solicitud Fleet
-Routing con camionetas fijas y precedencias. Si esa solicitud falla, la base
-completa se guarda; mover pedidos manualmente usa cero Fleet Routing.
+FC08..FC14 eliminan la amplificación restante: balance y clúster compiten
+primero mediante prioridad, ventanas, búsqueda local y Google Routes. El ganador
+completo entra como `injectedFirstSolutionRoutes` en la única solicitud Fleet
+Routing, que permanece libre para mejorar reparto y secuencia. La respuesta se
+revalida, se ordena por prioridad y se mide antes de competir. Si Google falla,
+omite o rechaza, la base local completa se guarda sin reintento; mover pedidos
+manualmente usa cero Fleet Routing.
 
 BL-065..068 sustituyen a BL-029/035/036/060 donde asignaban autoridad a OpenAI.
 Toda explicación generativa queda fuera del ruteo: prioridad, ventanas, uso de flota,
