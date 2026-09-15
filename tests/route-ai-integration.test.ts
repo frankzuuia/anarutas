@@ -40,7 +40,7 @@ afterAll(async () => {
 });
 
 describe("deterministic Google routing with real PostgreSQL", () => {
-  it("uses no LLM and replaces a concentrated Google proposal with the best complete measured candidate", async () => {
+  it("preserves Google's complete sequence including a priority exception, without LLM or extra road calls", async () => {
     await saveRoutingSettings(db.pool, actor, {
       depotAddress: "Bodega",
       depotLocation: { latitude: 20, longitude: -103, placeId: "warehouse" },
@@ -172,26 +172,30 @@ describe("deterministic Google routing with real PostgreSQL", () => {
           item.allowedVehicleIndices?.[0],
       );
       const effectiveAssignments = assignments.map(
-        (assignment) => assignment ?? 0,
+        (assignment, index) => assignment ?? index % before.vehicles.length,
       );
       const routes = [0, 1].map((vehicleIndex) => {
-        const visits = effectiveAssignments.flatMap((assignment, index) =>
-          assignment === vehicleIndex
-            ? [
-                {
-                  shipmentIndex: index,
-                  startTime: "2026-09-12T08:00:00Z",
-                },
-              ]
-            : [],
-        );
+        const visits = effectiveAssignments
+          .flatMap((assignment, index) =>
+            assignment === vehicleIndex
+              ? [
+                  {
+                    shipmentIndex: index,
+                    startTime: "2026-09-12T08:00:00Z",
+                  },
+                ]
+              : [],
+          )
+          .reverse();
         return visits.length
           ? {
               vehicleIndex,
               vehicleStartTime: "2026-09-12T08:00:00Z",
               vehicleEndTime: "2026-09-12T08:00:00Z",
               visits,
-              transitions: visits.map(() => ({
+              routePolyline: { points: "provider-route-polyline" },
+              transitions: [...visits, null].map(() => ({
+                routePolyline: { points: "provider-transition-polyline" },
                 travelDistanceMeters: 0,
                 travelDuration: "0s",
                 waitDuration: "0s",
@@ -242,13 +246,9 @@ describe("deterministic Google routing with real PostgreSQL", () => {
         },
         googleFetch,
         googleToken: async () => "google-token",
-        readLeg: async () => ({
-          distance: 100,
-          seconds: 10,
-          polyline: "integration-road",
-          token: null,
-          trafficMode: "forecast",
-        }),
+        readLeg: async () => {
+          throw new Error("Unexpected extra paid road call");
+        },
         requestId: "routing-request-qa",
         logSink: (entry) => logs.push(entry),
       },
@@ -263,12 +263,14 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       ).every((item) => item.allowedVehicleIndices === undefined),
     ).toBe(true);
     expect(googleRequests[0].model).not.toHaveProperty("precedenceRules");
-    expect(googleRequests[0].injectedFirstSolutionRoutes).toHaveLength(2);
-    expect(
-      googleRequests[0].injectedFirstSolutionRoutes?.flatMap(
-        (route) => route.visits,
-      ),
-    ).toHaveLength(3);
+    expect(googleRequests[0].injectedFirstSolutionRoutes).toBeUndefined();
+    expect(googleRequests[0].model.transitionAttributes).toEqual([
+      {
+        srcTag: "priority:medium",
+        dstTag: "priority:high",
+        cost: expect.any(Number),
+      },
+    ]);
     expect(result).toMatchObject({
       current: true,
       metrics: { performedShipmentCount: 3 },
@@ -290,16 +292,17 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       )
     ).rows[0].details;
     expect(audit).toMatchObject({
-      planner: "google-deterministic-v5-one-fleet-warm-start",
-      evaluatedCandidates: 2,
-      candidateSources: ["balance", "Google"],
-      chosenSource: "balance",
+      planner: "google-direct-v1-priority-transitions",
+      evaluatedCandidates: 1,
+      candidateSources: ["Google"],
+      chosenSource: "Google",
+      providerSequencePreserved: true,
       fleetRoutingRequests: 1,
       fleetRoutingRequestLimit: 1,
       fleetRoutingShipmentUnits: 3,
-      logisticsPolicy: "priority-geographic-refined-v10-one-fleet-warm-start",
+      logisticsPolicy: "google-direct-v1-priority-transitions",
       score: {
-        priorityConflicts: 0,
+        priorityConflicts: 1,
         lateStops: 0,
         unusedVehicles: 0,
         maxOrders: 2,
@@ -319,7 +322,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       logs.some((entry) => entry.event.startsWith("routing.google.sequence")),
     ).toBe(false);
     expect(
-      logs.find((entry) => entry.event === "routing.logistics.compared"),
+      logs.find((entry) => entry.event === "routing.result.validated"),
     ).toMatchObject({
       details: {
         operationalSeconds: expect.any(Number),
@@ -340,6 +343,15 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       },
     });
     const serializedLogs = JSON.stringify(logs);
+    expect(logs.some((entry) => entry.system === "Google Routes API")).toBe(
+      false,
+    );
+    expect(result!.routes[0].stops.map((stop) => stop.shipmentId)).toEqual([
+      before.shipments[2].id,
+      before.shipments[0].id,
+    ]);
+    expect(result!.routes[0].encodedPolyline).toBe("provider-route-polyline");
+    expect(result!.routes[0].segmentPolylines).toHaveLength(3);
     for (const privateValue of [
       "private_key",
       "Cliente privado",
@@ -429,7 +441,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
     });
   });
 
-  it("uses one warm-started Fleet Routing request even for one destination", async () => {
+  it("uses one direct Fleet Routing request even for one destination", async () => {
     let plan = await createPlan(db.pool, actor, {
       date: "2026-09-13",
       label: "Single stop Fleet budget QA",
@@ -537,6 +549,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
                     },
                   ],
                   transitions: [
+                    {},
                     {
                       travelDistanceMeters: 0,
                       travelDuration: "0s",
@@ -566,13 +579,9 @@ describe("deterministic Google routing with real PostgreSQL", () => {
           );
         },
         googleToken: async () => "google-token",
-        readLeg: async () => ({
-          distance: 100,
-          seconds: 10,
-          polyline: "single-stop-road",
-          token: null,
-          trafficMode: "forecast",
-        }),
+        readLeg: async () => {
+          throw new Error("Unexpected extra road call");
+        },
         requestId: "routing-single-stop-budget-qa",
         logSink: (entry) => logs.push(entry),
       },

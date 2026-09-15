@@ -56,6 +56,7 @@ export type GoogleOptimizationRequest = {
       deliveries: {
         label: string;
         arrivalLocation: { latitude: number; longitude: number };
+        tags?: string[];
         timeWindows?: GoogleTimeWindow[];
       }[];
       allowedVehicleIndices?: number[];
@@ -80,6 +81,11 @@ export type GoogleOptimizationRequest = {
       startTimeWindows?: GoogleTimeWindow[];
     }[];
     precedenceRules?: GooglePrecedenceRule[];
+    transitionAttributes?: {
+      srcTag: string;
+      dstTag: string;
+      cost: number;
+    }[];
   };
 };
 

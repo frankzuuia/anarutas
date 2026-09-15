@@ -7,7 +7,6 @@ import { readOrderBoard } from "./orders";
 import type { OrderBoard } from "./orders-contract";
 import { routeFingerprint } from "./route-fingerprint";
 import { assertDeliveryGroups } from "./route-delivery-groups";
-import { priorityConflictIds } from "./route-logistics-policy";
 import type { GoogleOptimizationResult } from "./route-optimization-google";
 import type {
   PublicOptimization,
@@ -203,17 +202,8 @@ export async function applyOptimizationResult(
       throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
         field: "shipments.completeCoverage",
       });
-    if (
-      priorityConflictIds(board.shipments, {
-        routes: privateRoutes.map((route) => ({
-          vehicleId: route.vehicleId,
-          shipmentIds: route.stops.map((s) => s.shipmentId),
-        })),
-      }).size
-    )
-      throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
-        field: "shipments.prioritySequence",
-      });
+    // Priority is optimized upstream and reported as a planning preference.
+    // It must not reject or reorder a complete provider solution at persistence.
     const optimizedIdSet = new Set(optimizedIds);
     const remainingIds = board.shipments
       .map((shipment) => shipment.id)

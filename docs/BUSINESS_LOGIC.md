@@ -1,5 +1,10 @@
 # Ana Rutas — bloque 1 aprobado
 
+Política vigente de armado: **BL-FD01..08, `BLOQUE-FLEET-DIRECTO.md`**. Una
+solicitud global y conservación directa del resultado vial completo. Preferencias
+dentro del modelo; sin comparar/reordenar/vetar por prioridad después. El flujo
+multicandidato descrito abajo queda histórico, salvo recuperación por fallo.
+
 Política vigente: FC08..FC14 en `BLOQUE-CONTROL-COSTO-FLEET-ROUTING.md`,
 BL-078..082 en `BLOQUE-BUSQUEDA-GLOBAL-VIAL.md`,
 BL-072..076 en `BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md`,

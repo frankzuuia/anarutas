@@ -269,9 +269,8 @@ describe("routing settings and atomic optimization / real PostgreSQL", () => {
         performedShipmentCount: 2,
       },
     };
-    const inverted = structuredClone(result);
-    inverted.routes[0].visits[0].shipmentIndex = 1;
-    inverted.routes[0].visits[1].shipmentIndex = 0;
+    const incomplete = structuredClone(result);
+    incomplete.routes[0].visits.pop();
     await expect(
       applyOptimizationResult(
         db.pool,
@@ -281,12 +280,12 @@ describe("routing settings and atomic optimization / real PostgreSQL", () => {
         (await getRoutingSettings(db.pool)).version,
         before,
         deliveries,
-        createHash("sha256").update("inverted-priorities").digest("hex"),
-        inverted,
+        createHash("sha256").update("incomplete-coverage").digest("hex"),
+        incomplete,
       ),
     ).rejects.toMatchObject({
       code: "ROUTING_RESPONSE_INVALID",
-      details: { field: "shipments.prioritySequence" },
+      details: { field: "shipments.completeCoverage" },
     });
     expect(await orderBoard(db.pool, plan.id)).toEqual(before);
     expect(

@@ -716,6 +716,7 @@ Feature: Ana Rutas independiente y portable
     Then todos los pedidos elegibles permanecen asignados
     And los retrasos participan en el score sin bloquear el guardado
 
+  @historical_replaced_by_FD
   Scenario: FC08 FC09 FC10 una sola solicitud Fleet Routing por armado
     Given Ana Rutas tiene el lote completo y varias semillas de reparto
     When el administrador pulsa Armar ruta
@@ -723,6 +724,7 @@ Feature: Ana Rutas independiente y portable
     And inyecta el mejor reparto completo en una única solicitud global con todos los destinos
     And Google puede mejorar asignación y secuencia sin omitir pedidos
 
+  @historical_replaced_by_FD
   Scenario: FC11 FC12 el máximo de costo nunca bloquea la ruta
     Given ya existe un candidato local completo y medido
     When la única solicitud falla o código futuro intenta una segunda

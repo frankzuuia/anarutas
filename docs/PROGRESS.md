@@ -1,5 +1,20 @@
 # Progreso — bloque 1
 
+## FD — corrección de autopsia, respuesta Google directa
+
+- [x] FD-T00: diagnóstico del recorrido 257632 m sustituido por 442329 m, contrato
+      oficial revisado y escenario/documentación previa; usuario autoriza el arreglo.
+- [x] FD-T01: modelo global dinámico con prioridades internas, ventanas alternativas
+      y visitas físicas compatibles; una solicitud sin semilla medida.
+- [x] FD-T02: expansión pura conservando secuencia, tiempos, trazos y cobertura.
+- [x] FD-T03: éxito directo; recuperación sólo ante fallo, sin reintento Fleet.
+- [x] FD-T04: quitar veto de prioridad sin tocar integridad, permisos ni arrastre.
+- [x] FD-T05: 425/425 pruebas, núcleo directo 100% cobertura, mutación 98.99%,
+      PostgreSQL, Gherkin, tipos/lint/build, E2E local y seguridad. `QA-FLEET-DIRECTO.md`.
+- FD-T06: entrega autorizada únicamente a develop con esta evidencia local;
+  deploy y validación vial facturable permanecen manuales. Estado de publicación
+  verificable en Git, no en una declaración de perfección del algoritmo.
+
 ## Avance autorizado a develop — 12/09/2026
 
 El usuario autorizó commit/push de logística e incidencias para probar en develop

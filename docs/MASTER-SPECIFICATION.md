@@ -1,5 +1,13 @@
 # Bloque 1 — especificación y auditoría previa
 
+## Política vigente FD01..FD10 — reemplaza el armado multicandidato
+
+`BLOQUE-FLEET-DIRECTO.md` define flujo, contratos, escenarios y recuperación.
+Armar → una solicitud global Google → validar/expandir sin reordenar → guardar
+su recorrido atómicamente. Prioridad es preferencia fuerte dentro del modelo,
+no veto al guardar. Cero Compute Routes en éxito; fallback medido sólo si falla
+Google. Las políticas de armado que siguen son históricas, no vigentes.
+
 Política vigente: `BLOQUE-CONTROL-COSTO-FLEET-ROUTING.md`, FC08..FC14;
 `BLOQUE-BUSQUEDA-GLOBAL-VIAL.md`, BL-078..082, MG01..08;
 `BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md`, BL-072..076;
