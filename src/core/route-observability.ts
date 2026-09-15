@@ -12,7 +12,7 @@ export type RoutingLogDetails = Partial<{
   deliveryGroups: number;
   vehicles: number;
   solverTimeoutSeconds: number;
-  allocationSource: "Google" | "balance" | "cluster";
+  allocationSource: "Google" | "balance" | "cluster" | "refinement";
   precedenceRules: number;
   skippedDestinations: number;
   priorityConflictOrders: number;

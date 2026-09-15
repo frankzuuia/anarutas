@@ -14,6 +14,7 @@ import {
 import { routeFingerprint } from "./route-fingerprint";
 import {
   buildGoogleOptimizationRequest,
+  buildGoogleRefinementRequest,
   buildGoogleSequencingRequest,
   parseGoogleOptimizationResponse,
   requestGoogleOptimization,
@@ -52,12 +53,29 @@ import { getRoutingSettings } from "./routing-settings";
 import type { PublicOptimization } from "./routing-contract";
 
 type Evaluation = Awaited<ReturnType<typeof evaluateRoutingCandidate>>;
-type AllocationSource = "Google" | "balance" | "cluster";
+type AllocationSource = "Google" | "balance" | "cluster" | "refinement";
 
 function sourceLabel(source: AllocationSource) {
   if (source === "Google") return "Google";
   if (source === "cluster") return "clúster geográfico";
+  if (source === "refinement") return "refinamiento global";
   return "balance geográfico";
+}
+
+const recoverableRefinementErrors = new Set([
+  "ROUTING_GOOGLE_UNAVAILABLE",
+  "ROUTING_GOOGLE_QUOTA",
+  "ROUTING_GOOGLE_DENIED",
+  "ROUTING_RESPONSE_INVALID",
+  "ROUTING_CANDIDATE_INVALID",
+  "ROUTING_CUSTOMER_GROUP_INVALID",
+  "ROUTING_MODEL_INVALID",
+]);
+
+function recoverableRefinementError(error: unknown): error is AppError {
+  return (
+    error instanceof AppError && recoverableRefinementErrors.has(error.code)
+  );
 }
 
 function asOptimizationResult(
@@ -165,7 +183,7 @@ export async function planRouteDeterministically(
     const requestHash = createHash("sha256")
       .update(
         JSON.stringify({
-          provider: "google-deterministic-v2",
+          provider: "google-deterministic-v3",
           policy: logisticsPolicyVersion,
           fingerprint: routeFingerprint(board, settings.version),
         }),
@@ -377,9 +395,11 @@ export async function planRouteDeterministically(
             { allocationSource: source },
           );
         const signature = allocationSignature(candidate);
-        if (seenAllocations.has(signature)) return;
+        if (seenAllocations.has(signature)) return null;
         seenAllocations.add(signature);
-        allocations.push({ source, candidate });
+        const allocation = { source, candidate };
+        allocations.push(allocation);
+        return allocation;
       };
       if (!googleResult.skipped.length) {
         try {
@@ -428,7 +448,9 @@ export async function planRouteDeterministically(
         { routes: board.vehicles.length },
       );
 
-      for (const allocation of allocations) {
+      const sequenceAndMeasure = async (
+        allocation: (typeof allocations)[number],
+      ) => {
         await renewOptimizationLease(pool, planId, lease, externalTimeout);
         const sequencingRequest = buildGoogleSequencingRequest(
           board,
@@ -477,7 +499,7 @@ export async function planRouteDeterministically(
               skippedDestinations: sequencedResult.skipped.length,
             },
           );
-          continue;
+          return false;
         }
         const sequencedCandidate = parseRoutingCandidate(
           googleProposalCandidate(board, sequencedResult),
@@ -503,7 +525,7 @@ export async function planRouteDeterministically(
               priorityConflictOrders: conflicts.size,
             },
           );
-          continue;
+          return false;
         }
         progress(
           "info",
@@ -549,7 +571,10 @@ export async function planRouteDeterministically(
           );
         await measure(allocation.source, sequencedCandidate);
         await measure(allocation.source, spatial);
-      }
+        return true;
+      };
+      for (const allocation of allocations)
+        await sequenceAndMeasure(allocation);
       if (evaluations.some((evaluation) => evaluation.value.lateStops > 0)) {
         progress(
           "info",
@@ -581,6 +606,133 @@ export async function planRouteDeterministically(
             ),
           );
         }
+      }
+      const preliminaryWinner = [...evaluations].sort((left, right) =>
+        compareLogisticsScores(left.value.score, right.value.score),
+      )[0];
+      if (!preliminaryWinner)
+        throw new AppError("ROUTING_RESPONSE_INVALID", 503);
+
+      try {
+        await renewOptimizationLease(pool, planId, lease, externalTimeout);
+        const refinementRequest = buildGoogleRefinementRequest(
+          board,
+          settings,
+          timezone,
+          preliminaryWinner.value.candidate,
+          preliminaryWinner.value.result,
+        );
+        progress(
+          "info",
+          "routing.google.refinement.started",
+          "Google Route Optimization",
+          "refinamiento global entre camionetas",
+          `Google comenzó una búsqueda global adicional desde la mejor ruta de ${sourceLabel(preliminaryWinner.source)}. Puede mover destinos completos entre camionetas, pero la ruta base seguirá disponible.`,
+          {
+            orders: deliveries.length,
+            deliveryGroups: snapshot.deliveryGroups.length,
+            vehicles: board.vehicles.length,
+            solverTimeoutSeconds,
+          },
+        );
+        const refinementStarted = performance.now();
+        const rawRefinement = await requestGoogleOptimization(
+          google.projectId,
+          google.credentials,
+          refinementRequest,
+          {
+            fetch: dependencies.googleFetch,
+            token: dependencies.googleToken,
+          },
+        );
+        const refinedResult = parseGoogleOptimizationResponse(
+          rawRefinement,
+          snapshot.deliveryGroups.length,
+          board.vehicles.length,
+        );
+        if (refinedResult.skipped.length) {
+          progress(
+            "warning",
+            "routing.google.refinement.rejected",
+            "Ana Rutas",
+            "validación del refinamiento global",
+            "Ana Rutas descartó el refinamiento global porque Google omitió destinos. La mejor ruta preliminar permanece intacta.",
+            { skippedDestinations: refinedResult.skipped.length },
+          );
+        } else {
+          const refinedAllocation = addAllocation(
+            "refinement",
+            googleProposalCandidate(board, refinedResult),
+          );
+          if (!refinedAllocation) {
+            progress(
+              "info",
+              "routing.google.refinement.duplicate",
+              "Ana Rutas",
+              "validación del refinamiento global",
+              "Google confirmó un reparto que Ana Rutas ya había evaluado; no se duplicaron solicitudes de secuencia ni medición.",
+              {
+                stepDurationMs: Math.round(
+                  performance.now() - refinementStarted,
+                ),
+              },
+            );
+          } else {
+            progress(
+              "info",
+              "routing.google.refinement.completed",
+              "Google Route Optimization",
+              "refinamiento global entre camionetas",
+              "Google propuso un reparto global nuevo y completo. Ana Rutas lo volverá a secuenciar con prioridades y a medir por calles reales antes de compararlo.",
+              {
+                stepDurationMs: Math.round(
+                  performance.now() - refinementStarted,
+                ),
+                routes: refinedResult.routes.length,
+                skippedDestinations: 0,
+              },
+            );
+            const firstRefinedEvaluation = evaluations.length;
+            if (await sequenceAndMeasure(refinedAllocation)) {
+              const refinedEvaluations = evaluations.slice(
+                firstRefinedEvaluation,
+              );
+              if (
+                refinedEvaluations.some(
+                  (evaluation) => evaluation.value.lateStops > 0,
+                )
+              ) {
+                const deadline = deadlineSequenceCandidate(
+                  board.shipments,
+                  refinedAllocation.candidate,
+                  settings.depotLocation!,
+                );
+                await measure("refinement", deadline);
+                await measure(
+                  "refinement",
+                  spatialSequenceCandidate(
+                    board.shipments,
+                    deadline,
+                    settings.depotLocation!,
+                  ),
+                );
+              }
+            }
+          }
+        }
+      } catch (error) {
+        if (!recoverableRefinementError(error)) throw error;
+        progress(
+          "warning",
+          "routing.google.refinement.unavailable",
+          "Ana Rutas",
+          "refinamiento global entre camionetas",
+          "El refinamiento global opcional no pudo completarse. Ana Rutas conservará la mejor ruta completa que ya había medido.",
+          {
+            errorCode: error.code,
+            evaluatedCandidates: evaluations.length,
+          },
+        );
       }
       const winner = [...evaluations].sort((left, right) =>
         compareLogisticsScores(left.value.score, right.value.score),
@@ -629,7 +781,7 @@ export async function planRouteDeterministically(
         requestHash,
         asOptimizationResult(winner.value, board),
         {
-          planner: "google-deterministic-v2",
+          planner: "google-deterministic-v3",
           evaluatedCandidates: evaluations.length,
           candidateSources: evaluations.map((item) => item.source),
           chosenSource: winner.source,

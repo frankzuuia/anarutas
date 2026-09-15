@@ -119,7 +119,7 @@ describe("logistics precedence and physical-stop quality", () => {
     const snapshot = planningSnapshot(board(), settings, "America/Mexico_City");
     expect(snapshot.timezone).toBe("America/Mexico_City");
     expect(snapshot.policy).toEqual({
-      version: "priority-geographic-sequenced-v8",
+      version: "priority-geographic-refined-v9",
       priorityScope: "per_vehicle",
       compareAlternatives: true,
       scoreOrder: [

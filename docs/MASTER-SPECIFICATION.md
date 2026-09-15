@@ -1,6 +1,7 @@
 # Bloque 1 — especificación y auditoría previa
 
-Política vigente: `BLOQUE-BUSQUEDA-GLOBAL-VIAL.md`, BL-078..082, MG01..08;
+Política vigente: `BLOQUE-REFINAMIENTO-GLOBAL-INTER-RUTA.md`, BL-083..086,
+IR01..08; `BLOQUE-BUSQUEDA-GLOBAL-VIAL.md`, BL-078..082, MG01..08;
 `BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md`, BL-072..076;
 `BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md`, BL-069..071, SV01..08; y
 `BLOQUE-RUTEO-DETERMINISTA.md`, BL-065..068, RD01..08.
@@ -23,6 +24,12 @@ La vecindad mueve grupos/puntos completos entre camionetas y aplica
 `relocate/2-opt` dentro de cada prioridad; toda alternativa única se vuelve a
 medir con Google Routes para comparar métricas viales y guardar polilíneas. No se
 fusionan clientes cercanos ni se convierte una ventana en restricción dura.
+
+BL-083..086 vuelven a abrir globalmente el reparto desde el mejor candidato
+preliminar ya medido mediante `injectedFirstSolutionRoutes`. El ganador previo
+permanece como línea base; cualquier reparto nuevo debe pasar otra vez por
+grupos/puntos, secuencia Google con precedencias y medición Google Routes. Un
+refinamiento opcional fallido o peor no bloquea ni sustituye la ruta válida.
 
 Política histórica: `BLOQUE-LOGISTICA-PRIORIDADES.md`, BL-058..062/064, LP01..20.
 Prioridad por camioneta, horarios flexibles y comparación medida sustituyen

@@ -28,6 +28,17 @@ type GooglePrecedenceRule = {
 export type GoogleOptimizationRequest = {
   timeout: string;
   searchMode: "CONSUME_ALL_AVAILABLE_TIME";
+  injectedFirstSolutionRoutes?: {
+    vehicleIndex: number;
+    vehicleStartTime: string;
+    vehicleEndTime: string;
+    visits: {
+      shipmentIndex: number;
+      isPickup: false;
+      visitRequestIndex: 0;
+      startTime: string;
+    }[];
+  }[];
   considerRoadTraffic: true;
   populatePolylines: true;
   populateTransitionPolylines: true;
@@ -374,6 +385,97 @@ export function buildGoogleSequencingRequest(
       ...(precedenceRules.length ? { precedenceRules } : {}),
     },
   };
+}
+
+type MeasuredRoutingResult = {
+  routes: {
+    vehicleId: string;
+    departureAt: string;
+    finishedAt: string;
+    stops: { shipmentId: string; eta: string }[];
+  }[];
+};
+
+// Google can reopen a locally optimal allocation when it receives the current
+// best measured route as its first solution. The warm start is grouped exactly
+// like the optimization model; it guides Google but does not freeze vehicles.
+export function buildGoogleRefinementRequest(
+  board: OrderBoard,
+  settings: RoutingSettings,
+  timezone: string,
+  candidate: RoutingCandidate,
+  measured: MeasuredRoutingResult,
+): GoogleOptimizationRequest {
+  // Reuse the strict assignment/group validator, then deliberately build the
+  // unrestricted model: refinement must be able to move complete destinations.
+  buildGoogleSequencingRequest(board, settings, timezone, candidate);
+  const request = buildGoogleOptimizationRequest(board, settings, timezone);
+  const groups = priorityGroups(board.shipments);
+  const groupByShipment = new Map(
+    groups.flatMap((group, shipmentIndex) =>
+      group.shipmentIds.map((id) => [id, { group, shipmentIndex }] as const),
+    ),
+  );
+  const vehicleIndex = new Map(
+    board.vehicles.map((vehicle, index) => [vehicle.id, index]),
+  );
+  const measuredByVehicle = new Map(
+    measured.routes.map((route) => [route.vehicleId, route] as const),
+  );
+  if (
+    measured.routes.length !== board.vehicles.length ||
+    measuredByVehicle.size !== board.vehicles.length
+  )
+    throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
+
+  const injectedGroups = new Set<number>();
+  const injectedFirstSolutionRoutes = candidate.routes.map((route) => {
+    const index = vehicleIndex.get(route.vehicleId);
+    const timing = measuredByVehicle.get(route.vehicleId);
+    if (index === undefined || !timing)
+      throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
+    const timedIds = timing.stops.map((stop) => stop.shipmentId);
+    if (
+      timedIds.length !== route.shipmentIds.length ||
+      timedIds.some((id, stopIndex) => id !== route.shipmentIds[stopIndex])
+    )
+      throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
+    const stopTime = new Map(
+      timing.stops.map((stop) => [stop.shipmentId, stop.eta] as const),
+    );
+    const start = Date.parse(timing.departureAt);
+    const finish = Date.parse(timing.finishedAt);
+    if (!Number.isFinite(start) || !Number.isFinite(finish) || finish < start)
+      throw new AppError("ROUTING_MODEL_INVALID", 503);
+    let previous = start;
+    const visits = route.shipmentIds.flatMap((shipmentId) => {
+      const matched = groupByShipment.get(shipmentId);
+      if (!matched || injectedGroups.has(matched.shipmentIndex)) return [];
+      const startTime = stopTime.get(shipmentId);
+      const instant = Date.parse(startTime ?? "");
+      if (!Number.isFinite(instant) || instant < previous || instant > finish)
+        throw new AppError("ROUTING_MODEL_INVALID", 503);
+      previous = instant;
+      injectedGroups.add(matched.shipmentIndex);
+      return [
+        {
+          shipmentIndex: matched.shipmentIndex,
+          isPickup: false as const,
+          visitRequestIndex: 0 as const,
+          startTime: startTime!,
+        },
+      ];
+    });
+    return {
+      vehicleIndex: index,
+      vehicleStartTime: timing.departureAt,
+      vehicleEndTime: timing.finishedAt,
+      visits,
+    };
+  });
+  if (injectedGroups.size !== groups.length)
+    throw new AppError("ROUTING_CANDIDATE_INVALID", 503);
+  return { ...request, injectedFirstSolutionRoutes };
 }
 
 function duration(value: unknown) {

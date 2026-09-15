@@ -288,7 +288,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       },
     );
 
-    expect(googleCalls).toBe(3);
+    expect(googleCalls).toBe(4);
     expect(
       (
         googleRequests[0].model.shipments as {
@@ -311,6 +311,13 @@ describe("deterministic Google routing with real PostgreSQL", () => {
     expect(geographicAssignments).toHaveLength(2);
     expect(new Set(geographicAssignments.flat()).size).toBe(2);
     expect(googleRequests[2].model).not.toHaveProperty("precedenceRules");
+    expect(
+      googleRequests[3].model.shipments.every(
+        (item) => item.allowedVehicleIndices === undefined,
+      ),
+    ).toBe(true);
+    expect(googleRequests[3].model).not.toHaveProperty("precedenceRules");
+    expect(googleRequests[3].injectedFirstSolutionRoutes).toHaveLength(2);
     expect(result).toMatchObject({
       current: true,
       metrics: { performedShipmentCount: 2 },
@@ -330,11 +337,11 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       )
     ).rows[0].details;
     expect(audit).toMatchObject({
-      planner: "google-deterministic-v2",
+      planner: "google-deterministic-v3",
       evaluatedCandidates: 2,
       candidateSources: ["Google", "balance"],
       chosenSource: "balance",
-      logisticsPolicy: "priority-geographic-sequenced-v8",
+      logisticsPolicy: "priority-geographic-refined-v9",
       score: {
         priorityConflicts: 0,
         lateStops: 0,
@@ -354,6 +361,11 @@ describe("deterministic Google routing with real PostgreSQL", () => {
         (entry) => entry.event === "routing.google.sequence.completed",
       ),
     ).toHaveLength(2);
+    expect(
+      logs.find(
+        (entry) => entry.event === "routing.google.refinement.duplicate",
+      ),
+    ).toBeDefined();
     expect(
       logs.find((entry) => entry.event === "routing.logistics.compared"),
     ).toMatchObject({
@@ -377,6 +389,67 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       "warehouse-2",
     ])
       expect(serializedLogs).not.toContain(privateValue);
+
+    const current = await orderBoard(db.pool, plan.id);
+    const fallbackLogs: RoutingLogEntry[] = [];
+    let rejectedRefinements = 0;
+    const failingRefinementFetch: typeof fetch = async (input, init) => {
+      const request = JSON.parse(
+        String(init?.body),
+      ) as GoogleOptimizationRequest;
+      if (request.injectedFirstSolutionRoutes) {
+        rejectedRefinements++;
+        return new Response(JSON.stringify({ error: "provider unavailable" }), {
+          status: 503,
+        });
+      }
+      return googleFetch(input, init);
+    };
+    await expect(
+      planRouteDeterministically(
+        db.pool,
+        actor,
+        plan.id,
+        { expectedVersion: current.plan.version },
+        "UTC",
+        {
+          googleConfig: {
+            projectId: "qa-project",
+            credentials: {
+              type: "service_account",
+              project_id: "qa-project",
+              client_email: "qa@qa-project.iam.gserviceaccount.com",
+              private_key: "unused by injected token",
+              token_uri: "https://oauth2.googleapis.com/token",
+            },
+          },
+          googleFetch: failingRefinementFetch,
+          googleToken: async () => "google-token",
+          readLeg: async () => ({
+            distance: 100,
+            seconds: 10,
+            polyline: "integration-road",
+            token: null,
+            trafficMode: "forecast",
+          }),
+          requestId: "routing-refinement-fallback-qa",
+          logSink: (entry) => fallbackLogs.push(entry),
+        },
+      ),
+    ).resolves.toMatchObject({
+      current: true,
+      metrics: { performedShipmentCount: 2 },
+    });
+    expect(rejectedRefinements).toBe(1);
+    expect(
+      fallbackLogs.find(
+        (entry) => entry.event === "routing.google.refinement.unavailable",
+      ),
+    ).toMatchObject({
+      level: "warning",
+      details: { errorCode: "ROUTING_GOOGLE_UNAVAILABLE" },
+    });
+    expect(fallbackLogs.at(-1)?.event).toBe("routing.completed");
 
     const failedLogs: RoutingLogEntry[] = [];
     await expect(

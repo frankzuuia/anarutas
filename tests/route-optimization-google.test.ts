@@ -5,6 +5,7 @@ import type { GoogleServiceAccount } from "../src/core/routing-config";
 import type { RoutingSettings } from "../src/core/routing-contract";
 import {
   buildGoogleOptimizationRequest,
+  buildGoogleRefinementRequest,
   buildGoogleSequencingRequest,
   localMinuteInstant,
   optimizationTimeoutSeconds,
@@ -466,6 +467,167 @@ describe("Google Route Optimization contract", () => {
     expect(sequenced.model.precedenceRules).not.toContainEqual(
       expect.objectContaining({ firstIndex: 0, secondIndex: 2 }),
     );
+  });
+
+  it("builds an unrestricted grouped Google warm start from the measured winner", () => {
+    const source = board();
+    const repeatedId = "00000000-0000-4000-8000-000000000012";
+    source.shipments.push({ ...source.shipments[0], id: repeatedId });
+    source.vehicles.push({
+      ...vehicle,
+      id: "00000000-0000-4000-8000-000000000011",
+      name: "Ford 2026",
+      plate: "QA-002",
+    });
+    const candidate = {
+      routes: [
+        {
+          vehicleId: source.vehicles[0].id,
+          shipmentIds: [ids[0], repeatedId, ids[2]],
+        },
+        { vehicleId: source.vehicles[1].id, shipmentIds: [ids[1]] },
+      ],
+    };
+    const measured = {
+      routes: [
+        {
+          vehicleId: source.vehicles[0].id,
+          departureAt: "2026-09-09T13:30:00.000Z",
+          finishedAt: "2026-09-09T14:30:00.000Z",
+          stops: [
+            { shipmentId: ids[0], eta: "2026-09-09T13:45:00.000Z" },
+            {
+              shipmentId: repeatedId,
+              eta: "2026-09-09T13:45:00.000Z",
+            },
+            { shipmentId: ids[2], eta: "2026-09-09T14:15:00.000Z" },
+          ],
+        },
+        {
+          vehicleId: source.vehicles[1].id,
+          departureAt: "2026-09-09T13:30:00.000Z",
+          finishedAt: "2026-09-09T14:00:00.000Z",
+          stops: [{ shipmentId: ids[1], eta: "2026-09-09T13:50:00.000Z" }],
+        },
+      ],
+    };
+
+    const request = buildGoogleRefinementRequest(
+      source,
+      settings,
+      "America/Mexico_City",
+      candidate,
+      measured,
+    );
+
+    expect(request.model.precedenceRules).toBeUndefined();
+    expect(
+      request.model.shipments.every(
+        (item) => item.allowedVehicleIndices === undefined,
+      ),
+    ).toBe(true);
+    expect(request.injectedFirstSolutionRoutes).toEqual([
+      {
+        vehicleIndex: 0,
+        vehicleStartTime: "2026-09-09T13:30:00.000Z",
+        vehicleEndTime: "2026-09-09T14:30:00.000Z",
+        visits: [
+          {
+            shipmentIndex: 0,
+            isPickup: false,
+            visitRequestIndex: 0,
+            startTime: "2026-09-09T13:45:00.000Z",
+          },
+          {
+            shipmentIndex: 2,
+            isPickup: false,
+            visitRequestIndex: 0,
+            startTime: "2026-09-09T14:15:00.000Z",
+          },
+        ],
+      },
+      {
+        vehicleIndex: 1,
+        vehicleStartTime: "2026-09-09T13:30:00.000Z",
+        vehicleEndTime: "2026-09-09T14:00:00.000Z",
+        visits: [
+          {
+            shipmentIndex: 1,
+            isPickup: false,
+            visitRequestIndex: 0,
+            startTime: "2026-09-09T13:50:00.000Z",
+          },
+        ],
+      },
+    ]);
+
+    expect(() =>
+      buildGoogleRefinementRequest(
+        source,
+        settings,
+        "America/Mexico_City",
+        candidate,
+        {
+          routes: measured.routes.map((route, index) =>
+            index
+              ? route
+              : {
+                  ...route,
+                  stops: [...route.stops].reverse(),
+                },
+          ),
+        },
+      ),
+    ).toThrow("ROUTING_CANDIDATE_INVALID");
+    expect(() =>
+      buildGoogleRefinementRequest(
+        source,
+        settings,
+        "America/Mexico_City",
+        candidate,
+        { routes: measured.routes.slice(0, 1) },
+      ),
+    ).toThrow("ROUTING_CANDIDATE_INVALID");
+    expect(() =>
+      buildGoogleRefinementRequest(
+        source,
+        settings,
+        "America/Mexico_City",
+        candidate,
+        {
+          routes: measured.routes.map((route, index) =>
+            index
+              ? route
+              : {
+                  ...route,
+                  stops: route.stops.map((stop, stopIndex) =>
+                    stopIndex === route.stops.length - 1
+                      ? { ...stop, eta: "2026-09-09T13:40:00.000Z" }
+                      : stop,
+                  ),
+                },
+          ),
+        },
+      ),
+    ).toThrow("ROUTING_MODEL_INVALID");
+    expect(() =>
+      buildGoogleRefinementRequest(
+        source,
+        settings,
+        "America/Mexico_City",
+        candidate,
+        {
+          routes: measured.routes.map((route, index) =>
+            index
+              ? route
+              : {
+                  ...route,
+                  finishedAt: "2026-09-09T13:00:00.000Z",
+                },
+          ),
+        },
+      ),
+    ).toThrow("ROUTING_MODEL_INVALID");
   });
 
   it("keeps repeated orders for one destination in one Google shipment and one fixed truck", () => {

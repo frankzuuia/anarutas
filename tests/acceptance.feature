@@ -715,3 +715,31 @@ Feature: Ana Rutas independiente y portable
     When el administrador pulsa Armar ruta
     Then todos los pedidos elegibles permanecen asignados
     And los retrasos participan en el score sin bloquear el guardado
+
+  Scenario: IR01 IR02 refinamiento global desde la mejor ruta medida
+    Given Ana Rutas ya midió semillas completas y eligió un ganador preliminar
+    When solicita el refinamiento global entre camionetas
+    Then inyecta en Google todas sus rutas grupos tiempos y camionetas como solución inicial
+    And mantiene el modelo de reparto abierto para que Google pueda mover destinos completos
+    And conserva el ganador preliminar como candidato hasta la comparación final
+
+  Scenario: IR03 IR04 un reparto refinado vuelve a pasar por las invariantes
+    Given Google propone mover destinos entre camionetas
+    When Ana Rutas valida el reparto refinado
+    Then conserva cobertura exacta y cada punto físico en una sola camioneta
+    And vuelve a secuenciar el reparto fijo con precedencias Alta Media y Por horario
+    And Google Routes vuelve a medir ETA espera retraso regreso distancia y mapa
+
+  Scenario: IR05 IR07 un refinamiento opcional nunca destruye la base
+    Given ya existe una ruta preliminar completa y medida
+    When Google falla omite destinos devuelve un contrato inválido o repite un reparto conocido
+    Then Ana Rutas descarta únicamente el refinamiento
+    And Armar ruta continúa con la mejor alternativa válida ya medida
+    And no duplica solicitudes para un reparto repetido
+
+  Scenario: IR06 IR08 volumen y concurrencia en el refinamiento
+    Given el lote completo puede superar cien pedidos y el plan conserva una versión
+    When Google refina y Ana Rutas intenta guardar
+    Then ningún límite local recorta pedidos de la solución inicial
+    And el timeout del solver nace del tamaño real del lote
+    And un cambio concurrente impide el guardado obsoleto sin dañar el borrador vigente

@@ -25,6 +25,14 @@ producción. Los informes QA conservan la evidencia previa al commit/push.
 - [x] MG-QA: 382/382 pruebas, PostgreSQL real, Gherkin y regresiones; cobertura global 93.74% statements/94.92% líneas y planificador geográfico 99.7% statements/95.37% ramas; mutación dirigida 95.53%, tipos, lint, build, E2E local y dependencias verdes. Evidencia en `QA-BUSQUEDA-GLOBAL-VIAL.md`.
 - [x] MG-T05: cambio versionado y enviado a `develop`; deploy y smoke facturable permanecen manuales.
 
+## Refinamiento global entre camionetas — 14/09/2026
+
+- [x] IR-T01 (BL-083..086 / IR01..08): autopsia live de 311.2 km; causa localizada en ausencia de una reapertura global posterior al ganador medido. Referencia oficial, GREEN LIGHT y MATCH PERFECT documental.
+- [x] IR-T02: warm start por grupos desde el ganador preliminar y reparto global completo, sin fijar camionetas ni limitar pedidos.
+- [x] IR-T03: revalidación, resecuenciación con precedencias, medición Routes y comparación contra línea base inmutable; fallo opcional no bloqueante.
+- [x] IR-T04: 383/383 pruebas, integración PostgreSQL real, Gherkin y regresión; cobertura global 94.76% líneas y contrato Google 97.58% líneas/96.39% ramas; mutación logística 97.57% y Google 100%, tipos, lint, build, E2E local y dependencias verdes. Evidencia en `QA-REFINAMIENTO-GLOBAL-INTER-RUTA.md`.
+- [x] IR-T05: cambio versionado y enviado sólo a `develop`; deploy y smoke facturable permanecen manuales.
+
 ## Logística por prioridad — BLOQUE-LOGISTICA-PRIORIDADES.md
 
 - [x] LP-T01 (BL-058 / LP01..03,10): política de prioridad por destino/camioneta y diagnóstico compartido.
