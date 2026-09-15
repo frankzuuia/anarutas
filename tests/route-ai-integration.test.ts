@@ -106,11 +106,20 @@ describe("deterministic Google routing with real PostgreSQL", () => {
           partnerId: 2,
           lines: [{ ...shipment.lines[0], moveId: 2, productId: 2 }],
         },
+        {
+          ...shipment,
+          pickingId: 3,
+          pickingName: "WH/OUT/3",
+          orderId: 3,
+          orderName: "S3",
+          partnerId: 3,
+          lines: [{ ...shipment.lines[0], moveId: 3, productId: 3 }],
+        },
       ],
-      nextCursor: 2,
-      ceiling: 2,
+      nextCursor: 3,
+      ceiling: 3,
       hasMore: false,
-      inspected: 2,
+      inspected: 3,
       excluded: 0,
     };
     await persistImportPage(db.pool, actor, plan.id, page);
@@ -162,90 +171,47 @@ describe("deterministic Google routing with real PostgreSQL", () => {
         (item: { allowedVehicleIndices?: number[] }) =>
           item.allowedVehicleIndices?.[0],
       );
-      const split =
-        assignments.every((assignment) => assignment !== undefined) &&
-        assignments[0] !== assignments[1];
-      const routes = split
-        ? [0, 1].map((vehicleIndex) => ({
-            vehicleIndex,
-            vehicleStartTime: "2026-09-12T08:00:00Z",
-            vehicleEndTime: "2026-09-12T08:00:00Z",
-            visits: [
-              {
-                shipmentIndex: assignments.indexOf(vehicleIndex),
-                startTime: "2026-09-12T08:00:00Z",
-              },
-            ],
-            transitions: [
-              {
+      const effectiveAssignments = assignments.map(
+        (assignment) => assignment ?? 0,
+      );
+      const routes = [0, 1].map((vehicleIndex) => {
+        const visits = effectiveAssignments.flatMap((assignment, index) =>
+          assignment === vehicleIndex
+            ? [
+                {
+                  shipmentIndex: index,
+                  startTime: "2026-09-12T08:00:00Z",
+                },
+              ]
+            : [],
+        );
+        return visits.length
+          ? {
+              vehicleIndex,
+              vehicleStartTime: "2026-09-12T08:00:00Z",
+              vehicleEndTime: "2026-09-12T08:00:00Z",
+              visits,
+              transitions: visits.map(() => ({
                 travelDistanceMeters: 0,
                 travelDuration: "0s",
                 waitDuration: "0s",
-              },
-            ],
-            metrics: {
-              performedShipmentCount: 1,
-              travelDistanceMeters: 0,
-              travelDuration: "0s",
-              waitDuration: "0s",
-              totalDuration: "0s",
-            },
-          }))
-        : [
-            {
-              vehicleIndex: 0,
-              vehicleStartTime: "2026-09-12T08:00:00Z",
-              vehicleEndTime: "2026-09-12T08:00:00Z",
-              visits:
-                assignments[0] === 0
-                  ? [
-                      {
-                        shipmentIndex: 0,
-                        startTime: "2026-09-12T08:00:00Z",
-                      },
-                      {
-                        shipmentIndex: 1,
-                        startTime: "2026-09-12T08:00:00Z",
-                      },
-                    ]
-                  : [
-                      {
-                        shipmentIndex: 1,
-                        startTime: "2026-09-12T08:00:00Z",
-                      },
-                      {
-                        shipmentIndex: 0,
-                        startTime: "2026-09-12T08:00:00Z",
-                      },
-                    ],
-              transitions: [
-                {
-                  travelDistanceMeters: 0,
-                  travelDuration: "0s",
-                  waitDuration: "0s",
-                },
-                {
-                  travelDistanceMeters: 0,
-                  travelDuration: "0s",
-                  waitDuration: "0s",
-                },
-              ],
+              })),
               metrics: {
-                performedShipmentCount: 2,
+                performedShipmentCount: visits.length,
                 travelDistanceMeters: 0,
                 travelDuration: "0s",
                 waitDuration: "0s",
                 totalDuration: "0s",
               },
-            },
-            { vehicleIndex: 1 },
-          ];
+            }
+          : { vehicleIndex };
+      });
       return new Response(
         JSON.stringify({
           routes,
           metrics: {
             aggregatedRouteMetrics: {
-              performedShipmentCount: 2,
+              performedShipmentCount: request.model.shipments.length,
               travelDistanceMeters: 0,
               travelDuration: "0s",
               waitDuration: "0s",
@@ -288,7 +254,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       },
     );
 
-    expect(googleCalls).toBe(4);
+    expect(googleCalls).toBe(2);
     expect(
       (
         googleRequests[0].model.shipments as {
@@ -297,32 +263,22 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       ).every((item) => item.allowedVehicleIndices === undefined),
     ).toBe(true);
     expect(googleRequests[0].model).not.toHaveProperty("precedenceRules");
-    expect(
-      googleRequests[1].model.shipments.map(
-        (item) => item.allowedVehicleIndices!,
-      ),
-    ).toEqual([[0], [0]]);
-    expect(googleRequests[1].model.precedenceRules).toEqual([
-      expect.objectContaining({ firstIndex: 0, secondIndex: 1 }),
-    ]);
-    const geographicAssignments = googleRequests[2].model.shipments.map(
+    const geographicAssignments = googleRequests[1].model.shipments.map(
       (item) => item.allowedVehicleIndices!,
     );
-    expect(geographicAssignments).toHaveLength(2);
-    expect(new Set(geographicAssignments.flat()).size).toBe(2);
-    expect(googleRequests[2].model).not.toHaveProperty("precedenceRules");
+    expect(geographicAssignments).toHaveLength(3);
     expect(
-      googleRequests[3].model.shipments.every(
-        (item) => item.allowedVehicleIndices === undefined,
-      ),
+      geographicAssignments.every((assignment) => assignment.length === 1),
     ).toBe(true);
-    expect(googleRequests[3].model).not.toHaveProperty("precedenceRules");
-    expect(googleRequests[3].injectedFirstSolutionRoutes).toHaveLength(2);
+    expect(new Set(geographicAssignments.flat()).size).toBe(2);
+    expect(googleRequests[1]).not.toHaveProperty("injectedFirstSolutionRoutes");
     expect(result).toMatchObject({
       current: true,
-      metrics: { performedShipmentCount: 2 },
+      metrics: { performedShipmentCount: 3 },
     });
-    expect(result?.routes.map((route) => route.stops.length)).toEqual([1, 1]);
+    expect(
+      result?.routes.map((route) => route.stops.length).sort((a, b) => a - b),
+    ).toEqual([1, 2]);
     expect(
       new Set(
         (await orderBoard(db.pool, plan.id)).shipments.map(
@@ -337,17 +293,20 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       )
     ).rows[0].details;
     expect(audit).toMatchObject({
-      planner: "google-deterministic-v3",
+      planner: "google-deterministic-v4-two-fleet-requests",
       evaluatedCandidates: 2,
       candidateSources: ["Google", "balance"],
       chosenSource: "balance",
+      fleetRoutingRequests: 2,
+      fleetRoutingRequestLimit: 2,
+      fleetRoutingShipmentUnits: 6,
       logisticsPolicy: "priority-geographic-refined-v9",
       score: {
         priorityConflicts: 0,
         lateStops: 0,
         unusedVehicles: 0,
-        maxOrders: 1,
-        orderImbalance: 0,
+        maxOrders: 2,
+        orderImbalance: 1,
       },
     });
     expect(logs.map((entry) => entry.system)).not.toContain(
@@ -360,12 +319,10 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       logs.filter(
         (entry) => entry.event === "routing.google.sequence.completed",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(
-      logs.find(
-        (entry) => entry.event === "routing.google.refinement.duplicate",
-      ),
-    ).toBeDefined();
+      logs.some((entry) => entry.event.startsWith("routing.google.refinement")),
+    ).toBe(false);
     expect(
       logs.find((entry) => entry.event === "routing.logistics.compared"),
     ).toMatchObject({
@@ -379,7 +336,13 @@ describe("deterministic Google routing with real PostgreSQL", () => {
     expect(logs.at(-1)).toMatchObject({
       event: "routing.completed",
       system: "PostgreSQL",
-      details: { assignedOrders: 2, skippedOrders: 0 },
+      details: {
+        assignedOrders: 3,
+        skippedOrders: 0,
+        fleetRoutingRequests: 2,
+        fleetRoutingRequestLimit: 2,
+        fleetRoutingShipmentUnits: 6,
+      },
     });
     const serializedLogs = JSON.stringify(logs);
     for (const privateValue of [
@@ -387,18 +350,23 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       "Cliente privado",
       "warehouse-1",
       "warehouse-2",
+      "warehouse-3",
     ])
       expect(serializedLogs).not.toContain(privateValue);
 
     const current = await orderBoard(db.pool, plan.id);
     const fallbackLogs: RoutingLogEntry[] = [];
-    let rejectedRefinements = 0;
-    const failingRefinementFetch: typeof fetch = async (input, init) => {
+    let rejectedSequencing = 0;
+    const failingSequencingFetch: typeof fetch = async (input, init) => {
       const request = JSON.parse(
         String(init?.body),
       ) as GoogleOptimizationRequest;
-      if (request.injectedFirstSolutionRoutes) {
-        rejectedRefinements++;
+      if (
+        request.model.shipments.every(
+          (shipment) => shipment.allowedVehicleIndices !== undefined,
+        )
+      ) {
+        rejectedSequencing++;
         return new Response(JSON.stringify({ error: "provider unavailable" }), {
           status: 503,
         });
@@ -423,7 +391,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
               token_uri: "https://oauth2.googleapis.com/token",
             },
           },
-          googleFetch: failingRefinementFetch,
+          googleFetch: failingSequencingFetch,
           googleToken: async () => "google-token",
           readLeg: async () => ({
             distance: 100,
@@ -438,16 +406,20 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       ),
     ).resolves.toMatchObject({
       current: true,
-      metrics: { performedShipmentCount: 2 },
+      metrics: { performedShipmentCount: 3 },
     });
-    expect(rejectedRefinements).toBe(1);
+    expect(rejectedSequencing).toBe(1);
     expect(
       fallbackLogs.find(
-        (entry) => entry.event === "routing.google.refinement.unavailable",
+        (entry) => entry.event === "routing.google.sequence.unavailable",
       ),
     ).toMatchObject({
       level: "warning",
-      details: { errorCode: "ROUTING_GOOGLE_UNAVAILABLE" },
+      details: {
+        errorCode: "ROUTING_GOOGLE_UNAVAILABLE",
+        fleetRoutingRequests: 2,
+        fleetRoutingRequestLimit: 2,
+      },
     });
     expect(fallbackLogs.at(-1)?.event).toBe("routing.completed");
 
@@ -469,6 +441,173 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       event: "routing.failed",
       level: "error",
       details: { errorCode: "VERSION_CONFLICT" },
+    });
+  });
+
+  it("skips the second Fleet Routing request when no truck has a sequence to optimize", async () => {
+    let plan = await createPlan(db.pool, actor, {
+      date: "2026-09-13",
+      label: "Single stop Fleet budget QA",
+    });
+    plan = await saveDeparture(db.pool, actor, plan.id, {
+      departureTime: "08:00",
+      expectedVersion: plan.version,
+    });
+    const vehicle = await createVehicle(db.pool, actor, {
+      id: randomUUID(),
+      name: "Camioneta una parada",
+      brand: "Ford",
+      model: "2026",
+      plate: `ONE-${randomUUID().slice(0, 8)}`,
+      mileage: 0,
+      fuel: "Gasolina",
+      available: true,
+    });
+    await selectPlanVehicles(db.pool, actor, plan.id, {
+      vehicleIds: [vehicle.id],
+      expectedVersion: plan.version,
+    });
+    await persistImportPage(db.pool, actor, plan.id, {
+      fingerprint: source,
+      shipments: [
+        {
+          pickingId: 999,
+          pickingName: "WH/OUT/999",
+          orderId: 999,
+          orderName: "S999",
+          partnerId: 999,
+          customerName: "Cliente una parada",
+          address: "Bodega",
+          validatedAt: "2026-09-13T08:00:00Z",
+          promisedAt: null,
+          backorderId: null,
+          lines: [
+            {
+              moveId: 999,
+              productId: 999,
+              name: "Producto",
+              quantity: 1,
+              unit: "pieza",
+            },
+          ],
+        },
+      ],
+      nextCursor: 1,
+      ceiling: 1,
+      hasMore: false,
+      inspected: 1,
+      excluded: 0,
+    });
+    const customer = (
+      await db.pool.query(
+        "SELECT id,version FROM route_customers WHERE source=$1 AND odoo_partner_id=999",
+        [source],
+      )
+    ).rows[0];
+    await updateCustomer(db.pool, actor, customer.id, {
+      displayName: "Cliente una parada",
+      phone: null,
+      deliveryNote: "",
+      priority: "high",
+      fulfillmentMode: "delivery",
+      deliveryAddress: "Punto único",
+      mapUrl: null,
+      location: { latitude: 20.1, longitude: -103, placeId: "single-stop" },
+      windows: [],
+      expectedVersion: Number(customer.version),
+    });
+    const before = await orderBoard(db.pool, plan.id);
+    let googleCalls = 0;
+    const logs: RoutingLogEntry[] = [];
+    const result = await planRouteDeterministically(
+      db.pool,
+      actor,
+      plan.id,
+      { expectedVersion: before.plan.version },
+      "UTC",
+      {
+        googleConfig: {
+          projectId: "qa-project",
+          credentials: {
+            type: "service_account",
+            project_id: "qa-project",
+            client_email: "qa@qa-project.iam.gserviceaccount.com",
+            private_key: "unused by injected token",
+            token_uri: "https://oauth2.googleapis.com/token",
+          },
+        },
+        googleFetch: async () => {
+          googleCalls++;
+          return new Response(
+            JSON.stringify({
+              routes: [
+                {
+                  vehicleIndex: 0,
+                  vehicleStartTime: "2026-09-13T08:00:00Z",
+                  vehicleEndTime: "2026-09-13T08:00:00Z",
+                  visits: [
+                    {
+                      shipmentIndex: 0,
+                      startTime: "2026-09-13T08:00:00Z",
+                    },
+                  ],
+                  transitions: [
+                    {
+                      travelDistanceMeters: 0,
+                      travelDuration: "0s",
+                      waitDuration: "0s",
+                    },
+                  ],
+                  metrics: {
+                    performedShipmentCount: 1,
+                    travelDistanceMeters: 0,
+                    travelDuration: "0s",
+                    waitDuration: "0s",
+                    totalDuration: "0s",
+                  },
+                },
+              ],
+              metrics: {
+                aggregatedRouteMetrics: {
+                  performedShipmentCount: 1,
+                  travelDistanceMeters: 0,
+                  travelDuration: "0s",
+                  waitDuration: "0s",
+                  totalDuration: "0s",
+                },
+              },
+            }),
+            { status: 200 },
+          );
+        },
+        googleToken: async () => "google-token",
+        readLeg: async () => ({
+          distance: 100,
+          seconds: 10,
+          polyline: "single-stop-road",
+          token: null,
+          trafficMode: "forecast",
+        }),
+        requestId: "routing-single-stop-budget-qa",
+        logSink: (entry) => logs.push(entry),
+      },
+    );
+    expect(result?.metrics.performedShipmentCount).toBe(1);
+    expect(googleCalls).toBe(1);
+    expect(
+      logs.find(
+        (entry) => entry.event === "routing.google.sequence.not_required",
+      ),
+    ).toMatchObject({
+      details: {
+        fleetRoutingRequests: 1,
+        fleetRoutingRequestLimit: 2,
+        fleetRoutingShipmentUnits: 1,
+      },
+    });
+    expect(logs.at(-1)).toMatchObject({
+      event: "routing.completed",
+      details: { fleetRoutingRequests: 1 },
     });
   });
 });

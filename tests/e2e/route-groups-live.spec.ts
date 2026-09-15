@@ -228,7 +228,9 @@ test("real deterministic customer-group planning through browser, Google and iso
     expect(audit[0].details.deliveryGroups).toBe(customers.length);
     expect(audit[0].details.logisticsPolicy).toBe(logisticsPolicyVersion);
     expect(audit[0].details.score.priorityConflicts).toBe(0);
-    expect(audit[0].details.planner).toBe("google-deterministic-v3");
+    expect(audit[0].details.planner).toBe(
+      "google-deterministic-v4-two-fleet-requests",
+    );
     if (hasRoutingAlternatives(before))
       expect(audit[0].details.evaluatedCandidates).toBeGreaterThan(1);
     console.log(

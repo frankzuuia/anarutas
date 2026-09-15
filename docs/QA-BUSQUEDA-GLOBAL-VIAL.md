@@ -1,5 +1,9 @@
 # QA — búsqueda global geográfica multisemilla
 
+> La búsqueda multisemilla sigue vigente, pero su orquestación de costo fue
+> sustituida por FC01..FC07: preselección local y una sola secuenciación Fleet
+> del finalista. Véase `QA-CONTROL-COSTO-FLEET-ROUTING.md`.
+
 Fecha: 2026-09-14. Alcance exclusivo: Ana Rutas `develop`.
 
 ## Autopsia y corrección

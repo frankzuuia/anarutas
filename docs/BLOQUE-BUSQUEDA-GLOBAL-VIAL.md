@@ -1,5 +1,9 @@
 # Bloque — búsqueda global geográfica multisemilla
 
+> Vigencia: la búsqueda multisemilla permanece, pero desde FC01..FC07 cada
+> semilla se preselecciona localmente y sólo el ganador puede usar la segunda
+> solicitud Fleet Routing. Véase `BLOQUE-CONTROL-COSTO-FLEET-ROUTING.md`.
+
 Fecha: 2026-09-14. Alcance exclusivo: Ana Rutas `develop`.
 
 ## Autopsia
@@ -19,13 +23,13 @@ transacción; amplía la búsqueda sin introducir LLM, mocks ni límites de pedi
 
 ## Reglas de negocio
 
-| ID     | Regla                                                                                                                                                                                                                                                                        |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| BL-078 | Ana Rutas genera tres semillas completas e independientes: reparto global de Google, barrido circular balanceado y clúster multicentro balanceado. El clúster intercambia puntos completos hasta convergencia y evita depender de un único corte angular.                    |
-| BL-079 | Cada reparto se secuencia en Google con precedencias y además produce una mejora geométrica `relocate/2-opt` dentro de cada nivel de prioridad hasta que ningún movimiento reduzca el recorrido. No existe un número fijo de seis candidatos ni un máximo de pedidos propio. |
-| BL-080 | La búsqueda conserva cobertura exacta, grupos de cliente, puntos físicos indivisibles y precedencia Alta → Media → Por horario. Las ventanas son blandas: el retraso se minimiza y se registra, pero nunca bloquea ni omite una entrega.                                     |
-| BL-081 | Clientes cercanos continúan como paradas, tarjetas y números independientes. La búsqueda puede volverlos consecutivos cuando reduce el recorrido completo; sólo coordenadas exactamente iguales son indivisibles para la asignación.                                         |
-| BL-082 | Toda alternativa única se recalcula con Google Routes para ETA, regreso, distancia y polilíneas antes de poder ganar. EasyPanel publica semillas, convergencia y comparaciones sin nombres, domicilios, coordenadas ni secretos.                                             |
+| ID     | Regla                                                                                                                                                                                                                                                                      |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BL-078 | Ana Rutas genera tres semillas completas e independientes: reparto global de Google, barrido circular balanceado y clúster multicentro balanceado. El clúster intercambia puntos completos hasta convergencia y evita depender de un único corte angular.                  |
+| BL-079 | Cada reparto produce secuencias deterministas con precedencias y mejora geométrica `relocate/2-opt` dentro de cada nivel de prioridad. Google Routes las mide y sólo el reparto ganador puede usar la segunda solicitud Fleet Routing. No existe máximo de pedidos propio. |
+| BL-080 | La búsqueda conserva cobertura exacta, grupos de cliente, puntos físicos indivisibles y precedencia Alta → Media → Por horario. Las ventanas son blandas: el retraso se minimiza y se registra, pero nunca bloquea ni omite una entrega.                                   |
+| BL-081 | Clientes cercanos continúan como paradas, tarjetas y números independientes. La búsqueda puede volverlos consecutivos cuando reduce el recorrido completo; sólo coordenadas exactamente iguales son indivisibles para la asignación.                                       |
+| BL-082 | Toda alternativa única se recalcula con Google Routes para ETA, regreso, distancia y polilíneas antes de poder ganar. EasyPanel publica semillas, convergencia y comparaciones sin nombres, domicilios, coordenadas ni secretos.                                           |
 
 ## Escenarios
 
@@ -46,11 +50,11 @@ transacción; amplía la búsqueda sin introducir LLM, mocks ni límites de pedi
 snapshot + lease
   -> Google Route Optimization (semilla global)
   -> semilla geográfica completa
-  -> Google Route Optimization (secuencia fija con precedencias)
+  -> secuencias deterministas con precedencias
   -> clúster multicentro con relocate/swap de puntos hasta convergencia
-  -> Google Route Optimization por reparto (calles + precedencias)
+  -> Google Routes mide cada reparto único
   -> relocate + 2-opt geométrico dentro de cada prioridad hasta convergencia
-  -> Google Routes computeRoutes para cada alternativa única
+  -> Google Route Optimization para el único finalista (segunda y última)
   -> score exacto + cobertura/grupos/prioridad
   -> transacción versionada existente
 ```

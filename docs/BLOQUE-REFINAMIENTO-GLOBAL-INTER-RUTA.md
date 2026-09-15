@@ -1,5 +1,10 @@
 # Bloque — refinamiento global entre camionetas
 
+> Estado: **sustituido por FC01..FC07 el 2026-09-14**. Este archivo conserva la
+> autopsia histórica, pero el refinamiento Fleet adicional dejó de formar parte
+> del flujo activo porque amplificaba hasta seis solicitudes por armado. El
+> contrato vigente está en `BLOQUE-CONTROL-COSTO-FLEET-ROUTING.md`.
+
 Fecha: 2026-09-14. Alcance exclusivo: Ana Rutas `develop`.
 
 ## Autopsia

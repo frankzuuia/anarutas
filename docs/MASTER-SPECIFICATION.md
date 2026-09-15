@@ -1,15 +1,15 @@
 # Bloque 1 — especificación y auditoría previa
 
-Política vigente: `BLOQUE-REFINAMIENTO-GLOBAL-INTER-RUTA.md`, BL-083..086,
-IR01..08; `BLOQUE-BUSQUEDA-GLOBAL-VIAL.md`, BL-078..082, MG01..08;
+Política vigente: `BLOQUE-CONTROL-COSTO-FLEET-ROUTING.md`, FC01..FC07;
+`BLOQUE-BUSQUEDA-GLOBAL-VIAL.md`, BL-078..082, MG01..08;
 `BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md`, BL-072..076;
 `BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md`, BL-069..071, SV01..08; y
 `BLOQUE-RUTEO-DETERMINISTA.md`, BL-065..068, RD01..08.
 Armar ruta no llama OpenAI: Google aporta optimización vial y Ana Rutas aplica
 prioridad, ventanas, flota, balance y recorrido mediante comparación determinista.
-La distribución se propone primero y cada asignación candidata se vuelve a
-optimizar en Google con precedencias por camioneta; ninguna secuencia vial se
-ordena localmente después de ser resuelta.
+La distribución se propone primero; todas las asignaciones se preseleccionan con
+prioridad, ventanas y calles medidas, y sólo el único finalista puede volver a
+Google con precedencias por camioneta.
 Sustituye la autoridad de OpenAI en BL-029/035/036/060 y conserva sus fronteras
 transaccionales, de seguridad y persistencia.
 
@@ -25,11 +25,10 @@ La vecindad mueve grupos/puntos completos entre camionetas y aplica
 medir con Google Routes para comparar métricas viales y guardar polilíneas. No se
 fusionan clientes cercanos ni se convierte una ventana en restricción dura.
 
-BL-083..086 vuelven a abrir globalmente el reparto desde el mejor candidato
-preliminar ya medido mediante `injectedFirstSolutionRoutes`. El ganador previo
-permanece como línea base; cualquier reparto nuevo debe pasar otra vez por
-grupos/puntos, secuencia Google con precedencias y medición Google Routes. Un
-refinamiento opcional fallido o peor no bloquea ni sustituye la ruta válida.
+FC01..FC07 conservan el ganador preliminar como línea base y eliminan la
+amplificación de costo: una semilla global más una única secuenciación opcional
+del finalista son el máximo por armado. Un fallo de la segunda solicitud no
+bloquea el guardado y un movimiento manual consume cero Fleet Routing.
 
 Política histórica: `BLOQUE-LOGISTICA-PRIORIDADES.md`, BL-058..062/064, LP01..20.
 Prioridad por camioneta, horarios flexibles y comparación medida sustituyen
@@ -235,31 +234,33 @@ autoridad operativa vigente está formalizada en BL-054.
 
 ### Scenario Matrix
 
-| ID  | Actor / precondición                     | Disparador          | Lectura/escritura    | Resultado                                      | Fallo y recuperación                          |
-| --- | ---------------------------------------- | ------------------- | -------------------- | ---------------------------------------------- | --------------------------------------------- |
-| S32 | Admin, Maps activo, salida sin confirmar | Abre configuración  | Runtime + settings   | Dirección sugerida, ningún punto inventado     | Puede cerrar sin escritura                    |
-| S33 | Admin con salida vigente                 | Confirma otro punto | Settings/auditoría   | Versión y liga regeneradas                     | 409 conserva edición ajena                    |
-| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | Google→Ana Rutas→DB  | Mejor candidato completo aplicado atómicamente | Servicio externo falla: cero cambio           |
-| S35 | Ventanas/prioridades mezcladas           | Resolver modelo     | Route Optimization   | Lote completo; conflictos medidos como avisos  | Operador conserva autoridad sobre las salidas |
-| S36 | Otro admin cambia el plan durante Google | Aplicar respuesta   | Lock/version         | 409; resultado no aplicado                     | Actualizar y decidir de nuevo                 |
-| S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments | Respuesta parcial rechazada; cero escritura    | Base balanceada completa se mide por vialidad |
-| S38 | Ruta vigente                             | Ver mapa            | Run vigente          | Recorrido, ETA, km y duración reales           | Sin run vigente muestra puntos, no ruta falsa |
-| S39 | Ruta vigente                             | Movimiento manual   | Plan/job/version     | Conserva acomodo y recalcula calles/ETA        | Reintento durable sin redistribución          |
-| S40 | Origen incompleto o ambiguo              | Ubicar domicilio    | Google Geocoder      | Referencia visible; confirmar bloqueado        | Completar dirección o marcar punto exacto     |
+| ID  | Actor / precondición                     | Disparador          | Lectura/escritura    | Resultado                                      | Fallo y recuperación                               |
+| --- | ---------------------------------------- | ------------------- | -------------------- | ---------------------------------------------- | -------------------------------------------------- |
+| S32 | Admin, Maps activo, salida sin confirmar | Abre configuración  | Runtime + settings   | Dirección sugerida, ningún punto inventado     | Puede cerrar sin escritura                         |
+| S33 | Admin con salida vigente                 | Confirma otro punto | Settings/auditoría   | Versión y liga regeneradas                     | 409 conserva edición ajena                         |
+| S34 | Plan con flota/pedidos/puntos            | Armar ruta          | Google→Ana Rutas→DB  | Mejor candidato completo aplicado atómicamente | Segunda Fleet falla: guarda la línea base completa |
+| S35 | Ventanas/prioridades mezcladas           | Resolver modelo     | Route Optimization   | Lote completo; conflictos medidos como avisos  | Operador conserva autoridad sobre las salidas      |
+| S36 | Otro admin cambia el plan durante Google | Aplicar respuesta   | Lock/version         | 409; resultado no aplicado                     | Actualizar y decidir de nuevo                      |
+| S37 | Google omite un pedido                   | Aplicar solución    | Runs/stops/shipments | Respuesta parcial rechazada; cero escritura    | Base balanceada completa se mide por vialidad      |
+| S38 | Ruta vigente                             | Ver mapa            | Run vigente          | Recorrido, ETA, km y duración reales           | Sin run vigente muestra puntos, no ruta falsa      |
+| S39 | Ruta vigente                             | Movimiento manual   | Plan/job/version     | Conserva acomodo y recalcula calles/ETA        | Reintento durable sin redistribución               |
+| S40 | Origen incompleto o ambiguo              | Ubicar domicilio    | Google Geocoder      | Referencia visible; confirmar bloqueado        | Completar dirección o marcar punto exacto          |
 
 ### Data Flow
 
-El servidor obtiene configuración y snapshot desde PostgreSQL. Google Route
-Optimization recibe coordenadas, ventanas flexibles y demandas blandas dinámicas.
-Ana Rutas toma cada distribución completa, fija sus destinos a las camionetas,
-genera precedencias Alta→Media→Por horario sólo dentro de cada unidad y pide a
-Google una segunda optimización de secuencia. El servidor mide las propuestas ya
-secuenciadas. Antes de fijar cada reparto consolida en una misma camioneta todos
+El servidor obtiene configuración y snapshot desde PostgreSQL. Una primera
+solicitud Google Route Optimization recibe coordenadas, ventanas flexibles y
+demandas blandas dinámicas. Ana Rutas compara esa semilla con balance circular y
+clúster multicentro mediante prioridad, ventanas y Google Routes. Sólo el ganador
+fija sus destinos a camionetas, genera precedencias Alta→Media→Por horario dentro
+de cada unidad y puede pedir una segunda y última optimización de secuencia. Antes
+de fijar cada reparto consolida en una misma camioneta todos
 los clientes con la misma coordenada confirmada, sin fusionar sus identidades.
 Compara prioridad, ventanas, uso de flota, costo combinado de conducción y jornada
 máxima, viaje, distancia y después equilibrio/carga, valida cobertura y versión,
 y sólo entonces aplica. El navegador recibe un contrato sanitizado; los route
-tokens permanecen privados para el endpoint de conductor futuro. Ningún LLM participa.
+tokens permanecen privados para el endpoint de conductor futuro. Ningún LLM
+participa. Mover pedidos manualmente recalcula ETA/tramos sin Fleet Routing.
 
 ### Tables / APIs / Tools
 

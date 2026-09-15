@@ -1,6 +1,6 @@
 # Ana Rutas — bloque 1 aprobado
 
-Política vigente: BL-083..086 en `BLOQUE-REFINAMIENTO-GLOBAL-INTER-RUTA.md`,
+Política vigente: FC01..FC07 en `BLOQUE-CONTROL-COSTO-FLEET-ROUTING.md`,
 BL-078..082 en `BLOQUE-BUSQUEDA-GLOBAL-VIAL.md`,
 BL-072..076 en `BLOQUE-RUTEO-GEOGRAFICO-FINOPS.md`,
 BL-069..071 en `BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md`, y BL-065..068 de
@@ -30,14 +30,14 @@ La compactación entre prioridades sólo se mide cuando conserva cero inversione
 BL-078..082 sustituyen la comparación cerrada de hasta seis candidatos por tres
 semillas independientes y búsqueda `relocate/swap/2-opt` hasta convergencia. La
 cantidad de alternativas nace de los datos y de mejoras estrictas, no de un
-máximo fijo; los finalistas se recalculan con Google Routes para ETA, regreso,
+máximo fijo; las alternativas se recalculan con Google Routes para ETA, regreso,
 distancia y mapa antes del guardado. Se descarta una matriz N×N porque su consumo
 crece cuadráticamente sin mejorar la autoridad vial final de Google.
-BL-083..086 conservan el ganador preliminar como línea base e inyectan esa ruta
-completa en un refinamiento global oficial de Google. El reparto resultante se
-vuelve a fijar, secuenciar con precedencias y medir con Google Routes; sólo una
-mejora estricta puede sustituir la base. Un refinamiento repetido, inválido,
-incompleto o indisponible se descarta sin bloquear el armado.
+FC01..FC07 conservan todas esas semillas pero eliminan la amplificación de costo:
+primero compiten mediante prioridad, ventanas, búsqueda local y Google Routes.
+Sólo el ganador preliminar puede usar una segunda y última solicitud Fleet
+Routing con camionetas fijas y precedencias. Si esa solicitud falla, la base
+completa se guarda; mover pedidos manualmente usa cero Fleet Routing.
 
 BL-065..068 sustituyen a BL-029/035/036/060 donde asignaban autoridad a OpenAI.
 Toda explicación generativa queda fuera del ruteo: prioridad, ventanas, uso de flota,

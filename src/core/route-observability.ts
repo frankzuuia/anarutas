@@ -12,6 +12,9 @@ export type RoutingLogDetails = Partial<{
   deliveryGroups: number;
   vehicles: number;
   solverTimeoutSeconds: number;
+  fleetRoutingRequests: number;
+  fleetRoutingRequestLimit: number;
+  fleetRoutingShipmentUnits: number;
   allocationSource: "Google" | "balance" | "cluster" | "refinement";
   precedenceRules: number;
   skippedDestinations: number;
@@ -63,6 +66,9 @@ const routingDetailKeys = [
   "deliveryGroups",
   "vehicles",
   "solverTimeoutSeconds",
+  "fleetRoutingRequests",
+  "fleetRoutingRequestLimit",
+  "fleetRoutingShipmentUnits",
   "allocationSource",
   "precedenceRules",
   "skippedDestinations",

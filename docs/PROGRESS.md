@@ -27,6 +27,9 @@ producción. Los informes QA conservan la evidencia previa al commit/push.
 
 ## Refinamiento global entre camionetas — 14/09/2026
 
+Estado histórico: sustituido por FC01..FC07 para eliminar la amplificación de
+solicitudes Fleet Routing.
+
 - [x] IR-T01 (BL-083..086 / IR01..08): autopsia live de 311.2 km; causa localizada en ausencia de una reapertura global posterior al ganador medido. Referencia oficial, GREEN LIGHT y MATCH PERFECT documental.
 - [x] IR-T02: warm start por grupos desde el ganador preliminar y reparto global completo, sin fijar camionetas ni limitar pedidos.
 - [x] IR-T03: revalidación, resecuenciación con precedencias, medición Routes y comparación contra línea base inmutable; fallo opcional no bloqueante.
@@ -52,6 +55,14 @@ producción. Los informes QA conservan la evidencia previa al commit/push.
 - [x] RD-T04: score prioridad → ventanas → flota → jornada/recorrido → carga como desempate, conservando grupos indivisibles.
 - [x] RD-T05: 332/332 pruebas, PostgreSQL real sin OpenAI, Gherkin, cobertura 93.05% statements/94.54% líneas, mutación crítica 96.96%, lint, tipos, build y diff auditados. Ver `QA-RUTEO-DETERMINISTA.md`.
 - [ ] RD-T06: commit/push a `develop` sólo con autorización explícita; deploy manual y smoke real del usuario.
+
+## Control de costo Fleet Routing — BLOQUE-CONTROL-COSTO-FLEET-ROUTING.md
+
+- [x] FC-T01: autopsia comprobó hasta seis solicitudes `OptimizeTours` por una sola pulsación.
+- [x] FC-T02: una semilla global y una única secuenciación opcional del finalista; máximo absoluto de dos solicitudes, sin límite de pedidos.
+- [x] FC-T03: fallo o intento adicional conserva el mejor candidato completo y nunca bloquea el guardado.
+- [x] FC-T04: movimientos manuales conservan camioneta/orden y usan cero Fleet Routing; sólo recalculan tramos/ETA.
+- [x] FC-T05: 385/385 pruebas, cobertura global 95.29% líneas, presupuesto Fleet 100%, mutación 5/5 (100%), tipos, lint, build, E2E local y dependencias verdes. Commit/push `develop` autorizados en este bloque; deploy y auditoría EasyPanel manuales.
 
 ## Secuencia vial con prioridad — BLOQUE-SECUENCIA-VIAL-PRIORIDAD.md
 

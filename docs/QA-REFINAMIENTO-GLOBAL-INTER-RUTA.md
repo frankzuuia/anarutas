@@ -1,5 +1,8 @@
 # QA — refinamiento global entre camionetas
 
+> Evidencia histórica sustituida por FC01..FC07. El refinamiento Fleet adicional
+> ya no pertenece al runtime; consulte `QA-CONTROL-COSTO-FLEET-ROUTING.md`.
+
 Fecha: 2026-09-14. Rama: `develop`. Alcance: BL-083..086 / IR01..08.
 
 ## Resultado

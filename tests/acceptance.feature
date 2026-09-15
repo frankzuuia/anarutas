@@ -585,8 +585,8 @@ Feature: Ana Rutas independiente y portable
   Scenario: SV03 el refinamiento externo falla
     Given la primera distribución es completa pero Google rechaza la secuenciación
     When el servidor intenta confirmar el resultado
-    Then no guarda ninguna parte de la nueva ruta
-    And el borrador conserva su última versión válida
+    Then guarda el mejor candidato local completo que ya fue medido
+    And no intenta una tercera solicitud Fleet Routing
 
   Scenario: LP16 el horario no veta la salida del operador
     Given el administrador configura salida a las 23:59
@@ -716,30 +716,30 @@ Feature: Ana Rutas independiente y portable
     Then todos los pedidos elegibles permanecen asignados
     And los retrasos participan en el score sin bloquear el guardado
 
-  Scenario: IR01 IR02 refinamiento global desde la mejor ruta medida
-    Given Ana Rutas ya midió semillas completas y eligió un ganador preliminar
-    When solicita el refinamiento global entre camionetas
-    Then inyecta en Google todas sus rutas grupos tiempos y camionetas como solución inicial
-    And mantiene el modelo de reparto abierto para que Google pueda mover destinos completos
-    And conserva el ganador preliminar como candidato hasta la comparación final
+  Scenario: FC01 FC02 FC03 máximo dos solicitudes Fleet Routing por armado
+    Given Ana Rutas tiene el lote completo y varias semillas de reparto
+    When el administrador pulsa Armar ruta
+    Then envía una solicitud Fleet Routing global con todos los destinos
+    And preselecciona Google balance y clúster sin más solicitudes Fleet Routing
+    And sólo el mejor reparto medido puede consumir la segunda y última solicitud
 
-  Scenario: IR03 IR04 un reparto refinado vuelve a pasar por las invariantes
-    Given Google propone mover destinos entre camionetas
-    When Ana Rutas valida el reparto refinado
-    Then conserva cobertura exacta y cada punto físico en una sola camioneta
-    And vuelve a secuenciar el reparto fijo con precedencias Alta Media y Por horario
-    And Google Routes vuelve a medir ETA espera retraso regreso distancia y mapa
+  Scenario: FC04 FC05 el máximo de costo nunca bloquea la ruta
+    Given ya existe un candidato local completo y medido
+    When la segunda solicitud falla o código futuro intenta una tercera
+    Then Ana Rutas conserva y guarda el mejor candidato completo
+    And no envía una tercera solicitud Fleet Routing
+    And registra solicitudes usadas máximo y unidades destino sin datos privados
 
-  Scenario: IR05 IR07 un refinamiento opcional nunca destruye la base
-    Given ya existe una ruta preliminar completa y medida
-    When Google falla omite destinos devuelve un contrato inválido o repite un reparto conocido
-    Then Ana Rutas descarta únicamente el refinamiento
-    And Armar ruta continúa con la mejor alternativa válida ya medida
-    And no duplica solicitudes para un reparto repetido
+  Scenario: FC06 un movimiento manual nunca vuelve a planear la flota
+    Given el administrador ya armó una ruta
+    When mueve reordena o cambia un pedido de camioneta
+    Then PostgreSQL conserva exactamente su decisión manual
+    And sólo recalcula tramos y ETA del acomodo elegido
+    And no llama Fleet Routing ni redistribuye los demás pedidos
 
-  Scenario: IR06 IR08 volumen y concurrencia en el refinamiento
+  Scenario: FC07 el volumen no es un límite de pedidos
     Given el lote completo puede superar cien pedidos y el plan conserva una versión
-    When Google refina y Ana Rutas intenta guardar
-    Then ningún límite local recorta pedidos de la solución inicial
+    When Ana Rutas arma y guarda la ruta
+    Then todos los destinos elegibles entran en las solicitudes permitidas
     And el timeout del solver nace del tamaño real del lote
     And un cambio concurrente impide el guardado obsoleto sin dañar el borrador vigente
