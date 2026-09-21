@@ -1,19 +1,21 @@
 # QA — APK chofer, identidad y lectura de ruta
 
-Fecha de ejecución: 21/09/2026. Rama auditada: `develop`. Este bloque no fue
-publicado, migrado ni desplegado. La evidencia corresponde al árbol local y a
-PostgreSQL de pruebas; no se llamó Odoo, Google Route Optimization ni Routes.
+Fecha de ejecución: 21/09/2026. Rama auditada: `develop`. Esta actualización
+corresponde al árbol local y a PostgreSQL de pruebas; no se llamó Odoo,
+Google Route Optimization ni Routes. El smoke test en Android físico sigue pendiente.
 
 ## Alcance verificado
 
-- Configuración de PIN móvil desde Editar chofer y activación de un solo uso.
-- Enrolamiento de dispositivo, desafío firmado, sesión, cierre y revocación.
+- Configuración de PIN móvil desde Editar chofer y acceso directo con teléfono.
+- Enrolamiento automático de dispositivo, desafío firmado, sesión, cierre y revocación.
+  Tras un cambio de PIN o pérdida de clave local, el siguiente acceso con teléfono
+  y PIN vuelve a vincular el celular sin código adicional.
 - Aislamiento por identidad, camioneta y plan; un chofer no puede leer el plan
   de otro ni decidir su propio `driver_id` o `vehicle_id`.
-- Cliente Android nativo: origen HTTPS dinámico, teléfono + PIN, Android
+- Cliente Android nativo: origen HTTPS fijado por compilación, teléfono + PIN, Android
   Keystore, listado de rutas y pedidos reales de la camioneta asignada.
 - Estado móvil retenido durante recreación de la actividad mediante
-  `ViewModel`; PIN y código permanecen únicamente en memoria y no se guardan.
+  `ViewModel`; el PIN permanece únicamente en memoria y no se guarda.
 - Estados `current`, `stale`, `not_calculated`, vacío, error y sesión revocada
   se presentan sin inventar una asignación o una entrega.
 
@@ -23,28 +25,27 @@ PostgreSQL de pruebas; no se llamó Odoo, Google Route Optimization ni Routes.
 | ------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Tipos web/API             | `npm run typecheck`                                                   | PASS                                                                     |
 | Lint web/API              | `npm run lint`                                                        | PASS, 0 errores; se eliminó la advertencia del config móvil              |
-| Integración móvil real    | `npx vitest run tests/driver-mobile.test.ts`                          | PASS, 6/6 con PostgreSQL real y firmas EC                                |
+| Integración móvil real    | `npx vitest run tests/driver-mobile.test.ts tests/driver-mobile-phone-migration.test.ts` | PASS, 9/9 con PostgreSQL real, migración y firmas EC |
 | HTTP + UI admin           | `npx playwright test tests/e2e/driver-mobile.spec.ts`                 | PASS, 2/2                                                                |
 | Build Next                | `npm run build`                                                       | PASS; endpoints móviles incluidos                                        |
 | Dependencias runtime Node | `npm audit --omit=dev --audit-level=high`                             | PASS, 0 vulnerabilidades                                                 |
-| Cobertura global          | `npm run test:coverage`                                               | 456/456; líneas 95.61%, ramas 87.5%, funciones 98.01%, statements 94.52% |
-| Mutación móvil            | `npm run test:mutation:driver-mobile`                                 | PASS, 93.75% global; ruta 100%; umbral 80%                               |
-| Android                   | `.\gradlew.bat testDebugUnitTest assembleDebug lintDebug --no-daemon` | PASS, 51 tareas; 6/6 pruebas Android; lint verde                         |
+| Cobertura global          | `npm run test:coverage`                                               | 460/460; líneas 95.71%, ramas 87.84%, funciones 98.01%, statements 94.66% |
+| Mutación móvil            | `npm run test:mutation:driver-mobile`                                 | PASS, 90.09%; 100 muertos, 11 supervivientes, 0 sin cobertura/errores    |
+| Android                   | `.\gradlew.bat testDebugUnitTest assembleDebug lintDebug --no-daemon` | PASS, 53 tareas; 5/5 pruebas Android; lint verde                         |
 | Firma APK                 | `apksigner verify --verbose --print-certs`                            | PASS, APK Signature Scheme v2; certificado debug                         |
 
-La mutación produjo `reports/mutation/driver-mobile.html` y
-`reports/mutation/driver-mobile.json`. Los cinco mutantes sobrevivientes y uno
-sin cobertura están en validación defensiva de teléfono/encoding del pepper;
-el puntaje final supera el umbral y el aislamiento de lectura de ruta obtuvo
-100%.
+La medición dirigida cubre identidad telefónica, rechazo de enrolamientos
+inválidos, alta atómica/idempotente de dispositivo y migración v11. Los once
+supervivientes restantes no ocultan caminos sin ejecutar: el reporte registró
+cero mutantes sin cobertura y superó el umbral de ruptura de 80%.
 
 ## Artefacto Android de prueba
 
 - Ruta: `driver-app/app/build/outputs/apk/debug/app-debug.apk`
-- Tamaño: 15,501,138 bytes.
+- Tamaño: 11,708,462 bytes.
 - SHA-256:
-  `B5DB1846C10FCACB5CC23BC9E526D36BFFD45F3C1E8093B8370FE15E62A621F3`.
-- Paquete: `com.five.anarutas.driver`, versión `0.1.0` (`versionCode 1`).
+  `FE3E618639B8CF70112F1B417B07BFB230258F334905D4CAB96A57061763301F`.
+- Paquete: `com.five.anarutas.driver`, versión `0.1.1` (`versionCode 2`).
 - `minSdk 26`, `targetSdk 36`, `compileSdk 37`.
 - Permiso funcional declarado: `android.permission.INTERNET`.
 - Es una APK **debug**; no es una firma ni un artefacto de producción.
@@ -68,15 +69,20 @@ tema claro bajo UI oscura y valores JSON nulos.
 ## QA manual pendiente antes de distribución
 
 1. Instalar esta APK debug en un Android físico API 26 o superior.
-2. Conectar contra el entorno `develop` HTTPS, nunca producción.
-3. Habilitar un chofer de prueba, generar un código y activarlo una vez.
-4. Verificar entrada posterior con teléfono + PIN y firma del mismo celular.
-5. Girar la pantalla durante activación y durante carga; no debe duplicar la
-   solicitud ni consumir nuevamente el código.
+2. Confirmar que la APK conecta al HTTPS de `develop` sin pedir dirección al chofer.
+3. Habilitar un chofer de prueba y establecer su PIN desde administración.
+4. Entrar por primera vez únicamente con teléfono de diez dígitos + PIN y
+   verificar que el celular se vincula automáticamente.
+5. Verificar la entrada posterior con teléfono + PIN y firma del mismo celular;
+   un reintento concurrente no debe duplicar el dispositivo.
+   Simular pérdida de respuesta en el primer acceso y confirmar que el siguiente
+   intento reutiliza la clave del mismo celular.
 6. Confirmar que sólo aparecen la camioneta, plan y pedidos asignados.
 7. Revocar acceso desde administración y comprobar rechazo inmediato.
-8. Probar pérdida/restauración de red, error de servidor y ruta sin cálculo.
+8. Cambiar el PIN desde administración; el siguiente ingreso con el PIN nuevo debe
+   registrar el celular automáticamente. Un PIN erróneo no debe desbloquearlo.
+9. Probar pérdida/restauración de red, error de servidor y ruta sin cálculo.
 
-La prueba física es condición de salida. También faltan firma release,
-distribución administrada y configuración de `RUTAS_DRIVER_PIN_PEPPER` en el
-entorno objetivo. Ninguno de esos pasos se ejecuta sin autorización expresa.
+La prueba física es condición de salida. También faltan firma release y
+distribución administrada. `RUTAS_DRIVER_PIN_PEPPER` debe estar configurada en
+el servidor objetivo; nunca se incluye en la APK.

@@ -109,22 +109,14 @@ private fun DriverApp(model: DriverViewModel) {
 private fun AccessScreen(state: DriverUiState, model: DriverViewModel) {
     Text("Acceso a tu ruta", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
     Text(
-        if (state.deviceId.isBlank()) "Activa este celular con el código que te entrega administración."
-        else "Introduce tu teléfono y PIN para abrir tu ruta.",
+        "Introduce el teléfono registrado por administración y tu PIN.",
         color = muted,
-    )
-    OutlinedTextField(
-        value = state.server,
-        onValueChange = model::updateServer,
-        label = { Text("Servidor HTTPS") },
-        placeholder = { Text("https://rutas.tuempresa.com") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
     )
     OutlinedTextField(
         value = state.phone,
         onValueChange = model::updatePhone,
         label = { Text("Teléfono del chofer") },
+        placeholder = { Text("10 dígitos") },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
@@ -138,15 +130,6 @@ private fun AccessScreen(state: DriverUiState, model: DriverViewModel) {
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
-    if (state.deviceId.isBlank()) {
-        OutlinedTextField(
-            value = state.code,
-            onValueChange = model::updateCode,
-            label = { Text("Código de activación") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
     Button(
         enabled = !state.busy,
         modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -154,7 +137,6 @@ private fun AccessScreen(state: DriverUiState, model: DriverViewModel) {
     ) {
         Text(
             if (state.busy) "Conectando…"
-            else if (state.deviceId.isBlank()) "Activar celular"
             else "Entrar",
         )
     }
@@ -164,7 +146,7 @@ private fun AccessScreen(state: DriverUiState, model: DriverViewModel) {
         }
     }
     Text(
-        "El PIN nunca se guarda en el celular. La activación autoriza únicamente este dispositivo.",
+        "El PIN nunca se guarda. El primer acceso vincula automáticamente este celular.",
         color = muted,
         fontSize = 12.sp,
     )

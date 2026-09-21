@@ -4,10 +4,14 @@ const driverMobileMutationConfig = {
   ...baseConfig,
   ignorePatterns: [...baseConfig.ignorePatterns, "driver-app/**"],
   mutate: [
-    "src/core/driver-mobile-auth.ts:19-50",
-    "src/core/driver-mobile-route.ts:10-27",
+    "src/core/driver-phone.ts",
+    "src/core/driver-mobile-auth.ts:233-269",
+    "src/core/driver-mobile-schema.ts:78-93",
   ],
-  testFiles: ["tests/driver-mobile.test.ts"],
+  testFiles: [
+    "tests/driver-mobile.test.ts",
+    "tests/driver-mobile-phone-migration.test.ts",
+  ],
   testRunner: "vitest",
   vitest: { configFile: "vitest.config.ts" },
   reporters: ["clear-text", "html", "json"],

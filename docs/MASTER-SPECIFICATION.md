@@ -341,12 +341,12 @@ de construcción: MATCH PERFECT con G-T01..G-T07 de PROGRESS.
 
 `BLOQUE-APK-CHOFER-ACCESO.md` es la fuente normativa de BL-083..087 y
 M01..M14. El primer bloque entrega credenciales de chofer independientes,
-activación de dispositivo, sesión móvil, API filtrada y una APK inicial que
+enrolamiento automático de dispositivo, sesión móvil, API filtrada y una APK inicial que
 sólo muestra acceso y ruta. No habilita todavía traspaso, entrega ni cobro.
 
 ### Scenario Matrix
 
-M01..M04 cubren alta, teléfono único, PIN y activación por administrador;
+M01..M04 cubren alta, teléfono único, PIN y primer acceso automático;
 M05..M09 cubren prueba del dispositivo, concurrencia, bloqueo y revocación;
 M10..M13 cubren aislamiento y vigencia de la asignación/cálculo; M14 define
 la frontera offline. Cada fila del documento normativo identifica datos,
@@ -355,18 +355,19 @@ auditoría, validación y recuperación.
 ### Data Flow
 
 Admin autenticado configura una credencial móvil sin incluir el PIN en la
-ficha del chofer ni en `creation_payload`. Un código de activación se muestra
-una vez y se guarda sólo como hash. La APK crea su par de claves Android,
-redime el código con teléfono/PIN y presenta una clave pública validada.
+ficha del chofer ni en `creation_payload`. La APK crea su par de claves Android
+en el primer acceso y presenta teléfono/PIN y una clave pública validada.
 Después firma un desafío de un uso para iniciar sesión. La API móvil resuelve
 el chofer desde esa sesión y consulta los planes/carriles/pedidos actuales
 según `route_plan_vehicles` y `route_shipments`; el móvil no elige identidad.
 
 ### Tables / APIs / Tools
 
-Migración aditiva v10: credenciales, dispositivos, activaciones, desafíos,
-sesiones y auditoría móvil propias. Endpoints administrativos para configurar
-y revocar acceso; endpoints móviles separados para activar, desafiar, iniciar/
+Migración aditiva v10: credenciales, dispositivos, activaciones históricas,
+desafíos, sesiones y auditoría móvil propias. La tabla histórica se conserva
+inerte para evitar una migración destructiva. La v11 normaliza teléfonos
+mexicanos a diez dígitos y los protege con una restricción. Endpoints administrativos para configurar
+y revocar acceso; endpoints móviles separados para enrolar, desafiar, iniciar/
 cerrar sesión y consultar la ruta. Ninguno comparte la cookie administrativa.
 El PIN derivado requiere un secreto de servidor en configuración runtime.
 
@@ -380,23 +381,23 @@ administrativa y jamás concede acceso por la fuente más permisiva.
 
 ### Integrations / Costs / Limits
 
-No usa Odoo, Google, SMS ni Fleet Routing. La activación es administrativa;
+No usa Odoo, Google, SMS ni Fleet Routing. El enrolamiento es interno;
 la carga de ruta usa PostgreSQL de Ana Rutas. La futura navegación in-app y
 los traspasos se especificarán y costearán en otro bloque.
 
 ### Security / RLS / Secrets
 
-PIN de cuatro dígitos nunca es único factor remoto: activación de un solo uso,
-prueba de dispositivo, limitación persistida por cuenta, revocación y sesiones
-acotadas. Código/PIN/clave privada fuera de logs, auditoría y respuestas de
+PIN de cuatro dígitos se combina en el primer acceso con teléfono canónico,
+limitación persistida y clave pública; después se exige prueba de dispositivo,
+revocación y sesiones acotadas. PIN/clave privada fuera de logs, auditoría y respuestas de
 listado. Clave privada sólo en Android Keystore. Validación y versionado de
 credenciales; integración con la marca de instalación PostgreSQL existente.
 
 ### Failure Modes / Recovery / Validation
 
-Error de red, PIN erróneo, código vencido/repetido, duplicidad de teléfono,
+Error de red, PIN erróneo, enrolamiento repetido, duplicidad de teléfono,
 chofer inactivo, plan reasignado y ruta obsoleta tienen estado explícito.
-Pruebas unitarias, PostgreSQL real, carrera de activación, aislamiento entre
+Pruebas unitarias, PostgreSQL real, carrera de enrolamiento, aislamiento entre
 choferes, Gherkin, API, Android, cobertura/mutación y revisión de seguridad.
 Veredicto previo: GREEN LIGHT para identidad/lectura; no autoriza a marcar
 completos los bloques móviles posteriores. Auditoría incremental:

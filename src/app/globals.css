@@ -1118,17 +1118,6 @@ tr:last-child td {
   flex-wrap: wrap;
   gap: 8px;
 }
-.driver-activation {
-  display: grid;
-  gap: 6px;
-  padding: 10px;
-  border: 1px solid var(--green);
-  border-radius: 7px;
-}
-.driver-activation code {
-  overflow-wrap: anywhere;
-  user-select: all;
-}
 .app select {
   width: 100%;
   min-width: 0;

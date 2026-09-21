@@ -111,7 +111,6 @@ export function FleetPanel({
     null,
   );
   const [mobilePin, setMobilePin] = useState("");
-  const [activationCode, setActivationCode] = useState("");
   const refresh = useCallback(async () => {
     const [v, d] = await Promise.all([
       api<Vehicle[]>("/api/vehicles"),
@@ -165,14 +164,12 @@ export function FleetPanel({
     setNotice("");
     setMobilePin("");
     setMobileAccess(null);
-    setActivationCode("");
     setModal(next);
   }
   function close() {
     setModal(null);
     setError("");
     setMobilePin("");
-    setActivationCode("");
   }
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -241,24 +238,8 @@ export function FleetPanel({
       );
       setMobileAccess(status);
       setMobilePin("");
-      setActivationCode("");
       setNotice(
-        "PIN guardado. Genera una activación para autorizar el celular.",
-      );
-    });
-  }
-  function activateDriverMobile() {
-    if (modal?.type !== "driver" || !modal.data || !mobileAccess) return;
-    const driverId = modal.id;
-    void run(async () => {
-      const result = await api<{ code: string; expiresAt: string }>(
-        `/api/drivers/${driverId}/mobile-activation`,
-        "POST",
-        { expectedMobileVersion: mobileAccess.version },
-      );
-      setActivationCode(result.code);
-      setNotice(
-        "Código de un solo uso. Compártelo únicamente con este chofer.",
+        "PIN guardado. El chofer ya puede entrar con su teléfono y PIN.",
       );
     });
   }
@@ -273,7 +254,6 @@ export function FleetPanel({
       );
       setMobileAccess(status);
       setMobilePin("");
-      setActivationCode("");
       setNotice("Acceso móvil revocado. Las sesiones quedaron invalidadas.");
     });
   }
@@ -774,7 +754,8 @@ export function FleetPanel({
                       </label>
                       <span id="mobile-pin-help" className="small">
                         Configurar otro PIN revoca las sesiones y celulares
-                        anteriores. El PIN no se podrá consultar después.
+                        anteriores. El teléfono se normaliza a 10 dígitos y el
+                        PIN no se podrá consultar después.
                       </span>
                       <div className="row driver-mobile-actions">
                         <button
@@ -788,13 +769,6 @@ export function FleetPanel({
                         </button>
                         <button
                           type="button"
-                          disabled={busy || !mobileAccess?.enabled}
-                          onClick={activateDriverMobile}
-                        >
-                          Generar activación
-                        </button>
-                        <button
-                          type="button"
                           className="quiet"
                           disabled={busy || !mobileAccess?.enabled}
                           onClick={revokeDriverMobile}
@@ -802,13 +776,11 @@ export function FleetPanel({
                           Revocar acceso
                         </button>
                       </div>
-                      {activationCode && (
-                        <div className="driver-activation" role="status">
-                          <span>
-                            Código de activación: se muestra sólo ahora.
-                          </span>
-                          <code>{activationCode}</code>
-                        </div>
+                      {mobileAccess?.enabled && (
+                        <span className="small" role="status">
+                          El chofer puede entrar directamente en la APK con su
+                          teléfono y PIN.
+                        </span>
                       )}
                     </>
                   ) : (

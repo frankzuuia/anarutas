@@ -276,12 +276,12 @@ No se incluyen cambios a repositorio five, sus entornos, vendedores, precios o V
 ## APK chofer — primer bloque autorizado el 21/09/2026
 
 - [x] M-T01 (BL-083..087 / M01..M14): auditar asignación real, autenticación existente, costos laterales y herramientas Android; especificar fronteras y escenarios en `BLOQUE-APK-CHOFER-ACCESO.md`.
-- [x] M-T02 (M01..M09): migración aditiva v10, credencial/PIN protegido, dispositivo, activación de un uso, desafío, sesión y revocación; sin afectar cuentas administrativas.
-- [x] M-T03 (M01..M04): panel «Editar chofer» configura acceso móvil y muestra activación una sola vez sin filtrar secretos.
+- [x] M-T02 (M01..M09): migraciones aditivas v10/v11, teléfono mexicano canónico, PIN protegido, enrolamiento automático, desafío, sesión y revocación; sin afectar cuentas administrativas.
+- [x] M-T03 (M01..M04): panel «Editar chofer» configura acceso móvil; la APK entra únicamente con teléfono + PIN y fija el HTTPS del entorno por compilación.
 - [x] M-T04 (M10..M13): API móvil autenticada expone sólo camioneta, plan y pedidos del chofer; discrepancias y cálculo ausente son explícitos.
 - [x] M-T05 (M05..M14): proyecto Android nativo compila APK debug inicial de acceso y ruta real, sin botones de acciones aún no implementadas.
 - [ ] M-T06 (todos): automatización local verde y documentada en `QA-BLOQUE-APK-CHOFER-ACCESO.md`; falta smoke test en Android físico antes de cerrar la puerta de salida.
 
 El traspaso de pedidos, eventos de llegada, incidencias, navegación y finanzas
-permanecen pendientes de bloques propios. No hay commit, push ni despliegue
-autorizados por este avance.
+permanecen pendientes de bloques propios. El acceso directo teléfono + PIN
+se prepara primero en `develop`; producción requiere su propia aprobación.

@@ -134,7 +134,8 @@ Bloque 2A autorizado: BL-007..010 (camionetas, choferes, asignación actual y do
 
 BL-083..087 y los escenarios M01..M14 están definidos con actor, datos, permiso,
 auditoría y validación en `BLOQUE-APK-CHOFER-ACCESO.md`. Teléfono + PIN de cuatro
-dígitos sólo funciona en un dispositivo autorizado mediante activación de un
-solo uso; la identidad móvil no reutiliza las cuentas administrativas.
+dígitos vincula automáticamente el primer dispositivo mediante una clave
+no exportable de Android Keystore; los accesos posteriores exigen la prueba
+criptográfica del dispositivo. La identidad móvil no reutiliza las cuentas administrativas.
 La APK lee únicamente la ruta del chofer autenticado. Llegadas, incidencias,
 transferencias y cobros requieren sus propios bloques y no se simulan aquí.

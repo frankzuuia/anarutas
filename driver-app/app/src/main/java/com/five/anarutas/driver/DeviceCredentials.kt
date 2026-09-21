@@ -14,7 +14,6 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 data class SavedAccess(
-    val server: String,
     val phone: String,
     val deviceId: String,
     val token: String,
@@ -69,16 +68,15 @@ class DeviceCredentials(context: Context) {
     }
 
     fun load(): SavedAccess = SavedAccess(
-        server = preferences.getString("server", "") ?: "",
         phone = preferences.getString("phone", "") ?: "",
         deviceId = preferences.getString("device_id", "") ?: "",
         token = decryptedToken(),
     )
 
-    fun save(server: String, phone: String, deviceId: String, token: String) {
+    fun save(phone: String, deviceId: String, token: String) {
         val (iv, ciphertext) = encryptedToken(token)
         preferences.edit()
-            .putString("server", server)
+            .remove("server")
             .putString("phone", phone)
             .putString("device_id", deviceId)
             .putString("token_iv", iv)
@@ -96,19 +94,20 @@ class DeviceCredentials(context: Context) {
         if (keyStore.containsAlias(signingAlias)) keyStore.deleteEntry(signingAlias)
     }
 
-    fun generateNewPublicKeyPem(): String {
-        if (keyStore.containsAlias(signingAlias)) keyStore.deleteEntry(signingAlias)
-        val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
-        generator.initialize(
-            KeyGenParameterSpec.Builder(
-                signingAlias,
-                KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
+    fun publicKeyPem(): String {
+        val key = keyStore.getCertificate(signingAlias)?.publicKey?.encoded ?: run {
+            val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
+            generator.initialize(
+                KeyGenParameterSpec.Builder(
+                    signingAlias,
+                    KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
+                )
+                    .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                    .setDigests(KeyProperties.DIGEST_SHA256)
+                    .build(),
             )
-                .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
-                .setDigests(KeyProperties.DIGEST_SHA256)
-                .build(),
-        )
-        val key = generator.generateKeyPair().public.encoded
+            generator.generateKeyPair().public.encoded
+        }
         val lines = Base64.encodeToString(key, Base64.NO_WRAP).chunked(64).joinToString("\n")
         return "-----BEGIN PUBLIC KEY-----\n$lines\n-----END PUBLIC KEY-----\n"
     }

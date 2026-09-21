@@ -1,6 +1,6 @@
 export const errors: Record<string, string> = {
   MOBILE_PHONE_INVALID:
-    "Para acceder a la APK, el teléfono del chofer debe contener entre 10 y 15 dígitos.",
+    "Para acceder a la APK, el teléfono del chofer debe ser un número mexicano válido de 10 dígitos.",
   MOBILE_PIN_INVALID: "Escribe exactamente cuatro dígitos para el PIN.",
   MOBILE_PHONE_EXISTS:
     "Ese teléfono ya está habilitado para otro chofer. Revisa las fichas antes de continuar.",
@@ -12,7 +12,7 @@ export const errors: Record<string, string> = {
   MOBILE_DEVICE_INVALID:
     "El celular no presentó una clave de dispositivo válida.",
   MOBILE_LOGIN_INVALID:
-    "No se pudo iniciar sesión. Revisa los datos o solicita una nueva activación.",
+    "No se pudo iniciar sesión. Revisa el teléfono y el PIN.",
   MOBILE_UNAUTHENTICATED:
     "La sesión del chofer terminó. Vuelve a iniciar sesión.",
   CANDIDATE_CHANGED:

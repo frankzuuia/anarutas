@@ -209,13 +209,6 @@ test("admin provisioning, native device login, route isolation and revocation ov
     version: 1,
     devices: 0,
   });
-  const activation = await request.post(
-    `${origin}/api/drivers/${driverId}/mobile-activation`,
-    { headers: { Origin: origin }, data: { expectedMobileVersion: 1 } },
-  );
-  expect(activation.status()).toBe(200);
-  const { code } = await activation.json();
-  expect(code).toMatch(/^[0-9a-f]{64}$/);
   const { publicKey, privateKey } = generateKeyPairSync("ec", {
     namedCurve: "prime256v1",
   });
@@ -223,21 +216,19 @@ test("admin provisioning, native device login, route isolation and revocation ov
     .export({ type: "spki", format: "pem" })
     .toString();
   const badEnrollment = await request.post(`${origin}/api/mobile/enroll`, {
-    data: { phone, pin, code: "0".repeat(64), publicKey: publicKeyPem },
+    data: { phone, pin: "0000", publicKey: publicKeyPem },
   });
   expect(badEnrollment.status()).toBe(401);
   const enrollment = await request.post(`${origin}/api/mobile/enroll`, {
-    data: { phone, pin, code, publicKey: publicKeyPem },
+    data: { phone: `+52 ${phone}`, pin, publicKey: publicKeyPem },
   });
   expect(enrollment.status()).toBe(201);
   const { deviceId, token } = await enrollment.json();
-  expect(
-    (
-      await request.post(`${origin}/api/mobile/enroll`, {
-        data: { phone, pin, code, publicKey: publicKeyPem },
-      })
-    ).status(),
-  ).toBe(401);
+  const repeatedEnrollment = await request.post(`${origin}/api/mobile/enroll`, {
+    data: { phone, pin, publicKey: publicKeyPem },
+  });
+  expect(repeatedEnrollment.status()).toBe(201);
+  expect((await repeatedEnrollment.json()).deviceId).toBe(deviceId);
   expect((await request.get(`${origin}/api/mobile/plans`)).status()).toBe(401);
   const authorization = { Authorization: `Bearer ${token}` };
   const plans = await request.get(`${origin}/api/mobile/plans`, {
@@ -301,7 +292,7 @@ test("admin provisioning, native device login, route isolation and revocation ov
   });
 });
 
-test("driver edit modal configures PIN without placing the code over other controls", async ({
+test("driver edit modal enables direct phone and PIN access", async ({
   page,
 }) => {
   test.setTimeout(60000);
@@ -332,13 +323,14 @@ test("driver edit modal configures PIN without placing the code over other contr
       (element) => element.scrollWidth <= element.clientWidth,
     ),
   ).toBe(true);
-  await modal.getByRole("button", { name: "Generar activación" }).click();
   await expect(
-    modal.getByText("Código de activación: se muestra sólo ahora."),
+    modal.getByText(
+      "El chofer puede entrar directamente en la APK con su teléfono y PIN.",
+    ),
   ).toBeVisible();
+  await expect(
+    modal.getByRole("button", { name: "Generar activación" }),
+  ).toHaveCount(0);
   await modal.getByRole("button", { name: "Revocar acceso" }).click();
   await expect(modal.getByText("Sin acceso móvil habilitado")).toBeVisible();
-  await expect(
-    modal.getByText("Código de activación: se muestra sólo ahora."),
-  ).toHaveCount(0);
 });

@@ -12,24 +12,14 @@ import { transaction, type Sql } from "./database";
 import { fleetLock, getDriver } from "./fleet";
 import { hashPassword, newToken, tokenHash, verifyPassword } from "./crypto";
 import { throttle } from "./auth";
+import { normalizeDriverPhone } from "./driver-phone";
 
 const invalidLogin = () => new AppError("MOBILE_LOGIN_INVALID", 401);
 
 export function mobilePhoneKey(value: unknown) {
-  if (typeof value !== "string" || value.length > 40)
-    throw new AppError("MOBILE_PHONE_INVALID");
-  const trimmed = value.trim();
-  if (!trimmed) throw new AppError("MOBILE_PHONE_INVALID");
-  let digits = "";
-  for (const [index, char] of [...trimmed].entries()) {
-    if (char >= "0" && char <= "9") digits += char;
-    else if (char === "+" && index === 0) continue;
-    else if (!["-", "(", ")", " ", "."].includes(char))
-      throw new AppError("MOBILE_PHONE_INVALID");
-  }
-  if (digits.length < 10 || digits.length > 15)
-    throw new AppError("MOBILE_PHONE_INVALID");
-  return digits;
+  const phone = normalizeDriverPhone(value);
+  if (!phone) throw new AppError("MOBILE_PHONE_INVALID");
+  return phone;
 }
 
 export function mobilePin(value: unknown) {
@@ -174,37 +164,6 @@ export async function revokeMobileAccess(
   });
 }
 
-export async function createMobileActivation(
-  pool: Pool,
-  adminActor: string,
-  driverId: string,
-  expectedMobileVersion: unknown,
-) {
-  const code = newToken();
-  const result = await transaction(pool, async (sql) => {
-    await fleetLock(sql, adminActor);
-    const driver = await getDriver(sql, driverId);
-    const access = await mobileAccessStatus(sql, driverId);
-    if (expectedMobileVersion !== access.version)
-      throw new AppError("MOBILE_VERSION_CONFLICT", 409);
-    if (!driver.active || !access.enabled)
-      throw new AppError("MOBILE_ACCESS_DISABLED", 409);
-    const { rows } = await sql.query(
-      `INSERT INTO route_driver_mobile_activations
-       (driver_id,code_hash,expires_at,created_by)
-       VALUES($1,$2,now()+interval '15 minutes',$3)
-       ON CONFLICT(driver_id) DO UPDATE SET
-         code_hash=EXCLUDED.code_hash,expires_at=EXCLUDED.expires_at,
-         created_by=EXCLUDED.created_by,created_at=now()
-       RETURNING expires_at`,
-      [driverId, tokenHash(code), adminActor],
-    );
-    await mobileAudit(sql, driverId, "mobile.activation.created", adminActor);
-    return { expiresAt: rows[0].expires_at };
-  });
-  return { code, ...result };
-}
-
 function canonicalPublicKey(value: unknown) {
   if (typeof value !== "string" || value.length > 1024)
     throw new AppError("MOBILE_DEVICE_INVALID");
@@ -259,9 +218,6 @@ export async function enrollMobileDevice(
 ) {
   const phone = mobilePhoneKey(input.phone);
   const pin = mobilePin(input.pin);
-  const code = input.code;
-  if (typeof code !== "string" || !/^[0-9a-f]{64}$/.test(code))
-    throw invalidLogin();
   const publicKey = canonicalPublicKey(input.publicKey);
   const publicKeyHash = createHash("sha256").update(publicKey).digest("hex");
   await throttleMobile(pool, phone);
@@ -283,30 +239,17 @@ export async function enrollMobileDevice(
       if (access) await recordFailedPin(sql, access.driver_id);
       return null;
     }
-    const activation = await sql.query(
-      `SELECT code_hash,expires_at FROM route_driver_mobile_activations
-       WHERE driver_id=$1 FOR UPDATE`,
-      [access.driver_id],
-    );
-    const row = activation.rows[0];
-    if (
-      !row ||
-      row.expires_at <= new Date() ||
-      row.code_hash !== tokenHash(code)
-    ) {
-      await recordFailedPin(sql, access.driver_id);
-      return null;
-    }
-    const deviceId = randomUUID();
-    await sql.query(
+    const enrolled = await sql.query(
       `INSERT INTO route_driver_mobile_devices
-       (id,driver_id,public_key,public_key_hash) VALUES($1,$2,$3,$4)`,
-      [deviceId, access.driver_id, publicKey, publicKeyHash],
+       (id,driver_id,public_key,public_key_hash) VALUES($1,$2,$3,$4)
+       ON CONFLICT(public_key_hash) DO UPDATE SET
+         public_key=EXCLUDED.public_key,revoked_at=NULL
+       WHERE route_driver_mobile_devices.driver_id=EXCLUDED.driver_id
+       RETURNING id`,
+      [randomUUID(), access.driver_id, publicKey, publicKeyHash],
     );
-    await sql.query(
-      "DELETE FROM route_driver_mobile_activations WHERE driver_id=$1",
-      [access.driver_id],
-    );
+    const deviceId = enrolled.rows[0]?.id as string | undefined;
+    if (!deviceId) return null;
     await sql.query(
       `UPDATE route_driver_mobile_access SET failed_attempts=0,locked_until=NULL
        WHERE driver_id=$1`,

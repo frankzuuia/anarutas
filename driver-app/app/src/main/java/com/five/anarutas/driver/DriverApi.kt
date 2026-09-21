@@ -89,9 +89,9 @@ class DriverApi(private val server: String) {
         }
     }
 
-    suspend fun enroll(phone: String, pin: String, code: String, publicKey: String): DriverSession {
+    suspend fun enroll(phone: String, pin: String, publicKey: String): DriverSession {
         val response = JSONObject(exchange("POST", "/api/mobile/enroll", payload = JSONObject()
-            .put("phone", phone).put("pin", pin).put("code", code).put("publicKey", publicKey)))
+            .put("phone", phone).put("pin", pin).put("publicKey", publicKey)))
         return DriverSession(response.getString("driverId"), response.getString("deviceId"), response.getString("token"))
     }
 
