@@ -9,6 +9,7 @@ const baseConfig = {
     "reports/**",
     "test-results/**",
     "playwright-report/**",
+    "driver-app/app/build/**",
   ],
 };
 

@@ -28,7 +28,7 @@ function environment() {
     RUTAS_GOOGLE_BILLING_EXPORT_PROJECT_ID: "finops-project",
     RUTAS_GOOGLE_BILLING_EXPORT_DATASET_ID: "billing_export",
     RUTAS_GOOGLE_BILLING_EXPORT_LOCATION: "US",
-    RUTAS_GOOGLE_CONSUMPTION_SYNC_MINUTES: "30",
+    RUTAS_GOOGLE_CONSUMPTION_SYNC_MINUTES: "180",
   };
 }
 
@@ -184,6 +184,10 @@ describe("Google consumption persistence / real PostgreSQL", () => {
       errorCode: "GOOGLE_CONSUMPTION_UNAVAILABLE",
       snapshot: { netCost: 12.5 },
     });
+    const retryDelay =
+      Date.parse(state.nextSyncAt!) - Date.parse(state.lastAttemptAt!);
+    expect(retryDelay).toBeGreaterThanOrEqual(180 * 60_000);
+    expect(retryDelay).toBeLessThan(181 * 60_000);
     expect(JSON.stringify(state)).not.toContain("secret provider detail");
   });
 

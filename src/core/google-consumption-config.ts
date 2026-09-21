@@ -82,7 +82,7 @@ export function readGoogleConsumptionConfig(
     syncMinutes: positiveInteger(
       env,
       "RUTAS_GOOGLE_CONSUMPTION_SYNC_MINUTES",
-      30,
+      180,
       1440,
     ),
     maximumBytesBilled: positiveInteger(

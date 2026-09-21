@@ -161,6 +161,12 @@ describe("Google consumption configuration", () => {
     });
   });
 
+  it("defaults the automatic Google billing cadence to three hours", () => {
+    expect(readGoogleConsumptionConfig(environment())).toMatchObject({
+      syncMinutes: 180,
+    });
+  });
+
   it.each([
     { RUTAS_GOOGLE_BILLING_EXPORT_DATASET_ID: undefined },
     { RUTAS_GOOGLE_BILLING_EXPORT_DATASET_ID: "bad.dataset" },

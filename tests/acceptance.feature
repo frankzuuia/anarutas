@@ -451,6 +451,13 @@ Feature: Ana Rutas independiente y portable
     And muestra que el dato está atrasado junto con la fecha de su corte
     And no expone credenciales, consultas ni detalles privados del proveedor
 
+  Scenario: Respetar tres horas entre consultas automáticas de facturación
+    Given el intervalo FinOps está configurado en 180 minutos
+    When una sincronización automática termina correctamente o falla
+    Then la siguiente consulta automática a BigQuery queda programada tres horas después
+    And el chequeo interno del worker no crea consultas adicionales durante ese intervalo
+    And una optimización de rutas nunca se ejecuta por este monitor
+
   Scenario: No fingir consumo cuando la integración no está configurada
     Given las exportaciones FinOps todavía no están configuradas en EasyPanel
     When el administrador abre Control de consumo

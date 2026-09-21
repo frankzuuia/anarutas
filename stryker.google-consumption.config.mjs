@@ -5,6 +5,7 @@ const config = {
   mutate: [
     "src/core/google-consumption-config.ts",
     "src/core/google-consumption-bigquery.ts:435-588",
+    "src/core/google-consumption.ts:318-319",
   ],
   testRunner: "vitest",
   vitest: { configFile: "vitest.google-consumption-mutation.config.ts" },

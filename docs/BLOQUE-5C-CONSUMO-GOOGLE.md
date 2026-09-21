@@ -75,7 +75,7 @@ Variables runtime nuevas:
 - `RUTAS_GOOGLE_BILLING_EXPORT_PROJECT_ID`
 - `RUTAS_GOOGLE_BILLING_EXPORT_DATASET_ID`
 - `RUTAS_GOOGLE_BILLING_EXPORT_LOCATION`
-- `RUTAS_GOOGLE_CONSUMPTION_SYNC_MINUTES` (opcional)
+- `RUTAS_GOOGLE_CONSUMPTION_SYNC_MINUTES` (opcional; 180 minutos por defecto)
 - `RUTAS_GOOGLE_BIGQUERY_MAX_BYTES_BILLED` (opcional, guardia de costo)
 
 La cuenta FinOps requiere `roles/bigquery.jobUser` en el proyecto que ejecuta el query
@@ -94,6 +94,8 @@ cost y Pricing data export de la misma cuenta de facturación.
   adquiere lease y devuelve el snapshot oficial o error sanitario.
 - El worker dedicado revisa vencimiento sin consultas si la integración no está
   configurada; el intervalo real se persiste para ser seguro con varias réplicas.
+  Tanto el éxito como el fallo respetan el mismo intervalo configurado, evitando
+  reintentos anticipados que puedan crear trabajos BigQuery adicionales.
 
 ## UI aprobada
 

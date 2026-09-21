@@ -312,7 +312,10 @@ async function synchronize(
     await complete(pool, actor, token, snapshot, config.syncMinutes);
     return true;
   } catch (error) {
-    await fail(pool, actor, token, error, Math.min(config.syncMinutes, 15));
+    // A failed provider attempt must respect the same configured cadence as a
+    // successful one. Retrying sooner can create extra BigQuery jobs precisely
+    // while the billing integration is unhealthy.
+    await fail(pool, actor, token, error, config.syncMinutes);
     throw error;
   }
 }
