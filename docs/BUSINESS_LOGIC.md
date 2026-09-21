@@ -129,3 +129,12 @@ Bloque 2A autorizado: BL-007..010 (camionetas, choferes, asignación actual y do
 | BL-038 Acumulación    | Administrador conoce consumo, restante y momento de cobro por SKU | Google se vuelve a agregar por ciclo y reemplaza una caché local; límites derivados de pricing | PostgreSQL no incrementa consumo                            | Reintentos y correcciones no duplican; cuotas independientes         |
 | BL-039 Actualización  | Datos avanzan cuando Google publica nueva exportación             | Sincronización durable periódica y manual con lease, frescura y último `export_time`           | Un trabajo concurrente; error sanitario                     | Fallo conserva último dato marcado como desactualizado               |
 | BL-040 Presentación   | Control sólo en navegación lateral, nunca dentro del mapa         | Costo, créditos, historial y medidor por SKU en moneda Google                                  | Todos los administradores autenticados                      | Texto además de color; responsive; secretos ausentes                 |
+
+## Bloque móvil 1 aprobado — acceso y ruta del chofer
+
+BL-083..087 y los escenarios M01..M14 están definidos con actor, datos, permiso,
+auditoría y validación en `BLOQUE-APK-CHOFER-ACCESO.md`. Teléfono + PIN de cuatro
+dígitos sólo funciona en un dispositivo autorizado mediante activación de un
+solo uso; la identidad móvil no reutiliza las cuentas administrativas.
+La APK lee únicamente la ruta del chofer autenticado. Llegadas, incidencias,
+transferencias y cobros requieren sus propios bloques y no se simulan aquí.

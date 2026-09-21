@@ -1,11 +1,7 @@
+import baseConfig from "./stryker.base.config.mjs";
+
 const config = {
-  ignorePatterns: [
-    ".local/**",
-    "reports/**",
-    "test-results/**",
-    "coverage/**",
-    ".next/**",
-  ],
+  ...baseConfig,
   mutate: [
     "src/core/route-delivery-groups.ts",
     "src/core/route-fingerprint.ts",

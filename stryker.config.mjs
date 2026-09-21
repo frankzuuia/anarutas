@@ -1,4 +1,7 @@
+import baseConfig from "./stryker.base.config.mjs";
+
 const config = {
+  ...baseConfig,
   mutate: [
     "src/core/policy.ts",
     "src/core/orders-validation.ts",

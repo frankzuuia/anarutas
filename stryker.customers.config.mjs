@@ -1,11 +1,7 @@
+import baseConfig from "./stryker.base.config.mjs";
+
 const config = {
-  ignorePatterns: [
-    ".local/**",
-    "reports/**",
-    "test-results/**",
-    "coverage/**",
-    ".next/**",
-  ],
+  ...baseConfig,
   mutate: [
     "src/core/customers-validation.ts:36-75",
     "src/core/odoo-partner-capabilities.ts:23-36",

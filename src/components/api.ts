@@ -1,4 +1,20 @@
 export const errors: Record<string, string> = {
+  MOBILE_PHONE_INVALID:
+    "Para acceder a la APK, el teléfono del chofer debe contener entre 10 y 15 dígitos.",
+  MOBILE_PIN_INVALID: "Escribe exactamente cuatro dígitos para el PIN.",
+  MOBILE_PHONE_EXISTS:
+    "Ese teléfono ya está habilitado para otro chofer. Revisa las fichas antes de continuar.",
+  MOBILE_VERSION_CONFLICT:
+    "Otro administrador cambió este acceso móvil. Cierra y vuelve a abrir la ficha.",
+  MOBILE_CONFIG_MISSING:
+    "Falta configurar el secreto privado del PIN móvil en esta instalación.",
+  MOBILE_ACCESS_DISABLED: "Configura primero el PIN de un chofer activo.",
+  MOBILE_DEVICE_INVALID:
+    "El celular no presentó una clave de dispositivo válida.",
+  MOBILE_LOGIN_INVALID:
+    "No se pudo iniciar sesión. Revisa los datos o solicita una nueva activación.",
+  MOBILE_UNAUTHENTICATED:
+    "La sesión del chofer terminó. Vuelve a iniciar sesión.",
   CANDIDATE_CHANGED:
     "Algunos pedidos cambiaron en Odoo. No se guardó la selección; vuelve a consultar",
   CANDIDATE_INVALID:

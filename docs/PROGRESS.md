@@ -1,5 +1,15 @@
 # Progreso — bloque 1
 
+## Higiene de almacenamiento de pruebas — 15/09/2026
+
+- [x] HA-T01: autopsia local confirmó 4,042 clústeres PostgreSQL temporales y diez sandboxes Stryker abandonados; no eran código ni datos productivos.
+- [x] HA-T02: el helper PostgreSQL usa clústeres no persistentes, cierre idempotente y limpieza defensiva aun cuando fallen pool, servidor, arranque o migración.
+- [x] HA-T03: todas las configuraciones Stryker heredan una sola política con `cleanTempDir: "always"` y exclusiones de artefactos generados.
+- [x] HA-T04: regresiones reales sin mocks, 449/449 pruebas, cobertura global 95.77% líneas, mutación controlada 5/5, lint, tipos y build verdes; cero `pg-*` y cero `.stryker-tmp` después de cada puerta.
+- [ ] HA-T05: commit/push a `develop` requieren autorización explícita; no cambia runtime, EasyPanel ni producción.
+
+Evidencia y recuperación: `QA-HIGIENE-ALMACENAMIENTO-PRUEBAS.md`.
+
 ## FD — corrección de autopsia, respuesta Google directa
 
 - [x] FD-T00: diagnóstico del recorrido 257632 m sustituido por 442329 m, contrato
@@ -262,3 +272,16 @@ No se incluyen cambios a repositorio five, sus entornos, vendedores, precios o V
 ## Ajuste de interfaz solicitado: conexión Odoo interna
 
 - [x] T11 (BL005, BL006 / S21): retirar del panel la pestaña, diagnóstico y explicación de entornos; conservar conector, configuración runtime, API interna, pruebas de sólo lectura y auditoría histórica. Sin cambios en Odoo, credenciales, V3, ventas o precios. Evidencia en `QA-CONEXION-ODOO-INTERNA.md`.
+
+## APK chofer — primer bloque autorizado el 21/09/2026
+
+- [x] M-T01 (BL-083..087 / M01..M14): auditar asignación real, autenticación existente, costos laterales y herramientas Android; especificar fronteras y escenarios en `BLOQUE-APK-CHOFER-ACCESO.md`.
+- [x] M-T02 (M01..M09): migración aditiva v10, credencial/PIN protegido, dispositivo, activación de un uso, desafío, sesión y revocación; sin afectar cuentas administrativas.
+- [x] M-T03 (M01..M04): panel «Editar chofer» configura acceso móvil y muestra activación una sola vez sin filtrar secretos.
+- [x] M-T04 (M10..M13): API móvil autenticada expone sólo camioneta, plan y pedidos del chofer; discrepancias y cálculo ausente son explícitos.
+- [x] M-T05 (M05..M14): proyecto Android nativo compila APK debug inicial de acceso y ruta real, sin botones de acciones aún no implementadas.
+- [ ] M-T06 (todos): automatización local verde y documentada en `QA-BLOQUE-APK-CHOFER-ACCESO.md`; falta smoke test en Android físico antes de cerrar la puerta de salida.
+
+El traspaso de pedidos, eventos de llegada, incidencias, navegación y finanzas
+permanecen pendientes de bloques propios. No hay commit, push ni despliegue
+autorizados por este avance.

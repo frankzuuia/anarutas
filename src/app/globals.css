@@ -1104,6 +1104,31 @@ tr:last-child td {
 .fleet-fields .span-two {
   grid-column: 1 / -1;
 }
+.driver-mobile-access {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.driver-mobile-access > label {
+  max-width: 210px;
+}
+.driver-mobile-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.driver-activation {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--green);
+  border-radius: 7px;
+}
+.driver-activation code {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
 .app select {
   width: 100%;
   min-width: 0;

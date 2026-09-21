@@ -1,11 +1,7 @@
+import baseConfig from "./stryker.base.config.mjs";
+
 const config = {
-  ignorePatterns: [
-    ".local/**",
-    "reports/**",
-    "test-results/**",
-    "coverage/**",
-    ".next/**",
-  ],
+  ...baseConfig,
   mutate: ["src/core/route-google-direct.ts", "src/core/route-fleet-budget.ts"],
   testRunner: "vitest",
   vitest: { configFile: "vitest.direct-fleet.config.ts" },

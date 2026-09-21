@@ -199,6 +199,37 @@ export async function editDriver(
         actor,
       ],
     );
+    if (old.phone !== data.phone || !data.active) {
+      const access = await sql.query(
+        `UPDATE route_driver_mobile_access
+         SET enabled=false,version=version+1,updated_by=$2,updated_at=now()
+         WHERE driver_id=$1 AND enabled RETURNING driver_id`,
+        [id, actor],
+      );
+      if (access.rowCount) {
+        await sql.query(
+          "UPDATE route_driver_mobile_devices SET revoked_at=now() WHERE driver_id=$1 AND revoked_at IS NULL",
+          [id],
+        );
+        await sql.query(
+          "UPDATE route_driver_mobile_sessions SET revoked_at=now() WHERE driver_id=$1 AND revoked_at IS NULL",
+          [id],
+        );
+        await sql.query(
+          "DELETE FROM route_driver_mobile_activations WHERE driver_id=$1",
+          [id],
+        );
+        await sql.query(
+          "DELETE FROM route_driver_mobile_challenges WHERE driver_id=$1",
+          [id],
+        );
+        await sql.query(
+          `INSERT INTO route_driver_mobile_audit(driver_id,admin_actor_id,action)
+           VALUES($1,$2,'mobile.access.revoked_by_driver_change')`,
+          [id, actor],
+        );
+      }
+    }
     await audit(sql, actor, "driver.updated", id, { version: old.version + 1 });
     return getDriver(sql, id);
   });

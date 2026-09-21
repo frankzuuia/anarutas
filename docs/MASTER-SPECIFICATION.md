@@ -334,3 +334,71 @@ PostgreSQL sólo cacheará snapshots reemplazables y jamás incrementará consum
 
 Veredicto forense: GREEN LIGHT. Auditoría incremental: INTEGRITY TOTAL. Correspondencia
 de construcción: MATCH PERFECT con G-T01..G-T07 de PROGRESS.
+
+## Batch 8: BL-083 a BL-087 — identidad móvil y ruta asignada
+
+### Requirements Covered
+
+`BLOQUE-APK-CHOFER-ACCESO.md` es la fuente normativa de BL-083..087 y
+M01..M14. El primer bloque entrega credenciales de chofer independientes,
+activación de dispositivo, sesión móvil, API filtrada y una APK inicial que
+sólo muestra acceso y ruta. No habilita todavía traspaso, entrega ni cobro.
+
+### Scenario Matrix
+
+M01..M04 cubren alta, teléfono único, PIN y activación por administrador;
+M05..M09 cubren prueba del dispositivo, concurrencia, bloqueo y revocación;
+M10..M13 cubren aislamiento y vigencia de la asignación/cálculo; M14 define
+la frontera offline. Cada fila del documento normativo identifica datos,
+auditoría, validación y recuperación.
+
+### Data Flow
+
+Admin autenticado configura una credencial móvil sin incluir el PIN en la
+ficha del chofer ni en `creation_payload`. Un código de activación se muestra
+una vez y se guarda sólo como hash. La APK crea su par de claves Android,
+redime el código con teléfono/PIN y presenta una clave pública validada.
+Después firma un desafío de un uso para iniciar sesión. La API móvil resuelve
+el chofer desde esa sesión y consulta los planes/carriles/pedidos actuales
+según `route_plan_vehicles` y `route_shipments`; el móvil no elige identidad.
+
+### Tables / APIs / Tools
+
+Migración aditiva v10: credenciales, dispositivos, activaciones, desafíos,
+sesiones y auditoría móvil propias. Endpoints administrativos para configurar
+y revocar acceso; endpoints móviles separados para activar, desafiar, iniciar/
+cerrar sesión y consultar la ruta. Ninguno comparte la cookie administrativa.
+El PIN derivado requiere un secreto de servidor en configuración runtime.
+
+### Permissions / Tenant Boundaries
+
+Sólo cuentas admin activas configuran el acceso. El chofer activo accede sólo
+al carril cuyo `driver_id` en ese plan sea el suyo; no basta con mandar
+`driver_id`, `plan_id` o `vehicle_id` desde la APK. Discrepancia entre la
+asignación actual de flota y el snapshot del plan se presenta para resolución
+administrativa y jamás concede acceso por la fuente más permisiva.
+
+### Integrations / Costs / Limits
+
+No usa Odoo, Google, SMS ni Fleet Routing. La activación es administrativa;
+la carga de ruta usa PostgreSQL de Ana Rutas. La futura navegación in-app y
+los traspasos se especificarán y costearán en otro bloque.
+
+### Security / RLS / Secrets
+
+PIN de cuatro dígitos nunca es único factor remoto: activación de un solo uso,
+prueba de dispositivo, limitación persistida por cuenta, revocación y sesiones
+acotadas. Código/PIN/clave privada fuera de logs, auditoría y respuestas de
+listado. Clave privada sólo en Android Keystore. Validación y versionado de
+credenciales; integración con la marca de instalación PostgreSQL existente.
+
+### Failure Modes / Recovery / Validation
+
+Error de red, PIN erróneo, código vencido/repetido, duplicidad de teléfono,
+chofer inactivo, plan reasignado y ruta obsoleta tienen estado explícito.
+Pruebas unitarias, PostgreSQL real, carrera de activación, aislamiento entre
+choferes, Gherkin, API, Android, cobertura/mutación y revisión de seguridad.
+Veredicto previo: GREEN LIGHT para identidad/lectura; no autoriza a marcar
+completos los bloques móviles posteriores. Auditoría incremental:
+INTEGRITY TOTAL. Correspondencia documental: MATCH PERFECT con M-T01..M-T06
+de `PROGRESS.md`.

@@ -38,6 +38,12 @@ type ModalState =
   | { type: "assign"; data: Vehicle }
   | { type: "documents"; data: Driver };
 
+type MobileAccessStatus = {
+  enabled: boolean;
+  version: number;
+  devices: number;
+};
+
 function Modal({
   title,
   busy,
@@ -101,6 +107,11 @@ export function FleetPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [mobileAccess, setMobileAccess] = useState<MobileAccessStatus | null>(
+    null,
+  );
+  const [mobilePin, setMobilePin] = useState("");
+  const [activationCode, setActivationCode] = useState("");
   const refresh = useCallback(async () => {
     const [v, d] = await Promise.all([
       api<Vehicle[]>("/api/vehicles"),
@@ -131,14 +142,37 @@ export function FleetPanel({
       current = false;
     };
   }, [revision]);
+  const editingDriverId =
+    modal?.type === "driver" && modal.data ? modal.id : null;
+  useEffect(() => {
+    if (!editingDriverId) return;
+    let current = true;
+    void api<MobileAccessStatus>(
+      `/api/drivers/${editingDriverId}/mobile-access`,
+    )
+      .then((status) => {
+        if (current) setMobileAccess(status);
+      })
+      .catch((cause: Error) => {
+        if (current) setError(cause.message);
+      });
+    return () => {
+      current = false;
+    };
+  }, [editingDriverId]);
   function open(next: ModalState) {
     setError("");
     setNotice("");
+    setMobilePin("");
+    setMobileAccess(null);
+    setActivationCode("");
     setModal(next);
   }
   function close() {
     setModal(null);
     setError("");
+    setMobilePin("");
+    setActivationCode("");
   }
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -194,6 +228,53 @@ export function FleetPanel({
       else setModal({ type: "documents", data: record });
       setNotice("Chofer guardado. Puedes completar sus fotos y licencia.");
       await refresh();
+    });
+  }
+  function configureDriverMobile() {
+    if (modal?.type !== "driver" || !modal.data || !mobileAccess) return;
+    const driverId = modal.id;
+    void run(async () => {
+      const status = await api<MobileAccessStatus>(
+        `/api/drivers/${driverId}/mobile-access`,
+        "PUT",
+        { pin: mobilePin, expectedMobileVersion: mobileAccess.version },
+      );
+      setMobileAccess(status);
+      setMobilePin("");
+      setActivationCode("");
+      setNotice(
+        "PIN guardado. Genera una activación para autorizar el celular.",
+      );
+    });
+  }
+  function activateDriverMobile() {
+    if (modal?.type !== "driver" || !modal.data || !mobileAccess) return;
+    const driverId = modal.id;
+    void run(async () => {
+      const result = await api<{ code: string; expiresAt: string }>(
+        `/api/drivers/${driverId}/mobile-activation`,
+        "POST",
+        { expectedMobileVersion: mobileAccess.version },
+      );
+      setActivationCode(result.code);
+      setNotice(
+        "Código de un solo uso. Compártelo únicamente con este chofer.",
+      );
+    });
+  }
+  function revokeDriverMobile() {
+    if (modal?.type !== "driver" || !modal.data || !mobileAccess) return;
+    const driverId = modal.id;
+    void run(async () => {
+      const status = await api<MobileAccessStatus>(
+        `/api/drivers/${driverId}/mobile-access`,
+        "DELETE",
+        { expectedMobileVersion: mobileAccess.version },
+      );
+      setMobileAccess(status);
+      setMobilePin("");
+      setActivationCode("");
+      setNotice("Acceso móvil revocado. Las sesiones quedaron invalidadas.");
     });
   }
   function saveAssignment(event: FormEvent<HTMLFormElement>) {
@@ -667,6 +748,76 @@ export function FleetPanel({
                     maxLength={40}
                   />
                 </label>
+                <div className="span-two driver-mobile-access">
+                  <strong>Acceso a la APK</strong>
+                  {modal.data ? (
+                    <>
+                      <span className="small">
+                        {mobileAccess
+                          ? mobileAccess.enabled
+                            ? `Habilitado · ${mobileAccess.devices} celular(es) autorizado(s)`
+                            : "Sin acceso móvil habilitado"
+                          : "Consultando acceso móvil…"}
+                      </span>
+                      <label>
+                        PIN de 4 dígitos
+                        <input
+                          type="password"
+                          inputMode="numeric"
+                          autoComplete="new-password"
+                          value={mobilePin}
+                          onChange={(event) => setMobilePin(event.target.value)}
+                          maxLength={4}
+                          placeholder="4 dígitos"
+                          aria-describedby="mobile-pin-help"
+                        />
+                      </label>
+                      <span id="mobile-pin-help" className="small">
+                        Configurar otro PIN revoca las sesiones y celulares
+                        anteriores. El PIN no se podrá consultar después.
+                      </span>
+                      <div className="row driver-mobile-actions">
+                        <button
+                          type="button"
+                          disabled={
+                            busy || !mobileAccess || mobilePin.length !== 4
+                          }
+                          onClick={configureDriverMobile}
+                        >
+                          Guardar PIN
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy || !mobileAccess?.enabled}
+                          onClick={activateDriverMobile}
+                        >
+                          Generar activación
+                        </button>
+                        <button
+                          type="button"
+                          className="quiet"
+                          disabled={busy || !mobileAccess?.enabled}
+                          onClick={revokeDriverMobile}
+                        >
+                          Revocar acceso
+                        </button>
+                      </div>
+                      {activationCode && (
+                        <div className="driver-activation" role="status">
+                          <span>
+                            Código de activación: se muestra sólo ahora.
+                          </span>
+                          <code>{activationCode}</code>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <span className="small">
+                      Guarda primero la ficha para configurar el PIN y autorizar
+                      el celular.
+                    </span>
+                  )}
+                </div>
                 <label className="check-label span-two">
                   <input
                     type="checkbox"

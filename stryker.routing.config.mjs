@@ -1,11 +1,7 @@
+import baseConfig from "./stryker.base.config.mjs";
+
 const config = {
-  ignorePatterns: [
-    ".local/**",
-    "reports/**",
-    "test-results/**",
-    "coverage/**",
-    ".next/**",
-  ],
+  ...baseConfig,
   mutate: [
     "src/core/route-optimization-google.ts:70-437",
     "src/core/routing-validation.ts",

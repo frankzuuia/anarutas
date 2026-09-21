@@ -1,4 +1,7 @@
+import baseConfig from "./stryker.base.config.mjs";
+
 const config = {
+  ...baseConfig,
   mutate: ["src/core/fleet-validation.ts", "src/server/document-body.ts"],
   testRunner: "vitest",
   vitest: { configFile: "vitest.fleet-unit.config.ts" },

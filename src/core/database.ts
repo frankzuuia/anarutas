@@ -8,6 +8,7 @@ import { migrateRouting } from "./routing-schema";
 import { migrateRoutingOperations } from "./routing-operations-schema";
 import { migrateGoogleConsumption } from "./google-consumption-schema";
 import { migrateOrderCandidates } from "./order-candidates-schema";
+import { migrateDriverMobile } from "./driver-mobile-schema";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
   return new pg.Pool({
@@ -71,7 +72,7 @@ export async function migrate(pool: Pool, instanceId: string) {
         "SELECT schema_version FROM rutas_installation WHERE singleton = true",
       );
       let version = result.rows[0]?.schema_version;
-      if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(version))
+      if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(version))
         throw new AppError("SCHEMA_VERSION_UNSUPPORTED", 503);
       if (version === 1) {
         await migrateFleet(client);
@@ -93,6 +94,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (version < 7) await migrateRoutingOperations(client);
       if (version < 8) await migrateGoogleConsumption(client);
       if (version < 9) await migrateOrderCandidates(client);
+      if (version < 10) await migrateDriverMobile(client);
       return;
     }
     await client.query(`
@@ -116,6 +118,7 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migrateRoutingOperations(client);
     await migrateGoogleConsumption(client);
     await migrateOrderCandidates(client);
+    await migrateDriverMobile(client);
   });
 }
 export async function audit(
