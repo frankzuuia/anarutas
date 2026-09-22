@@ -4,6 +4,7 @@ import { AppError } from "./errors";
 import { uuid } from "./orders-validation";
 import { readOrderBoard } from "./orders";
 import { readPlanOptimization } from "./route-optimization";
+import { todayInTimezone } from "./local-date";
 
 export async function listDriverPlans(pool: Pool, driverId: string) {
   const { rows } = await pool.query(
@@ -21,6 +22,22 @@ export async function listDriverPlans(pool: Pool, driverId: string) {
     [driverId],
   );
   return rows;
+}
+
+export async function readDriverDashboard(
+  pool: Pool,
+  driverId: string,
+  timezone: string,
+  now = new Date(),
+) {
+  const serviceDate = todayInTimezone(timezone, now);
+  const plans = await listDriverPlans(pool, driverId);
+  const today = plans.find((plan) => plan.service_date === serviceDate);
+  return {
+    serviceDate,
+    plans,
+    today: today ? await readDriverPlan(pool, driverId, today.id) : null,
+  };
 }
 
 export async function readDriverPlan(
@@ -92,11 +109,14 @@ export async function readDriverPlan(
         plate: assigned.plate as string,
       },
       orders: own,
-      routeStatus: !optimization
-        ? "not_calculated"
-        : optimization.current
-          ? "current"
-          : "stale",
+      routeStatus:
+        own.length === 0
+          ? "empty"
+          : !optimization
+            ? "not_calculated"
+            : optimization.current
+              ? "current"
+              : "stale",
       route,
     };
   });

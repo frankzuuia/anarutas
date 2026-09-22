@@ -32,6 +32,7 @@
     "test:mutation:google-consumption": "stryker run stryker.google-consumption.config.mjs",
     "test:mutation:order-candidates": "stryker run stryker.order-candidates.config.mjs",
     "test:mutation:driver-mobile": "stryker run stryker.driver-mobile.config.mjs",
+    "test:mutation:driver-dashboard": "stryker run stryker.driver-dashboard.config.mjs",
     "pretest:e2e": "npm run build",
     "test:e2e": "playwright test",
     "db:migrate": "tsx scripts/migrate.ts",

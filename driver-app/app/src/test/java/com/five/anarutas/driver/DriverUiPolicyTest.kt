@@ -21,6 +21,10 @@ class DriverUiPolicyTest {
             routeStatusMessage("not_calculated"),
         )
         assertEquals(
+            "Esta camioneta todavía no tiene pedidos asignados.",
+            routeStatusMessage("empty"),
+        )
+        assertEquals(
             "La ruta no está lista. Consulta con administración.",
             routeStatusMessage("future_status"),
         )

@@ -1,9 +1,16 @@
-# Ana Rutas Chofer — Android, bloque 1
+# Ana Rutas Chofer — Android, bloques 1 y 2A
 
 App Android nativa para vincular automáticamente un dispositivo, entrar con teléfono y PIN,
 y leer únicamente la ruta y los pedidos de la camioneta asignada. No registra
 entregas, cobros, incidencias ni transferencias todavía. No llama Google Route
 Optimization, Routes ni Odoo.
+
+El bloque 2A añade el panel de inicio del chofer: identidad, ruta exacta de hoy,
+camioneta, pedidos, métricas y primera parada obtenidos del servidor, más rutas
+anteriores en una sección separada. La navegación `Inicio`, `Ruta`, `Pedidos` y
+`Perfil` abre pantallas reales; sus acciones no ejecutan entregas ficticias.
+Distancias, tiempos y horarios son previsiones guardadas, no progreso real del
+chofer. Si falta una optimización vigente se muestra su ausencia.
 
 ## Compilación
 

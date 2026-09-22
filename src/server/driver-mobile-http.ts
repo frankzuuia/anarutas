@@ -33,10 +33,10 @@ export async function mobileBody(request: Request, maximumBytes = 4096) {
 }
 
 export async function mobilePrincipal(request: Request) {
-  const { pool } = await database();
+  const { pool, config } = await database();
   const driver = await authenticateMobile(
     pool,
     request.headers.get("authorization"),
   );
-  return { pool, driver };
+  return { pool, config, driver };
 }

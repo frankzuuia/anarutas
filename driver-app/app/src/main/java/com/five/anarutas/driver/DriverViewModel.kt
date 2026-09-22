@@ -22,8 +22,9 @@ data class DriverUiState(
     val busy: Boolean = false,
     val error: String = "",
     val notice: String = "",
-    val plans: List<PlanSummary> = emptyList(),
+    val dashboard: DriverDashboard? = null,
     val selected: AssignedPlan? = null,
+    val destination: DriverDestination = DriverDestination.HOME,
 )
 
 internal fun friendlyError(error: Throwable): String = when (error) {
@@ -51,6 +52,7 @@ internal fun routeStatusMessage(status: String): String? = when (status) {
     "current" -> null
     "stale" -> "El recorrido cambió; espera que administración lo actualice."
     "not_calculated" -> "Administración todavía no ha calculado el recorrido."
+    "empty" -> "Esta camioneta todavía no tiene pedidos asignados."
     else -> "La ruta no está lista. Consulta con administración."
 }
 
@@ -74,7 +76,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
                 )
                 if (saved.token.isNotBlank()) {
                     state = state.copy(busy = true)
-                    loadPlans(saved.token)
+                    loadDashboard(saved.token)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -146,7 +148,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
                     token = session.token,
                     pin = "",
                 )
-                loadPlans(session.token)
+                loadDashboard(session.token)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -167,8 +169,9 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
                     deviceId = "",
                     token = "",
                     pin = "",
-                    plans = emptyList(),
+                    dashboard = null,
                     selected = null,
+                    destination = DriverDestination.HOME,
                     notice = "Ingresa tu teléfono y PIN para registrar nuevamente este celular.",
                 )
             } catch (cancelled: CancellationException) {
@@ -181,13 +184,13 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
         }
     }
 
-    fun refreshPlans() {
+    fun refreshDashboard() {
         if (state.busy || state.token.isBlank()) return
         val accessToken = state.token
         state = state.copy(busy = true, error = "", notice = "")
         viewModelScope.launch {
             try {
-                loadPlans(accessToken)
+                loadDashboard(accessToken)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -204,7 +207,10 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
         state = state.copy(busy = true, error = "", notice = "")
         viewModelScope.launch {
             try {
-                state = state.copy(selected = DriverApi(BuildConfig.SERVER_URL).plan(accessToken, planId))
+                state = state.copy(
+                    selected = DriverApi(BuildConfig.SERVER_URL).plan(accessToken, planId),
+                    destination = DriverDestination.ROUTE,
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -215,8 +221,19 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
         }
     }
 
-    fun backToPlans() {
-        state = state.copy(selected = null, error = "", notice = "")
+    fun navigate(destination: DriverDestination) {
+        val selected = when (destination) {
+            DriverDestination.HOME -> state.dashboard?.today
+            DriverDestination.ROUTE, DriverDestination.ORDERS ->
+                state.selected ?: state.dashboard?.today
+            DriverDestination.PROFILE -> state.selected
+        }
+        state = state.copy(
+            destination = destination,
+            selected = selected,
+            error = "",
+            notice = "",
+        )
     }
 
     fun logout() {
@@ -227,7 +244,12 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
             try {
                 DriverApi(BuildConfig.SERVER_URL).logout(accessToken)
                 withContext(Dispatchers.IO) { credentials.clearToken() }
-                state = state.copy(token = "", plans = emptyList(), selected = null)
+                state = state.copy(
+                    token = "",
+                    dashboard = null,
+                    selected = null,
+                    destination = DriverDestination.HOME,
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -238,8 +260,14 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
         }
     }
 
-    private suspend fun loadPlans(accessToken: String) {
-        state = state.copy(plans = DriverApi(BuildConfig.SERVER_URL).plans(accessToken), error = "")
+    private suspend fun loadDashboard(accessToken: String) {
+        val dashboard = DriverApi(BuildConfig.SERVER_URL).dashboard(accessToken)
+        state = state.copy(
+            dashboard = dashboard,
+            selected = dashboard.today,
+            destination = DriverDestination.HOME,
+            error = "",
+        )
     }
 
     private suspend fun enrollNewDevice(
@@ -259,7 +287,12 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
     private suspend fun handleApiFailure(failure: Exception) {
         if (failure is DriverApiException && failure.status == 401) {
             withContext(Dispatchers.IO) { credentials.clearToken() }
-            state = state.copy(token = "", plans = emptyList(), selected = null)
+            state = state.copy(
+                token = "",
+                dashboard = null,
+                selected = null,
+                destination = DriverDestination.HOME,
+            )
         }
         state = state.copy(error = friendlyError(failure))
     }

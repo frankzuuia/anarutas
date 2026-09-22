@@ -35,6 +35,7 @@ import {
 } from "../src/core/driver-mobile-auth";
 import {
   listDriverPlans,
+  readDriverDashboard,
   readDriverPlan,
 } from "../src/core/driver-mobile-route";
 import type { SourceShipment } from "../src/core/orders-contract";
@@ -287,7 +288,10 @@ describe("driver mobile identity / real PostgreSQL and EC signatures", () => {
       "SELECT failed_attempts,locked_until FROM route_driver_mobile_access WHERE driver_id=$1",
       [isolated.id],
     );
-    expect(access.rows[0]).toMatchObject({ failed_attempts: 0, locked_until: null });
+    expect(access.rows[0]).toMatchObject({
+      failed_attempts: 0,
+      locked_until: null,
+    });
   });
 
   it("protects credentials, activates one device and isolates its route", async () => {
@@ -337,6 +341,31 @@ describe("driver mobile identity / real PostgreSQL and EC signatures", () => {
     ).resolves.toMatchObject({ deviceId: enrollment.deviceId });
     const plans = await listDriverPlans(db.pool, driverA.id);
     expect(plans).toHaveLength(1);
+    const dashboard = await readDriverDashboard(
+      db.pool,
+      driverA.id,
+      "America/Mexico_City",
+      new Date("2026-09-22T04:30:00.000Z"),
+    );
+    expect(dashboard).toMatchObject({
+      serviceDate: "2026-09-21",
+      plans: [{ id: planId, vehicle_name: "Unidad A", orders: 1 }],
+      today: {
+        plan: { id: planId },
+        vehicle: { name: "Unidad A" },
+        orders: [{ orderName: "S501" }],
+        routeStatus: "not_calculated",
+        route: null,
+      },
+    });
+    expect(
+      await readDriverDashboard(
+        db.pool,
+        driverA.id,
+        "America/Mexico_City",
+        new Date("2026-09-23T06:00:00.000Z"),
+      ),
+    ).toMatchObject({ serviceDate: "2026-09-23", today: null });
     const route = await readDriverPlan(db.pool, driverA.id, planId);
     expect(route.orders).toHaveLength(1);
     expect(route.orders[0].orderName).toBe("S501");
@@ -404,6 +433,38 @@ describe("driver mobile identity / real PostgreSQL and EC signatures", () => {
     const b = await readDriverPlan(db.pool, driverB.id, planId);
     expect(b.orders).toHaveLength(1);
     expect(b.orders[0].orderName).toBe("S502");
+  });
+
+  it("reports an assigned vehicle without orders as an empty route", async () => {
+    const emptyDriver = await createDriver(
+      db.pool,
+      admin,
+      driver("Chofer sin pedidos", "3312345689"),
+    );
+    const emptyVehicle = await createVehicle(
+      db.pool,
+      admin,
+      vehicle("Unidad sin pedidos"),
+    );
+    await assignDriver(db.pool, admin, emptyVehicle.id, {
+      driver_id: emptyDriver.id,
+      expectedVersion: emptyVehicle.version,
+    });
+    const emptyPlan = await createPlan(db.pool, admin, {
+      date: "2026-09-24",
+      label: "Ruta vacía",
+    });
+    await selectPlanVehicles(db.pool, admin, emptyPlan.id, {
+      vehicleIds: [emptyVehicle.id],
+      expectedVersion: emptyPlan.version,
+    });
+    await expect(
+      readDriverPlan(db.pool, emptyDriver.id, emptyPlan.id),
+    ).resolves.toMatchObject({
+      orders: [],
+      routeStatus: "empty",
+      route: null,
+    });
   });
 
   it("revokes access after contact phone change and explicit admin revocation", async () => {

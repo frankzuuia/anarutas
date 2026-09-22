@@ -22,6 +22,7 @@ import {
 } from "../../src/core/orders";
 import { mobileChallengeMessage } from "../../src/core/driver-mobile-auth";
 import type { SourceShipment } from "../../src/core/orders-contract";
+import { todayInTimezone } from "../../src/core/local-date";
 
 let db: Awaited<ReturnType<typeof startPostgres>>;
 let server: ChildProcess;
@@ -33,6 +34,7 @@ const pin = "4821";
 const adminLogin = `mobile-http-${randomUUID()}`;
 const adminPassword = randomUUID();
 const pepper = randomBytes(48).toString("hex");
+const serviceDate = todayInTimezone("UTC");
 
 function shipment(index: number): SourceShipment {
   return {
@@ -104,7 +106,7 @@ test.beforeAll(async () => {
     vehicles.push(vehicle);
   }
   const plan = await createPlan(db.pool, admin.id, {
-    date: "2026-09-21",
+    date: serviceDate,
     label: "Contrato HTTP móvil",
   });
   planId = plan.id;
@@ -236,6 +238,22 @@ test("admin provisioning, native device login, route isolation and revocation ov
   });
   expect(plans.status()).toBe(200);
   expect(await plans.json()).toHaveLength(1);
+  const dashboard = await request.get(`${origin}/api/mobile/dashboard`, {
+    headers: authorization,
+  });
+  expect(dashboard.status()).toBe(200);
+  expect(await dashboard.json()).toMatchObject({
+    driver: { id: driverId, name: "Chofer HTTP A", phone },
+    timezone: "UTC",
+    serviceDate,
+    plans: [{ id: planId, vehicle_name: "HTTP camioneta 1", orders: 1 }],
+    today: {
+      plan: { id: planId, label: "Contrato HTTP móvil" },
+      orders: [{ orderName: "S801" }],
+      routeStatus: "not_calculated",
+      route: null,
+    },
+  });
   const route = await request.get(`${origin}/api/mobile/plans/${planId}`, {
     headers: authorization,
   });

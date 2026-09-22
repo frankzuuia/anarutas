@@ -55,3 +55,17 @@ Feature: Acceso móvil del chofer a su propia ruta
     When el chofer consulta su ruta
     Then ve sólo sus pedidos y un estado explícito de cálculo ausente u obsoleto
     But no se dibuja una ruta vieja como si estuviera vigente
+
+  Scenario: Inicio premium con datos reales del día
+    Given un chofer autenticado con planes históricos y una ruta asignada para hoy
+    When abre el inicio de la APK
+    Then ve su identidad, camioneta, pedidos y métricas guardadas de la ruta de hoy
+    And las rutas anteriores aparecen separadas como historial
+    But no se presentan entregas, cobros ni incidencias como realizados sin eventos reales
+
+  Scenario: No confundir una ruta histórica con la ruta de hoy
+    Given un chofer autenticado que sólo tiene rutas de días anteriores
+    When abre el inicio de la APK
+    Then ve un estado explícito de que no tiene ruta asignada para hoy
+    And puede abrir cada ruta anterior desde el historial
+    But ninguna ruta anterior aparece como activa o vigente por su posición en la lista
