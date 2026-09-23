@@ -276,7 +276,14 @@ No se incluyen cambios a repositorio five, sus entornos, vendedores, precios o V
 
 ## Bloque 3D autorizado — independencia, reutilización y borrado de plan
 
-- [x] T18 (BL013, BL015 / S27): retirar «Guardar camionetas», separar estados y garantizar que la carga por fecha sea la única que guarde selección, mientras la manual sólo consulte folios.
+- [x] T18 (BL013, BL015 / S27): retirar «Guardar camionetas» y separar estados; la restricción histórica de no guardar camionetas en carga manual se sustituye por S27 revisado para permitir iniciar un plan sólo con folios.
+
+## Bloque manual en curso — folios independientes y publicación sin reoptimizar
+
+- [x] MA-T01 (S27 revisado): folios + camionetas marcadas en una transacción, con versión, fuente Odoo, flota y auditoría; sin consulta previa por fecha.
+- [x] MA-T02 (S39A): primer cálculo manual durable e idempotente al confirmar publicación; después, recálculo automático únicamente de camionetas afectadas mediante huellas v16. Conserva camioneta y orden exactos, no usa Fleet Routing y no publica si falta recorrido vigente.
+- [x] MA-T03: barra compacta con Armar ruta junto a Publicar rutas, Cargar pedidos con distintivo Odoo y violeta tenue.
+- [ ] MA-T04: pruebas unitarias, PostgreSQL, contrato, E2E, Gherkin, cobertura, mutación, seguridad y QA reproducible antes de commit/push/deploy. Puertas locales verdes (ver `QA-PEDIDOS-MANUALES-RECALCULO-SELECTIVO.md`); validación real de Google/Odoo y despliegue develop pendientes.
 - [x] T19 (BL012-013 / S28): migración v4 e idempotencia por plan; permitir el mismo pedido en múltiples planes y eliminar el concepto operativo «en otro plan».
 - [x] T20 (BL017 / S29): DELETE versionado y auditado del plan, confirmación accesible y actualización coherente del selector.
 - [x] T21 (BL012-017 / S27-29): regresión unitaria, PostgreSQL, contrato API, E2E, Gherkin, cobertura, mutación, seguridad, build y evidencia QA en `QA-BLOQUE-3D-PLANES.md`.

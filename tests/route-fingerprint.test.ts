@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { OrderBoard } from "../src/core/orders-contract";
-import { routeFingerprint } from "../src/core/route-fingerprint";
+import {
+  routeFingerprint,
+  vehicleRouteFingerprints,
+} from "../src/core/route-fingerprint";
 
 const board: OrderBoard = {
   plan: {
@@ -109,5 +112,95 @@ describe("route input fingerprint", () => {
     const otherCustomer = structuredClone(board);
     otherCustomer.shipments[0].partnerId = 2;
     expect(routeFingerprint(otherCustomer, 4)).not.toBe(baseline);
+  });
+
+  it("invalidates only the truck whose ordered stops change", () => {
+    const twoTrucks = structuredClone(board);
+    const otherTruck = {
+      ...twoTrucks.vehicles[0],
+      id: "00000000-0000-4000-8000-000000000031",
+      name: "Expert",
+      driver_id: "00000000-0000-4000-8000-000000000032",
+    };
+    twoTrucks.vehicles.push(otherTruck);
+    twoTrucks.shipments.push({
+      ...twoTrucks.shipments[0],
+      id: "00000000-0000-4000-8000-000000000041",
+      orderId: 2,
+      orderName: "S2",
+      vehicle_id: otherTruck.id,
+      position: 4,
+    });
+    const baseline = vehicleRouteFingerprints(twoTrucks, 4);
+    const changed = structuredClone(twoTrucks);
+    changed.shipments[0].latitude = 20.7;
+    changed.shipments[1].position = 100;
+    const after = vehicleRouteFingerprints(changed, 4);
+    expect(after[twoTrucks.vehicles[0].id]).not.toBe(
+      baseline[twoTrucks.vehicles[0].id],
+    );
+    expect(after[otherTruck.id]).toBe(baseline[otherTruck.id]);
+
+    changed.shipments[0].vehicle_id = otherTruck.id;
+    const transferred = vehicleRouteFingerprints(changed, 4);
+    expect(transferred[twoTrucks.vehicles[0].id]).not.toBe(
+      baseline[twoTrucks.vehicles[0].id],
+    );
+    expect(transferred[otherTruck.id]).not.toBe(baseline[otherTruck.id]);
+  });
+
+  it("binds the complete per-truck route contract in deterministic stop order", () => {
+    const input = structuredClone(board);
+    const second = {
+      ...input.shipments[0],
+      id: "00000000-0000-4000-8000-000000000022",
+      position: 1,
+      partnerId: 2,
+    };
+    const third = {
+      ...input.shipments[0],
+      id: "00000000-0000-4000-8000-000000000020",
+      position: 1,
+      partnerId: 3,
+    };
+    input.shipments.push(second, third);
+    const snapshot = (shipment: (typeof input.shipments)[number]) => ({
+      id: shipment.id,
+      partnerId: shipment.partnerId,
+      latitude: shipment.latitude,
+      longitude: shipment.longitude,
+      windows: shipment.deliveryWindows,
+      priority: shipment.priority,
+      mode: shipment.fulfillmentMode,
+      archived: shipment.customerArchived,
+      locationStatus: shipment.locationStatus,
+    });
+    const expected = createHash("sha256")
+      .update(
+        JSON.stringify({
+          date: "2026-09-10",
+          departure: 480,
+          settingsVersion: 4,
+          vehicleId: "00000000-0000-4000-8000-000000000011",
+          shipments: [
+            snapshot(third),
+            snapshot(second),
+            snapshot(input.shipments[0]),
+          ],
+        }),
+      )
+      .digest("hex");
+    expect(vehicleRouteFingerprints(input, 4)[input.vehicles[0].id]).toBe(
+      expected,
+    );
+    input.shipments.reverse();
+    expect(vehicleRouteFingerprints(input, 4)[input.vehicles[0].id]).toBe(
+      expected,
+    );
+    input.vehicles[0].name = "Renombrada";
+    input.vehicles[0].driver_id = "00000000-0000-4000-8000-000000000099";
+    expect(vehicleRouteFingerprints(input, 4)[input.vehicles[0].id]).toBe(
+      expected,
+    );
   });
 });

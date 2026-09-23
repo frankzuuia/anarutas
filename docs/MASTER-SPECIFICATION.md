@@ -174,12 +174,30 @@ del borrador y evita sacrificar la legibilidad del horario o de la prioridad.
 
 ### S27: cargas independientes (BL-005, BL-013, BL-015)
 
-El modal no contiene una acción separada para guardar camionetas. «Cargar pedidos»
-guarda la selección diaria y ejecuta únicamente la importación por fecha. «Confirmar
-pedidos» llama únicamente a la carga manual por folios: no guarda camionetas ni
-ejecuta la consulta por fecha. Cada acción conserva su propio indicador visual de
-progreso; las demás se deshabilitan por exclusión mutua sin mostrar una operación
-que no están ejecutando.
+El modal no contiene una acción separada para guardar camionetas. «Consultar pedidos»
+prepara la selección por fecha. «Confirmar pedidos» carga los folios exactos sin
+consultar la fecha; transmite las camionetas marcadas y la versión del plan.
+La persistencia de camionetas nuevas y surtidos manuales ocurre en una sola
+transacción, sin retirar camionetas ni asignaciones existentes: un fallo de Odoo,
+versión o flota no deja un lote parcialmente guardado. Cada acción conserva
+indicador visual de progreso y exclusión mutua.
+
+### S39A: publicación de secuencia manual sin optimización (BL-030)
+
+Arrastrar o reordenar pedidos mantiene exactamente la camioneta y secuencia elegidas.
+Antes del primer recorrido, los movimientos no llaman Google: la confirmación explícita
+de publicación encola la primera medición vial durable. Después, cada movimiento
+encola un recálculo durable y coalescible, sin Fleet Routing y sólo para la camioneta
+afectada (origen y destino si se transfiere un pedido); los carriles intactos reutilizan
+su último recorrido. La migración v16 guarda huellas por camioneta; recorridos previos
+sin huellas se recalculan completos una sola vez por seguridad. La medición de Google
+Routes incluye bodega→paradas→bodega y tiempos posteriores al punto alterado. La UI
+espera el resultado y publica solamente si la versión, puntos, salida, flota y cobertura
+siguen vigentes. Si el navegador se cierra, el
+cálculo durable puede terminar, pero no se publica sin una confirmación activa;
+repetir la confirmación reutiliza el recorrido vigente y no duplica la medición.
+Una ruta ya iniciada conserva su snapshot y nunca se reordena. «Armar ruta» sigue
+siendo la optimización opcional que sí puede cambiar el acomodo.
 
 ### S28: mismo pedido en varios planes (BL-012, BL-013)
 

@@ -106,6 +106,7 @@ Bloque 2A autorizado: BL-007..010 (camionetas, choferes, asignación actual y do
 ## Decisiones pendientes que no se inventan
 
 - Captura acordada: una sola fecha de validación de pedidos, inicializada con el día civil actual de la instalación y editable hasta la fecha del plan. La carga manual por folio puede recuperar surtidos validados fuera de esa fecha; corte, días laborables/feriados todavía pendientes.
+- La carga manual puede iniciar un plan nuevo: conserva camionetas preexistentes y guarda las camionetas marcadas junto con el lote, atómicamente y sin consulta previa por fecha. La primera publicación calcula el recorrido sin Fleet Routing ni reordenar; movimientos posteriores recalculan sólo las camionetas afectadas y reutilizan el resto. Fallo de cálculo deja el plan sin publicar.
 - El administrador configura la hora de salida por plan en formato de 24 horas. Todas
   las camionetas regresan al mismo punto y el cálculo incluye ese tramo.
 - Procedimiento real de devoluciones/contabilidad: no hay autorización de escrituras Odoo para ese alcance.

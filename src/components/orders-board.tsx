@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   Download,
@@ -22,7 +23,7 @@ import type {
   Shipment,
 } from "@/core/orders-contract";
 import { todayInTimezone } from "@/core/local-date";
-import { api } from "./api";
+import { api, errors } from "./api";
 import { RouteMapDialog } from "./route-map-dialog";
 import { RouteOriginDialog } from "./route-origin-dialog";
 import type { PublicOptimization } from "@/core/routing-contract";
@@ -52,16 +53,25 @@ type PublishTarget = {
   label: string;
 };
 
+type ManualRecalculationStatus = {
+  version: number;
+  current: boolean;
+  status: "pending" | "running" | "failed" | null;
+  errorCode: string | null;
+};
+
 function PublishRouteDialog({
   target,
   busy,
   error,
+  calculating,
   onClose,
   onConfirm,
 }: {
   target: PublishTarget;
   busy: boolean;
   error: string;
+  calculating: boolean;
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -106,7 +116,10 @@ function PublishRouteDialog({
         </p>
         <p className="muted">
           El chofer podrá ver la versión publicada de sus pedidos y recorrido.
-          Publicar no inicia la ruta ni llama a Google.
+          Si aún no hay recorrido vigente, se medirán calles y tiempos con
+          Google Routes antes de publicar, conservando exactamente el orden
+          manual. Esto puede generar consumo de Google. Publicar no inicia la
+          ruta.
         </p>
         {error && (
           <p className="notice error" role="alert">
@@ -115,12 +128,26 @@ function PublishRouteDialog({
         )}
       </div>
       <footer className="fleet-actions">
-        <button type="button" className="quiet" disabled={busy} onClick={onClose}>
+        <button
+          type="button"
+          className="quiet"
+          disabled={busy}
+          onClick={onClose}
+        >
           Cancelar
         </button>
-        <button type="button" className="route-publish" disabled={busy} onClick={onConfirm}>
+        <button
+          type="button"
+          className="route-publish"
+          disabled={busy}
+          onClick={onConfirm}
+        >
           <Send size={15} aria-hidden="true" />
-          {busy ? "Publicando…" : "Confirmar publicación"}
+          {calculating
+            ? "Calculando recorrido…"
+            : busy
+              ? "Publicando…"
+              : "Confirmar publicación"}
         </button>
       </footer>
     </dialog>
@@ -149,7 +176,7 @@ function LoadDialog({
     vehicleIds: string[],
     selection: CandidateSelection,
   ) => Promise<void>;
-  onManualSubmit: (orderNames: string[]) => Promise<void>;
+  onManualSubmit: (orderNames: string[], vehicleIds: string[]) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useId();
@@ -201,14 +228,24 @@ function LoadDialog({
     }
   };
   const submitManual = async () => {
+    if (querying.current || !chosen.length) {
+      if (!chosen.length)
+        setError("Selecciona al menos una camioneta para continuar.");
+      return;
+    }
+    querying.current = true;
     setError("");
     setOperation("manual");
     try {
-      await onManualSubmit(manualRows.map((row) => `S${row.suffix}`));
+      await onManualSubmit(
+        manualRows.map((row) => `S${row.suffix}`),
+        chosen,
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setOperation(null);
+      querying.current = false;
     }
   };
   const updateManualRow = (id: number, value: string) => {
@@ -406,7 +443,7 @@ function LoadDialog({
                 <button
                   type="button"
                   className="primary"
-                  disabled={busy || !manualReady}
+                  disabled={busy || !loaded || !chosen.length || !manualReady}
                   onClick={() => void submitManual()}
                 >
                   <Download size={16} aria-hidden="true" />
@@ -771,8 +808,11 @@ export function OrdersBoard({
     data: RoutePublication[] | null;
     error: string;
   } | null>(null);
-  const [publishTarget, setPublishTarget] = useState<PublishTarget | null>(null);
+  const [publishTarget, setPublishTarget] = useState<PublishTarget | null>(
+    null,
+  );
   const [publishError, setPublishError] = useState("");
+  const [calculatingManual, setCalculatingManual] = useState(false);
   const publishing = useRef(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -782,8 +822,10 @@ export function OrdersBoard({
   const endpoint = `/api/plans/${plan.id}/orders`;
   const publicationEndpoint = `/api/plans/${plan.id}/publications`;
   const publicationKey = `${plan.id}:${plan.version}:${revision}`;
-  const publications = publicationState?.key === publicationKey ? publicationState.data : null;
-  const publicationError = publicationState?.key === publicationKey ? publicationState.error : "";
+  const publications =
+    publicationState?.key === publicationKey ? publicationState.data : null;
+  const publicationError =
+    publicationState?.key === publicationKey ? publicationState.error : "";
   const update = useCallback(
     (data: OrderBoard) => {
       setBoard(data);
@@ -818,7 +860,8 @@ export function OrdersBoard({
     let current = true;
     api<RoutePublication[]>(publicationEndpoint)
       .then((data) => {
-        if (current) setPublicationState({ key: publicationKey, data, error: "" });
+        if (current)
+          setPublicationState({ key: publicationKey, data, error: "" });
       })
       .catch((caught) => {
         if (current)
@@ -907,7 +950,7 @@ export function OrdersBoard({
       working(false);
     }
   }
-  async function loadManual(orderNames: string[]) {
+  async function loadManual(orderNames: string[], vehicleIds: string[]) {
     if (!board) return;
     working(true);
     setError("");
@@ -915,6 +958,8 @@ export function OrdersBoard({
     try {
       const result = await api<ImportResult>(`${endpoint}/manual`, "POST", {
         orderNames,
+        vehicleIds,
+        expectedVersion: board.plan.version,
       });
       setNotice(
         `${result.inserted} pedidos nuevos · ${result.existing} ya cargados.`,
@@ -1035,21 +1080,62 @@ export function OrdersBoard({
     }
   }
   async function publish() {
-    if (!board || !publishTarget || publishing.current || publishTarget.planId !== plan.id)
+    if (
+      !board ||
+      !publishTarget ||
+      publishing.current ||
+      publishTarget.planId !== plan.id
+    )
       return;
     publishing.current = true;
     working(true);
     setPublishError("");
     try {
+      const manualEndpoint = `/api/plans/${plan.id}/recalculation/manual`;
+      const queued = await api<{ queued: boolean; current: boolean }>(
+        manualEndpoint,
+        "POST",
+        { expectedVersion: board.plan.version },
+      );
+      if (!queued.current) {
+        setCalculatingManual(true);
+        let current = false;
+        for (let attempt = 0; attempt < 180; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          const status = await api<ManualRecalculationStatus>(manualEndpoint);
+          if (status.version !== board.plan.version)
+            throw new Error(errors.VERSION_CONFLICT);
+          if (status.current) {
+            current = true;
+            break;
+          }
+          if (status.status === "failed")
+            throw new Error(
+              errors[status.errorCode || ""] ||
+                errors.ROUTING_GOOGLE_UNAVAILABLE,
+            );
+        }
+        if (!current)
+          throw new Error(
+            "El recorrido sigue calculándose. Vuelve a confirmar la publicación en unos minutos; no se duplicará el cálculo.",
+          );
+        setCalculatingManual(false);
+      }
       const result = await api<{
         changes: { vehicleId: string; revision: number; action: string }[];
         publications: RoutePublication[];
       }>(publicationEndpoint, "POST", {
         scope: publishTarget.scope,
-        ...(publishTarget.vehicleId ? { vehicleId: publishTarget.vehicleId } : {}),
+        ...(publishTarget.vehicleId
+          ? { vehicleId: publishTarget.vehicleId }
+          : {}),
         expectedVersion: board.plan.version,
       });
-      setPublicationState({ key: publicationKey, data: result.publications, error: "" });
+      setPublicationState({
+        key: publicationKey,
+        data: result.publications,
+        error: "",
+      });
       setPublishTarget(null);
       setNotice(
         result.changes.length
@@ -1059,6 +1145,7 @@ export function OrdersBoard({
     } catch (caught) {
       setPublishError((caught as Error).message);
     } finally {
+      setCalculatingManual(false);
       publishing.current = false;
       working(false);
     }
@@ -1246,17 +1333,22 @@ export function OrdersBoard({
     );
   }
   const publicationByVehicle = new globalThis.Map<string, RoutePublication>(
-    publications?.map((publication) => [publication.vehicle_id, publication]) ?? [],
+    publications?.map((publication) => [publication.vehicle_id, publication]) ??
+      [],
   );
-  const eligible = board?.vehicles.filter(
-    (vehicle) =>
-      board.shipments.some((shipment) => shipment.vehicle_id === vehicle.id) &&
-      !publicationByVehicle.get(vehicle.id)?.started_at,
-  ) ?? [];
-  const hasPublished = eligible.some((vehicle) => publicationByVehicle.has(vehicle.id));
+  const eligible =
+    board?.vehicles.filter(
+      (vehicle) =>
+        board.shipments.some(
+          (shipment) => shipment.vehicle_id === vehicle.id,
+        ) && !publicationByVehicle.get(vehicle.id)?.started_at,
+    ) ?? [];
+  const hasPublished = eligible.some((vehicle) =>
+    publicationByVehicle.has(vehicle.id),
+  );
   const globalPublishLabel = hasPublished
-      ? "Guardar y publicar"
-      : "Publicar rutas";
+    ? "Guardar y publicar"
+    : "Publicar rutas";
   return (
     <div className="orders-section" aria-busy={busy}>
       <div className="orders-toolbar">
@@ -1295,6 +1387,30 @@ export function OrdersBoard({
             <span className="toolbar-action-label">Añadir camioneta</span>
           </button>
           <button
+            className="quiet"
+            disabled={!board || busy || !board.shipments.length}
+            aria-label="Ver mapa de rutas"
+            onClick={() => setMapOpen(true)}
+          >
+            <Map size={16} />
+            <span className="toolbar-action-label">Ver mapa de rutas</span>
+          </button>
+          <button
+            className="odoo-load"
+            disabled={busy || !board}
+            aria-label="Cargar pedidos de Odoo"
+            onClick={() => setModal(true)}
+          >
+            <Image
+              className="odoo-mark"
+              src="/odoo-logo-inverted.svg"
+              alt=""
+              width={64}
+              height={22}
+            />
+            <span className="toolbar-action-label">Cargar pedidos</span>
+          </button>
+          <button
             className="route-optimize"
             disabled={
               !board ||
@@ -1311,31 +1427,23 @@ export function OrdersBoard({
             </span>
           </button>
           <button
-            className="quiet"
-            disabled={!board || busy || !board.shipments.length}
-            aria-label="Ver mapa de rutas"
-            onClick={() => setMapOpen(true)}
-          >
-            <Map size={16} />
-            <span className="toolbar-action-label">Ver mapa de rutas</span>
-          </button>
-          <button
-            className="primary"
-            disabled={busy || !board}
-            aria-label="Cargar pedidos de Odoo"
-            onClick={() => setModal(true)}
-          >
-            <Download size={16} />
-            <span className="toolbar-action-label">Cargar pedidos de Odoo</span>
-          </button>
-          <button
             type="button"
             className="route-publish"
-            disabled={!board || board.plan.id !== plan.id || busy || !publications || !eligible.length}
+            disabled={
+              !board ||
+              board.plan.id !== plan.id ||
+              busy ||
+              !publications ||
+              !eligible.length
+            }
             aria-label={globalPublishLabel}
             onClick={() => {
               setPublishError("");
-              setPublishTarget({ planId: plan.id, scope: "all", label: "todas las camionetas" });
+              setPublishTarget({
+                planId: plan.id,
+                scope: "all",
+                label: "todas las camionetas",
+              });
             }}
           >
             <Send size={16} aria-hidden="true" />
@@ -1370,8 +1478,12 @@ export function OrdersBoard({
             ...board.vehicles,
           ].map((v) => {
             const lane = board.shipments.filter((s) => s.vehicle_id === v.id);
-            const publication = v.id ? publicationByVehicle.get(v.id) : undefined;
-            const fleetChanged = Boolean(v.id && v.driver_id !== v.fleet_driver_id);
+            const publication = v.id
+              ? publicationByVehicle.get(v.id)
+              : undefined;
+            const fleetChanged = Boolean(
+              v.id && v.driver_id !== v.fleet_driver_id,
+            );
             return (
               <section
                 className="lane order-lane"
@@ -1411,7 +1523,9 @@ export function OrdersBoard({
                       {publication?.started_at
                         ? `Ruta de ${v.driver_name || "chofer sin nombre"}`
                         : v.fleet_driver_name || "Sin chofer en flota"}
-                      {fleetChanged && publication?.started_at && v.fleet_driver_name
+                      {fleetChanged &&
+                      publication?.started_at &&
+                      v.fleet_driver_name
                         ? ` · Flota: ${v.fleet_driver_name}`
                         : ""}
                     </small>
@@ -1419,18 +1533,27 @@ export function OrdersBoard({
                   {v.id && lane.length > 0 && publications && (
                     <div className="lane-publication">
                       {publication?.started_at ? (
-                        <span className="lane-publication-state">Ruta iniciada</span>
+                        <span className="lane-publication-state">
+                          Ruta iniciada
+                        </span>
                       ) : (
                         <>
                           {publication && (
                             <span className="lane-publication-state">
-                              {fleetChanged ? "Requiere republicar para el nuevo chofer" : "Ruta publicada"}
+                              {fleetChanged
+                                ? "Requiere republicar para el nuevo chofer"
+                                : "Ruta publicada"}
                             </span>
                           )}
                           <button
                             type="button"
                             className="lane-publish"
-                            disabled={busy || board.plan.id !== plan.id || !v.fleet_driver_id || !v.available}
+                            disabled={
+                              busy ||
+                              board.plan.id !== plan.id ||
+                              !v.fleet_driver_id ||
+                              !v.available
+                            }
                             onClick={() => {
                               setPublishError("");
                               setPublishTarget({
@@ -1536,6 +1659,7 @@ export function OrdersBoard({
           target={publishTarget}
           busy={busy}
           error={publishError}
+          calculating={calculatingManual}
           onClose={() => setPublishTarget(null)}
           onConfirm={() => void publish()}
         />

@@ -16,7 +16,11 @@ export function startRoutingWorker() {
       const config = readConfig(),
         pool = getPool();
       await assertInstallation(pool, config.instanceId);
-      await processRecalculation(pool, config.timezone);
+      await processRecalculation(
+        pool,
+        config.timezone,
+        config.recalculationQuietSeconds,
+      );
     })()
       .catch((error) =>
         console.warn(

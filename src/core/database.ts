@@ -15,6 +15,7 @@ import {
 import { migrateRoutePublications } from "./route-publications-schema";
 import { migrateRouteStartGuards } from "./route-start-guards-schema";
 import { migrateRouteFleetReassignment } from "./route-fleet-reassignment-schema";
+import { migrateManualPublication } from "./route-manual-publication-schema";
 import { migrateUnitPhotos } from "./unit-photos-schema";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
@@ -86,7 +87,11 @@ export async function migrate(pool: Pool, instanceId: string) {
         "SELECT schema_version FROM rutas_installation WHERE singleton = true",
       );
       let version = result.rows[0]?.schema_version;
-      if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(version))
+      if (
+        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].includes(
+          version,
+        )
+      )
         throw new AppError("SCHEMA_VERSION_UNSUPPORTED", 503);
       if (version === 1) {
         await migrateFleet(client);
@@ -114,6 +119,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (version < 13) await migrateRouteStartGuards(client);
       if (version < 14) await migrateUnitPhotos(client);
       if (version < 15) await migrateRouteFleetReassignment(client);
+      if (version < 16) await migrateManualPublication(client);
       return;
     }
     await client.query(`
@@ -143,6 +149,7 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migrateRouteStartGuards(client);
     await migrateUnitPhotos(client);
     await migrateRouteFleetReassignment(client);
+    await migrateManualPublication(client);
   });
 }
 export async function audit(

@@ -120,6 +120,13 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     ).status(),
   ).toBe(401);
   expect(
+    (
+      await first.request.get(
+        `${origin}/api/plans/00000000-0000-0000-0000-000000000000/recalculation/manual`,
+      )
+    ).status(),
+  ).toBe(401);
+  expect(
     (await first.request.get(`${origin}/api/customers/export`)).status(),
   ).toBe(401);
   expect(
@@ -673,6 +680,21 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     .getByRole("button", { name: "Planificar rutas", exact: true })
     .click();
   await page.getByLabel("Abrir borrador").selectOption(savedPlan.id);
+  const actions = await page
+    .locator(".orders-toolbar-actions > button")
+    .evaluateAll((buttons) =>
+      buttons.map((button) => button.getAttribute("aria-label")),
+    );
+  const loadPosition = actions.indexOf("Cargar pedidos de Odoo");
+  expect(loadPosition).toBeGreaterThanOrEqual(0);
+  expect(actions.slice(loadPosition, loadPosition + 3)).toEqual([
+    "Cargar pedidos de Odoo",
+    "Armar ruta con optimización vial de Google",
+    "Publicar rutas",
+  ]);
+  await expect(
+    page.locator(".orders-toolbar-actions .odoo-mark"),
+  ).toHaveAttribute("src", "/odoo-logo-inverted.svg");
   await page
     .getByRole("button", { name: "Cargar pedidos de Odoo", exact: true })
     .click();
@@ -763,6 +785,8 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     loadDialog.getByRole("button", { name: "Consultar pedidos", exact: true }),
   ).toBeVisible();
   const manualRequestStart = mutatingOrderRequests.length;
+  const currentManualPlanVersion = (await orderBoard(db.pool, savedPlan.id)).plan
+    .version;
   const manualResponse = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
@@ -772,9 +796,15 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await loadDialog
     .getByRole("button", { name: "Confirmar pedidos", exact: true })
     .click();
-  expect((await manualResponse).status()).toBe(400);
+  const manualResult = await manualResponse;
+  expect(manualResult.request().postDataJSON()).toMatchObject({
+    orderNames: ["S00001", "S00003"],
+    vehicleIds: [expect.any(String)],
+    expectedVersion: currentManualPlanVersion,
+  });
+  expect(manualResult.status()).toBe(503);
   await expect(loadDialog.getByRole("alert")).toContainText(
-    "Selecciona al menos una camioneta",
+    "Falta completar la configuración",
   );
   expect(mutatingOrderRequests.slice(manualRequestStart)).toEqual([
     { method: "POST", path: `/api/plans/${savedPlan.id}/orders/manual` },

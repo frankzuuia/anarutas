@@ -31,3 +31,42 @@ export function routeFingerprint(board: OrderBoard, settingsVersion: number) {
     )
     .digest("hex");
 }
+
+export function vehicleRouteFingerprints(
+  board: OrderBoard,
+  settingsVersion: number,
+) {
+  return Object.fromEntries(
+    board.vehicles.map((vehicle) => [
+      vehicle.id,
+      createHash("sha256")
+        .update(
+          JSON.stringify({
+            date: board.plan.service_date,
+            departure: board.plan.departure_minute ?? null,
+            settingsVersion,
+            vehicleId: vehicle.id,
+            shipments: board.shipments
+              .filter((shipment) => shipment.vehicle_id === vehicle.id)
+              .sort(
+                (left, right) =>
+                  left.position - right.position ||
+                  left.id.localeCompare(right.id),
+              )
+              .map((shipment) => ({
+                id: shipment.id,
+                partnerId: shipment.partnerId,
+                latitude: shipment.latitude,
+                longitude: shipment.longitude,
+                windows: shipment.deliveryWindows,
+                priority: shipment.priority,
+                mode: shipment.fulfillmentMode,
+                archived: shipment.customerArchived,
+                locationStatus: shipment.locationStatus,
+              })),
+          }),
+        )
+        .digest("hex"),
+    ]),
+  );
+}

@@ -10,6 +10,7 @@ import {
   moveShipment,
   orderBoard,
   persistImportPage,
+  persistManualImportPage,
   removePlanVehicle,
   removeShipment,
   selectPlanVehicles,
@@ -73,6 +74,78 @@ afterAll(async () => {
 });
 
 describe("fulfilled orders / real PostgreSQL", () => {
+  it("imports manual folios and selected trucks together without date consultation or partial writes", async () => {
+    const sourcePlan = await createPlan(db.pool, actor, {
+      date: "2026-09-22",
+      label: "Fuente de prueba",
+    });
+    await persistImportPage(db.pool, actor, sourcePlan.id, page([]));
+    const plan = await createPlan(db.pool, actor, {
+      date: "2026-09-23",
+      label: "Folios manuales independientes",
+    });
+    const vehicle = await createVehicle(db.pool, actor, {
+      id: randomUUID(),
+      name: "Camioneta manual",
+      brand: "Ford",
+      model: "2026",
+      plate: randomUUID().slice(0, 8),
+      mileage: 0,
+      fuel: "Gasolina",
+      available: true,
+    });
+    const input = { vehicleIds: [vehicle.id], expectedVersion: plan.version };
+    await expect(
+      persistManualImportPage(
+        db.pool,
+        actor,
+        plan.id,
+        {
+          ...page([shipment(901, 901)]),
+          fingerprint: createHash("sha256")
+            .update("origen-ajeno")
+            .digest("hex"),
+        },
+        input,
+      ),
+    ).rejects.toThrow("ODOO_SOURCE_CHANGED");
+    expect(await orderBoard(db.pool, plan.id)).toMatchObject({
+      vehicles: [],
+      shipments: [],
+    });
+    const first = await persistManualImportPage(
+      db.pool,
+      actor,
+      plan.id,
+      page([shipment(901, 901)]),
+      input,
+    );
+    expect(first).toMatchObject({ inserted: 1, existing: 0 });
+    let board = await orderBoard(db.pool, plan.id);
+    expect(board.vehicles.map((item) => item.id)).toEqual([vehicle.id]);
+    expect(board.shipments.map((item) => item.orderName)).toEqual(["S901"]);
+    expect(board.plan.version).toBe(plan.version + 1);
+    await expect(
+      persistManualImportPage(
+        db.pool,
+        actor,
+        plan.id,
+        page([shipment(902, 902)]),
+        input,
+      ),
+    ).rejects.toThrow("VERSION_CONFLICT");
+    expect((await orderBoard(db.pool, plan.id)).shipments).toHaveLength(1);
+    const repeated = await persistManualImportPage(
+      db.pool,
+      actor,
+      plan.id,
+      page([shipment(901, 901)]),
+      { vehicleIds: [vehicle.id], expectedVersion: board.plan.version },
+    );
+    expect(repeated).toMatchObject({ inserted: 0, existing: 1 });
+    board = await orderBoard(db.pool, plan.id);
+    expect(board.plan.version).toBe(plan.version + 1);
+  });
   it("upgrades v2 without losing plan, account or fleet", async () => {
     const counts = await Promise.all(
       ["route_users", "route_plans", "route_vehicles"].map(async (table) =>
@@ -92,7 +165,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(15);
+    ).toBe(16);
     const identityIndex = await db.pool.query(
       "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='route_shipments_plan_source_picking_order'",
     );
@@ -140,7 +213,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(15);
+    ).toBe(16);
     expect(
       (
         await db.pool.query(

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { bootstrap } from "../src/core/auth";
+import { migrate } from "../src/core/database";
 import { updateCustomer } from "../src/core/customers";
 import { saveDeparture } from "../src/core/departure";
 import { AppError } from "../src/core/errors";
@@ -25,7 +26,9 @@ import {
 import {
   claimRecalculation,
   failRecalculation,
+  manualRecalculationStatus,
   processRecalculation,
+  requestManualRecalculation,
   retryRecalculation,
 } from "../src/core/route-recalculation";
 import {
@@ -91,11 +94,356 @@ afterAll(async () => {
 });
 
 describe("durable recalculation / real PostgreSQL and zero-distance road case", () => {
+  it("calculates the first manual route on explicit publish confirmation and retains stop order", async () => {
+    const settings = await getRoutingSettings(db.pool);
+    await saveRoutingSettings(db.pool, actor, {
+      depotAddress: "Bodega de ruta manual",
+      depotLocation: { latitude: 20, longitude: -103, placeId: "manual-depot" },
+      expectedVersion: settings.version,
+    });
+    let plan = await createPlan(db.pool, actor, {
+      date: "2026-09-23",
+      label: "Primera ruta manual",
+    });
+    plan = await saveDeparture(db.pool, actor, plan.id, {
+      departureTime: "08:00",
+      expectedVersion: plan.version,
+    });
+    const driver = await createDriver(db.pool, actor, {
+      id: randomUUID(),
+      name: "Chofer manual",
+      phone: "3311111199",
+      emergency_name: "",
+      emergency_phone: "",
+      blood_type: "",
+      active: true,
+    });
+    const vehicle = await createVehicle(db.pool, actor, {
+      id: randomUUID(),
+      name: "Camioneta manual",
+      brand: "Ford",
+      model: "2026",
+      plate: `MAN-${randomUUID().slice(0, 8)}`,
+      mileage: 0,
+      fuel: "Gasolina",
+      available: true,
+    });
+    await assignDriver(db.pool, actor, vehicle.id, {
+      driver_id: driver.id,
+      expectedVersion: vehicle.version,
+    });
+    await selectPlanVehicles(db.pool, actor, plan.id, {
+      vehicleIds: [vehicle.id],
+      expectedVersion: plan.version,
+    });
+    await persistImportPage(
+      db.pool,
+      actor,
+      plan.id,
+      page([sourceShipment(900), sourceShipment(901)]),
+    );
+    let board = await orderBoard(db.pool, plan.id);
+    const [first, second] = board.shipments;
+    await moveShipment(db.pool, actor, plan.id, {
+      shipmentId: second.id,
+      vehicleId: vehicle.id,
+      beforeId: null,
+      expectedVersion: board.plan.version,
+    });
+    board = await orderBoard(db.pool, plan.id);
+    await moveShipment(db.pool, actor, plan.id, {
+      shipmentId: first.id,
+      vehicleId: vehicle.id,
+      beforeId: null,
+      expectedVersion: board.plan.version,
+    });
+    board = await orderBoard(db.pool, plan.id);
+    expect(board.shipments.map((item) => item.id)).toEqual([
+      second.id,
+      first.id,
+    ]);
+    expect(await getPlanOptimization(db.pool, plan.id)).toBeNull();
+    await expect(
+      requestManualRecalculation(db.pool, actor, plan.id, {
+        expectedVersion: board.plan.version - 1,
+      }),
+    ).rejects.toThrow("VERSION_CONFLICT");
+    await expect(
+      requestManualRecalculation(db.pool, actor, plan.id, {
+        expectedVersion: board.plan.version,
+      }),
+    ).rejects.toThrow("ROUTING_POINTS_REQUIRED");
+    expect(
+      (await manualRecalculationStatus(db.pool, plan.id)).status,
+    ).toBeNull();
+    const customers = await db.pool.query(
+      "SELECT id,version FROM route_customers WHERE source=$1 AND odoo_partner_id=ANY($2::integer[]) ORDER BY odoo_partner_id",
+      [source, [1200, 1201]],
+    );
+    expect(customers.rows).toHaveLength(2);
+    for (const customer of customers.rows) {
+      await updateCustomer(db.pool, actor, customer.id, {
+        displayName: "Cliente manual",
+        phone: null,
+        deliveryNote: "",
+        priority: "medium",
+        fulfillmentMode: "delivery",
+        deliveryAddress: "Bodega de ruta manual",
+        mapUrl: null,
+        location: { latitude: 20, longitude: -103, placeId: "manual-depot" },
+        windows: [],
+        expectedVersion: Number(customer.version),
+      });
+    }
+    board = await orderBoard(db.pool, plan.id);
+    const input = { expectedVersion: board.plan.version };
+    expect(
+      await requestManualRecalculation(db.pool, actor, plan.id, input),
+    ).toEqual({ queued: true, current: false });
+    const firstJob = await db.pool.query(
+      "SELECT revision FROM route_recalculation_jobs WHERE plan_id=$1",
+      [plan.id],
+    );
+    expect(
+      await requestManualRecalculation(db.pool, actor, plan.id, input),
+    ).toEqual({ queued: true, current: false });
+    expect(
+      (
+        await db.pool.query(
+          "SELECT revision FROM route_recalculation_jobs WHERE plan_id=$1",
+          [plan.id],
+        )
+      ).rows[0].revision,
+    ).toBe(firstJob.rows[0].revision);
+    expect(await processRecalculation(db.pool, "UTC")).toBe(true);
+    expect(await manualRecalculationStatus(db.pool, plan.id)).toMatchObject({
+      version: board.plan.version,
+      current: true,
+      status: null,
+    });
+    expect(
+      (await getPlanOptimization(db.pool, plan.id))?.routes[0].stops.map(
+        (stop) => stop.shipmentId,
+      ),
+    ).toEqual([second.id, first.id]);
+    expect(
+      (await orderBoard(db.pool, plan.id)).shipments.map((item) => item.id),
+    ).toEqual([second.id, first.id]);
+    expect(
+      await requestManualRecalculation(db.pool, actor, plan.id, input),
+    ).toEqual({ queued: false, current: true });
+    const published = await publishRoutes(db.pool, actor, plan.id, {
+      scope: "vehicle",
+      vehicleId: vehicle.id,
+      expectedVersion: board.plan.version,
+    });
+    expect(published.changes).toHaveLength(1);
+  });
+
+  it("reuses untouched trucks and recalculates only one or both trucks after manual moves", async () => {
+    const settings = await getRoutingSettings(db.pool);
+    let plan = await createPlan(db.pool, actor, {
+      date: "2026-09-24",
+      label: "Movimiento selectivo",
+    });
+    plan = await saveDeparture(db.pool, actor, plan.id, {
+      departureTime: "08:00",
+      expectedVersion: plan.version,
+    });
+    const vehicles: Awaited<ReturnType<typeof createVehicle>>[] = [];
+    for (const index of [1, 2])
+      vehicles.push(
+        await createVehicle(db.pool, actor, {
+          id: randomUUID(),
+          name: `Selectiva ${index}`,
+          brand: "Ford",
+          model: "2026",
+          plate: `SEL-${randomUUID().slice(0, 8)}`,
+          mileage: 0,
+          fuel: "Gasolina",
+          available: true,
+        }),
+      );
+    await selectPlanVehicles(db.pool, actor, plan.id, {
+      vehicleIds: vehicles.map((vehicle) => vehicle.id),
+      expectedVersion: plan.version,
+    });
+    await persistImportPage(
+      db.pool,
+      actor,
+      plan.id,
+      page([sourceShipment(920), sourceShipment(921), sourceShipment(922)]),
+    );
+    const customers = await db.pool.query(
+      "SELECT id,version FROM route_customers WHERE source=$1 AND odoo_partner_id=ANY($2::integer[]) ORDER BY odoo_partner_id",
+      [source, [1220, 1221, 1222]],
+    );
+    expect(customers.rows).toHaveLength(3);
+    for (const customer of customers.rows)
+      await updateCustomer(db.pool, actor, customer.id, {
+        displayName: "Cliente selectivo",
+        phone: null,
+        deliveryNote: "",
+        priority: "medium",
+        fulfillmentMode: "delivery",
+        deliveryAddress: "Bodega",
+        mapUrl: null,
+        location: {
+          latitude: settings.depotLocation!.latitude,
+          longitude: settings.depotLocation!.longitude,
+          placeId: "depot",
+        },
+        windows: [],
+        expectedVersion: Number(customer.version),
+      });
+    let board = await orderBoard(db.pool, plan.id);
+    const [one, two, three] = board.shipments;
+    for (const [shipmentId, vehicleId] of [
+      [one.id, vehicles[0].id],
+      [two.id, vehicles[0].id],
+      [three.id, vehicles[1].id],
+    ]) {
+      await moveShipment(db.pool, actor, plan.id, {
+        shipmentId,
+        vehicleId,
+        beforeId: null,
+        expectedVersion: board.plan.version,
+      });
+      board = await orderBoard(db.pool, plan.id);
+    }
+    expect(
+      (await manualRecalculationStatus(db.pool, plan.id)).status,
+    ).toBeNull();
+    await requestManualRecalculation(db.pool, actor, plan.id, {
+      expectedVersion: board.plan.version,
+    });
+    expect(await processRecalculation(db.pool, "UTC")).toBe(true);
+    let optimization = await getPlanOptimization(db.pool, plan.id);
+    expect(optimization?.current).toBe(true);
+    const run = await db.pool.query(
+      "SELECT id,routes,vehicle_input_hashes FROM route_optimization_runs WHERE id=$1",
+      [optimization!.runId],
+    );
+    expect(Object.keys(run.rows[0].vehicle_input_hashes)).toHaveLength(2);
+    const priorRoutes = run.rows[0].routes as Array<{
+      vehicleId: string;
+      encodedPolyline: string | null;
+    }>;
+    const untouched = priorRoutes.find(
+      (route) => route.vehicleId === vehicles[1].id,
+    )!;
+    untouched.encodedPolyline = "unchanged-truck-proved";
+    await db.pool.query(
+      "UPDATE route_optimization_runs SET routes=$2::jsonb WHERE id=$1",
+      [optimization!.runId, JSON.stringify(priorRoutes)],
+    );
+    await moveShipment(db.pool, actor, plan.id, {
+      shipmentId: one.id,
+      vehicleId: vehicles[0].id,
+      beforeId: null,
+      expectedVersion: board.plan.version,
+    });
+    board = await orderBoard(db.pool, plan.id);
+    expect((await manualRecalculationStatus(db.pool, plan.id)).status).toBe(
+      "pending",
+    );
+    expect(await claimRecalculation(db.pool, 8)).toBeNull();
+    await requestManualRecalculation(
+      db.pool,
+      actor,
+      plan.id,
+      {
+        expectedVersion: board.plan.version,
+      },
+      8,
+    );
+    expect(await processRecalculation(db.pool, "UTC", 8)).toBe(true);
+    optimization = await getPlanOptimization(db.pool, plan.id);
+    expect(optimization?.current).toBe(true);
+    expect(
+      optimization?.routes.find((route) => route.vehicleId === vehicles[1].id)
+        ?.encodedPolyline,
+    ).toBe("unchanged-truck-proved");
+    expect(
+      optimization?.routes
+        .find((route) => route.vehicleId === vehicles[0].id)
+        ?.stops.map((stop) => stop.shipmentId),
+    ).toEqual([two.id, one.id]);
+    expect(
+      optimization?.routes
+        .find((route) => route.vehicleId === vehicles[1].id)
+        ?.stops.map((stop) => stop.shipmentId),
+    ).toEqual([three.id]);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT details FROM route_audit WHERE action='plan.recalculated' AND entity_id=$1 ORDER BY id DESC LIMIT 1",
+          [plan.id],
+        )
+      ).rows[0].details,
+    ).toMatchObject({
+      recalculatedVehicleIds: [vehicles[0].id],
+      reusedVehicleIds: [vehicles[1].id],
+    });
+    const latest = await db.pool.query(
+      "SELECT routes FROM route_optimization_runs WHERE id=$1",
+      [optimization!.runId],
+    );
+    const marked = latest.rows[0].routes as Array<{
+      vehicleId: string;
+      encodedPolyline: string | null;
+    }>;
+    for (const route of marked)
+      route.encodedPolyline = `old-${route.vehicleId}`;
+    await db.pool.query(
+      "UPDATE route_optimization_runs SET routes=$2::jsonb WHERE id=$1",
+      [optimization!.runId, JSON.stringify(marked)],
+    );
+    await moveShipment(db.pool, actor, plan.id, {
+      shipmentId: two.id,
+      vehicleId: vehicles[1].id,
+      beforeId: three.id,
+      expectedVersion: board.plan.version,
+    });
+    expect(await claimRecalculation(db.pool, 8)).toBeNull();
+    await requestManualRecalculation(
+      db.pool,
+      actor,
+      plan.id,
+      {
+        expectedVersion: (await orderBoard(db.pool, plan.id)).plan.version,
+      },
+      8,
+    );
+    expect(await processRecalculation(db.pool, "UTC", 8)).toBe(true);
+    optimization = await getPlanOptimization(db.pool, plan.id);
+    expect(optimization?.current).toBe(true);
+    expect(optimization?.routes.map((route) => route.encodedPolyline)).toEqual([
+      null,
+      null,
+    ]);
+    expect(
+      optimization?.routes
+        .find((route) => route.vehicleId === vehicles[1].id)
+        ?.stops.map((stop) => stop.shipmentId),
+    ).toEqual([two.id, three.id]);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT details FROM route_audit WHERE action='plan.recalculated' AND entity_id=$1 ORDER BY id DESC LIMIT 1",
+          [plan.id],
+        )
+      ).rows[0].details,
+    ).toMatchObject({
+      recalculatedVehicleIds: vehicles.map((vehicle) => vehicle.id),
+      reusedVehicleIds: [],
+    });
+  });
   it("preserves a manual order and replaces stale geometry without redistributing", async () => {
     await saveRoutingSettings(db.pool, actor, {
       depotAddress: "Bodega QA",
       depotLocation: { latitude: 20, longitude: -103, placeId: "warehouse" },
-      expectedVersion: 0,
+      expectedVersion: (await getRoutingSettings(db.pool)).version,
     });
     let plan = await createPlan(db.pool, actor, {
       date: "2026-09-10",
@@ -126,8 +474,8 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
       page([sourceShipment(1), sourceShipment(2)]),
     );
     const customers = await db.pool.query(
-      "SELECT id,version FROM route_customers WHERE source=$1 ORDER BY odoo_partner_id",
-      [source],
+      "SELECT id,version FROM route_customers WHERE source=$1 AND odoo_partner_id=ANY($2::integer[]) ORDER BY odoo_partner_id",
+      [source, [301, 302]],
     );
     for (const [index, customer] of customers.rows.entries())
       await updateCustomer(db.pool, actor, customer.id, {
@@ -199,6 +547,12 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
       (await orderBoard(db.pool, plan.id)).shipments.map((s) => s.id),
     ).toEqual([original[1], original[0]]);
     expect((await getPlanOptimization(db.pool, plan.id))?.current).toBe(false);
+    expect((await manualRecalculationStatus(db.pool, plan.id)).status).toBe(
+      "pending",
+    );
+    await requestManualRecalculation(db.pool, actor, plan.id, {
+      expectedVersion: (await orderBoard(db.pool, plan.id)).plan.version,
+    });
     await db.pool.query(
       "UPDATE route_recalculation_jobs SET available_at=now() WHERE plan_id=$1",
       [plan.id],
@@ -235,6 +589,9 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
       vehicleId: vehicle.id,
       beforeId: original[1],
       expectedVersion: fresh.plan.version,
+    });
+    await requestManualRecalculation(db.pool, actor, plan.id, {
+      expectedVersion: (await orderBoard(db.pool, plan.id)).plan.version,
     });
     await db.pool.query(
       "UPDATE route_recalculation_jobs SET available_at=now() WHERE plan_id=$1",
@@ -317,17 +674,27 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
       const vehicles: Awaited<ReturnType<typeof createVehicle>>[] = [];
       for (const index of [1, 2]) {
         const driver = await createDriver(db.pool, actor, {
-          id: randomUUID(), name: `Chofer recálculo ${index}`,
-          phone: `331111110${index}`, emergency_name: "", emergency_phone: "",
-          blood_type: "", active: true,
+          id: randomUUID(),
+          name: `Chofer recálculo ${index}`,
+          phone: `331111110${index}`,
+          emergency_name: "",
+          emergency_phone: "",
+          blood_type: "",
+          active: true,
         });
         const vehicle = await createVehicle(db.pool, actor, {
-          id: randomUUID(), name: `Camioneta recálculo ${index}`,
-          brand: "Ford", model: "2026", plate: `REC-FROZEN-${index}`,
-          mileage: 0, fuel: "Gasolina", available: true,
+          id: randomUUID(),
+          name: `Camioneta recálculo ${index}`,
+          brand: "Ford",
+          model: "2026",
+          plate: `REC-FROZEN-${index}`,
+          mileage: 0,
+          fuel: "Gasolina",
+          available: true,
         });
         await assignDriver(db.pool, actor, vehicle.id, {
-          driver_id: driver.id, expectedVersion: vehicle.version,
+          driver_id: driver.id,
+          expectedVersion: vehicle.version,
         });
         drivers.push(driver);
         vehicles.push(vehicle);
@@ -336,9 +703,12 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
         vehicleIds: vehicles.map((vehicle) => vehicle.id),
         expectedVersion: plan.version,
       });
-      await persistImportPage(db.pool, actor, plan.id, page([
-        sourceShipment(500), sourceShipment(501), sourceShipment(502),
-      ]));
+      await persistImportPage(
+        db.pool,
+        actor,
+        plan.id,
+        page([sourceShipment(500), sourceShipment(501), sourceShipment(502)]),
+      );
       const customerRows = await db.pool.query(
         "SELECT id,version FROM route_customers WHERE source=$1 AND odoo_partner_id BETWEEN 800 AND 802 ORDER BY odoo_partner_id",
         [source],
@@ -346,10 +716,16 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
       expect(customerRows.rows).toHaveLength(3);
       for (const customer of customerRows.rows) {
         await updateCustomer(db.pool, actor, customer.id, {
-          displayName: "Cliente de recálculo", phone: null, deliveryNote: "",
-          priority: "medium", fulfillmentMode: "delivery", deliveryAddress: "Bodega QA",
-          mapUrl: null, location: { latitude: 20, longitude: -103, placeId: "depot" },
-          windows: [], expectedVersion: Number(customer.version),
+          displayName: "Cliente de recálculo",
+          phone: null,
+          deliveryNote: "",
+          priority: "medium",
+          fulfillmentMode: "delivery",
+          deliveryAddress: "Bodega QA",
+          mapUrl: null,
+          location: { latitude: 20, longitude: -103, placeId: "depot" },
+          windows: [],
+          expectedVersion: Number(customer.version),
         });
       }
       let board = await orderBoard(db.pool, plan.id);
@@ -364,26 +740,39 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
       );
       board = await orderBoard(db.pool, plan.id);
       const frozenMetrics = {
-        travelDistanceMeters: 999, travelDurationSeconds: 100,
-        waitDurationSeconds: 0, totalDurationSeconds: 100,
+        travelDistanceMeters: 999,
+        travelDurationSeconds: 100,
+        waitDurationSeconds: 0,
+        totalDurationSeconds: 100,
         performedShipmentCount: 1,
       };
       const mutableMetrics = {
-        travelDistanceMeters: 0, travelDurationSeconds: 0,
-        waitDurationSeconds: 0, totalDurationSeconds: 0,
+        travelDistanceMeters: 0,
+        travelDurationSeconds: 0,
+        waitDurationSeconds: 0,
+        totalDurationSeconds: 0,
         performedShipmentCount: 2,
       };
       const routes = vehicles.map((vehicle, index) => {
-        const own = board.shipments.filter((shipment) => shipment.vehicle_id === vehicle.id);
+        const own = board.shipments.filter(
+          (shipment) => shipment.vehicle_id === vehicle.id,
+        );
         return {
-          vehicleId: vehicle.id, vehicleName: vehicle.name, encodedPolyline: null,
-          segmentPolylines: [], departureAt: "2026-09-10T08:00:00.000Z",
-          finishedAt: "2026-09-10T08:00:00.000Z", trafficMode: "static",
+          vehicleId: vehicle.id,
+          vehicleName: vehicle.name,
+          encodedPolyline: null,
+          segmentPolylines: [],
+          departureAt: "2026-09-10T08:00:00.000Z",
+          finishedAt: "2026-09-10T08:00:00.000Z",
+          trafficMode: "static",
           metrics: index === 0 ? frozenMetrics : mutableMetrics,
           stops: own.map((shipment) => ({
-            shipmentId: shipment.id, position: shipment.position,
-            eta: "2026-09-10T08:00:00.000Z", travelDistanceMeters: 0,
-            travelDurationSeconds: 0, waitDurationSeconds: 0,
+            shipmentId: shipment.id,
+            position: shipment.position,
+            eta: "2026-09-10T08:00:00.000Z",
+            travelDistanceMeters: 0,
+            travelDurationSeconds: 0,
+            waitDurationSeconds: 0,
           })),
         };
       });
@@ -392,43 +781,130 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
         `INSERT INTO route_optimization_runs
          (id,plan_id,base_plan_version,applied_plan_version,request_hash,input_fingerprint,metrics,routes,skipped,created_by)
          VALUES($1,$2,$3,$3,$4,$5,$6,$7,'[]',$8)`,
-        [randomUUID(), plan.id, board.plan.version,
+        [
+          randomUUID(),
+          plan.id,
+          board.plan.version,
           createHash("sha256").update(`frozen-${plan.id}`).digest("hex"),
           routeFingerprint(board, settings.version),
           JSON.stringify({ ...frozenMetrics, performedShipmentCount: 3 }),
-          JSON.stringify(routes), actor],
+          JSON.stringify(routes),
+          actor,
+        ],
       );
       await publishRoutes(db.pool, actor, plan.id, {
-        scope: "all", expectedVersion: board.plan.version,
+        scope: "all",
+        expectedVersion: board.plan.version,
       });
       for (let index = 0; index < 5; index++) {
         const bytes = await sharp({
-          create: { width: 24, height: 24, channels: 3,
-            background: { r: index * 30, g: 60, b: 90 } },
-        }).jpeg().toBuffer();
-        await uploadDriverUnitPhoto(db.pool, drivers[0].id, plan.id, bytes, "image/jpeg", "UTC", photoRoot, new Date("2026-09-10T09:00:00Z"));
+          create: {
+            width: 24,
+            height: 24,
+            channels: 3,
+            background: { r: index * 30, g: 60, b: 90 },
+          },
+        })
+          .jpeg()
+          .toBuffer();
+        await uploadDriverUnitPhoto(
+          db.pool,
+          drivers[0].id,
+          plan.id,
+          bytes,
+          "image/jpeg",
+          "UTC",
+          photoRoot,
+          new Date("2026-09-10T09:00:00Z"),
+        );
       }
-      await startDriverRoute(db.pool, drivers[0].id, plan.id, 1, "UTC", new Date("2026-09-10T09:00:00Z"), photoRoot);
+      await startDriverRoute(
+        db.pool,
+        drivers[0].id,
+        plan.id,
+        1,
+        "UTC",
+        new Date("2026-09-10T09:00:00Z"),
+        photoRoot,
+      );
       board = await orderBoard(db.pool, plan.id);
       await moveShipment(db.pool, actor, plan.id, {
-        shipmentId: secondMutable.id, vehicleId: vehicles[1].id,
-        beforeId: firstMutable.id, expectedVersion: board.plan.version,
+        shipmentId: secondMutable.id,
+        vehicleId: vehicles[1].id,
+        beforeId: firstMutable.id,
+        expectedVersion: board.plan.version,
       });
-      await db.pool.query("DELETE FROM route_recalculation_jobs WHERE plan_id<>$1", [plan.id]);
-      await db.pool.query("UPDATE route_recalculation_jobs SET available_at=now() WHERE plan_id=$1", [plan.id]);
+      await requestManualRecalculation(db.pool, actor, plan.id, {
+        expectedVersion: (await orderBoard(db.pool, plan.id)).plan.version,
+      });
+      await db.pool.query(
+        "DELETE FROM route_recalculation_jobs WHERE plan_id<>$1",
+        [plan.id],
+      );
+      await db.pool.query(
+        "UPDATE route_recalculation_jobs SET available_at=now() WHERE plan_id=$1",
+        [plan.id],
+      );
       expect(await processRecalculation(db.pool, "UTC")).toBe(true);
       const recalculated = await getPlanOptimization(db.pool, plan.id);
       expect(recalculated?.current).toBe(true);
-      expect(recalculated?.routes.find((route) => route.vehicleId === vehicles[0].id)?.metrics)
-        .toMatchObject(frozenMetrics);
-      expect(recalculated?.routes.find((route) => route.vehicleId === vehicles[1].id)?.stops.map((stop) => stop.shipmentId))
-        .toEqual([secondMutable.id, firstMutable.id]);
-      expect((await db.pool.query(
-        "SELECT snapshot->'route'->'metrics' AS metrics FROM route_plan_publications WHERE plan_id=$1 AND vehicle_id=$2",
-        [plan.id, vehicles[0].id],
-      )).rows[0].metrics).toMatchObject(frozenMetrics);
+      expect(
+        recalculated?.routes.find((route) => route.vehicleId === vehicles[0].id)
+          ?.metrics,
+      ).toMatchObject(frozenMetrics);
+      expect(
+        recalculated?.routes
+          .find((route) => route.vehicleId === vehicles[1].id)
+          ?.stops.map((stop) => stop.shipmentId),
+      ).toEqual([secondMutable.id, firstMutable.id]);
+      expect(
+        (
+          await db.pool.query(
+            "SELECT snapshot->'route'->'metrics' AS metrics FROM route_plan_publications WHERE plan_id=$1 AND vehicle_id=$2",
+            [plan.id, vehicles[0].id],
+          )
+        ).rows[0].metrics,
+      ).toMatchObject(frozenMetrics);
     } finally {
       await rm(photoRoot, { recursive: true, force: true });
     }
+  });
+
+  it("upgrades a v15 installation without deleting plans, runs or its recalculation trigger", async () => {
+    const before = await db.pool.query(
+      "SELECT (SELECT count(*)::integer FROM route_plans) AS plans, (SELECT count(*)::integer FROM route_optimization_runs) AS runs",
+    );
+    await db.pool.query(
+      "ALTER TABLE route_optimization_runs DROP COLUMN vehicle_input_hashes; UPDATE rutas_installation SET schema_version=15 WHERE singleton=true",
+    );
+    await migrate(db.pool, db.config.instanceId);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT schema_version FROM rutas_installation WHERE singleton=true",
+        )
+      ).rows[0].schema_version,
+    ).toBe(16);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT (SELECT count(*)::integer FROM route_plans) AS plans, (SELECT count(*)::integer FROM route_optimization_runs) AS runs",
+        )
+      ).rows[0],
+    ).toEqual(before.rows[0]);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT count(*)::integer AS count FROM pg_trigger WHERE tgname='route_plan_recalculation' AND NOT tgisinternal",
+        )
+      ).rows[0].count,
+    ).toBe(1);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT count(*)::integer AS count FROM information_schema.columns WHERE table_name='route_optimization_runs' AND column_name='vehicle_input_hashes'",
+        )
+      ).rows[0].count,
+    ).toBe(1);
   });
 });

@@ -268,62 +268,104 @@ export async function persistImportPage(
   return transaction(pool, async (sql) => {
     await assertActiveActor(sql, actor);
     await planRow(sql, id, "UPDATE");
-    // The singleton row atomically binds this installation to one Odoo source.
-    // Shipment identity is intentionally scoped to each plan by its unique index.
-    await bindOdooSource(sql, page.fingerprint);
-    const counts = { inserted: 0, existing: 0, changed: 0 };
-    const max = await sql.query(
-      "SELECT COALESCE(MAX(position),0)::integer AS position FROM route_shipments WHERE plan_id=$1",
-      [id],
-    );
-    let position = max.rows[0].position;
-    for (const shipment of page.shipments) {
-      await ensureCustomerFromShipment(sql, actor, page.fingerprint, shipment);
-      const snapshot = JSON.stringify(shipment);
-      const hash = createHash("sha256").update(snapshot).digest("hex");
-      const result = await sql.query(
-        `INSERT INTO route_shipments(id,source,picking_id,order_id,partner_id,plan_id,position,snapshot,snapshot_hash,created_by)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(plan_id,source,picking_id,order_id) DO NOTHING RETURNING id`,
-        [
-          randomUUID(),
-          page.fingerprint,
-          shipment.pickingId,
-          shipment.orderId,
-          shipment.partnerId,
-          id,
-          position + 1,
-          snapshot,
-          hash,
-          actor,
-        ],
-      );
-      if (result.rowCount) {
-        counts.inserted++;
-        position++;
-      } else {
-        const previous = await sql.query(
-          "SELECT snapshot_hash FROM route_shipments WHERE plan_id=$1 AND source=$2 AND picking_id=$3 AND order_id=$4",
-          [id, page.fingerprint, shipment.pickingId, shipment.orderId],
-        );
-        if (previous.rows[0].snapshot_hash !== hash) counts.changed++;
-        else counts.existing++;
-      }
-    }
-    if (counts.inserted) await bump(sql, id, actor);
-    await audit(sql, actor, "orders.imported", id, {
-      ...counts,
-      inspected: page.inspected,
-      excluded: page.excluded,
-    });
-    return {
-      ...counts,
-      inspected: page.inspected,
-      excluded: page.excluded,
-      nextCursor: page.nextCursor,
-      ceiling: page.ceiling,
-      hasMore: page.hasMore,
-    };
+    return persistImportPageInTransaction(sql, actor, id, page);
   });
+}
+
+export async function persistManualImportPage(
+  pool: Pool,
+  actor: string,
+  id: string,
+  page: ImportPage,
+  input: Record<string, unknown>,
+): Promise<ImportResult> {
+  const ids = vehicleIds(input.vehicleIds);
+  if (!ids.length) throw new AppError("SELECT_VEHICLES");
+  const expected = integer(input.expectedVersion, 1);
+  return transaction(pool, async (sql) => {
+    await assertActiveActor(sql, actor);
+    const plan = await planRow(sql, id, "UPDATE");
+    if (plan.version !== expected) throw new AppError("VERSION_CONFLICT", 409);
+    await availableVehicleRows(sql, ids);
+    const added = await sql.query(
+      `INSERT INTO route_plan_vehicles(plan_id,vehicle_id,driver_id)
+       SELECT $1,id,driver_id FROM route_vehicles WHERE id=ANY($2::uuid[])
+       ON CONFLICT(plan_id,vehicle_id) DO NOTHING RETURNING vehicle_id`,
+      [id, ids],
+    );
+    const result = await persistImportPageInTransaction(sql, actor, id, page);
+    if (added.rowCount) {
+      if (!result.inserted) await bump(sql, id, actor);
+      await audit(sql, actor, "plan.vehicles.added", id, {
+        count: added.rowCount,
+        source: "manual-orders",
+      });
+    }
+    return result;
+  });
+}
+
+async function persistImportPageInTransaction(
+  sql: Sql,
+  actor: string,
+  id: string,
+  page: ImportPage,
+): Promise<ImportResult> {
+  // The singleton row atomically binds this installation to one Odoo source.
+  // Shipment identity is intentionally scoped to each plan by its unique index.
+  await bindOdooSource(sql, page.fingerprint);
+  const counts = { inserted: 0, existing: 0, changed: 0 };
+  const max = await sql.query(
+    "SELECT COALESCE(MAX(position),0)::integer AS position FROM route_shipments WHERE plan_id=$1",
+    [id],
+  );
+  let position = max.rows[0].position;
+  for (const shipment of page.shipments) {
+    await ensureCustomerFromShipment(sql, actor, page.fingerprint, shipment);
+    const snapshot = JSON.stringify(shipment);
+    const hash = createHash("sha256").update(snapshot).digest("hex");
+    const result = await sql.query(
+      `INSERT INTO route_shipments(id,source,picking_id,order_id,partner_id,plan_id,position,snapshot,snapshot_hash,created_by)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(plan_id,source,picking_id,order_id) DO NOTHING RETURNING id`,
+      [
+        randomUUID(),
+        page.fingerprint,
+        shipment.pickingId,
+        shipment.orderId,
+        shipment.partnerId,
+        id,
+        position + 1,
+        snapshot,
+        hash,
+        actor,
+      ],
+    );
+    if (result.rowCount) {
+      counts.inserted++;
+      position++;
+    } else {
+      const previous = await sql.query(
+        "SELECT snapshot_hash FROM route_shipments WHERE plan_id=$1 AND source=$2 AND picking_id=$3 AND order_id=$4",
+        [id, page.fingerprint, shipment.pickingId, shipment.orderId],
+      );
+      if (previous.rows[0].snapshot_hash !== hash) counts.changed++;
+      else counts.existing++;
+    }
+  }
+  if (counts.inserted) await bump(sql, id, actor);
+  await audit(sql, actor, "orders.imported", id, {
+    ...counts,
+    inspected: page.inspected,
+    excluded: page.excluded,
+  });
+  return {
+    ...counts,
+    inspected: page.inspected,
+    excluded: page.excluded,
+    nextCursor: page.nextCursor,
+    ceiling: page.ceiling,
+    hasMore: page.hasMore,
+  };
 }
 export async function moveShipment(
   pool: Pool,
@@ -352,8 +394,7 @@ export async function moveShipment(
       [id],
     );
     const source = rows.find((shipment) => shipment.id === shipmentId);
-    if (!source)
-      throw new AppError("NOT_FOUND", 404);
+    if (!source) throw new AppError("NOT_FOUND", 404);
     const started = await sql.query(
       "SELECT vehicle_id FROM route_plan_publications WHERE plan_id=$1 AND started_at IS NOT NULL FOR SHARE",
       [id],
@@ -367,7 +408,9 @@ export async function moveShipment(
     )
       throw new AppError("ROUTE_ALREADY_STARTED", 409);
     if (beforeId === shipmentId) return;
-    const mutable = rows.filter((shipment) => !shipment.vehicle_id || !frozen.has(shipment.vehicle_id));
+    const mutable = rows.filter(
+      (shipment) => !shipment.vehicle_id || !frozen.has(shipment.vehicle_id),
+    );
     const slots = mutable.map((shipment) => Number(shipment.position));
     const ordered = mutable.filter((shipment) => shipment.id !== shipmentId);
     if (

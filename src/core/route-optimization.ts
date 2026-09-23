@@ -5,7 +5,10 @@ import { AppError } from "./errors";
 import { uuid } from "./orders-validation";
 import { readOrderBoard } from "./orders";
 import type { OrderBoard } from "./orders-contract";
-import { routeFingerprint } from "./route-fingerprint";
+import {
+  routeFingerprint,
+  vehicleRouteFingerprints,
+} from "./route-fingerprint";
 import { assertDeliveryGroups } from "./route-delivery-groups";
 import type { GoogleOptimizationResult } from "./route-optimization-google";
 import type {
@@ -236,10 +239,11 @@ export async function applyOptimizationResult(
       [planId, appliedVersion, actor],
     );
     const runId = randomUUID();
+    const appliedBoard = await readOrderBoard(sql, planId);
     const inserted = await sql.query(
       `INSERT INTO route_optimization_runs(
-         id,plan_id,base_plan_version,applied_plan_version,request_hash,metrics,routes,skipped,created_by,input_fingerprint
-       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         id,plan_id,base_plan_version,applied_plan_version,request_hash,metrics,routes,skipped,created_by,input_fingerprint,vehicle_input_hashes
+       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        ON CONFLICT(plan_id,base_plan_version,request_hash) DO NOTHING RETURNING id`,
       [
         runId,
@@ -251,7 +255,8 @@ export async function applyOptimizationResult(
         JSON.stringify(privateRoutes),
         JSON.stringify(skipped),
         actor,
-        routeFingerprint(await readOrderBoard(sql, planId), settingsVersion),
+        routeFingerprint(appliedBoard, settingsVersion),
+        JSON.stringify(vehicleRouteFingerprints(appliedBoard, settingsVersion)),
       ],
     );
     if (!inserted.rowCount) throw new AppError("VERSION_CONFLICT", 409);

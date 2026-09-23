@@ -4,13 +4,16 @@ import { assertActiveActor, audit, transaction } from "./database";
 import { AppError } from "./errors";
 import { orderBoard, readOrderBoard } from "./orders";
 import { getRoutingSettings } from "./routing-settings";
-import { routeFingerprint } from "./route-fingerprint";
+import {
+  routeFingerprint,
+  vehicleRouteFingerprints,
+} from "./route-fingerprint";
 import { calculateManualRoutes } from "./route-road";
 import { emptyMetrics, type CalculatedRoute } from "./route-road";
 import type { OrderBoard } from "./orders-contract";
 import type { RouteMetrics } from "./routing-contract";
-import { lockRouteInputs } from "./route-optimization";
-import { uuid } from "./orders-validation";
+import { lockRouteInputs, readPlanOptimization } from "./route-optimization";
+import { integer, uuid } from "./orders-validation";
 
 export type RecalculationJob = {
   planId: string;
@@ -26,7 +29,10 @@ type FrozenRoute = {
   route: CalculatedRoute;
 };
 
-async function startedRoutes(pool: Pool, planId: string): Promise<FrozenRoute[]> {
+async function startedRoutes(
+  pool: Pool,
+  planId: string,
+): Promise<FrozenRoute[]> {
   const { rows } = await pool.query(
     `SELECT vehicle_id,revision,snapshot_hash,snapshot->'route' AS route
        FROM route_plan_publications WHERE plan_id=$1 AND started_at IS NOT NULL
@@ -55,10 +61,12 @@ function mutableBoard(board: OrderBoard, frozen: FrozenRoute[]): OrderBoard {
 function combineRoutes(
   board: OrderBoard,
   frozen: FrozenRoute[],
+  reused: CalculatedRoute[],
   calculated: Awaited<ReturnType<typeof calculateManualRoutes>>,
 ) {
   const byVehicle = new Map([
     ...frozen.map((item) => [item.vehicleId, item.route] as const),
+    ...reused.map((route) => [route.vehicleId, route] as const),
     ...calculated.routes.map((route) => [route.vehicleId, route] as const),
   ]);
   const routes = board.vehicles.map((vehicle) => byVehicle.get(vehicle.id));
@@ -72,17 +80,19 @@ function combineRoutes(
 }
 export async function claimRecalculation(
   pool: Pool,
+  quietSeconds = 1,
 ): Promise<RecalculationJob | null> {
   const token = randomUUID();
   const { rows } = await pool.query(
     `WITH candidate AS (
     SELECT plan_id FROM route_recalculation_jobs
-    WHERE (status='pending' AND available_at<=now()) OR (status='running' AND lease_until<now())
+    WHERE (status='pending' AND available_at<=now()-($2::integer-1)*interval '1 second')
+       OR (status='running' AND lease_until<now())
     ORDER BY available_at,plan_id FOR UPDATE SKIP LOCKED LIMIT 1
   ) UPDATE route_recalculation_jobs j SET status='running',token=$1,
     lease_until=now()+interval '90 seconds',attempts=attempts+1,updated_at=now()
     FROM candidate c WHERE j.plan_id=c.plan_id RETURNING j.*`,
-    [token],
+    [token, quietSeconds],
   );
   const row = rows[0];
   return row
@@ -109,6 +119,10 @@ export async function finishRecalculation(
   fingerprint: string,
   result: Awaited<ReturnType<typeof calculateManualRoutes>>,
   frozen: FrozenRoute[] = [],
+  scope: { recalculatedVehicleIds: string[]; reusedVehicleIds: string[] } = {
+    recalculatedVehicleIds: [],
+    reusedVehicleIds: [],
+  },
 ) {
   return transaction(pool, async (sql) => {
     await assertActiveActor(sql, job.actor);
@@ -126,8 +140,16 @@ export async function finishRecalculation(
       [job.planId],
     );
     if (
-      JSON.stringify(currentFrozen.rows.map((row) => [row.vehicle_id, Number(row.revision), row.snapshot_hash])) !==
-      JSON.stringify(frozen.map((row) => [row.vehicleId, row.revision, row.snapshotHash]))
+      JSON.stringify(
+        currentFrozen.rows.map((row) => [
+          row.vehicle_id,
+          Number(row.revision),
+          row.snapshot_hash,
+        ]),
+      ) !==
+      JSON.stringify(
+        frozen.map((row) => [row.vehicleId, row.revision, row.snapshotHash]),
+      )
     )
       throw new AppError("VERSION_CONFLICT", 409);
     const deleted = await sql.query(
@@ -137,8 +159,8 @@ export async function finishRecalculation(
     if (!deleted.rowCount) throw new AppError("VERSION_CONFLICT", 409);
     const id = randomUUID();
     const inserted = await sql.query(
-      `INSERT INTO route_optimization_runs(id,plan_id,base_plan_version,applied_plan_version,request_hash,input_fingerprint,metrics,routes,skipped,created_by)
-      VALUES($1,$2,$3,$3,$4,$4,$5,$6,'[]',$7)
+      `INSERT INTO route_optimization_runs(id,plan_id,base_plan_version,applied_plan_version,request_hash,input_fingerprint,metrics,routes,skipped,created_by,vehicle_input_hashes)
+      VALUES($1,$2,$3,$3,$4,$4,$5,$6,'[]',$7,$8)
       ON CONFLICT(plan_id,base_plan_version,request_hash) DO NOTHING RETURNING id`,
       [
         id,
@@ -148,6 +170,7 @@ export async function finishRecalculation(
         JSON.stringify(result.metrics),
         JSON.stringify(result.routes),
         job.actor,
+        JSON.stringify(vehicleRouteFingerprints(board, settings.version)),
       ],
     );
     if (inserted.rowCount) {
@@ -173,6 +196,7 @@ export async function finishRecalculation(
         runId: id,
         version,
         routes: result.routes.length,
+        ...scope,
         ...result.metrics,
       });
     }
@@ -233,8 +257,88 @@ export async function retryRecalculation(
       ]);
   });
 }
-export async function processRecalculation(pool: Pool, timezone: string) {
-  const job = await claimRecalculation(pool);
+
+export async function manualRecalculationStatus(pool: Pool, planId: string) {
+  const id = uuid(planId);
+  return transaction(pool, async (sql) => {
+    const board = await readOrderBoard(sql, id);
+    const optimization = await readPlanOptimization(sql, id);
+    const job = await sql.query(
+      "SELECT status,error_code FROM route_recalculation_jobs WHERE plan_id=$1",
+      [id],
+    );
+    return {
+      version: board.plan.version,
+      current: optimization?.current === true,
+      status: (job.rows[0]?.status as string | undefined) ?? null,
+      errorCode: (job.rows[0]?.error_code as string | undefined) ?? null,
+    };
+  });
+}
+
+export async function requestManualRecalculation(
+  pool: Pool,
+  actor: string,
+  planId: string,
+  input: Record<string, unknown>,
+  quietSeconds = 1,
+) {
+  const id = uuid(planId);
+  const expected = integer(input.expectedVersion, 1);
+  return transaction(pool, async (sql) => {
+    await assertActiveActor(sql, actor);
+    await lockRouteInputs(sql, id);
+    const board = await readOrderBoard(sql, id);
+    if (board.plan.version !== expected)
+      throw new AppError("VERSION_CONFLICT", 409);
+    const optimization = await readPlanOptimization(sql, id);
+    if (optimization?.current) return { queued: false, current: true };
+    const settings = await getRoutingSettings(sql);
+    if (!settings.depotLocation)
+      throw new AppError("ROUTING_ORIGIN_REQUIRED", 409);
+    if (board.plan.departure_minute == null)
+      throw new AppError("ROUTING_DEPARTURE_REQUIRED", 409);
+    const started = await sql.query(
+      "SELECT vehicle_id FROM route_plan_publications WHERE plan_id=$1 AND started_at IS NOT NULL FOR SHARE",
+      [id],
+    );
+    const frozen = new Set(started.rows.map((row) => String(row.vehicle_id)));
+    const mutable = board.shipments.filter(
+      (shipment) =>
+        shipment.vehicle_id &&
+        !frozen.has(shipment.vehicle_id) &&
+        shipment.fulfillmentMode === "delivery" &&
+        !shipment.customerArchived,
+    );
+    if (
+      mutable.some(
+        (shipment) =>
+          shipment.latitude === null ||
+          shipment.longitude === null ||
+          shipment.locationStatus === "pending",
+      )
+    )
+      throw new AppError("ROUTING_POINTS_REQUIRED", 409);
+    await sql.query(
+      `INSERT INTO route_recalculation_jobs(plan_id,actor_id,status,available_at)
+       VALUES($1,$2,'pending',now()-$3::integer*interval '1 second')
+       ON CONFLICT(plan_id) DO UPDATE SET
+         revision=CASE WHEN route_recalculation_jobs.status='failed'
+           THEN route_recalculation_jobs.revision+1 ELSE route_recalculation_jobs.revision END,
+         actor_id=EXCLUDED.actor_id,status='pending',token=NULL,attempts=0,
+         available_at=EXCLUDED.available_at,lease_until=NULL,error_code=NULL,updated_at=now()
+       WHERE route_recalculation_jobs.status IN ('failed','pending')`,
+      [id, actor, quietSeconds],
+    );
+    return { queued: true, current: false };
+  });
+}
+export async function processRecalculation(
+  pool: Pool,
+  timezone: string,
+  quietSeconds = 1,
+) {
+  const job = await claimRecalculation(pool, quietSeconds);
   if (!job) return false;
   try {
     await assertActiveActor(pool, job.actor);
@@ -242,10 +346,58 @@ export async function processRecalculation(pool: Pool, timezone: string) {
       settings = await getRoutingSettings(pool);
     const fingerprint = routeFingerprint(board, settings.version);
     const frozen = await startedRoutes(pool, job.planId);
-    const calculated = await calculateManualRoutes(mutableBoard(board, frozen), settings, timezone, () =>
-      renewRecalculation(pool, job),
+    const prior = await pool.query(
+      `SELECT routes,vehicle_input_hashes FROM route_optimization_runs
+       WHERE plan_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`,
+      [job.planId],
     );
-    const result = combineRoutes(board, frozen, calculated);
+    const previousHashes = prior.rows[0]?.vehicle_input_hashes as
+      Record<string, string> | null | undefined;
+    const previousRoutes = new Map<string, CalculatedRoute>(
+      ((prior.rows[0]?.routes as CalculatedRoute[] | undefined) ?? []).map(
+        (route) => [route.vehicleId, route],
+      ),
+    );
+    const hashes = vehicleRouteFingerprints(board, settings.version);
+    const mutable = mutableBoard(board, frozen);
+    const reused: CalculatedRoute[] = [];
+    const changed = mutable.vehicles.filter((vehicle) => {
+      const priorRoute = previousRoutes.get(vehicle.id);
+      const currentIds = mutable.shipments
+        .filter(
+          (shipment) =>
+            shipment.vehicle_id === vehicle.id &&
+            shipment.fulfillmentMode === "delivery" &&
+            !shipment.customerArchived,
+        )
+        .sort((left, right) => left.position - right.position)
+        .map((shipment) => shipment.id);
+      const priorIds = priorRoute?.stops.map((stop) => stop.shipmentId);
+      if (
+        priorRoute &&
+        previousHashes?.[vehicle.id] === hashes[vehicle.id] &&
+        JSON.stringify(priorIds) === JSON.stringify(currentIds)
+      ) {
+        reused.push({ ...priorRoute, vehicleName: vehicle.name });
+        return false;
+      }
+      return true;
+    });
+    const changedIds = new Set(changed.map((vehicle) => vehicle.id));
+    const calculated = await calculateManualRoutes(
+      {
+        ...mutable,
+        vehicles: changed,
+        shipments: mutable.shipments.filter(
+          (shipment) =>
+            shipment.vehicle_id && changedIds.has(shipment.vehicle_id),
+        ),
+      },
+      settings,
+      timezone,
+      () => renewRecalculation(pool, job),
+    );
+    const result = combineRoutes(board, frozen, reused, calculated);
     await finishRecalculation(
       pool,
       job,
@@ -253,6 +405,10 @@ export async function processRecalculation(pool: Pool, timezone: string) {
       fingerprint,
       result,
       frozen,
+      {
+        recalculatedVehicleIds: changed.map((vehicle) => vehicle.id),
+        reusedVehicleIds: reused.map((route) => route.vehicleId),
+      },
     );
   } catch (error) {
     await failRecalculation(pool, job, error);
