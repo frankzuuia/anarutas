@@ -18,11 +18,11 @@ export function IncidentsPanel() {
           <Clock3 size={28} aria-hidden="true" />
           <h2>Sin incidencias reales registradas</h2>
           <p>
-            La APK del chofer aún no está conectada; por ahora no existe ningún
-            evento «Llegué» que consultar.
+            La APK ya permite iniciar rutas. La captura de «Llegué» e incidencias
+            todavía está pendiente; no hay eventos de llegada que consultar.
           </p>
           <p>
-            Cuando se incorpore la APK, «Llegué» registrará la hora real de
+            Cuando se incorpore esa captura, «Llegué» registrará la hora real de
             llegada y el inicio del surtido. Sólo entonces podrá calcularse y
             guardarse un retraso real contra la ventana de recepción.
           </p>

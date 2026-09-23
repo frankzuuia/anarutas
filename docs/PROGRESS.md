@@ -1,5 +1,14 @@
 # Progreso — bloque 1
 
+## Panel en vivo — BL-100 / RT01..08
+
+- [x] RT-T01: migración de eventos transaccionales y listener compartido con limpieza y reconexión.
+- [x] RT-T02: SSE privado, sesión visible activa, revocación y vencimiento absoluto.
+- [x] RT-T03: invalidación de secciones, estado de conexión y formularios conservados.
+- [x] RT-T04: Gherkin, 497 pruebas PostgreSQL/core, 3 E2E HTTP/navegador, 18 Android, cobertura 95.54 % líneas, mutación dirigida 82.22 %, tipos/lint/build y QA local. Entrega a develop autorizada; Deploy manual del usuario. Limitaciones explícitas en el informe, sin certificación productiva.
+- [x] RT-T05 / MR29: APK 0.2.4 limpia fotos/pantalla al cambiar el día del servidor sin cerrar sesión; regresión de medianoche local rechaza Inicio del día anterior.
+- [ ] RT-T06: smoke en proxy develop tras Deploy, teléfono físico y métricas de carga. Evidencia local y limitaciones en `QA-PANEL-TIEMPO-REAL.md`; captura de incidencias sigue siendo un módulo pendiente.
+
 ## Ruta publicada, inspección e inicio móvil — 22/09/2026
 
 Especificación: `BLOQUE-APK-RUTA-PUBLICACION.md`; MR01..17.

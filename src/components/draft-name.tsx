@@ -16,6 +16,7 @@ export function DraftName({
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(plan.label);
+  const [version, setVersion] = useState(plan.version);
   const action = useRef<HTMLButtonElement>(null);
   const editorId = useId();
   function cancel() {
@@ -36,7 +37,7 @@ export function DraftName({
             disabled={busy}
             aria-expanded={editing}
             aria-controls={editorId}
-            onClick={() => setEditing(true)}
+            onClick={() => { setName(plan.label); setVersion(plan.version); setEditing(true); }}
           >
             <Pencil size={14} aria-hidden="true" />
             Cambiar nombre
@@ -71,6 +72,7 @@ export function DraftName({
                 }
               }}
             >
+              <input type="hidden" name="expectedVersion" value={version} />
               <label>
                 Nombre del borrador
                 <input

@@ -44,8 +44,10 @@ data class DriverUiState(
 internal fun reconcilePublishedRoutes(state: DriverUiState, dashboard: DriverDashboard): DriverUiState {
     val previous = state.selected ?: state.dashboard?.today
     val withdrawn = previous != null && dashboard.plans.none { it.id == previous.id }
+    val dayChanged = state.dashboard?.serviceDate?.let { it != dashboard.serviceDate } ?: false
+    val resetRoute = withdrawn || dayChanged
     val selected = when {
-        withdrawn -> dashboard.today
+        resetRoute -> dashboard.today
         previous?.id == dashboard.today?.id -> dashboard.today
         previous != null -> previous
         else -> dashboard.today
@@ -53,11 +55,15 @@ internal fun reconcilePublishedRoutes(state: DriverUiState, dashboard: DriverDas
     return state.copy(
         dashboard = dashboard,
         selected = selected,
-        destination = if (withdrawn) DriverDestination.HOME else state.destination,
-        photos = if (withdrawn) emptyList() else state.photos,
-        showPhotos = if (withdrawn) false else state.showPhotos,
-        orderDetailId = if (withdrawn) null else state.orderDetailId,
-        notice = if (withdrawn) "Administración retiró esta ruta. Espera una nueva publicación." else state.notice,
+        destination = if (resetRoute) DriverDestination.HOME else state.destination,
+        photos = if (resetRoute) emptyList() else state.photos,
+        showPhotos = if (resetRoute) false else state.showPhotos,
+        orderDetailId = if (resetRoute) null else state.orderDetailId,
+        notice = when {
+            dayChanged -> "Nuevo día de operación. Toma las fotos de hoy antes de iniciar tu ruta."
+            withdrawn -> "Administración retiró esta ruta. Espera una nueva publicación."
+            else -> state.notice
+        },
     )
 }
 

@@ -1,5 +1,44 @@
 # Bloque 1 — especificación y auditoría previa
 
+## BL-100 / RT01..08 — panel en vivo, 23/09/2026
+
+Diagnóstico: OPTIONS live de fotos sólo permite GET/HEAD/OPTIONS; develop desplegado
+no contiene el DELETE de d2841e0. Recarga real en Brave conservó sesión; no se
+reprodujo pérdida inmediata. Hay expiración por inactividad a 30 minutos y máxima
+a 12 horas por defecto. Inicio móvil no cambia plan.version y el panel no tiene
+suscripción, por eso no refresca publicaciones.
+
+Arquitectura: migración 18 con triggers de sentencia en tablas de negocio
+verificadas; NOTIFY constante sin PII tras commit. Una conexión LISTEN compartida
+por proceso/pool, nunca una por navegador. GET /api/events (cookie admin, no-store,
+text/event-stream, sin buffering) valida sesión al conectar, al notificar y en
+latidos. Cierre de DB/canal cierra SSE; EventSource reconecta y emite reset después
+de LISTEN para releer estado y recuperar eventos perdidos. Cola acotada por
+coalescencia, limpieza al abortar/desmontar/ocultar. Las consultas de cada sección
+usan contratos existentes y su control de versión; no remonta formularios.
+
+| Caso | Resultado y validación |
+| --- | --- |
+| RT01 Inicio/cancelación/foto confirmada | Evento tras commit; panel relee publicaciones/fotos sin F5 (PostgreSQL+HTTP+E2E) |
+| RT02 Cambio de otro admin | Lista visible actualizada; borrador local intacto; conflicto de versión seguro (E2E) |
+| RT03 Rollback/lote | Cero evento por rollback; señales iguales del commit coalescidas (integración) |
+| RT04 Corte/reinicio/ocultar pestaña | Reconectar, reset y releer; estado de conexión visible (E2E) |
+| RT05 Sesión vencida/revocada | Ningún dato privado por SSE; cierre del canal y login (HTTP) |
+| RT06 Panel visible | Latidos renuevan inactividad sin extender caducidad absoluta; F5 conserva cookie (integración+E2E) |
+| RT07 Ráfaga/carrera edición | Sin solicitudes paralelas redundantes; última invalidación no se pierde (unitaria+E2E) |
+| RT08 Incidencias futuras | No crear incidencias falsas; auditoría transaccional queda suscrita para conectar el módulo real |
+
+Referencias: PostgreSQL LISTEN/NOTIFY oficial
+(https://www.postgresql.org/docs/current/sql-notify.html,
+https://www.postgresql.org/docs/current/sql-listen.html), MDN SSE
+(https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events),
+documentación local Next 16 cookies y route handlers.
+Objetivo local: evento visible <2 s en conexión sana, 0 llamadas Google/Odoo,
+0 filtraciones de tokens/filas, cobertura crítica por escenarios, mutación dirigida.
+Riesgos: proxy live y móvil físico requieren comprobación tras Deploy manual.
+Diseño revisado para RT-T01..04; resultados y límites de validación en
+`QA-PANEL-TIEMPO-REAL.md`. No equivale a certificación productiva.
+
 ## Política vigente FD01..FD10 — reemplaza el armado multicandidato
 
 `BLOQUE-FLEET-DIRECTO.md` define flujo, contratos, escenarios y recuperación.

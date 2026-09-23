@@ -103,6 +103,32 @@ class DriverDashboardPolicyTest {
         assertEquals(false, canDeleteUnitPhoto(route.copy(startedAt = "2026-09-23T11:00:00Z"), photos, "photo-1"))
     }
 
+    @Test
+    fun `new server day resets previous photos and selects todays route without logging out`() {
+        val yesterday = AssignedPlan(
+            id = "yesterday", label = "Ayer", date = "2026-09-23", vehicle = "Unidad A",
+            plate = "AAA-001", routeStatus = "current", overview = null, orders = emptyList(),
+            photoCount = 5, startedAt = "2026-09-23T14:00:00Z",
+        )
+        val today = yesterday.copy(id = "today", date = "2026-09-24", photoCount = 0, startedAt = null)
+        val profile = DriverProfile("driver", "Chofer", "3312345678")
+        val before = DriverDashboard(profile, "America/Mexico_City", "2026-09-23", listOf(summary("yesterday", "2026-09-23")), yesterday)
+        val after = before.copy(serviceDate = "2026-09-24", plans = before.plans + summary("today", "2026-09-24"), today = today)
+        val state = DriverUiState(token = "session", dashboard = before, selected = yesterday, showPhotos = true,
+            photos = listOf(UnitPhoto("old-photo", "2026-09-23T14:00:00Z", "2026-10-08T14:00:00Z")),
+            destination = DriverDestination.ROUTE, orderDetailId = "old-order")
+        val next = reconcilePublishedRoutes(state, after)
+        assertEquals("session", next.token)
+        assertEquals("today", next.selected?.id)
+        assertEquals(0, next.selected?.photoCount)
+        assertEquals(null, next.selected?.startedAt)
+        assertEquals(emptyList<UnitPhoto>(), next.photos)
+        assertEquals(false, next.showPhotos)
+        assertEquals(null, next.orderDetailId)
+        assertEquals(DriverDestination.HOME, next.destination)
+        assertEquals(null, reconcilePublishedRoutes(state, after.copy(today = null)).selected)
+    }
+
     private fun summary(id: String, date: String) = PlanSummary(
         id = id,
         label = id,

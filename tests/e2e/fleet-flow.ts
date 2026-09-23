@@ -116,6 +116,9 @@ export async function fleetFlow(
     },
   );
   expect(conflict.status()).toBe(409);
+  // Open an actual stale draft BEFORE the other session saves; live lists now refresh.
+  await card.getByRole("button", { name: "Editar", exact: true }).click();
+  await page.getByLabel("Kilometraje", { exact: true }).fill("12502");
   const changed = await second.request.patch(
     `${origin}/api/vehicles/${first.id}`,
     {
@@ -124,8 +127,8 @@ export async function fleetFlow(
     },
   );
   expect(changed.status()).toBe(200);
-  await card.getByRole("button", { name: "Editar", exact: true }).click();
-  await page.getByLabel("Kilometraje", { exact: true }).fill("12502");
+  await expect(card).toContainText("12,501 km");
+  await expect(page.getByLabel("Kilometraje", { exact: true })).toHaveValue("12502");
   await page
     .getByRole("button", { name: "Guardar camioneta", exact: true })
     .click();

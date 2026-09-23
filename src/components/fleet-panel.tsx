@@ -158,7 +158,7 @@ export function FleetPanel({
     return () => {
       current = false;
     };
-  }, [editingDriverId]);
+  }, [editingDriverId, revision]);
   function open(next: ModalState) {
     setError("");
     setNotice("");

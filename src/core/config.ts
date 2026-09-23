@@ -66,6 +66,7 @@ export function readConfig(env: Env = process.env) {
       origin.protocol === "https:" ? "__Host-ana-rutas" : "ana-rutas-local",
     sessionHours: positive(env, "RUTAS_SESSION_HOURS", 12),
     idleMinutes: positive(env, "RUTAS_IDLE_MINUTES", 30),
+    panelHeartbeatSeconds: positive(env, "RUTAS_PANEL_HEARTBEAT_SECONDS", 15),
     recalculationQuietSeconds: positive(env, "RUTAS_RECALC_QUIET_SECONDS", 8),
     bootstrapToken: env.RUTAS_BOOTSTRAP_TOKEN || "",
   };

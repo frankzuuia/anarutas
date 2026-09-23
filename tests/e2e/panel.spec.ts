@@ -360,7 +360,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
       .getByLabel("Hora de salida del plan"),
   ).toHaveValue("07:30");
   await page.keyboard.press("Escape");
-  await other.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(other.getByLabel("Estado de sincronización")).toHaveText("En vivo");
   await expect(other.getByLabel("Abrir borrador")).toContainText(
     "Plan de validación",
   );
@@ -467,6 +467,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     },
   );
   expect(concurrent.status()).toBe(200);
+  await expect(other.getByLabel("Nombre del borrador")).toHaveValue("No sobrescribir la otra sesión");
   const conflict = other.waitForResponse(
     (response) =>
       response.request().method() === "PATCH" &&
@@ -1442,6 +1443,14 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(
     page.getByRole("cell", { name: "Borró un borrador", exact: true }),
   ).toHaveCount(1);
+  await second.setOffline(true);
+  await first.request.post(`${origin}/api/plans`, {
+    headers: { Origin: origin },
+    data: { date: "2026-10-13", label: "Recuperado sin recargar" },
+  });
+  await second.setOffline(false);
+  await expect(other.getByLabel("Estado de sincronización")).toHaveText("En vivo");
+  await expect(other.getByLabel("Abrir borrador")).toContainText("Recuperado sin recargar");
   await page.getByRole("button", { name: "Cerrar sesión" }).click();
   await expect(page).toHaveURL(`${origin}/login`);
   expect((await second.request.get(`${origin}/api/plans`)).status()).toBe(200);

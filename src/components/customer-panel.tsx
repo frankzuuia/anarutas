@@ -124,6 +124,8 @@ export function CustomerPanel({ revision }: { revision: number }) {
     form &&
     JSON.stringify(form) !== JSON.stringify(formState(selected)),
   );
+  const editor = useRef({ selected, dirty });
+  useEffect(() => { editor.current = { selected, dirty }; }, [selected, dirty]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query), 250);
@@ -150,11 +152,12 @@ export function CustomerPanel({ revision }: { revision: number }) {
             ? [...previous.customers, ...result.customers]
             : result.customers,
         }));
-        if (!append && !(selected && dirty)) {
-          const refreshed = selected
-            ? result.customers.find((customer) => customer.id === selected.id)
+        const currentEditor = editor.current;
+        if (!append && !(currentEditor.selected && currentEditor.dirty)) {
+          const refreshed = currentEditor.selected
+            ? result.customers.find((customer) => customer.id === currentEditor.selected?.id)
             : null;
-          if (refreshed && !dirty) {
+          if (refreshed && !currentEditor.dirty) {
             setSelected(refreshed);
             setForm(formState(refreshed));
           } else if (!refreshed) {
@@ -171,7 +174,7 @@ export function CustomerPanel({ revision }: { revision: number }) {
         if (request === loadSequence.current) setLoading(false);
       }
     },
-    [archived, debounced, data.nextCursor, dirty, selected],
+    [archived, debounced, data.nextCursor],
   );
 
   useEffect(() => {

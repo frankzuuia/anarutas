@@ -1,5 +1,20 @@
 # Ana Rutas — bloque 1 aprobado
 
+## BL-100: panel operativo en vivo
+
+Administrador: los cambios confirmados de rutas, publicaciones/inicios, fotos,
+flota, clientes, accesos y auditoría invalidan las consultas del panel mediante
+SSE autenticado. No se ejecutan Google/Odoo ni optimizaciones al recibir eventos.
+PostgreSQL notifica después del commit, nunca tras rollback; sólo transmite una
+señal sin datos privados. La reconexión vuelve a consultar la sección visible.
+Formularios locales se conservan y las escrituras mantienen expectedVersion.
+El panel visible conectado cuenta como actividad; ocultarlo corta el canal y
+permite la expiración por inactividad existente. Vencimiento absoluto, cierre y
+revocación siguen obligatorios. Incidencias reales requieren su futuro evento de
+llegada: este bloque no inventa registros ni sustituye ese módulo pendiente.
+Validación: PostgreSQL real, HTTP/SSE, dos navegadores, permisos, rollback,
+reconexión, sesión tras recarga, cero consultas a proveedores y pruebas de mutación.
+
 Política vigente de armado: **BL-FD01..08, `BLOQUE-FLEET-DIRECTO.md`**. Una
 solicitud global y conservación directa del resultado vial completo. Preferencias
 dentro del modelo; sin comparar/reordenar/vetar por prioridad después. El flujo

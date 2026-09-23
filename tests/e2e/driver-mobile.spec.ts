@@ -198,10 +198,12 @@ test.afterAll(async () => {
 
 test("admin provisioning, native device login, route isolation and revocation over HTTP", async ({
   request,
+  browser,
 }) => {
   test.setTimeout(120000);
   const accessUrl = `${origin}/api/drivers/${driverId}/mobile-access`;
   expect((await request.get(accessUrl)).status()).toBe(401);
+  expect((await request.get(`${origin}/api/events`)).status()).toBe(401);
   const adminSession = await request.post(`${origin}/api/session`, {
     headers: { Origin: origin },
     data: { login: adminLogin, password: adminPassword },
@@ -328,6 +330,12 @@ test("admin provisioning, native device login, route isolation and revocation ov
   const staleConfirmation = await request.post(startUrl, { headers: authorization, data: { expectedRevision: 0 } });
   expect(staleConfirmation.status()).toBe(400);
   const blockedStart = await request.post(startUrl, startRequest);
+  const liveContext = await browser.newContext({ storageState: await request.storageState() });
+  const livePanel = await liveContext.newPage();
+  await livePanel.goto(origin);
+  await expect(livePanel.getByLabel("Estado de sincronización")).toHaveText("En vivo");
+  await livePanel.getByLabel("Abrir borrador").selectOption(planId);
+  await expect(livePanel.getByText("Ruta publicada", { exact: true })).toBeVisible();
   expect(blockedStart.status()).toBe(409);
   expect(await blockedStart.json()).toMatchObject({ error: "UNIT_PHOTOS_REQUIRED" });
   const photoIds: string[] = [];
@@ -361,6 +369,9 @@ test("admin provisioning, native device login, route isolation and revocation ov
   const visiblePhotos = await request.get(`${origin}/api/vehicles/${vehicleId}/unit-photos?date=${serviceDate}`);
   expect(visiblePhotos.status()).toBe(200);
   expect(await visiblePhotos.json()).toHaveLength(5);
+  await livePanel.getByRole("button", { name: "Control de unidades", exact: true }).click();
+  await livePanel.getByRole("button", { name: /HTTP camioneta 1/ }).click();
+  await expect(livePanel.getByLabel("Fotos de Contrato HTTP móvil")).toContainText("5 fotos");
   expect((await request.get(`${origin}/api/unit-photos/${photoIds[0]}`)).headers()["content-type"])
     .toContain("image/webp");
   expect((await request.get(`${origin}/api/mobile/unit-photos/${photoIds[0]}`)).status()).toBe(401);
@@ -373,15 +384,23 @@ test("admin provisioning, native device login, route isolation and revocation ov
   );
   const stalePhotoRoute = await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization });
   expect((await stalePhotoRoute.json()).publication.photoCount).toBe(4);
+  await expect(livePanel.getByLabel("Fotos de Contrato HTTP móvil")).toContainText("4 fotos");
   expect((await request.post(startUrl, startRequest)).status()).toBe(409);
   await db.pool.query("UPDATE route_unit_photos SET created_at=$2 WHERE id=$1",
     [photoIds[0], firstPhotoTimestamp]);
+  await expect(livePanel.getByLabel("Fotos de Contrato HTTP móvil")).toContainText("5 fotos");
+  await livePanel.getByRole("button", { name: "Planificar rutas", exact: true }).click();
+  await expect(livePanel.getByText("Ruta publicada", { exact: true })).toBeVisible();
   const wrongRevision = await request.post(startUrl, { headers: authorization, data: { expectedRevision: 2 } });
   expect(wrongRevision.status()).toBe(409);
   expect(await wrongRevision.json()).toMatchObject({ error: "VERSION_CONFLICT" });
   const firstStart = await request.post(startUrl, startRequest);
+  const receivedStartAt = Date.now();
   expect(firstStart.status()).toBe(200);
   expect(await firstStart.json()).toMatchObject({ alreadyStarted: false });
+  await expect(livePanel.getByText("Ruta iniciada", { exact: true })).toBeVisible({ timeout: 2000 });
+  console.info(`Realtime driver start visible in ${Date.now() - receivedStartAt} ms`);
+  await expect(livePanel.getByRole("button", { name: "Cancelar ruta", exact: true })).toBeVisible();
   const deniedDelete = await request.delete(`${origin}/api/mobile/unit-photos/${photoIds[4]}`, { headers: authorization });
   expect(deniedDelete.status()).toBe(409);
   expect(await deniedDelete.json()).toMatchObject({ error: "ROUTE_ALREADY_STARTED" });
@@ -397,6 +416,10 @@ test("admin provisioning, native device login, route isolation and revocation ov
   });
   expect(cancelled.status()).toBe(200);
   expect(await cancelled.json()).toMatchObject({ publications: [] });
+  await expect(livePanel.getByText("Ruta iniciada", { exact: true })).toHaveCount(0, { timeout: 2000 });
+  await livePanel.reload();
+  await expect(livePanel.getByRole("heading", { name: "Planificar rutas", exact: true })).toBeVisible();
+  await liveContext.close();
   expect(await (await request.get(`${origin}/api/mobile/dashboard`, { headers: authorization })).json())
     .toMatchObject({ plans: [], today: null });
   expect((await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization })).status()).toBe(404);

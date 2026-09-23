@@ -29,6 +29,7 @@ import { CustomerPanel } from "./customer-panel";
 import { GoogleConsumptionPanel } from "./google-consumption-panel";
 import { IncidentsPanel } from "./incidents-panel";
 import { UnitControlPanel } from "./unit-control-panel";
+import { usePanelRealtime } from "./use-panel-realtime";
 
 type Section =
   | "plans"
@@ -109,6 +110,7 @@ export function Dashboard({
   const [menuClosed, setMenuClosed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [nameSavedRevision, setNameSavedRevision] = useState(0);
   const [fleetRevision, setFleetRevision] = useState(0);
   const [boardRevision, setBoardRevision] = useState(0);
   const [customerRevision, setCustomerRevision] = useState(0);
@@ -123,8 +125,8 @@ export function Dashboard({
     count: number;
   } | null>(null);
   const adoptPlan = useCallback((plan: Plan) => {
-    setSelected(plan);
-    setPlans((previous) => previous.map((p) => (p.id === plan.id ? plan : p)));
+    setSelected((previous) => previous?.id === plan.id && previous.version <= plan.version ? plan : previous);
+    setPlans((previous) => previous.map((p) => (p.id === plan.id && p.version <= plan.version ? plan : p)));
   }, []);
   const adoptPendingValidationCount = useCallback(
     (planId: string, count: number) => {
@@ -145,7 +147,13 @@ export function Dashboard({
       if (section === "vehicles" || section === "drivers")
         setFleetRevision((value) => value + 1);
       if (section === "plans") {
-        setPlans(await api<Plan[]>("/api/plans"));
+        const latest = await api<Plan[]>("/api/plans");
+        setPlans(latest);
+        setSelected((previous) => {
+          if (!previous) return null;
+          const current = latest.find((plan) => plan.id === previous.id);
+          return current && current.version < previous.version ? previous : current ?? null;
+        });
         setBoardRevision((value) => value + 1);
       }
       if (section === "customers") setCustomerRevision((value) => value + 1);
@@ -154,12 +162,15 @@ export function Dashboard({
       if (section === "consumption")
         setConsumptionRevision((value) => value + 1);
       if (section === "unit_control") setUnitRevision((value) => value + 1);
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     } finally {
       setLoading(false);
     }
   }, [section]);
+  const liveStatus = usePanelRealtime(refresh, busy);
   useEffect(() => {
     let current = true;
     const fail = (error: Error) => {
@@ -230,9 +241,10 @@ export function Dashboard({
       if (!selected) return;
       const plan = await api<Plan>(`/api/plans/${selected.id}`, "PATCH", {
         ...input,
-        expectedVersion: selected.version,
+        expectedVersion: Number(input.expectedVersion),
       });
       setSelected(plan);
+      setNameSavedRevision((value) => value + 1);
       await refresh();
       setNotice("Nombre del borrador actualizado.");
     });
@@ -310,6 +322,7 @@ export function Dashboard({
       <div className="content">
         <header className="topbar">
           <div className="row">
+            <span className={`badge ${liveStatus === "En vivo" ? "green" : "amber"}`} aria-live="polite" aria-label="Estado de sincronización">{liveStatus}</span>
             <button
               className="quiet"
               aria-label={menuClosed ? "Abrir menú" : "Cerrar menú"}
@@ -476,7 +489,7 @@ export function Dashboard({
                   {selected ? (
                     <>
                       <DraftName
-                        key={`${selected.id}-${selected.version}`}
+                        key={`${selected.id}:${nameSavedRevision}`}
                         plan={selected}
                         busy={busy}
                         pendingValidationCount={

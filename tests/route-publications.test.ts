@@ -459,6 +459,10 @@ describe("route publication boundary / real PostgreSQL", () => {
       .rejects.toMatchObject({ code: "UNIT_PHOTOS_REQUIRED", status: 409 });
     await db.pool.query("UPDATE route_unit_photos SET created_at=$2::timestamptz WHERE plan_id=$1",
       [planId, photoCaptureAt.toISOString()]);
+    // Midnight is the installation's local day, not the phone's clock or UTC date.
+    await expect(startDriverRoute(db.pool, driverId, planId, 3, serviceTimezone,
+      new Date("2026-09-23T06:00:00.000Z"), photoRoot))
+      .rejects.toMatchObject({ code: "ROUTE_DATE_MISMATCH", status: 409 });
     const replacement = await createDriver(db.pool, actor, {
       id: randomUUID(), name: "Relevo QA", phone: "3312345790",
       emergency_name: "", emergency_phone: "", blood_type: "", active: true,
@@ -772,7 +776,7 @@ describe("route publication boundary / real PostgreSQL", () => {
       driver_id: driverId, expectedVersion: vehicle.version,
     })).rejects.toMatchObject({ code: "ROUTE_ALREADY_STARTED" });
     await migrate(db.pool, db.config.instanceId);
-    expect((await db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(17);
+    expect((await db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(18);
     vehicle = await getVehicle(db.pool, vehicleId);
     await assignDriver(db.pool, actor, vehicleId, {
       driver_id: driverId, expectedVersion: vehicle.version,

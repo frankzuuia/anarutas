@@ -46,6 +46,7 @@
 | MR15 | GPS negado, señal perdida o SDK sin cuota | Abre mapa | Muestra ruta/parada guardadas con aviso; no inventa posición ni giro. |
 | MR16 | Chofer inició y cambia a Pedidos/Perfil | Toca acceso inferior Mapa | Retoma la misma navegación sin solicitar de nuevo el mismo destino por simple cambio de pantalla. |
 | MR17 | Admin ve unidad activa | Filtra fecha | Sólo evidencia vigente de esa unidad/fecha, con plan y fecha reales. |
+| MR29 | Chofer con cinco fotos de ayer y APK abierta | Cambia fecha de servicio del servidor | Al sincronizar limpia pantalla/fotos del día anterior y selecciona el plan de hoy, sin cerrar sesión. Inicio sólo cuenta fotos válidas del día local, plan, unidad y chofer correctos. Ayer no habilita hoy; plan de otra fecha se rechaza, incluso en medianoche local. |
 
 ## Contrato y dependencias entre bloques
 
