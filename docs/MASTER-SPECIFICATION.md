@@ -422,3 +422,20 @@ GREEN LIGHT para construir localmente por bloques; no certifica integración
 Google/volumen/dispositivo. Auditoría incremental: INTEGRITY TOTAL con BL-030
 y acceso móvil 1. Correspondencia documental: MATCH PERFECT con MP-T01..MP-T08
 de `PROGRESS.md`.
+
+## Batch 10: BL-096 a BL-098 — captura contemporánea y salida deliberada
+
+La APK usa exclusivamente la captura de cámara de Android hacia un archivo temporal privado; no solicita medios existentes. El servidor transforma a WebP y compara su hash normalizado contra fotos vigentes de la misma unidad, serializando cargas concurrentes. Una repetición de la misma ruta/fecha es idempotente y no aumenta el conteo; el mismo contenido de otra fecha o plan se rechaza. La UI de fotos se abre sólo tras una lectura exitosa del endpoint, y distingue 404 HTML de versión antigua de `NOT_FOUND` de autorización. La retención sigue visible sólo en Control de unidades.
+
+| Escenario | Actor, precondición y disparador | Datos/permisos, resultado y recuperación |
+| --- | --- | --- |
+| MR18 | Chofer publicado toca Fotos y el servidor ejecuta un commit anterior | GET devuelve HTML 404; la APK no abre un modal vacío ni intenta subir; muestra actualizar develop. No cambia BD. |
+| MR19 | Chofer cancela cámara, la cámara falla o entrega archivo vacío | Se limpia caché temporal; cero POST, cero foto contabilizada; permite reintento. |
+| MR20 | Chofer repite imagen en la misma ruta o intenta reutilizarla otro día | En el primer caso se informa duplicado sin sumar; en el segundo el servidor devuelve 409 sin exponer datos de otra ruta. Carga concurrente no evade la regla. |
+| MR21 | Chofer toca Iniciar por error y cancela | Diálogo muestra paradas reales; ninguna llamada de inicio ni cambio de estado. |
+| MR22 | Admin republica mientras el chofer confirma | POST incluye revisión esperada; 409 y actualización necesaria, sin arrancar otra secuencia. |
+| MR23 | Develop aún no tiene volumen privado | GET puede listar metadatos; la carga e inicio fallan cerrados con error de almacenamiento hasta configurar un volumen persistente. |
+
+Flujo: cámara → archivo en caché privada → POST autenticado con límite → validación, deduplicación y auditoría en PostgreSQL → WebP privado; confirmación → POST con revisión → bloqueo transaccional de publicación → foto/fecha/asignación → inicio. No se llama Odoo ni Google al capturar o confirmar. Permisos: sesión móvil y publicación vigente, lectura administrativa separada. Fallos de red preservan el conteo del servidor; reintento idéntico no crea otra foto. Verificación: unitarias Android, integración PostgreSQL, HTTP/E2E, Gherkin, cobertura y mutación de duplicado/revisión, inspección física pendiente. No se declara infalsificable el origen de los píxeles en un dispositivo comprometido.
+
+Veredicto documental: GREEN LIGHT para implementación local; INTEGRITY TOTAL con BL-090..093; MATCH PERFECT con MP-T09..MP-T12 en `PROGRESS.md`.

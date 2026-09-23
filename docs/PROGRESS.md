@@ -15,6 +15,13 @@ Especificación: `BLOQUE-APK-RUTA-PUBLICACION.md`; MR01..17.
 
 Estado local al 22/09: MP-T02, T03, T05 y T07 tienen implementación y pruebas locales; T04 aún necesita volumen persistente, T06 clave Android y dispositivo físico, y T08 sigue abierto por QA real, métricas y avisos legales. Evidencia exacta en `QA-BLOQUE-APK-RUTA-PUBLICACION.md`. Ninguna tarea se marca cerrada ni lista para despliegue. La asignación de chofer a camioneta persiste entre días y puede cambiarse para planes futuros; la ruta ya iniciada conserva su responsable y no se transfiere automáticamente.
 
+### Ajuste de prueba live — 23/09/2026
+
+- [ ] MP-T09 (BL-098 / MR18,23): distinguir endpoint ausente del 404 de autorización, no abrir Fotos con error y verificar commit/volumen de develop antes de probar.
+- [ ] MP-T10 (BL-096 / MR19..20): quitar galería, robustecer cámara/caché, deduplicar por unidad entre fechas y mantener idempotencia en la misma ruta.
+- [ ] MP-T11 (BL-097 / MR21..22): confirmación compacta con paradas reales y revisión esperada validada en la transacción de inicio.
+- [ ] MP-T12 (BL-096..098): actualizar aceptación, unitarias, PostgreSQL/HTTP, Android, cobertura, mutación y QA; no declarar listo sin prueba física y volumen.
+
 ## Higiene de almacenamiento de pruebas — 15/09/2026
 
 - [x] HA-T01: autopsia local confirmó 4,042 clústeres PostgreSQL temporales y diez sandboxes Stryker abandonados; no eran código ni datos productivos.

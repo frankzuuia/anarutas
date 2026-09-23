@@ -7,7 +7,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import android.content.Context
-import android.net.Uri
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.GeneralSecurityException
@@ -16,6 +15,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONException
+
+internal fun isPrivateCameraCapture(cacheDir: File, file: File): Boolean =
+    file.parentFile?.canonicalFile == File(cacheDir, "unit-camera").canonicalFile &&
+        file.name.startsWith("unit-") && file.name.endsWith(".jpg") &&
+        file.isFile && file.length() > 0L
 
 data class DriverUiState(
     val initializing: Boolean = true,
@@ -43,12 +47,16 @@ internal fun friendlyError(error: Throwable): String = when (error) {
         "NOT_FOUND" -> "Esta ruta ya no está asignada a tu camioneta. Actualiza la lista."
         "UNIT_PHOTO_STORAGE_UNAVAILABLE" -> "No se pueden guardar fotos todavía. Administración debe configurar el almacenamiento de la unidad."
         "UNIT_PHOTO_LIMIT" -> "Esta ruta ya tiene ocho fotos de la unidad."
-        "UNIT_PHOTO_INVALID" -> "La foto no se pudo procesar. Usa JPG, PNG o WebP."
-        "UNIT_PHOTO_TOO_LARGE" -> "La foto es demasiado grande. Selecciona una de hasta 8 MB."
+        "UNIT_PHOTO_INVALID" -> "La foto de la cámara no se pudo procesar. Vuelve a tomarla."
+        "UNIT_PHOTO_TOO_LARGE" -> "La foto es demasiado grande. Vuelve a tomarla con menor resolución."
+        "UNIT_PHOTO_REUSED" -> "Esta imagen ya se usó en otra ruta de la unidad. Toma una foto nueva."
         "UNIT_PHOTOS_REQUIRED" -> "Carga al menos cinco fotos distintas de la unidad antes de iniciar."
+        "VERSION_CONFLICT" -> "La ruta cambió desde que la abriste. Actualízala y confirma de nuevo."
         "ROUTE_DATE_MISMATCH" -> "Esta ruta no corresponde al día de hoy."
         "ROUTE_ALREADY_STARTED" -> "Esta ruta ya inició y no admite más fotos ni cambios."
-        else -> "El servidor rechazó la solicitud (${error.code.ifBlank { error.status.toString() }})."
+        else -> if (error.status == 404 && error.code.isBlank())
+            "El servidor aún no tiene disponible esta función. Avisa a administración para actualizarlo."
+        else "El servidor rechazó la solicitud (${error.code.ifBlank { error.status.toString() }})."
     }
     is IllegalStateException -> if (error.message == "DEVICE_KEY_MISSING") {
         "La clave segura de este celular ya no está disponible. Vuelve a ingresar con teléfono y PIN."
@@ -263,10 +271,13 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
     fun openPhotos() {
         val route = state.selected ?: state.dashboard?.today ?: return
         if (state.busy) return
-        state = state.copy(showPhotos = true, busy = true, error = "")
+        val token = state.token
+        state = state.copy(showPhotos = false, photos = emptyList(), busy = true, error = "")
         viewModelScope.launch {
             try {
-                state = state.copy(photos = DriverApi(BuildConfig.SERVER_URL).unitPhotos(state.token, route.id))
+                val photos = DriverApi(BuildConfig.SERVER_URL).unitPhotos(token, route.id)
+                if (state.token == token && (state.selected ?: state.dashboard?.today)?.id == route.id)
+                    state = state.copy(photos = photos, showPhotos = true)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -281,18 +292,24 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
         state = state.copy(showPhotos = false)
     }
 
-    fun uploadUnitPhoto(context: Context, uri: Uri, cameraFile: File? = null) {
-        val route = state.selected ?: state.dashboard?.today ?: return
-        if (state.busy || state.token.isBlank()) return
+    fun cameraUnavailable() {
+        state = state.copy(error = "No se pudo abrir la cámara. Revisa que haya una app de cámara disponible.")
+    }
+
+    fun uploadUnitPhoto(context: Context, cameraFile: File) {
+        val route = state.selected ?: state.dashboard?.today
+        if (route == null || state.busy || state.token.isBlank()) {
+            cameraFile.delete()
+            return
+        }
         val token = state.token
         state = state.copy(busy = true, error = "", notice = "")
         viewModelScope.launch {
             try {
-                val contentType = context.contentResolver.getType(uri) ?: "image/jpeg"
-                if (contentType !in setOf("image/jpeg", "image/png", "image/webp"))
-                    throw DriverApiException(415, "UNIT_PHOTO_INVALID")
                 val bytes = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                    if (!isPrivateCameraCapture(context.cacheDir, cameraFile))
+                        throw DriverApiException(415, "UNIT_PHOTO_INVALID")
+                    cameraFile.inputStream().use { stream ->
                         val output = ByteArrayOutputStream()
                         val chunk = ByteArray(8192)
                         while (true) {
@@ -302,11 +319,13 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
                                 throw DriverApiException(413, "UNIT_PHOTO_TOO_LARGE")
                             output.write(chunk, 0, count)
                         }
-                        output.toByteArray()
-                    } ?: throw DriverApiException(415, "UNIT_PHOTO_INVALID")
+                        output.toByteArray().also {
+                            if (it.isEmpty()) throw DriverApiException(415, "UNIT_PHOTO_INVALID")
+                        }
+                    }
                 }
                 val api = DriverApi(BuildConfig.SERVER_URL)
-                api.uploadUnitPhoto(token, route.id, bytes, contentType)
+                val upload = api.uploadUnitPhoto(token, route.id, bytes)
                 val refreshed = api.plan(token, route.id)
                 state = state.copy(
                     selected = refreshed,
@@ -314,7 +333,8 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
                         if (dashboard.today?.id == refreshed.id) dashboard.copy(today = refreshed) else dashboard
                     },
                     photos = api.unitPhotos(token, route.id),
-                    notice = "Foto guardada · ${refreshed.photoCount} de 8",
+                    notice = if (upload.duplicate) "Esa foto ya estaba registrada · ${refreshed.photoCount} de 8"
+                        else "Foto guardada · ${refreshed.photoCount} de 8",
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -322,26 +342,26 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
                 handleApiFailure(failure)
             } finally {
                 runCatching {
-                    cameraFile?.let { file ->
-                        val cachePath = context.cacheDir.canonicalPath + File.separator
-                        if (file.canonicalPath.startsWith(cachePath) && file.name.startsWith("unit-"))
-                            file.delete()
-                    }
+                    val cachePath = File(context.cacheDir, "unit-camera").canonicalPath + File.separator
+                    if (cameraFile.canonicalPath.startsWith(cachePath) && cameraFile.name.startsWith("unit-"))
+                        cameraFile.delete()
                 }
                 state = state.copy(busy = false)
             }
         }
     }
 
-    fun startRoute() {
+    fun startRoute(planId: String, expectedRevision: Int) {
         val route = state.selected ?: state.dashboard?.today ?: return
-        if (state.busy || state.token.isBlank() || route.startedAt != null) return
+        if (state.busy || state.token.isBlank() || route.startedAt != null ||
+            route.id != planId || route.publicationRevision != expectedRevision ||
+            route.photoCount < 5 || route.orders.isEmpty()) return
         val token = state.token
         state = state.copy(busy = true, error = "", notice = "")
         viewModelScope.launch {
             try {
                 val api = DriverApi(BuildConfig.SERVER_URL)
-                api.startRoute(token, route.id)
+                api.startRoute(token, route.id, expectedRevision)
                 val refreshed = api.plan(token, route.id)
                 state = state.copy(
                     selected = refreshed,

@@ -146,14 +146,26 @@ export async function uploadDriverUnitPhoto(
       if (publication.started_at) throw new AppError("ROUTE_ALREADY_STARTED", 409);
       if (plan.rows[0].service_date !== todayInTimezone(timezone, capturedAt))
         throw new AppError("ROUTE_DATE_MISMATCH", 409);
+      // Serialize the same vehicle across different plans before testing its active hash.
+      await sql.query(
+        "SELECT pg_advisory_xact_lock(hashtext('ana-rutas:unit-photo'),hashtext($1::text))",
+        [publication.vehicle_id],
+      );
       const existing = await sql.query(
         `SELECT id,plan_id,vehicle_id,driver_id,storage_key,created_at,expires_at,bytes
-         FROM route_unit_photos WHERE plan_id=$1 AND vehicle_id=$2 AND driver_id=$3
-           AND content_hash=$4 AND (created_at AT TIME ZONE $5)::date=$6::date
+         FROM route_unit_photos WHERE vehicle_id=$1 AND content_hash=$2
            AND expires_at>now()`,
-        [id, publication.vehicle_id, driverId, hash, timezone, plan.rows[0].service_date],
+        [publication.vehicle_id, hash],
       );
-      if (existing.rows[0]) return { ...publicPhoto(existing.rows[0] as PhotoRow), duplicate: true };
+      if (existing.rows[0]) {
+        const priorPhotos = existing.rows as PhotoRow[];
+        const reused = priorPhotos.some((prior) =>
+          prior.plan_id !== id || prior.driver_id !== driverId ||
+          todayInTimezone(timezone, prior.created_at) !== plan.rows[0].service_date,
+        );
+        if (reused) throw new AppError("UNIT_PHOTO_REUSED", 409);
+        return { ...publicPhoto(priorPhotos[0]), duplicate: true };
+      }
       const count = await sql.query(
         `SELECT count(*)::integer AS n FROM route_unit_photos
          WHERE plan_id=$1 AND vehicle_id=$2 AND driver_id=$3

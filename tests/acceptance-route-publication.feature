@@ -111,3 +111,36 @@ Feature: Publicación e inicio de rutas por camioneta
     Given fotos vigentes de distintas camionetas y fechas
     When administración abre Control de unidades y filtra una fecha
     Then ve sólo la evidencia privada de la camioneta y fecha elegidas
+
+  Scenario: Servidor develop anterior sin endpoint de fotos
+    Given la APK nueva y un servidor que devuelve HTML 404 al consultar fotos
+    When el chofer toca Ver fotos
+    Then no se abre una galería vacía
+    And se informa que administración debe actualizar el servidor
+
+  Scenario: La foto de salida sólo se toma con cámara
+    Given una ruta publicada aún no iniciada
+    When el chofer abre Fotos de la unidad
+    Then sólo aparece Tomar foto y no hay selector de galería
+    And no se informa al chofer el plazo de retención administrativa
+    When cancela la cámara o ésta falla
+    Then no se envía una imagen y se limpia el archivo temporal
+
+  Scenario: La misma foto no se reutiliza en otra ruta
+    Given una foto vigente de la misma camioneta en otra ruta
+    When se intenta subir exactamente su contenido normalizado
+    Then el servidor devuelve conflicto sin exponer datos de la otra ruta
+    And no aumenta el conteo ni conserva un archivo temporal nuevo
+
+  Scenario: Confirmar inicio de ruta sin activación accidental
+    Given una ruta con cinco fotos y pedidos publicados
+    When el chofer toca Iniciar ruta
+    Then ve la camioneta y el número real de paradas antes de confirmar
+    When pulsa Cancelar o cierra el diálogo
+    Then la ruta sigue sin iniciar
+
+  Scenario: La publicación cambia durante la confirmación
+    Given el chofer abrió la confirmación de la revisión publicada anterior
+    When administración republica la ruta y el chofer confirma la revisión vieja
+    Then el servidor responde conflicto de versión
+    And no registra el inicio ni usa la secuencia anterior

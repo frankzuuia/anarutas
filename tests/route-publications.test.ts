@@ -337,12 +337,14 @@ describe("route publication boundary / real PostgreSQL", () => {
 
   it("requires five distinct private WebP photos, limits eight, and starts idempotently", async () => {
     const now = photoCaptureAt;
-    await expect(startDriverRoute(db.pool, driverId, planId, serviceTimezone, new Date("2026-09-21T18:00:00.000Z"), photoRoot))
+    await expect(startDriverRoute(db.pool, driverId, planId, 2, serviceTimezone, now, photoRoot))
+      .rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
+    await expect(startDriverRoute(db.pool, driverId, planId, 3, serviceTimezone, new Date("2026-09-21T18:00:00.000Z"), photoRoot))
       .rejects.toMatchObject({ code: "ROUTE_DATE_MISMATCH", status: 409 });
     await expect(unitPhotoRoot("relative-photo-folder"))
       .rejects.toMatchObject({ code: "UNIT_PHOTO_STORAGE_UNAVAILABLE", status: 503 });
     await expect(
-      startDriverRoute(db.pool, driverId, planId, serviceTimezone, now, photoRoot),
+      startDriverRoute(db.pool, driverId, planId, 3, serviceTimezone, now, photoRoot),
     ).rejects.toMatchObject({ code: "UNIT_PHOTOS_REQUIRED", status: 409 });
     await expect(
       uploadDriverUnitPhoto(db.pool, driverId, planId, Buffer.from("not an image"), "image/jpeg", serviceTimezone, photoRoot, photoCaptureAt),
@@ -383,6 +385,33 @@ describe("route publication boundary / real PostgreSQL", () => {
       .toBe("52494646");
     const duplicate = await uploadDriverUnitPhoto(db.pool, driverId, planId, first!, "image/jpeg", serviceTimezone, photoRoot, photoCaptureAt);
     expect(duplicate).toMatchObject({ id: firstId, duplicate: true });
+    const otherPlan = await createPlan(db.pool, actor, { date: "2026-10-01", label: "Otra ruta para probar foto repetida" });
+    expect(otherPlan.id).not.toBe(planId);
+    await selectPlanVehicles(db.pool, actor, otherPlan.id, {
+      vehicleIds: [vehicleId], expectedVersion: otherPlan.version,
+    });
+    await db.pool.query("UPDATE route_unit_photos SET plan_id=$2 WHERE id=$1", [firstId, otherPlan.id]);
+    expect((await db.pool.query("SELECT plan_id FROM route_unit_photos WHERE id=$1", [firstId])).rows[0].plan_id)
+      .toBe(otherPlan.id);
+    const legacyPhotoId = randomUUID();
+    try {
+      await db.pool.query(
+        `INSERT INTO route_unit_photos(id,plan_id,vehicle_id,driver_id,storage_key,content_hash,bytes,created_at,expires_at)
+         SELECT $1,$2,vehicle_id,driver_id,$3,content_hash,bytes,created_at,expires_at
+           FROM route_unit_photos WHERE id=$4`,
+        [legacyPhotoId, planId, `${legacyPhotoId}.webp`, firstId],
+      );
+      expect((await db.pool.query(
+        `SELECT count(*)::integer AS n FROM route_unit_photos
+          WHERE vehicle_id=$1 AND content_hash=(SELECT content_hash FROM route_unit_photos WHERE id=$2)`,
+        [vehicleId, firstId],
+      )).rows[0].n).toBe(2);
+      await expect(uploadDriverUnitPhoto(db.pool, driverId, planId, first!, "image/jpeg", serviceTimezone, photoRoot, photoCaptureAt))
+        .rejects.toMatchObject({ code: "UNIT_PHOTO_REUSED", status: 409 });
+    } finally {
+      await db.pool.query("DELETE FROM route_unit_photos WHERE id=$1", [legacyPhotoId]);
+      await db.pool.query("UPDATE route_unit_photos SET plan_id=$2 WHERE id=$1", [firstId, planId]);
+    }
     expect((await listDriverUnitPhotos(db.pool, driverId, planId, serviceTimezone))).toHaveLength(8);
     expect((await readDriverUnitPhoto(db.pool, driverId, firstId, photoRoot)).subarray(0, 4).toString("hex"))
       .toBe("52494646");
@@ -396,7 +425,7 @@ describe("route publication boundary / real PostgreSQL", () => {
     );
     expect((await readDriverPlan(db.pool, driverId, planId, serviceTimezone)).publication.photoCount).toBe(4);
     expect(await listDriverUnitPhotos(db.pool, driverId, planId, serviceTimezone)).toHaveLength(4);
-    await expect(startDriverRoute(db.pool, driverId, planId, serviceTimezone, now, photoRoot))
+    await expect(startDriverRoute(db.pool, driverId, planId, 3, serviceTimezone, now, photoRoot))
       .rejects.toMatchObject({ code: "UNIT_PHOTOS_REQUIRED", status: 409 });
     await db.pool.query("UPDATE route_unit_photos SET created_at=$2::timestamptz WHERE plan_id=$1",
       [planId, photoCaptureAt.toISOString()]);
@@ -412,7 +441,7 @@ describe("route publication boundary / real PostgreSQL", () => {
       expect(await listDriverUnitPhotos(db.pool, replacement.id, planId, serviceTimezone)).toEqual([]);
       await expect(readDriverUnitPhoto(db.pool, replacement.id, firstId, photoRoot))
         .rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
-      await expect(startDriverRoute(db.pool, replacement.id, planId, serviceTimezone, now, photoRoot))
+      await expect(startDriverRoute(db.pool, replacement.id, planId, 3, serviceTimezone, now, photoRoot))
         .rejects.toMatchObject({ code: "UNIT_PHOTOS_REQUIRED", status: 409 });
     } finally {
       await db.pool.query("UPDATE route_vehicles SET driver_id=$2 WHERE id=$1", [vehicleId, driverId]);
@@ -426,7 +455,7 @@ describe("route publication boundary / real PostgreSQL", () => {
       .rejects.toMatchObject({ code: "UNIT_PHOTO_LIMIT", status: 409 });
     const beforeRace = await getVehicle(db.pool, vehicleId);
     const [startRace, assignmentRace] = await Promise.allSettled([
-      startDriverRoute(db.pool, driverId, planId, serviceTimezone, now, photoRoot),
+      startDriverRoute(db.pool, driverId, planId, 3, serviceTimezone, now, photoRoot),
       assignDriver(db.pool, actor, vehicleId, {
         driver_id: null, expectedVersion: beforeRace.version,
       }),
@@ -445,13 +474,13 @@ describe("route publication boundary / real PostgreSQL", () => {
     await assignDriver(db.pool, actor, vehicleId, {
       driver_id: driverId, expectedVersion: unassigned.version,
     });
-    if (!started) started = await startDriverRoute(db.pool, driverId, planId, serviceTimezone, now, photoRoot);
+    if (!started) started = await startDriverRoute(db.pool, driverId, planId, 3, serviceTimezone, now, photoRoot);
     expect(started.alreadyStarted).toBe(false);
-    expect((await startDriverRoute(db.pool, driverId, planId, serviceTimezone, now, photoRoot)).alreadyStarted)
+    expect((await startDriverRoute(db.pool, driverId, planId, 3, serviceTimezone, now, photoRoot)).alreadyStarted)
       .toBe(true);
-    expect((await startDriverRoute(db.pool, driverId, planId, serviceTimezone, now, "/missing-unit-photo-volume")).alreadyStarted)
+    expect((await startDriverRoute(db.pool, driverId, planId, 3, serviceTimezone, now, "/missing-unit-photo-volume")).alreadyStarted)
       .toBe(true);
-    await expect(startDriverRoute(db.pool, randomUUID(), planId, serviceTimezone, now, "/missing-unit-photo-volume"))
+    await expect(startDriverRoute(db.pool, randomUUID(), planId, 3, serviceTimezone, now, "/missing-unit-photo-volume"))
       .rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
     expect((await readDriverPlan(db.pool, driverId, planId, serviceTimezone)).publication)
       .toMatchObject({ photoCount: 8 });
@@ -511,11 +540,11 @@ describe("route publication boundary / real PostgreSQL", () => {
     });
     expect((await readDriverPlan(db.pool, driverId, planId, serviceTimezone)).publication.startedAt).toBeTruthy();
     expect((await listDriverPlans(db.pool, driverId)).some((row) => row.id === planId)).toBe(true);
-    expect((await startDriverRoute(db.pool, driverId, planId, serviceTimezone, new Date("2026-09-23T03:00:00.000Z"), photoRoot)).alreadyStarted).toBe(true);
+    expect((await startDriverRoute(db.pool, driverId, planId, 3, serviceTimezone, new Date("2026-09-23T03:00:00.000Z"), photoRoot)).alreadyStarted).toBe(true);
     expect((await readDriverUnitPhoto(db.pool, driverId,
       (await listDriverUnitPhotos(db.pool, driverId, planId, serviceTimezone))[0].id, photoRoot)).length).toBeGreaterThan(0);
     await expect(readDriverPlan(db.pool, relief.id, planId, serviceTimezone)).rejects.toThrow("NOT_FOUND");
-    await expect(startDriverRoute(db.pool, relief.id, planId, serviceTimezone, new Date("2026-09-23T03:00:00.000Z"), photoRoot)).rejects.toThrow("NOT_FOUND");
+    await expect(startDriverRoute(db.pool, relief.id, planId, 3, serviceTimezone, new Date("2026-09-23T03:00:00.000Z"), photoRoot)).rejects.toThrow("NOT_FOUND");
     const tomorrow = await createPlan(db.pool, actor, {
       date: "2026-09-23", label: "Unidad con relevo",
     });

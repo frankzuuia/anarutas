@@ -2,18 +2,20 @@ import type { Pool } from "pg";
 import { transaction } from "./database";
 import { AppError } from "./errors";
 import { todayInTimezone } from "./local-date";
-import { uuid } from "./orders-validation";
+import { integer, uuid } from "./orders-validation";
 import { unitPhotoRoot } from "./unit-photos";
 
 export async function startDriverRoute(
   pool: Pool,
   driverId: string,
   planId: string,
+  expectedRevision: number,
   timezone: string,
   now = new Date(),
   configuredRoot?: string,
 ) {
   const id = uuid(planId);
+  const revision = integer(expectedRevision, 1);
   return transaction(pool, async (sql) => {
     // Serialize against fleet reassignment/unavailability before checking ownership.
     await sql.query("SELECT pg_advisory_xact_lock(hashtext('ana-rutas:fleet'))");
@@ -23,7 +25,7 @@ export async function startDriverRoute(
     );
     if (!plan.rowCount) throw new AppError("NOT_FOUND", 404);
     const publication = await sql.query(
-      `SELECT pub.vehicle_id,pub.started_at
+      `SELECT pub.vehicle_id,pub.started_at,pub.revision
          FROM route_plan_publications pub
          JOIN route_plan_vehicles pv ON pv.plan_id=pub.plan_id AND pv.vehicle_id=pub.vehicle_id
          JOIN route_vehicles v ON v.id=pub.vehicle_id
@@ -38,6 +40,7 @@ export async function startDriverRoute(
     );
     const route = publication.rows[0];
     if (!route) throw new AppError("NOT_FOUND", 404);
+    if (route.revision !== revision) throw new AppError("VERSION_CONFLICT", 409);
     if (route.started_at)
       return { startedAt: route.started_at as Date, alreadyStarted: true };
     await unitPhotoRoot(configuredRoot);

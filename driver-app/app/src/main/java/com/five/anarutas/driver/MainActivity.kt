@@ -39,6 +39,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +55,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 private val backdrop = Color(0xFF0C100D)
@@ -424,6 +429,7 @@ private fun HistoryRouteCard(summary: PlanSummary, busy: Boolean, model: DriverV
 private fun RouteScreen(state: DriverUiState, model: DriverViewModel) {
     val context = LocalContext.current
     val route = state.activePlan()
+    var confirmStart by remember(route?.id, route?.publicationRevision) { mutableStateOf(false) }
     ScreenHeading("Ruta", route?.let { "${it.date} · ${vehicleLabel(it.vehicle, it.plate)}" })
     if (route == null) {
         EmptyState("No hay una ruta para mostrar", "Selecciona una ruta desde Inicio o espera una asignación para hoy.")
@@ -468,13 +474,44 @@ private fun RouteScreen(state: DriverUiState, model: DriverViewModel) {
     }
     if (route.startedAt == null) {
         Button(
-            onClick = model::startRoute,
-            enabled = !state.busy && route.photoCount >= 5,
+            onClick = { confirmStart = true },
+            enabled = !state.busy && route.photoCount >= 5 && route.orders.isNotEmpty(),
             modifier = Modifier.height(42.dp),
             contentPadding = PaddingValues(horizontal = 19.dp),
         ) { Text("Iniciar ruta", fontSize = 12.sp) }
         if (route.photoCount < 5)
             Text("Faltan ${5 - route.photoCount} fotos distintas para habilitar el inicio.", color = muted, fontSize = 11.sp)
+        if (confirmStart) {
+            Dialog(onDismissRequest = { confirmStart = false }) {
+                Surface(
+                    color = panel,
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, border),
+                ) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                        Text("¿Iniciar esta ruta?", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text(route.label, color = green, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "${vehicleLabel(route.vehicle, route.plate)} · ${route.overview?.stopCount ?: route.orders.size} paradas · ${route.photoCount} fotos de la unidad",
+                            color = muted, fontSize = 12.sp,
+                        )
+                        Text("Confirma sólo cuando estés listo para salir. El inicio quedará registrado y ya no podrás agregar fotos de salida.", color = muted, fontSize = 12.sp)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { confirmStart = false }) { Text("Cancelar") }
+                            Button(
+                                enabled = !state.busy,
+                                onClick = {
+                                    confirmStart = false
+                                    model.startRoute(route.id, route.publicationRevision)
+                                },
+                                modifier = Modifier.height(38.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp),
+                            ) { Text("Sí, iniciar", fontSize = 12.sp) }
+                        }
+                    }
+                }
+            }
+        }
     } else {
         Text("Ruta iniciada", color = green, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         if (BuildConfig.NAVIGATION_API_KEY.isNotBlank()) {

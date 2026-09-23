@@ -322,7 +322,12 @@ test("admin provisioning, native device login, route isolation and revocation ov
     publication: { revision: 1, startedAt: null },
   });
   const startUrl = `${origin}/api/mobile/plans/${planId}/start`;
-  const blockedStart = await request.post(startUrl, { headers: authorization });
+  const startRequest = { headers: authorization, data: { expectedRevision: 1 } };
+  const missingConfirmation = await request.post(startUrl, { headers: authorization });
+  expect(missingConfirmation.status()).toBe(415);
+  const staleConfirmation = await request.post(startUrl, { headers: authorization, data: { expectedRevision: 0 } });
+  expect(staleConfirmation.status()).toBe(400);
+  const blockedStart = await request.post(startUrl, startRequest);
   expect(blockedStart.status()).toBe(409);
   expect(await blockedStart.json()).toMatchObject({ error: "UNIT_PHOTOS_REQUIRED" });
   const photoIds: string[] = [];
@@ -352,13 +357,16 @@ test("admin provisioning, native device login, route isolation and revocation ov
   );
   const stalePhotoRoute = await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization });
   expect((await stalePhotoRoute.json()).publication.photoCount).toBe(4);
-  expect((await request.post(startUrl, { headers: authorization })).status()).toBe(409);
+  expect((await request.post(startUrl, startRequest)).status()).toBe(409);
   await db.pool.query("UPDATE route_unit_photos SET created_at=$2 WHERE id=$1",
     [photoIds[0], firstPhotoTimestamp]);
-  const firstStart = await request.post(startUrl, { headers: authorization });
+  const wrongRevision = await request.post(startUrl, { headers: authorization, data: { expectedRevision: 2 } });
+  expect(wrongRevision.status()).toBe(409);
+  expect(await wrongRevision.json()).toMatchObject({ error: "VERSION_CONFLICT" });
+  const firstStart = await request.post(startUrl, startRequest);
   expect(firstStart.status()).toBe(200);
   expect(await firstStart.json()).toMatchObject({ alreadyStarted: false });
-  const repeatedStart = await request.post(startUrl, { headers: authorization });
+  const repeatedStart = await request.post(startUrl, startRequest);
   expect(repeatedStart.status()).toBe(200);
   expect(await repeatedStart.json()).toMatchObject({ alreadyStarted: true });
   expect((await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization }).then((response) => response.json())).publication.startedAt)

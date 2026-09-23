@@ -2,7 +2,7 @@ import baseConfig from "./stryker.base.config.mjs";
 
 const unitPhotosConfig = {
   ...baseConfig,
-  mutate: ["src/core/unit-photos.ts:146-164"],
+  mutate: ["src/core/unit-photos.ts:146-176"],
   testFiles: ["tests/route-publications.test.ts"],
   testRunner: "vitest",
   vitest: { configFile: "vitest.config.ts" },

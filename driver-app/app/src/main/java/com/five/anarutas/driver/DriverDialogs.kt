@@ -1,9 +1,7 @@
 package com.five.anarutas.driver
 
 import android.graphics.BitmapFactory
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -22,7 +20,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,7 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,17 +53,13 @@ private val dialogMuted = Color(0xFFAEB9AF)
 internal fun UnitPhotosDialog(state: DriverUiState, model: DriverViewModel) {
     val context = LocalContext.current
     val route = state.selected ?: state.dashboard?.today ?: return
-    var pendingCameraFile by remember { mutableStateOf<File?>(null) }
+    var pendingCameraPath by rememberSaveable { mutableStateOf<String?>(null) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
-        val file = pendingCameraFile
-        pendingCameraFile = null
-        if (saved && file != null) {
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-            model.uploadUnitPhoto(context, uri, file)
-        } else file?.delete()
-    }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
-        if (uri != null) model.uploadUnitPhoto(context, uri)
+        val file = pendingCameraPath?.let(::File)
+        pendingCameraPath = null
+        if (saved && file != null && file.isFile && file.length() > 0L)
+            model.uploadUnitPhoto(context, file)
+        else file?.delete()
     }
     Dialog(onDismissRequest = model::closePhotos) {
         Surface(color = dialogSurface, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
@@ -91,18 +84,19 @@ internal fun UnitPhotosDialog(state: DriverUiState, model: DriverViewModel) {
                     }
                 }
                 if (route.startedAt == null) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(enabled = !state.busy && route.photoCount < 8, onClick = {
-                            val directory = File(context.cacheDir, "unit-camera").also { it.mkdirs() }
-                            val file = File(directory, "unit-${UUID.randomUUID()}.jpg")
-                            pendingCameraFile = file
+                    OutlinedButton(enabled = !state.busy && route.photoCount < 8 && pendingCameraPath == null, onClick = {
+                        val directory = File(context.cacheDir, "unit-camera").also { it.mkdirs() }
+                        val file = File(directory, "unit-${UUID.randomUUID()}.jpg")
+                        pendingCameraPath = file.absolutePath
+                        try {
                             camera.launch(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file))
-                        }) { Text("Tomar foto", fontSize = 12.sp) }
-                        Button(enabled = !state.busy && route.photoCount < 8, onClick = {
-                            picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        }) { Text("Elegir foto", fontSize = 12.sp) }
-                    }
-                    Text("Mínimo 5 fotos distintas para iniciar. Se eliminan automáticamente a los 15 días.", color = dialogMuted, fontSize = 11.sp)
+                        } catch (_: RuntimeException) {
+                            pendingCameraPath = null
+                            file.delete()
+                            model.cameraUnavailable()
+                        }
+                    }) { Text("Tomar foto", fontSize = 12.sp) }
+                    Text("Mínimo 5 fotos distintas tomadas hoy para iniciar.", color = dialogMuted, fontSize = 11.sp)
                 } else {
                     Text("Ruta iniciada · las fotos de salida quedan cerradas.", color = dialogMuted, fontSize = 12.sp)
                 }

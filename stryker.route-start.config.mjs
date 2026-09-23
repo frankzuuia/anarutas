@@ -2,7 +2,7 @@ import baseConfig from "./stryker.base.config.mjs";
 
 const routeStartConfig = {
   ...baseConfig,
-  mutate: ["src/core/route-start.ts:39-54"],
+  mutate: ["src/core/route-start.ts:43-62"],
   testFiles: ["tests/route-publications.test.ts"],
   testRunner: "vitest",
   vitest: { configFile: "vitest.config.ts" },

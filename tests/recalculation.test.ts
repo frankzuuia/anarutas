@@ -408,7 +408,7 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
         }).jpeg().toBuffer();
         await uploadDriverUnitPhoto(db.pool, drivers[0].id, plan.id, bytes, "image/jpeg", "UTC", photoRoot, new Date("2026-09-10T09:00:00Z"));
       }
-      await startDriverRoute(db.pool, drivers[0].id, plan.id, "UTC", new Date("2026-09-10T09:00:00Z"), photoRoot);
+      await startDriverRoute(db.pool, drivers[0].id, plan.id, 1, "UTC", new Date("2026-09-10T09:00:00Z"), photoRoot);
       board = await orderBoard(db.pool, plan.id);
       await moveShipment(db.pool, actor, plan.id, {
         shipmentId: secondMutable.id, vehicleId: vehicles[1].id,

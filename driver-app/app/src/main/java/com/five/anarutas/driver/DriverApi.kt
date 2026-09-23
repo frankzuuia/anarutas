@@ -36,6 +36,7 @@ data class DeliveryOrder(
     val longitude: Double? = null,
 )
 data class UnitPhoto(val id: String, val createdAt: String, val expiresAt: String)
+data class UnitPhotoUpload(val photo: UnitPhoto, val duplicate: Boolean)
 data class RouteOverview(
     val departureAt: String?,
     val finishedAt: String?,
@@ -273,7 +274,7 @@ class DriverApi(private val server: String) {
         }
     }
 
-    suspend fun uploadUnitPhoto(token: String, planId: String, bytes: ByteArray, contentType: String): UnitPhoto =
+    suspend fun uploadUnitPhoto(token: String, planId: String, bytes: ByteArray): UnitPhotoUpload =
         withContext(Dispatchers.IO) {
             val connection = URL("$server/api/mobile/plans/$planId/unit-photos").openConnection() as HttpURLConnection
             try {
@@ -282,7 +283,7 @@ class DriverApi(private val server: String) {
                 connection.connectTimeout = 10000
                 connection.readTimeout = 30000
                 connection.setRequestProperty("Authorization", "Bearer $token")
-                connection.setRequestProperty("Content-Type", contentType)
+                connection.setRequestProperty("Content-Type", "image/jpeg")
                 connection.setRequestProperty("Accept", "application/json")
                 connection.setFixedLengthStreamingMode(bytes.size)
                 connection.doOutput = true
@@ -294,7 +295,10 @@ class DriverApi(private val server: String) {
                     throw DriverApiException(status, code)
                 }
                 val item = JSONObject(text)
-                UnitPhoto(item.getString("id"), item.getString("createdAt"), item.getString("expiresAt"))
+                UnitPhotoUpload(
+                    UnitPhoto(item.getString("id"), item.getString("createdAt"), item.getString("expiresAt")),
+                    item.optBoolean("duplicate", false),
+                )
             } finally {
                 connection.disconnect()
             }
@@ -328,7 +332,8 @@ class DriverApi(private val server: String) {
         } finally { connection.disconnect() }
     }
 
-    suspend fun startRoute(token: String, planId: String) {
-        exchange("POST", "/api/mobile/plans/$planId/start", token)
+    suspend fun startRoute(token: String, planId: String, expectedRevision: Int) {
+        exchange("POST", "/api/mobile/plans/$planId/start", token,
+            JSONObject().put("expectedRevision", expectedRevision))
     }
 }

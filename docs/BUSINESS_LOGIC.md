@@ -151,3 +151,9 @@ dentro de ese plan: sus pedidos, orden y responsable publicado quedan fijos;
 la asignación persistente de flota puede cambiar para rutas futuras. Las otras
 camionetas del plan continúan editables. El mapa usa datos reales de ruta y,
 para giros en vivo, Navigation SDK con costo observado por destino.
+
+## Ajuste 2B — captura actual y confirmación de salida
+
+- BL-096: el chofer sólo puede abrir la cámara para documentar su unidad; la APK no ofrece galería ni carga desde archivos. La foto se toma antes de salir y se sube desde caché privada, que se limpia tras el intento. El servidor no cuenta dos veces una imagen idéntica y rechaza reutilizarla en otra ruta/fecha de la misma camioneta. Sólo el chofer publicado vigente puede cargarla; se audita la aceptación. Esto no constituye una prueba criptográfica contra un celular o cliente modificado ni contra fotografiar una pantalla.
+- BL-097: tocar «Iniciar ruta» muestra primero camioneta, ruta y número de paradas; cancelar no escribe nada. Confirmar envía la revisión publicada que el chofer vio. Si administración republicó mientras el diálogo estaba abierto, el servidor rechaza el inicio y exige actualizar; el servidor conserva la validación de identidad, fecha y cinco fotos.
+- BL-098: la APK sólo ofrece la función de fotos cuando el endpoint desplegado responde correctamente. Un 404 HTML de versión antigua se comunica como servidor pendiente de actualización, sin confundirse con una ruta revocada. La retención de quince días se informa en administración, no en la pantalla del chofer. Antes de la prueba live se requiere backend actualizado y volumen persistente privado.

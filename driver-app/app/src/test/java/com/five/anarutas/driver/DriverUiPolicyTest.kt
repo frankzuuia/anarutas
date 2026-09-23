@@ -1,5 +1,7 @@
 package com.five.anarutas.driver
 
+import java.io.File
+import java.nio.file.Files
 import java.security.GeneralSecurityException
 import org.json.JSONException
 import org.junit.Assert.assertEquals
@@ -48,6 +50,37 @@ class DriverUiPolicyTest {
             "El servidor rechazó la solicitud (500).",
             friendlyError(DriverApiException(500, "")),
         )
+        assertEquals(
+            "El servidor aún no tiene disponible esta función. Avisa a administración para actualizarlo.",
+            friendlyError(DriverApiException(404, "")),
+        )
+        assertEquals(
+            "Esta imagen ya se usó en otra ruta de la unidad. Toma una foto nueva.",
+            friendlyError(DriverApiException(409, "UNIT_PHOTO_REUSED")),
+        )
+        assertEquals(
+            "La ruta cambió desde que la abriste. Actualízala y confirma de nuevo.",
+            friendlyError(DriverApiException(409, "VERSION_CONFLICT")),
+        )
+    }
+
+    @Test
+    fun `only a nonempty private camera file is accepted for unit photos`() {
+        val cache = Files.createTempDirectory("ana-camera-test").toFile()
+        try {
+            val cameraDir = File(cache, "unit-camera").also { it.mkdir() }
+            val valid = File(cameraDir, "unit-fresh.jpg").also { it.writeBytes(byteArrayOf(1, 2, 3)) }
+            val empty = File(cameraDir, "unit-empty.jpg").also { it.createNewFile() }
+            val gallery = File(cache, "gallery.jpg").also { it.writeBytes(byteArrayOf(1)) }
+            val renamedGallery = File(cameraDir, "gallery.jpg").also { it.writeBytes(byteArrayOf(1)) }
+            assertTrue(isPrivateCameraCapture(cache, valid))
+            assertFalse(isPrivateCameraCapture(cache, empty))
+            assertFalse(isPrivateCameraCapture(cache, gallery))
+            assertFalse(isPrivateCameraCapture(cache, renamedGallery))
+            assertFalse(isPrivateCameraCapture(cache, File(cameraDir, "unit-missing.jpg")))
+        } finally {
+            cache.deleteRecursively()
+        }
     }
 
     @Test
