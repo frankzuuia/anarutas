@@ -1,5 +1,20 @@
 # Progreso — bloque 1
 
+## Ruta publicada, inspección e inicio móvil — 22/09/2026
+
+Especificación: `BLOQUE-APK-RUTA-PUBLICACION.md`; MR01..17.
+
+- [x] MP-T01 (BL-088..095): auditar esquema, API, Android, recálculo lateral, almacenamiento y facturación oficial; escenario y contrato documentados.
+- [ ] MP-T02 (BL-088..089 / MR01..05): migración de snapshot por camioneta, API admin individual/global idempotente y lectura móvil sólo publicada.
+- [ ] MP-T03 (BL-091 / MR10..12): proteger camioneta iniciada en plan, pedidos, flota, importación, optimización y recálculo, sin bloquear otras camionetas.
+- [ ] MP-T04 (BL-092..093 / MR06..09,13..14): fotos WebP privadas fuera de PostgreSQL, volumen, limpieza 15 días y control admin por fecha.
+- [ ] MP-T05 (BL-090 / MR06..12): inicio transaccional con foto/fecha/asignación, respuesta idempotente y auditoría.
+- [ ] MP-T06 (BL-094 / MR15..16): APK compacta con Ruta activa, detalle/recorrido/secuencia, captura, inicio y mapa Navigation SDK real, accesible abajo tras iniciar.
+- [ ] MP-T07 (BL-088..089,095 / MR02..05,17): panel de publicación individual/global con modal y Control de unidades.
+- [ ] MP-T08 (todos): Gherkin, unitarias, PostgreSQL/API real, Android/E2E, seguridad, cobertura, mutación, cuotas/latencia, diff, dispositivo y smoke; sin commit/push/deploy hasta autorización.
+
+Estado local al 22/09: MP-T02, T03, T05 y T07 tienen implementación y pruebas locales; T04 aún necesita volumen persistente, T06 clave Android y dispositivo físico, y T08 sigue abierto por QA real, métricas y avisos legales. Evidencia exacta en `QA-BLOQUE-APK-RUTA-PUBLICACION.md`. Ninguna tarea se marca cerrada ni lista para despliegue. La asignación de chofer a camioneta persiste entre días y puede cambiarse para planes futuros; la ruta ya iniciada conserva su responsable y no se transfiere automáticamente.
+
 ## Higiene de almacenamiento de pruebas — 15/09/2026
 
 - [x] HA-T01: autopsia local confirmó 4,042 clústeres PostgreSQL temporales y diez sandboxes Stryker abandonados; no eran código ni datos productivos.

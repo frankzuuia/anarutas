@@ -1,10 +1,12 @@
 package com.five.anarutas.driver
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +41,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -167,10 +170,17 @@ private fun AccessScreen(state: DriverUiState, model: DriverViewModel) {
 
 @Composable
 private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
+    val context = LocalContext.current
+    val activeRoute = state.activePlan()
+    val mapAvailable = activeRoute?.startedAt != null && BuildConfig.NAVIGATION_API_KEY.isNotBlank()
+    val openMap: () -> Unit = {
+        if (activeRoute != null) context.startActivity(Intent(context, RouteNavigationActivity::class.java)
+            .putExtra(RouteNavigationActivity.EXTRA_PLAN_ID, activeRoute.id))
+    }
     Scaffold(
         containerColor = backdrop,
         modifier = Modifier.fillMaxSize().safeDrawingPadding(),
-        bottomBar = { DriverBottomBar(state.destination, model::navigate) },
+        bottomBar = { DriverBottomBar(state.destination, mapAvailable, openMap, model::navigate) },
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding)
@@ -185,6 +195,12 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
                 DriverDestination.ROUTE -> RouteScreen(state, model)
                 DriverDestination.ORDERS -> OrdersScreen(state, model)
                 DriverDestination.PROFILE -> ProfileScreen(state, model)
+            }
+        }
+        if (state.showPhotos) UnitPhotosDialog(state, model)
+        state.orderDetailId?.let { orderId ->
+            state.activePlan()?.orders?.firstOrNull { it.id == orderId }?.let { order ->
+                OrderDetailDialog(order, model::closeOrder)
             }
         }
     }
@@ -205,18 +221,33 @@ private fun StatusMessages(state: DriverUiState) {
 }
 
 @Composable
-private fun DriverBottomBar(selected: DriverDestination, onSelect: (DriverDestination) -> Unit) {
+private fun DriverBottomBar(
+    selected: DriverDestination,
+    mapAvailable: Boolean,
+    onMap: () -> Unit,
+    onSelect: (DriverDestination) -> Unit,
+) {
     Surface(color = Color(0xFF121713), tonalElevation = 3.dp) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 5.dp),
             horizontalArrangement = Arrangement.spacedBy(3.dp),
         ) {
-            listOf(
+            val tabs = listOf(
                 DriverDestination.HOME to "Inicio",
                 DriverDestination.ROUTE to "Ruta",
                 DriverDestination.ORDERS to "Pedidos",
                 DriverDestination.PROFILE to "Perfil",
-            ).forEach { (destination, label) ->
+            )
+            tabs.forEachIndexed { index, (destination, label) ->
+                if (index == 2 && mapAvailable) {
+                    TextButton(
+                        onClick = onMap,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.textButtonColors(containerColor = greenSoft, contentColor = green),
+                        contentPadding = PaddingValues(horizontal = 4.dp),
+                    ) { Text("Mapa", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                }
                 TextButton(
                     onClick = { onSelect(destination) },
                     modifier = Modifier.weight(1f).height(48.dp),
@@ -292,7 +323,7 @@ private fun TodayRouteCard(
     Card(
         colors = CardDefaults.cardColors(containerColor = panel),
         border = BorderStroke(1.dp, Color(0xFF30412D)),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { model.navigate(DriverDestination.ROUTE) },
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
@@ -391,6 +422,7 @@ private fun HistoryRouteCard(summary: PlanSummary, busy: Boolean, model: DriverV
 
 @Composable
 private fun RouteScreen(state: DriverUiState, model: DriverViewModel) {
+    val context = LocalContext.current
     val route = state.activePlan()
     ScreenHeading("Ruta", route?.let { "${it.date} · ${vehicleLabel(it.vehicle, it.plate)}" })
     if (route == null) {
@@ -416,17 +448,58 @@ private fun RouteScreen(state: DriverUiState, model: DriverViewModel) {
             }
         }
     }
+    Surface(color = panel, shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, border)) {
+        Row(
+            Modifier.fillMaxWidth().padding(13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Fotos de la unidad", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text("${route.photoCount} de 8 · mínimo 5 para salir", color = muted, fontSize = 11.sp)
+            }
+            OutlinedButton(
+                onClick = model::openPhotos,
+                enabled = !state.busy,
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                modifier = Modifier.height(38.dp),
+            ) { Text("Ver fotos", fontSize = 11.sp) }
+        }
+    }
+    if (route.startedAt == null) {
+        Button(
+            onClick = model::startRoute,
+            enabled = !state.busy && route.photoCount >= 5,
+            modifier = Modifier.height(42.dp),
+            contentPadding = PaddingValues(horizontal = 19.dp),
+        ) { Text("Iniciar ruta", fontSize = 12.sp) }
+        if (route.photoCount < 5)
+            Text("Faltan ${5 - route.photoCount} fotos distintas para habilitar el inicio.", color = muted, fontSize = 11.sp)
+    } else {
+        Text("Ruta iniciada", color = green, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        if (BuildConfig.NAVIGATION_API_KEY.isNotBlank()) {
+            OutlinedButton(
+                onClick = {
+                    context.startActivity(Intent(context, RouteNavigationActivity::class.java)
+                        .putExtra(RouteNavigationActivity.EXTRA_PLAN_ID, route.id))
+                },
+                modifier = Modifier.height(40.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+            ) { Text("Abrir mapa de ruta", fontSize = 12.sp) }
+        } else Text("El mapa estará disponible cuando se configure la clave Android de navegación.",
+            color = muted, fontSize = 11.sp)
+    }
     SectionTitle("Secuencia de paradas")
     if (route.orders.isEmpty()) EmptyState("Ruta sin pedidos", "Administración no ha asignado pedidos a esta camioneta.")
-    route.orders.forEach { order -> StopRow(order, state.dashboard?.timezone ?: "UTC") }
+    route.orders.forEach { order -> StopRow(order, state.dashboard?.timezone ?: "UTC") { model.showOrder(order.id) } }
     if (route.orders.isNotEmpty()) {
         OutlinedButton(onClick = { model.navigate(DriverDestination.ORDERS) }) { Text("Ver detalle de pedidos") }
     }
 }
 
 @Composable
-private fun StopRow(order: DeliveryOrder, timezone: String) {
-    Surface(color = panel, shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, border)) {
+private fun StopRow(order: DeliveryOrder, timezone: String, onClick: () -> Unit) {
+    Surface(color = panel, shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, border), modifier = Modifier.clickable(onClick = onClick)) {
         Row(
             Modifier.fillMaxWidth().padding(13.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -454,7 +527,7 @@ private fun OrdersScreen(state: DriverUiState, model: DriverViewModel) {
         return
     }
     if (route.orders.isEmpty()) EmptyState("Ruta sin pedidos", "Administración no ha asignado pedidos a esta camioneta.")
-    route.orders.forEach { order -> OrderCard(order, state.dashboard?.timezone ?: "UTC") }
+    route.orders.forEach { order -> OrderCard(order, state.dashboard?.timezone ?: "UTC") { model.showOrder(order.id) } }
     if (route.orders.isNotEmpty()) {
         OutlinedButton(onClick = { model.navigate(DriverDestination.ROUTE) }) { Text("Ver secuencia de ruta") }
     }
@@ -487,8 +560,8 @@ private fun ProfileScreen(state: DriverUiState, model: DriverViewModel) {
 }
 
 @Composable
-private fun OrderCard(order: DeliveryOrder, timezone: String) {
-    Card(colors = CardDefaults.cardColors(containerColor = panel), modifier = Modifier.fillMaxWidth()) {
+private fun OrderCard(order: DeliveryOrder, timezone: String, onClick: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = panel), modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Text("PARADA ${order.position}", color = green, fontWeight = FontWeight.Bold, fontSize = 10.sp)
             Text(order.customer, fontSize = 18.sp, fontWeight = FontWeight.Bold)

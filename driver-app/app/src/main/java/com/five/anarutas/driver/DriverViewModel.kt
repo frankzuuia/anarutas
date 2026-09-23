@@ -6,6 +6,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import android.content.Context
+import android.net.Uri
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.security.GeneralSecurityException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +29,9 @@ data class DriverUiState(
     val dashboard: DriverDashboard? = null,
     val selected: AssignedPlan? = null,
     val destination: DriverDestination = DriverDestination.HOME,
+    val photos: List<UnitPhoto> = emptyList(),
+    val showPhotos: Boolean = false,
+    val orderDetailId: String? = null,
 )
 
 internal fun friendlyError(error: Throwable): String = when (error) {
@@ -34,6 +41,13 @@ internal fun friendlyError(error: Throwable): String = when (error) {
         "TOO_MANY_ATTEMPTS" -> "Demasiados intentos. Espera antes de volver a probar."
         "MOBILE_ACCESS_DISABLED" -> "El administrador aún no habilita tu acceso."
         "NOT_FOUND" -> "Esta ruta ya no está asignada a tu camioneta. Actualiza la lista."
+        "UNIT_PHOTO_STORAGE_UNAVAILABLE" -> "No se pueden guardar fotos todavía. Administración debe configurar el almacenamiento de la unidad."
+        "UNIT_PHOTO_LIMIT" -> "Esta ruta ya tiene ocho fotos de la unidad."
+        "UNIT_PHOTO_INVALID" -> "La foto no se pudo procesar. Usa JPG, PNG o WebP."
+        "UNIT_PHOTO_TOO_LARGE" -> "La foto es demasiado grande. Selecciona una de hasta 8 MB."
+        "UNIT_PHOTOS_REQUIRED" -> "Carga al menos cinco fotos distintas de la unidad antes de iniciar."
+        "ROUTE_DATE_MISMATCH" -> "Esta ruta no corresponde al día de hoy."
+        "ROUTE_ALREADY_STARTED" -> "Esta ruta ya inició y no admite más fotos ni cambios."
         else -> "El servidor rechazó la solicitud (${error.code.ifBlank { error.status.toString() }})."
     }
     is IllegalStateException -> if (error.message == "DEVICE_KEY_MISSING") {
@@ -165,6 +179,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { credentials.clearDevice() }
+                NavigationRegistry.endSession()
                 state = state.copy(
                     deviceId = "",
                     token = "",
@@ -233,7 +248,117 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
             selected = selected,
             error = "",
             notice = "",
+            orderDetailId = null,
         )
+    }
+
+    fun showOrder(orderId: String) {
+        state = state.copy(orderDetailId = orderId)
+    }
+
+    fun closeOrder() {
+        state = state.copy(orderDetailId = null)
+    }
+
+    fun openPhotos() {
+        val route = state.selected ?: state.dashboard?.today ?: return
+        if (state.busy) return
+        state = state.copy(showPhotos = true, busy = true, error = "")
+        viewModelScope.launch {
+            try {
+                state = state.copy(photos = DriverApi(BuildConfig.SERVER_URL).unitPhotos(state.token, route.id))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                handleApiFailure(failure)
+            } finally {
+                state = state.copy(busy = false)
+            }
+        }
+    }
+
+    fun closePhotos() {
+        state = state.copy(showPhotos = false)
+    }
+
+    fun uploadUnitPhoto(context: Context, uri: Uri, cameraFile: File? = null) {
+        val route = state.selected ?: state.dashboard?.today ?: return
+        if (state.busy || state.token.isBlank()) return
+        val token = state.token
+        state = state.copy(busy = true, error = "", notice = "")
+        viewModelScope.launch {
+            try {
+                val contentType = context.contentResolver.getType(uri) ?: "image/jpeg"
+                if (contentType !in setOf("image/jpeg", "image/png", "image/webp"))
+                    throw DriverApiException(415, "UNIT_PHOTO_INVALID")
+                val bytes = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        val output = ByteArrayOutputStream()
+                        val chunk = ByteArray(8192)
+                        while (true) {
+                            val count = stream.read(chunk)
+                            if (count < 0) break
+                            if (output.size() + count > 8 * 1024 * 1024)
+                                throw DriverApiException(413, "UNIT_PHOTO_TOO_LARGE")
+                            output.write(chunk, 0, count)
+                        }
+                        output.toByteArray()
+                    } ?: throw DriverApiException(415, "UNIT_PHOTO_INVALID")
+                }
+                val api = DriverApi(BuildConfig.SERVER_URL)
+                api.uploadUnitPhoto(token, route.id, bytes, contentType)
+                val refreshed = api.plan(token, route.id)
+                state = state.copy(
+                    selected = refreshed,
+                    dashboard = state.dashboard?.let { dashboard ->
+                        if (dashboard.today?.id == refreshed.id) dashboard.copy(today = refreshed) else dashboard
+                    },
+                    photos = api.unitPhotos(token, route.id),
+                    notice = "Foto guardada · ${refreshed.photoCount} de 8",
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                handleApiFailure(failure)
+            } finally {
+                runCatching {
+                    cameraFile?.let { file ->
+                        val cachePath = context.cacheDir.canonicalPath + File.separator
+                        if (file.canonicalPath.startsWith(cachePath) && file.name.startsWith("unit-"))
+                            file.delete()
+                    }
+                }
+                state = state.copy(busy = false)
+            }
+        }
+    }
+
+    fun startRoute() {
+        val route = state.selected ?: state.dashboard?.today ?: return
+        if (state.busy || state.token.isBlank() || route.startedAt != null) return
+        val token = state.token
+        state = state.copy(busy = true, error = "", notice = "")
+        viewModelScope.launch {
+            try {
+                val api = DriverApi(BuildConfig.SERVER_URL)
+                api.startRoute(token, route.id)
+                val refreshed = api.plan(token, route.id)
+                state = state.copy(
+                    selected = refreshed,
+                    dashboard = state.dashboard?.let { dashboard ->
+                        if (dashboard.today?.id == refreshed.id) dashboard.copy(today = refreshed) else dashboard
+                    },
+                    destination = DriverDestination.ROUTE,
+                    notice = "Ruta iniciada. Ya puedes abrir el mapa de tu recorrido.",
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                handleApiFailure(failure)
+            } finally {
+                state = state.copy(busy = false)
+            }
+        }
     }
 
     fun logout() {
@@ -243,6 +368,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
         viewModelScope.launch {
             try {
                 DriverApi(BuildConfig.SERVER_URL).logout(accessToken)
+                NavigationRegistry.endSession()
                 withContext(Dispatchers.IO) { credentials.clearToken() }
                 state = state.copy(
                     token = "",
@@ -286,6 +412,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
 
     private suspend fun handleApiFailure(failure: Exception) {
         if (failure is DriverApiException && failure.status == 401) {
+            NavigationRegistry.endSession()
             withContext(Dispatchers.IO) { credentials.clearToken() }
             state = state.copy(
                 token = "",

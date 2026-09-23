@@ -1,10 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { bootstrap } from "../src/core/auth";
 import { updateCustomer } from "../src/core/customers";
 import { saveDeparture } from "../src/core/departure";
 import { AppError } from "../src/core/errors";
-import { createVehicle } from "../src/core/fleet";
+import { assignDriver, createDriver, createVehicle } from "../src/core/fleet";
 import {
   moveShipment,
   orderBoard,
@@ -28,6 +32,10 @@ import {
   getRoutingSettings,
   saveRoutingSettings,
 } from "../src/core/routing-settings";
+import { routeFingerprint } from "../src/core/route-fingerprint";
+import { publishRoutes } from "../src/core/route-publications";
+import { startDriverRoute } from "../src/core/route-start";
+import { uploadDriverUnitPhoto } from "../src/core/unit-photos";
 import { startPostgres } from "./helpers/postgres";
 
 let db: Awaited<ReturnType<typeof startPostgres>>, actor: string;
@@ -292,5 +300,135 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
         )
       ).rows[0].count,
     ).toBe(0);
+  });
+
+  it("recalculates only the mutable lane while preserving a started lane snapshot", async () => {
+    const photoRoot = await mkdtemp(join(tmpdir(), "ana-rutas-recalc-photos-"));
+    try {
+      let plan = await createPlan(db.pool, actor, {
+        date: "2026-09-10",
+        label: "Dos camionetas con una iniciada",
+      });
+      plan = await saveDeparture(db.pool, actor, plan.id, {
+        departureTime: "08:00",
+        expectedVersion: plan.version,
+      });
+      const drivers = [];
+      const vehicles: Awaited<ReturnType<typeof createVehicle>>[] = [];
+      for (const index of [1, 2]) {
+        const driver = await createDriver(db.pool, actor, {
+          id: randomUUID(), name: `Chofer recálculo ${index}`,
+          phone: `331111110${index}`, emergency_name: "", emergency_phone: "",
+          blood_type: "", active: true,
+        });
+        const vehicle = await createVehicle(db.pool, actor, {
+          id: randomUUID(), name: `Camioneta recálculo ${index}`,
+          brand: "Ford", model: "2026", plate: `REC-FROZEN-${index}`,
+          mileage: 0, fuel: "Gasolina", available: true,
+        });
+        await assignDriver(db.pool, actor, vehicle.id, {
+          driver_id: driver.id, expectedVersion: vehicle.version,
+        });
+        drivers.push(driver);
+        vehicles.push(vehicle);
+      }
+      await selectPlanVehicles(db.pool, actor, plan.id, {
+        vehicleIds: vehicles.map((vehicle) => vehicle.id),
+        expectedVersion: plan.version,
+      });
+      await persistImportPage(db.pool, actor, plan.id, page([
+        sourceShipment(500), sourceShipment(501), sourceShipment(502),
+      ]));
+      const customerRows = await db.pool.query(
+        "SELECT id,version FROM route_customers WHERE source=$1 AND odoo_partner_id BETWEEN 800 AND 802 ORDER BY odoo_partner_id",
+        [source],
+      );
+      expect(customerRows.rows).toHaveLength(3);
+      for (const customer of customerRows.rows) {
+        await updateCustomer(db.pool, actor, customer.id, {
+          displayName: "Cliente de recálculo", phone: null, deliveryNote: "",
+          priority: "medium", fulfillmentMode: "delivery", deliveryAddress: "Bodega QA",
+          mapUrl: null, location: { latitude: 20, longitude: -103, placeId: "depot" },
+          windows: [], expectedVersion: Number(customer.version),
+        });
+      }
+      let board = await orderBoard(db.pool, plan.id);
+      const [frozenOrder, firstMutable, secondMutable] = board.shipments;
+      await db.pool.query(
+        "UPDATE route_shipments SET vehicle_id=$2 WHERE id=$1",
+        [frozenOrder.id, vehicles[0].id],
+      );
+      await db.pool.query(
+        "UPDATE route_shipments SET vehicle_id=$2 WHERE id=ANY($1::uuid[])",
+        [[firstMutable.id, secondMutable.id], vehicles[1].id],
+      );
+      board = await orderBoard(db.pool, plan.id);
+      const frozenMetrics = {
+        travelDistanceMeters: 999, travelDurationSeconds: 100,
+        waitDurationSeconds: 0, totalDurationSeconds: 100,
+        performedShipmentCount: 1,
+      };
+      const mutableMetrics = {
+        travelDistanceMeters: 0, travelDurationSeconds: 0,
+        waitDurationSeconds: 0, totalDurationSeconds: 0,
+        performedShipmentCount: 2,
+      };
+      const routes = vehicles.map((vehicle, index) => {
+        const own = board.shipments.filter((shipment) => shipment.vehicle_id === vehicle.id);
+        return {
+          vehicleId: vehicle.id, vehicleName: vehicle.name, encodedPolyline: null,
+          segmentPolylines: [], departureAt: "2026-09-10T08:00:00.000Z",
+          finishedAt: "2026-09-10T08:00:00.000Z", trafficMode: "static",
+          metrics: index === 0 ? frozenMetrics : mutableMetrics,
+          stops: own.map((shipment) => ({
+            shipmentId: shipment.id, position: shipment.position,
+            eta: "2026-09-10T08:00:00.000Z", travelDistanceMeters: 0,
+            travelDurationSeconds: 0, waitDurationSeconds: 0,
+          })),
+        };
+      });
+      const settings = await getRoutingSettings(db.pool);
+      await db.pool.query(
+        `INSERT INTO route_optimization_runs
+         (id,plan_id,base_plan_version,applied_plan_version,request_hash,input_fingerprint,metrics,routes,skipped,created_by)
+         VALUES($1,$2,$3,$3,$4,$5,$6,$7,'[]',$8)`,
+        [randomUUID(), plan.id, board.plan.version,
+          createHash("sha256").update(`frozen-${plan.id}`).digest("hex"),
+          routeFingerprint(board, settings.version),
+          JSON.stringify({ ...frozenMetrics, performedShipmentCount: 3 }),
+          JSON.stringify(routes), actor],
+      );
+      await publishRoutes(db.pool, actor, plan.id, {
+        scope: "all", expectedVersion: board.plan.version,
+      });
+      for (let index = 0; index < 5; index++) {
+        const bytes = await sharp({
+          create: { width: 24, height: 24, channels: 3,
+            background: { r: index * 30, g: 60, b: 90 } },
+        }).jpeg().toBuffer();
+        await uploadDriverUnitPhoto(db.pool, drivers[0].id, plan.id, bytes, "image/jpeg", "UTC", photoRoot, new Date("2026-09-10T09:00:00Z"));
+      }
+      await startDriverRoute(db.pool, drivers[0].id, plan.id, "UTC", new Date("2026-09-10T09:00:00Z"), photoRoot);
+      board = await orderBoard(db.pool, plan.id);
+      await moveShipment(db.pool, actor, plan.id, {
+        shipmentId: secondMutable.id, vehicleId: vehicles[1].id,
+        beforeId: firstMutable.id, expectedVersion: board.plan.version,
+      });
+      await db.pool.query("DELETE FROM route_recalculation_jobs WHERE plan_id<>$1", [plan.id]);
+      await db.pool.query("UPDATE route_recalculation_jobs SET available_at=now() WHERE plan_id=$1", [plan.id]);
+      expect(await processRecalculation(db.pool, "UTC")).toBe(true);
+      const recalculated = await getPlanOptimization(db.pool, plan.id);
+      expect(recalculated?.current).toBe(true);
+      expect(recalculated?.routes.find((route) => route.vehicleId === vehicles[0].id)?.metrics)
+        .toMatchObject(frozenMetrics);
+      expect(recalculated?.routes.find((route) => route.vehicleId === vehicles[1].id)?.stops.map((stop) => stop.shipmentId))
+        .toEqual([secondMutable.id, firstMutable.id]);
+      expect((await db.pool.query(
+        "SELECT snapshot->'route'->'metrics' AS metrics FROM route_plan_publications WHERE plan_id=$1 AND vehicle_id=$2",
+        [plan.id, vehicles[0].id],
+      )).rows[0].metrics).toMatchObject(frozenMetrics);
+    } finally {
+      await rm(photoRoot, { recursive: true, force: true });
+    }
   });
 });

@@ -32,7 +32,10 @@ data class DeliveryOrder(
     val phone: String?,
     val note: String,
     val lines: List<DeliveryLine>,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
 )
+data class UnitPhoto(val id: String, val createdAt: String, val expiresAt: String)
 data class RouteOverview(
     val departureAt: String?,
     val finishedAt: String?,
@@ -45,6 +48,7 @@ data class RouteOverview(
 )
 data class AssignedPlan(
     val id: String,
+    val vehicleId: String = "",
     val label: String,
     val date: String,
     val vehicle: String,
@@ -52,6 +56,10 @@ data class AssignedPlan(
     val routeStatus: String,
     val overview: RouteOverview?,
     val orders: List<DeliveryOrder>,
+    val previewSegments: List<String> = emptyList(),
+    val photoCount: Int = 0,
+    val startedAt: String? = null,
+    val publicationRevision: Int = 0,
 )
 data class DriverDashboard(
     val driver: DriverProfile,
@@ -101,6 +109,8 @@ internal fun parseAssignedPlan(response: JSONObject): AssignedPlan {
                 val line = lines.getJSONObject(lineIndex)
                 DeliveryLine(line.getString("name"), line.getDouble("quantity"), line.getString("unit"))
             },
+            latitude = if (item.isNull("latitude")) null else item.getDouble("latitude"),
+            longitude = if (item.isNull("longitude")) null else item.getDouble("longitude"),
         )
     }.sortedWith(compareBy<DeliveryOrder> { it.position }.thenBy { it.name })
     val overview = route?.let {
@@ -118,6 +128,7 @@ internal fun parseAssignedPlan(response: JSONObject): AssignedPlan {
     }
     return AssignedPlan(
         id = plan.getString("id"),
+        vehicleId = vehicle.getString("id"),
         label = plan.getString("label"),
         date = plan.getString("serviceDate"),
         vehicle = vehicle.getString("name"),
@@ -125,6 +136,16 @@ internal fun parseAssignedPlan(response: JSONObject): AssignedPlan {
         routeStatus = response.getString("routeStatus"),
         overview = overview,
         orders = parsed,
+        previewSegments = route?.optJSONArray("segmentPolylines")?.let { segments ->
+            (0 until segments.length()).mapNotNull { index ->
+                segments.optString(index).takeIf(String::isNotBlank)
+            }
+        } ?: route?.optString("encodedPolyline")?.takeIf(String::isNotBlank)?.let(::listOf).orEmpty(),
+        photoCount = response.optJSONObject("publication")?.optInt("photoCount") ?: 0,
+        startedAt = response.optJSONObject("publication")?.let { publication ->
+            if (publication.isNull("startedAt")) null else publication.optString("startedAt").takeIf(String::isNotBlank)
+        },
+        publicationRevision = response.optJSONObject("publication")?.optInt("revision") ?: 0,
     )
 }
 
@@ -242,5 +263,72 @@ class DriverApi(private val server: String) {
         return withContext(Dispatchers.Default) {
             parseAssignedPlan(JSONObject(exchange("GET", "/api/mobile/plans/$planId", token)))
         }
+    }
+
+    suspend fun unitPhotos(token: String, planId: String): List<UnitPhoto> = withContext(Dispatchers.Default) {
+        val response = JSONArray(exchange("GET", "/api/mobile/plans/$planId/unit-photos", token))
+        (0 until response.length()).map { index ->
+            val item = response.getJSONObject(index)
+            UnitPhoto(item.getString("id"), item.getString("createdAt"), item.getString("expiresAt"))
+        }
+    }
+
+    suspend fun uploadUnitPhoto(token: String, planId: String, bytes: ByteArray, contentType: String): UnitPhoto =
+        withContext(Dispatchers.IO) {
+            val connection = URL("$server/api/mobile/plans/$planId/unit-photos").openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = "POST"
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 10000
+                connection.readTimeout = 30000
+                connection.setRequestProperty("Authorization", "Bearer $token")
+                connection.setRequestProperty("Content-Type", contentType)
+                connection.setRequestProperty("Accept", "application/json")
+                connection.setFixedLengthStreamingMode(bytes.size)
+                connection.doOutput = true
+                connection.outputStream.use { it.write(bytes) }
+                val status = connection.responseCode
+                val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.readLimited() ?: ""
+                if (status !in 200..299) {
+                    val code = runCatching { JSONObject(text).optString("error") }.getOrDefault("")
+                    throw DriverApiException(status, code)
+                }
+                val item = JSONObject(text)
+                UnitPhoto(item.getString("id"), item.getString("createdAt"), item.getString("expiresAt"))
+            } finally {
+                connection.disconnect()
+            }
+        }
+
+    suspend fun photoBytes(token: String, photoId: String): ByteArray = withContext(Dispatchers.IO) {
+        val connection = URL("$server/api/mobile/unit-photos/$photoId").openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = "GET"
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 10000
+            connection.readTimeout = 15000
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            val status = connection.responseCode
+            if (status !in 200..299) {
+                val text = connection.errorStream?.readLimited() ?: ""
+                val code = runCatching { JSONObject(text).optString("error") }.getOrDefault("")
+                throw DriverApiException(status, code)
+            }
+            connection.inputStream.use { stream ->
+                val output = java.io.ByteArrayOutputStream()
+                val chunk = ByteArray(8192)
+                while (true) {
+                    val read = stream.read(chunk)
+                    if (read < 0) break
+                    if (output.size() + read > 1_572_864) throw IOException("PHOTO_TOO_LARGE")
+                    output.write(chunk, 0, read)
+                }
+                output.toByteArray()
+            }
+        } finally { connection.disconnect() }
+    }
+
+    suspend fun startRoute(token: String, planId: String) {
+        exchange("POST", "/api/mobile/plans/$planId/start", token)
     }
 }

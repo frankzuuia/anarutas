@@ -403,3 +403,22 @@ Veredicto previo: GREEN LIGHT para identidad/lectura; no autoriza a marcar
 completos los bloques móviles posteriores. Auditoría incremental:
 INTEGRITY TOTAL. Correspondencia documental: MATCH PERFECT con M-T01..M-T06
 de `PROGRESS.md`.
+
+## Batch 9: BL-088 a BL-095 — publicación e inicio móvil
+
+`BLOQUE-APK-RUTA-PUBLICACION.md` es la especificación normativa de MR01..17.
+Separa por camioneta el borrador editable del snapshot publicado que lee la APK.
+El inicio requiere publicación, identidad/asignación vigente al empezar y cinco
+a ocho fotos válidas de la fecha local de servicio; congela responsable,
+pedidos y secuencia de esa ruta, no las demás. La asignación persistente de
+flota puede cambiar para planes futuros sin transferir la ruta iniciada.
+Metadatos de fotos en PostgreSQL y WebP en volumen privado con limpieza a los
+quince días. Navigation SDK provee los giros reales; la UI del mapa nunca los
+inventa ni reoptimiza la flota al abrirse.
+
+La matriz de escenarios, flujo, datos, permisos, integraciones, costos, fallos,
+recuperación y validación están detallados en ese bloque. Veredicto forense:
+GREEN LIGHT para construir localmente por bloques; no certifica integración
+Google/volumen/dispositivo. Auditoría incremental: INTEGRITY TOTAL con BL-030
+y acceso móvil 1. Correspondencia documental: MATCH PERFECT con MP-T01..MP-T08
+de `PROGRESS.md`.

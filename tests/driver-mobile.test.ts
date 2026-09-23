@@ -15,6 +15,8 @@ import {
   editDriver,
 } from "../src/core/fleet";
 import { createPlan } from "../src/core/plans";
+import { publishRoutes } from "../src/core/route-publications";
+import { routeFingerprint } from "../src/core/route-fingerprint";
 import {
   orderBoard,
   persistImportPage,
@@ -163,6 +165,61 @@ beforeAll(async () => {
     board.shipments[1].id,
     vehicleB.id,
   ]);
+  const assigned = await orderBoard(db.pool, planId);
+  const fingerprint = routeFingerprint(assigned, 0);
+  const routes = assigned.vehicles.map((unit) => {
+    const own = assigned.shipments.filter((item) => item.vehicle_id === unit.id);
+    return {
+      vehicleId: unit.id,
+      vehicleName: unit.name,
+      encodedPolyline: null,
+      segmentPolylines: [],
+      departureAt: "2026-09-21T13:00:00.000Z",
+      finishedAt: "2026-09-21T14:00:00.000Z",
+      trafficMode: "static",
+      metrics: {
+        travelDistanceMeters: 1000,
+        travelDurationSeconds: 600,
+        waitDurationSeconds: 0,
+        totalDurationSeconds: 600,
+        performedShipmentCount: own.length,
+      },
+      stops: own.map((item, index) => ({
+        shipmentId: item.id,
+        position: index + 1,
+        eta: "2026-09-21T13:30:00.000Z",
+        travelDistanceMeters: 1000,
+        travelDurationSeconds: 600,
+        waitDurationSeconds: 0,
+      })),
+    };
+  });
+  await db.pool.query(
+    `INSERT INTO route_optimization_runs
+       (id,plan_id,base_plan_version,applied_plan_version,request_hash,input_fingerprint,metrics,routes,skipped,created_by)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,'[]',$9)`,
+    [
+      randomUUID(),
+      planId,
+      assigned.plan.version - 1,
+      assigned.plan.version,
+      createHash("sha256").update("mobile-published-route").digest("hex"),
+      fingerprint,
+      JSON.stringify({
+        travelDistanceMeters: 2000,
+        travelDurationSeconds: 1200,
+        waitDurationSeconds: 0,
+        totalDurationSeconds: 1200,
+        performedShipmentCount: 2,
+      }),
+      JSON.stringify(routes),
+      admin,
+    ],
+  );
+  await publishRoutes(db.pool, admin, planId, {
+    scope: "all",
+    expectedVersion: assigned.plan.version,
+  });
 });
 
 afterAll(async () => {
@@ -354,8 +411,8 @@ describe("driver mobile identity / real PostgreSQL and EC signatures", () => {
         plan: { id: planId },
         vehicle: { name: "Unidad A" },
         orders: [{ orderName: "S501" }],
-        routeStatus: "not_calculated",
-        route: null,
+        routeStatus: "current",
+        route: { vehicleName: "Unidad A" },
       },
     });
     expect(
@@ -366,11 +423,11 @@ describe("driver mobile identity / real PostgreSQL and EC signatures", () => {
         new Date("2026-09-23T06:00:00.000Z"),
       ),
     ).toMatchObject({ serviceDate: "2026-09-23", today: null });
-    const route = await readDriverPlan(db.pool, driverA.id, planId);
+    const route = await readDriverPlan(db.pool, driverA.id, planId, "America/Mexico_City");
     expect(route.orders).toHaveLength(1);
     expect(route.orders[0].orderName).toBe("S501");
-    expect(route.routeStatus).toBe("not_calculated");
-    expect(route.route).toBeNull();
+    expect(route.routeStatus).toBe("current");
+    expect(route.route).toMatchObject({ vehicleName: "Unidad A" });
     const challenge = await createMobileChallenge(db.pool, {
       phone: driverA.phone,
       deviceId: enrollment.deviceId,
@@ -427,15 +484,15 @@ describe("driver mobile identity / real PostgreSQL and EC signatures", () => {
 
   it("does not grant another driver's plan by a supplied ID", async () => {
     expect(await listDriverPlans(db.pool, randomUUID())).toEqual([]);
-    await expect(readDriverPlan(db.pool, randomUUID(), planId)).rejects.toThrow(
+    await expect(readDriverPlan(db.pool, randomUUID(), planId, "America/Mexico_City")).rejects.toThrow(
       "NOT_FOUND",
     );
-    const b = await readDriverPlan(db.pool, driverB.id, planId);
+    const b = await readDriverPlan(db.pool, driverB.id, planId, "America/Mexico_City");
     expect(b.orders).toHaveLength(1);
     expect(b.orders[0].orderName).toBe("S502");
   });
 
-  it("reports an assigned vehicle without orders as an empty route", async () => {
+  it("does not expose an assigned vehicle without a published route", async () => {
     const emptyDriver = await createDriver(
       db.pool,
       admin,
@@ -459,12 +516,9 @@ describe("driver mobile identity / real PostgreSQL and EC signatures", () => {
       expectedVersion: emptyPlan.version,
     });
     await expect(
-      readDriverPlan(db.pool, emptyDriver.id, emptyPlan.id),
-    ).resolves.toMatchObject({
-      orders: [],
-      routeStatus: "empty",
-      route: null,
-    });
+      readDriverPlan(db.pool, emptyDriver.id, emptyPlan.id, "America/Mexico_City"),
+    ).rejects.toThrow("NOT_FOUND");
+    expect(await listDriverPlans(db.pool, emptyDriver.id)).toEqual([]);
   });
 
   it("revokes access after contact phone change and explicit admin revocation", async () => {

@@ -12,6 +12,7 @@ import {
   FileSpreadsheet,
   MapPinned,
   Sparkles,
+  Send,
 } from "lucide-react";
 import type { Plan } from "@/core/plans";
 import type { Vehicle } from "@/core/fleet-contract";
@@ -34,6 +35,97 @@ import { OrderCandidatePicker } from "./order-candidate-picker";
 
 const minuteText = (value: number) =>
   `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+
+type RoutePublication = {
+  vehicle_id: string;
+  driver_id: string;
+  revision: number;
+  source_plan_version: number;
+  published_at: string;
+  started_at: string | null;
+};
+
+type PublishTarget = {
+  planId: string;
+  scope: "all" | "vehicle";
+  vehicleId?: string;
+  label: string;
+};
+
+function PublishRouteDialog({
+  target,
+  busy,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  target: PublishTarget;
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const title = useId();
+  useEffect(() => {
+    const element = dialog.current;
+    const previous = document.activeElement as HTMLElement | null;
+    element?.showModal();
+    return () => {
+      element?.close();
+      previous?.focus();
+    };
+  }, []);
+  return (
+    <dialog
+      className="fleet-dialog publish-route-dialog"
+      ref={dialog}
+      aria-labelledby={title}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <header className="panel-header">
+        <h2 id={title}>Confirmar publicación</h2>
+        <button
+          type="button"
+          className="quiet"
+          aria-label="Cerrar confirmación"
+          disabled={busy}
+          onClick={onClose}
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
+      </header>
+      <div className="panel-body stack">
+        <p>
+          {target.scope === "all"
+            ? "¿Publicar las rutas de todas las camionetas elegibles?"
+            : `¿Publicar la ruta de ${target.label}?`}
+        </p>
+        <p className="muted">
+          El chofer podrá ver la versión publicada de sus pedidos y recorrido.
+          Publicar no inicia la ruta ni llama a Google.
+        </p>
+        {error && (
+          <p className="notice error" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+      <footer className="fleet-actions">
+        <button type="button" className="quiet" disabled={busy} onClick={onClose}>
+          Cancelar
+        </button>
+        <button type="button" className="route-publish" disabled={busy} onClick={onConfirm}>
+          <Send size={15} aria-hidden="true" />
+          {busy ? "Publicando…" : "Confirmar publicación"}
+        </button>
+      </footer>
+    </dialog>
+  );
+}
 
 function LoadDialog({
   board,
@@ -674,12 +766,24 @@ export function OrdersBoard({
   const [originOpen, setOriginOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
+  const [publicationState, setPublicationState] = useState<{
+    key: string;
+    data: RoutePublication[] | null;
+    error: string;
+  } | null>(null);
+  const [publishTarget, setPublishTarget] = useState<PublishTarget | null>(null);
+  const [publishError, setPublishError] = useState("");
+  const publishing = useRef(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [expandedShipments, setExpandedShipments] = useState<Set<string>>(
     () => new Set(),
   );
   const endpoint = `/api/plans/${plan.id}/orders`;
+  const publicationEndpoint = `/api/plans/${plan.id}/publications`;
+  const publicationKey = `${plan.id}:${plan.version}:${revision}`;
+  const publications = publicationState?.key === publicationKey ? publicationState.data : null;
+  const publicationError = publicationState?.key === publicationKey ? publicationState.error : "";
   const update = useCallback(
     (data: OrderBoard) => {
       setBoard(data);
@@ -710,6 +814,24 @@ export function OrdersBoard({
       current = false;
     };
   }, [endpoint, revision, plan.version, update]);
+  useEffect(() => {
+    let current = true;
+    api<RoutePublication[]>(publicationEndpoint)
+      .then((data) => {
+        if (current) setPublicationState({ key: publicationKey, data, error: "" });
+      })
+      .catch((caught) => {
+        if (current)
+          setPublicationState({
+            key: publicationKey,
+            data: null,
+            error: (caught as Error).message,
+          });
+      });
+    return () => {
+      current = false;
+    };
+  }, [publicationEndpoint, publicationKey]);
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(""), 5000);
@@ -912,6 +1034,35 @@ export function OrdersBoard({
       working(false);
     }
   }
+  async function publish() {
+    if (!board || !publishTarget || publishing.current || publishTarget.planId !== plan.id)
+      return;
+    publishing.current = true;
+    working(true);
+    setPublishError("");
+    try {
+      const result = await api<{
+        changes: { vehicleId: string; revision: number; action: string }[];
+        publications: RoutePublication[];
+      }>(publicationEndpoint, "POST", {
+        scope: publishTarget.scope,
+        ...(publishTarget.vehicleId ? { vehicleId: publishTarget.vehicleId } : {}),
+        expectedVersion: board.plan.version,
+      });
+      setPublicationState({ key: publicationKey, data: result.publications, error: "" });
+      setPublishTarget(null);
+      setNotice(
+        result.changes.length
+          ? `${result.changes.length} ${result.changes.length === 1 ? "ruta actualizada" : "rutas actualizadas"} y visibles para sus choferes.`
+          : "Las rutas ya estaban publicadas; no se duplicó ninguna.",
+      );
+    } catch (caught) {
+      setPublishError((caught as Error).message);
+    } finally {
+      publishing.current = false;
+      working(false);
+    }
+  }
   function toggleShipment(id: string) {
     setExpandedShipments((current) => {
       const next = new Set(current);
@@ -1094,6 +1245,18 @@ export function OrdersBoard({
       </article>
     );
   }
+  const publicationByVehicle = new globalThis.Map<string, RoutePublication>(
+    publications?.map((publication) => [publication.vehicle_id, publication]) ?? [],
+  );
+  const eligible = board?.vehicles.filter(
+    (vehicle) =>
+      board.shipments.some((shipment) => shipment.vehicle_id === vehicle.id) &&
+      !publicationByVehicle.get(vehicle.id)?.started_at,
+  ) ?? [];
+  const hasPublished = eligible.some((vehicle) => publicationByVehicle.has(vehicle.id));
+  const globalPublishLabel = hasPublished
+      ? "Guardar y publicar"
+      : "Publicar rutas";
   return (
     <div className="orders-section" aria-busy={busy}>
       <div className="orders-toolbar">
@@ -1165,8 +1328,26 @@ export function OrdersBoard({
             <Download size={16} />
             <span className="toolbar-action-label">Cargar pedidos de Odoo</span>
           </button>
+          <button
+            type="button"
+            className="route-publish"
+            disabled={!board || board.plan.id !== plan.id || busy || !publications || !eligible.length}
+            aria-label={globalPublishLabel}
+            onClick={() => {
+              setPublishError("");
+              setPublishTarget({ planId: plan.id, scope: "all", label: "todas las camionetas" });
+            }}
+          >
+            <Send size={16} aria-hidden="true" />
+            <span className="toolbar-action-label">{globalPublishLabel}</span>
+          </button>
         </div>
       </div>
+      {publicationError && (
+        <p className="publication-load-error" role="alert">
+          No se pudo consultar qué rutas están publicadas: {publicationError}
+        </p>
+      )}
       {error && (
         <p className="notice error" role="alert">
           {error}
@@ -1189,6 +1370,8 @@ export function OrdersBoard({
             ...board.vehicles,
           ].map((v) => {
             const lane = board.shipments.filter((s) => s.vehicle_id === v.id);
+            const publication = v.id ? publicationByVehicle.get(v.id) : undefined;
+            const fleetChanged = Boolean(v.id && v.driver_id !== v.fleet_driver_id);
             return (
               <section
                 className="lane order-lane"
@@ -1224,7 +1407,48 @@ export function OrdersBoard({
                     </button>
                   )}
                   {v.id && (
-                    <small>{v.driver_name || "Sin chofer asignado"}</small>
+                    <small>
+                      {publication?.started_at
+                        ? `Ruta de ${v.driver_name || "chofer sin nombre"}`
+                        : v.fleet_driver_name || "Sin chofer en flota"}
+                      {fleetChanged && publication?.started_at && v.fleet_driver_name
+                        ? ` · Flota: ${v.fleet_driver_name}`
+                        : ""}
+                    </small>
+                  )}
+                  {v.id && lane.length > 0 && publications && (
+                    <div className="lane-publication">
+                      {publication?.started_at ? (
+                        <span className="lane-publication-state">Ruta iniciada</span>
+                      ) : (
+                        <>
+                          {publication && (
+                            <span className="lane-publication-state">
+                              {fleetChanged ? "Requiere republicar para el nuevo chofer" : "Ruta publicada"}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            className="lane-publish"
+                            disabled={busy || board.plan.id !== plan.id || !v.fleet_driver_id || !v.available}
+                            onClick={() => {
+                              setPublishError("");
+                              setPublishTarget({
+                                planId: plan.id,
+                                scope: "vehicle",
+                                vehicleId: v.id,
+                                label: v.name,
+                              });
+                            }}
+                          >
+                            <Send size={12} aria-hidden="true" />
+                            {publication
+                              ? "Guardar y publicar"
+                              : "Activar ruta"}
+                          </button>
+                        </>
+                      )}
+                    </div>
                   )}
                 </header>
                 <div
@@ -1305,6 +1529,15 @@ export function OrdersBoard({
           }}
           onClose={() => setOriginOpen(false)}
           onSaved={() => setNotice("Punto de salida confirmado.")}
+        />
+      )}
+      {publishTarget?.planId === plan.id && (
+        <PublishRouteDialog
+          target={publishTarget}
+          busy={busy}
+          error={publishError}
+          onClose={() => setPublishTarget(null)}
+          onConfirm={() => void publish()}
         />
       )}
     </div>

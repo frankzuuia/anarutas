@@ -12,6 +12,10 @@ import {
   migrateDriverMobile,
   migrateDriverMobilePhoneNormalization,
 } from "./driver-mobile-schema";
+import { migrateRoutePublications } from "./route-publications-schema";
+import { migrateRouteStartGuards } from "./route-start-guards-schema";
+import { migrateRouteFleetReassignment } from "./route-fleet-reassignment-schema";
+import { migrateUnitPhotos } from "./unit-photos-schema";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
   return new pg.Pool({
@@ -46,6 +50,13 @@ export async function transaction<T>(
     return result;
   } catch (error) {
     await client.query("ROLLBACK");
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "PZR01"
+    )
+      throw new AppError("ROUTE_ALREADY_STARTED", 409);
     throw error;
   } finally {
     client.release();
@@ -75,7 +86,7 @@ export async function migrate(pool: Pool, instanceId: string) {
         "SELECT schema_version FROM rutas_installation WHERE singleton = true",
       );
       let version = result.rows[0]?.schema_version;
-      if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(version))
+      if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(version))
         throw new AppError("SCHEMA_VERSION_UNSUPPORTED", 503);
       if (version === 1) {
         await migrateFleet(client);
@@ -99,6 +110,10 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (version < 9) await migrateOrderCandidates(client);
       if (version < 10) await migrateDriverMobile(client);
       if (version < 11) await migrateDriverMobilePhoneNormalization(client);
+      if (version < 12) await migrateRoutePublications(client);
+      if (version < 13) await migrateRouteStartGuards(client);
+      if (version < 14) await migrateUnitPhotos(client);
+      if (version < 15) await migrateRouteFleetReassignment(client);
       return;
     }
     await client.query(`
@@ -124,6 +139,10 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migrateOrderCandidates(client);
     await migrateDriverMobile(client);
     await migrateDriverMobilePhoneNormalization(client);
+    await migrateRoutePublications(client);
+    await migrateRouteStartGuards(client);
+    await migrateUnitPhotos(client);
+    await migrateRouteFleetReassignment(client);
   });
 }
 export async function audit(

@@ -53,8 +53,8 @@ Feature: Acceso móvil del chofer a su propia ruta
   Scenario: Ruta sin cálculo vigente
     Given un plan con pedidos asignados pero sin cálculo vial vigente
     When el chofer consulta su ruta
-    Then ve sólo sus pedidos y un estado explícito de cálculo ausente u obsoleto
-    But no se dibuja una ruta vieja como si estuviera vigente
+    Then no recibe ese borrador ni sus pedidos hasta que administración publique una ruta calculada
+    But el administrador conserva el estado explícito de cálculo ausente u obsoleto
 
   Scenario: Inicio premium con datos reales del día
     Given un chofer autenticado con planes históricos y una ruta asignada para hoy

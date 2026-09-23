@@ -7,8 +7,8 @@ export function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   return endpoint(async () => {
-    const { pool, driver } = await mobilePrincipal(request);
+    const { pool, config, driver } = await mobilePrincipal(request);
     const { id } = await context.params;
-    return json(await readDriverPlan(pool, driver.driver_id, id));
+    return json(await readDriverPlan(pool, driver.driver_id, id, config.timezone));
   });
 }

@@ -56,9 +56,12 @@ export async function readOrderBoard(
 ): Promise<OrderBoard> {
   const plan = await planRow(sql, id, "SHARE");
   const { rows: vehicles } = await sql.query(
-    `SELECT v.*,pv.driver_id,d.name AS driver_name
+    `SELECT v.*,pv.driver_id,d.name AS driver_name,
+            v.driver_id AS fleet_driver_id,fd.name AS fleet_driver_name
       FROM route_plan_vehicles pv JOIN route_vehicles v ON v.id=pv.vehicle_id
-      LEFT JOIN route_drivers d ON d.id=pv.driver_id WHERE pv.plan_id=$1 ORDER BY v.name,v.id`,
+      LEFT JOIN route_drivers d ON d.id=pv.driver_id
+      LEFT JOIN route_drivers fd ON fd.id=v.driver_id
+      WHERE pv.plan_id=$1 ORDER BY v.name,v.id`,
     [id],
   );
   const { rows } = await sql.query(
@@ -149,6 +152,8 @@ export async function readOrderBoard(
       available: v.available,
       driver_id: v.driver_id,
       driver_name: v.driver_name,
+      fleet_driver_id: v.fleet_driver_id,
+      fleet_driver_name: v.fleet_driver_name,
       version: v.version,
     })),
   };
@@ -343,13 +348,28 @@ export async function moveShipment(
       if (!rows[0]?.available) throw new AppError("FLEET_UNAVAILABLE", 409);
     }
     const { rows } = await sql.query(
-      "SELECT id,vehicle_id FROM route_shipments WHERE plan_id=$1 ORDER BY position,id",
+      "SELECT id,vehicle_id,position FROM route_shipments WHERE plan_id=$1 ORDER BY position,id",
       [id],
     );
-    if (!rows.some((s) => s.id === shipmentId))
+    const source = rows.find((shipment) => shipment.id === shipmentId);
+    if (!source)
       throw new AppError("NOT_FOUND", 404);
+    const started = await sql.query(
+      "SELECT vehicle_id FROM route_plan_publications WHERE plan_id=$1 AND started_at IS NOT NULL FOR SHARE",
+      [id],
+    );
+    const frozen = new Set<string>(
+      started.rows.map((row) => String(row.vehicle_id)),
+    );
+    if (
+      (source.vehicle_id && frozen.has(source.vehicle_id)) ||
+      (vehicleId && frozen.has(vehicleId))
+    )
+      throw new AppError("ROUTE_ALREADY_STARTED", 409);
     if (beforeId === shipmentId) return;
-    const ordered = rows.filter((s) => s.id !== shipmentId);
+    const mutable = rows.filter((shipment) => !shipment.vehicle_id || !frozen.has(shipment.vehicle_id));
+    const slots = mutable.map((shipment) => Number(shipment.position));
+    const ordered = mutable.filter((shipment) => shipment.id !== shipmentId);
     if (
       beforeId &&
       !ordered.some((s) => s.id === beforeId && s.vehicle_id === vehicleId)
@@ -358,15 +378,15 @@ export async function moveShipment(
     const index = beforeId
       ? ordered.findIndex((s) => s.id === beforeId)
       : ordered.length;
-    ordered.splice(index, 0, { id: shipmentId, vehicle_id: vehicleId });
+    ordered.splice(index, 0, { ...source, vehicle_id: vehicleId });
     await sql.query("UPDATE route_shipments SET vehicle_id=$2 WHERE id=$1", [
       shipmentId,
       vehicleId,
     ]);
     await sql.query(
-      `UPDATE route_shipments s SET position=o.position FROM unnest($1::uuid[]) WITH ORDINALITY AS o(id,position)
-      WHERE s.id=o.id AND s.plan_id=$2 AND s.position<>o.position`,
-      [ordered.map((s) => s.id), id],
+      `UPDATE route_shipments s SET position=o.position FROM unnest($1::uuid[],$2::integer[]) AS o(id,position)
+      WHERE s.id=o.id AND s.plan_id=$3 AND s.position<>o.position`,
+      [ordered.map((shipment) => shipment.id), slots, id],
     );
     await bump(sql, id, actor);
     await audit(sql, actor, "shipment.moved", shipmentId, {
@@ -395,20 +415,31 @@ export async function removeShipment(
       [id, shipmentId],
     );
     if (!rows.length) throw new AppError("NOT_FOUND", 404);
+    const started = await sql.query(
+      "SELECT vehicle_id FROM route_plan_publications WHERE plan_id=$1 AND started_at IS NOT NULL FOR SHARE",
+      [id],
+    );
+    const frozen = new Set<string>(
+      started.rows.map((row) => String(row.vehicle_id)),
+    );
+    if (rows[0].vehicle_id && frozen.has(rows[0].vehicle_id))
+      throw new AppError("ROUTE_ALREADY_STARTED", 409);
     await sql.query("DELETE FROM route_shipments WHERE plan_id=$1 AND id=$2", [
       id,
       shipmentId,
     ]);
-    const remaining = await sql.query(
-      "SELECT id FROM route_shipments WHERE plan_id=$1 ORDER BY position,id",
-      [id],
-    );
-    await sql.query(
-      `UPDATE route_shipments s SET position=o.position
-       FROM unnest($1::uuid[]) WITH ORDINALITY AS o(id,position)
-       WHERE s.id=o.id AND s.plan_id=$2 AND s.position<>o.position`,
-      [remaining.rows.map((row) => row.id), id],
-    );
+    if (!frozen.size) {
+      const remaining = await sql.query(
+        "SELECT id FROM route_shipments WHERE plan_id=$1 ORDER BY position,id",
+        [id],
+      );
+      await sql.query(
+        `UPDATE route_shipments s SET position=o.position
+         FROM unnest($1::uuid[]) WITH ORDINALITY AS o(id,position)
+         WHERE s.id=o.id AND s.plan_id=$2 AND s.position<>o.position`,
+        [remaining.rows.map((row) => row.id), id],
+      );
+    }
     await bump(sql, id, actor);
     const snapshot = rows[0].snapshot as Record<string, unknown>;
     await audit(sql, actor, "shipment.removed", shipmentId, {

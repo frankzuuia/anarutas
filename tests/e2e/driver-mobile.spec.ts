@@ -1,7 +1,11 @@
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import sharp from "sharp";
 import {
+  createHash,
   generateKeyPairSync,
   randomBytes,
   randomUUID,
@@ -13,6 +17,7 @@ import {
   assignDriver,
   createDriver,
   createVehicle,
+  getVehicle,
 } from "../../src/core/fleet";
 import { createPlan } from "../../src/core/plans";
 import {
@@ -23,12 +28,16 @@ import {
 import { mobileChallengeMessage } from "../../src/core/driver-mobile-auth";
 import type { SourceShipment } from "../../src/core/orders-contract";
 import { todayInTimezone } from "../../src/core/local-date";
+import { routeFingerprint } from "../../src/core/route-fingerprint";
 
 let db: Awaited<ReturnType<typeof startPostgres>>;
 let server: ChildProcess;
 let origin: string;
 let driverId: string;
 let planId: string;
+let vehicleId: string;
+let adminId: string;
+let photoRoot: string;
 const phone = "3312345678";
 const pin = "4821";
 const adminLogin = `mobile-http-${randomUUID()}`;
@@ -61,6 +70,7 @@ function shipment(index: number): SourceShipment {
 }
 
 test.beforeAll(async () => {
+  photoRoot = await mkdtemp(join(tmpdir(), "ana-rutas-mobile-http-"));
   db = await startPostgres();
   const admin = await bootstrap(db.pool, db.config, {
     token: db.config.bootstrapToken,
@@ -68,6 +78,7 @@ test.beforeAll(async () => {
     login: adminLogin,
     password: adminPassword,
   });
+  adminId = admin.id;
   const first = await createDriver(db.pool, admin.id, {
     id: randomUUID(),
     name: "Chofer HTTP A",
@@ -105,6 +116,7 @@ test.beforeAll(async () => {
     });
     vehicles.push(vehicle);
   }
+  vehicleId = vehicles[0].id;
   const plan = await createPlan(db.pool, admin.id, {
     date: serviceDate,
     label: "Contrato HTTP móvil",
@@ -153,6 +165,7 @@ test.beforeAll(async () => {
         RUTAS_APP_ORIGIN: origin,
         RUTAS_TIMEZONE: "UTC",
         RUTAS_DRIVER_PIN_PEPPER: pepper,
+        RUTAS_UNIT_PHOTO_DIR: photoRoot,
         ODOO_URL: "",
         ODOO_DATABASE: "",
         ODOO_EMAIL: "",
@@ -180,6 +193,7 @@ test.afterAll(async () => {
     });
   }
   await db?.close();
+  if (photoRoot) await rm(photoRoot, { recursive: true, force: true });
 });
 
 test("admin provisioning, native device login, route isolation and revocation over HTTP", async ({
@@ -237,7 +251,51 @@ test("admin provisioning, native device login, route isolation and revocation ov
     headers: authorization,
   });
   expect(plans.status()).toBe(200);
-  expect(await plans.json()).toHaveLength(1);
+  expect(await plans.json()).toEqual([]);
+  const hiddenDashboard = await request.get(`${origin}/api/mobile/dashboard`, { headers: authorization });
+  expect(await hiddenDashboard.json()).toMatchObject({ plans: [], today: null });
+  expect((await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization })).status()).toBe(404);
+
+  const board = await orderBoard(db.pool, planId);
+  const firstOrder = board.shipments.find((order) => order.vehicle_id === vehicleId)!;
+  const metrics = {
+    travelDistanceMeters: 1000,
+    travelDurationSeconds: 600,
+    waitDurationSeconds: 0,
+    totalDurationSeconds: 600,
+    performedShipmentCount: 1,
+  };
+  await db.pool.query(
+    `INSERT INTO route_optimization_runs
+       (id,plan_id,base_plan_version,applied_plan_version,request_hash,input_fingerprint,metrics,routes,skipped,created_by)
+     VALUES($1,$2,$3,$3,$4,$5,$6,$7,'[]',$8)`,
+    [randomUUID(), planId, board.plan.version,
+      createHash("sha256").update(`mobile-e2e-${planId}`).digest("hex"),
+      routeFingerprint(board, 0), JSON.stringify(metrics), JSON.stringify([{
+        vehicleId,
+        vehicleName: "HTTP camioneta 1",
+        encodedPolyline: null,
+        segmentPolylines: [],
+        departureAt: `${serviceDate}T13:00:00.000Z`,
+        finishedAt: `${serviceDate}T13:10:00.000Z`,
+        trafficMode: "static",
+        metrics,
+        stops: [{
+          shipmentId: firstOrder.id,
+          position: 1,
+          eta: `${serviceDate}T13:10:00.000Z`,
+          travelDistanceMeters: 1000,
+          travelDurationSeconds: 600,
+          waitDurationSeconds: 0,
+        }],
+      }]), adminId],
+  );
+  const published = await request.post(`${origin}/api/plans/${planId}/publications`, {
+    headers: { Origin: origin },
+    data: { scope: "vehicle", vehicleId, expectedVersion: board.plan.version },
+  });
+  expect(published.status()).toBe(200);
+  expect((await request.get(`${origin}/api/mobile/plans`, { headers: authorization }).then((response) => response.json()))).toHaveLength(1);
   const dashboard = await request.get(`${origin}/api/mobile/dashboard`, {
     headers: authorization,
   });
@@ -250,8 +308,8 @@ test("admin provisioning, native device login, route isolation and revocation ov
     today: {
       plan: { id: planId, label: "Contrato HTTP móvil" },
       orders: [{ orderName: "S801" }],
-      routeStatus: "not_calculated",
-      route: null,
+      routeStatus: "current",
+      publication: { revision: 1, startedAt: null },
     },
   });
   const route = await request.get(`${origin}/api/mobile/plans/${planId}`, {
@@ -260,9 +318,51 @@ test("admin provisioning, native device login, route isolation and revocation ov
   expect(route.status()).toBe(200);
   expect(await route.json()).toMatchObject({
     orders: [{ orderName: "S801" }],
-    routeStatus: "not_calculated",
-    route: null,
+    routeStatus: "current",
+    publication: { revision: 1, startedAt: null },
   });
+  const startUrl = `${origin}/api/mobile/plans/${planId}/start`;
+  const blockedStart = await request.post(startUrl, { headers: authorization });
+  expect(blockedStart.status()).toBe(409);
+  expect(await blockedStart.json()).toMatchObject({ error: "UNIT_PHOTOS_REQUIRED" });
+  const photoIds: string[] = [];
+  for (let index = 0; index < 5; index++) {
+    const image = await sharp({
+      create: { width: 50, height: 50, channels: 3, background: { r: index * 30, g: 80, b: 120 } },
+    }).jpeg().toBuffer();
+    const uploaded = await request.post(`${origin}/api/mobile/plans/${planId}/unit-photos`, {
+      headers: { ...authorization, "Content-Type": "image/jpeg" },
+      data: image,
+    });
+    expect(uploaded.status()).toBe(201);
+    photoIds.push((await uploaded.json()).id);
+  }
+  const visiblePhotos = await request.get(`${origin}/api/vehicles/${vehicleId}/unit-photos?date=${serviceDate}`);
+  expect(visiblePhotos.status()).toBe(200);
+  expect(await visiblePhotos.json()).toHaveLength(5);
+  expect((await request.get(`${origin}/api/unit-photos/${photoIds[0]}`)).headers()["content-type"])
+    .toContain("image/webp");
+  expect((await request.get(`${origin}/api/mobile/unit-photos/${photoIds[0]}`)).status()).toBe(401);
+  const firstPhotoTimestamp = (await db.pool.query(
+    "SELECT created_at FROM route_unit_photos WHERE id=$1", [photoIds[0]],
+  )).rows[0].created_at;
+  await db.pool.query(
+    "UPDATE route_unit_photos SET created_at=created_at-interval '1 day' WHERE id=$1",
+    [photoIds[0]],
+  );
+  const stalePhotoRoute = await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization });
+  expect((await stalePhotoRoute.json()).publication.photoCount).toBe(4);
+  expect((await request.post(startUrl, { headers: authorization })).status()).toBe(409);
+  await db.pool.query("UPDATE route_unit_photos SET created_at=$2 WHERE id=$1",
+    [photoIds[0], firstPhotoTimestamp]);
+  const firstStart = await request.post(startUrl, { headers: authorization });
+  expect(firstStart.status()).toBe(200);
+  expect(await firstStart.json()).toMatchObject({ alreadyStarted: false });
+  const repeatedStart = await request.post(startUrl, { headers: authorization });
+  expect(repeatedStart.status()).toBe(200);
+  expect(await repeatedStart.json()).toMatchObject({ alreadyStarted: true });
+  expect((await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization }).then((response) => response.json())).publication.startedAt)
+    .toBeTruthy();
   const challenge = await request.post(`${origin}/api/mobile/challenge`, {
     data: { phone, deviceId },
   });
@@ -351,4 +451,30 @@ test("driver edit modal enables direct phone and PIN access", async ({
   ).toHaveCount(0);
   await modal.getByRole("button", { name: "Revocar acceso" }).click();
   await expect(modal.getByText("Sin acceso móvil habilitado")).toBeVisible();
+  await modal.getByRole("button", { name: "Cerrar formulario" }).click();
+  await page.getByRole("button", { name: "Control de unidades" }).click();
+  await page.getByRole("button", { name: /HTTP camioneta 1/ }).click();
+  await expect(page.getByRole("heading", { name: "HTTP camioneta 1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Contrato HTTP móvil" })).toBeVisible();
+  await expect(page.getByAltText("Fotografía de la unidad")).toHaveCount(5);
+  await expect.poll(async () => page.getByAltText("Fotografía de la unidad").evaluateAll(
+    (images) => images.every((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0),
+  )).toBe(true);
+  await page.screenshot({ path: "reports/screenshots/unit-control-390.png", fullPage: true });
+  const relief = await createDriver(db.pool, adminId, {
+    id: randomUUID(), name: "Relevo HTTP", phone: "3312345699",
+    emergency_name: "", emergency_phone: "", blood_type: "", active: true,
+  });
+  let vehicle = await getVehicle(db.pool, vehicleId);
+  await assignDriver(db.pool, adminId, vehicleId, {
+    driver_id: null, expectedVersion: vehicle.version,
+  });
+  vehicle = await getVehicle(db.pool, vehicleId);
+  await assignDriver(db.pool, adminId, vehicleId, {
+    driver_id: relief.id, expectedVersion: vehicle.version,
+  });
+  await page.getByRole("button", { name: "Planificar rutas" }).click();
+  await page.getByLabel("Abrir borrador").selectOption(planId);
+  await expect(page.getByText("Ruta de Chofer HTTP A · Flota: Relevo HTTP")).toBeVisible();
+  await expect(page.getByText("Ruta iniciada", { exact: true })).toBeVisible();
 });

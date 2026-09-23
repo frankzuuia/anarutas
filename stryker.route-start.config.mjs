@@ -1,0 +1,16 @@
+import baseConfig from "./stryker.base.config.mjs";
+
+const routeStartConfig = {
+  ...baseConfig,
+  mutate: ["src/core/route-start.ts:39-54"],
+  testFiles: ["tests/route-publications.test.ts"],
+  testRunner: "vitest",
+  vitest: { configFile: "vitest.config.ts" },
+  reporters: ["clear-text", "json"],
+  jsonReporter: { fileName: "reports/mutation/route-start.json" },
+  concurrency: 1,
+  coverageAnalysis: "perTest",
+  thresholds: { high: 90, low: 80, break: 80 },
+};
+
+export default routeStartConfig;

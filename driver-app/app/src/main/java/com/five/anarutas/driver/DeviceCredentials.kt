@@ -22,6 +22,7 @@ data class SavedAccess(
 /** Session bearer is encrypted with a non-exportable Android Keystore key. */
 class DeviceCredentials(context: Context) {
     private val preferences = context.getSharedPreferences("driver_access_v1", Context.MODE_PRIVATE)
+    private val navigationProgress = NavigationProgressStore(context)
     private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
     private val signingAlias = "ana_rutas_driver_signing_v1"
     private val tokenAlias = "ana_rutas_driver_token_v1"
@@ -86,11 +87,13 @@ class DeviceCredentials(context: Context) {
 
     fun clearToken() {
         preferences.edit().remove("token_iv").remove("token_ciphertext").apply()
+        navigationProgress.clearAll()
     }
 
     fun clearDevice() {
         preferences.edit().remove("device_id").remove("token_iv")
             .remove("token_ciphertext").apply()
+        navigationProgress.clearAll()
         if (keyStore.containsAlias(signingAlias)) keyStore.deleteEntry(signingAlias)
     }
 

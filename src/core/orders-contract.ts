@@ -51,7 +51,10 @@ export type Shipment = SourceShipment & {
 };
 export type OrderBoard = {
   plan: Plan;
-  vehicles: Vehicle[];
+  vehicles: (Vehicle & {
+    fleet_driver_id?: string | null;
+    fleet_driver_name?: string | null;
+  })[];
   shipments: Shipment[];
 };
 export type ImportPage = {

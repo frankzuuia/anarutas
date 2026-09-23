@@ -82,7 +82,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
       ),
     );
     await db.pool.query(
-      "DROP TABLE route_driver_mobile_sessions,route_driver_mobile_challenges,route_driver_mobile_activations,route_driver_mobile_devices,route_driver_mobile_audit,route_driver_mobile_access,route_optimization_stops,route_optimization_leases,route_optimization_runs,route_routing_settings,route_customer_location_history,route_customer_windows,route_shipments,route_customers,route_plan_vehicles,route_order_source; UPDATE rutas_installation SET schema_version=2",
+      "DROP TRIGGER guard_started_fleet_vehicle_change ON route_vehicles; DROP TRIGGER guard_started_shipment_change ON route_shipments; DROP TRIGGER route_plan_recalculation ON route_plans; DROP TABLE route_unit_photos,route_plan_publications,route_driver_mobile_sessions,route_driver_mobile_challenges,route_driver_mobile_activations,route_driver_mobile_devices,route_driver_mobile_audit,route_driver_mobile_access,route_optimization_stops,route_optimization_leases,route_optimization_runs,route_routing_settings,route_customer_location_history,route_customer_windows,route_shipments,route_customers,route_plan_vehicles,route_order_source; UPDATE rutas_installation SET schema_version=2",
     );
     const { migrate } = await import("../src/core/database");
     await Promise.all([
@@ -92,7 +92,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(11);
+    ).toBe(15);
     const identityIndex = await db.pool.query(
       "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='route_shipments_plan_source_picking_order'",
     );
@@ -122,7 +122,11 @@ describe("fulfilled orders / real PostgreSQL", () => {
       )
     ).rows;
     await db.pool.query(`
-      DROP TABLE route_driver_mobile_sessions,route_driver_mobile_challenges,route_driver_mobile_activations,route_driver_mobile_devices,route_driver_mobile_audit,route_driver_mobile_access;
+      DROP TRIGGER guard_started_fleet_vehicle_change ON route_vehicles;
+      DROP TRIGGER guard_started_shipment_change ON route_shipments;
+      DROP TRIGGER route_plan_recalculation ON route_plans;
+      DROP TABLE route_unit_photos;
+      DROP TABLE route_plan_publications,route_driver_mobile_sessions,route_driver_mobile_challenges,route_driver_mobile_activations,route_driver_mobile_devices,route_driver_mobile_audit,route_driver_mobile_access;
       DROP TABLE route_optimization_stops,route_optimization_leases,route_optimization_runs,route_routing_settings;
       DROP TABLE route_customer_location_history,route_customer_windows;
       ALTER TABLE route_shipments DROP CONSTRAINT route_shipments_customer_identity;
@@ -136,7 +140,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(11);
+    ).toBe(15);
     expect(
       (
         await db.pool.query(

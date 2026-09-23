@@ -6,6 +6,9 @@ import { orderBoard, readOrderBoard } from "./orders";
 import { getRoutingSettings } from "./routing-settings";
 import { routeFingerprint } from "./route-fingerprint";
 import { calculateManualRoutes } from "./route-road";
+import { emptyMetrics, type CalculatedRoute } from "./route-road";
+import type { OrderBoard } from "./orders-contract";
+import type { RouteMetrics } from "./routing-contract";
 import { lockRouteInputs } from "./route-optimization";
 import { uuid } from "./orders-validation";
 
@@ -16,6 +19,57 @@ export type RecalculationJob = {
   token: string;
   attempts: number;
 };
+type FrozenRoute = {
+  vehicleId: string;
+  revision: number;
+  snapshotHash: string;
+  route: CalculatedRoute;
+};
+
+async function startedRoutes(pool: Pool, planId: string): Promise<FrozenRoute[]> {
+  const { rows } = await pool.query(
+    `SELECT vehicle_id,revision,snapshot_hash,snapshot->'route' AS route
+       FROM route_plan_publications WHERE plan_id=$1 AND started_at IS NOT NULL
+       ORDER BY vehicle_id`,
+    [planId],
+  );
+  return rows.map((row) => ({
+    vehicleId: row.vehicle_id as string,
+    revision: Number(row.revision),
+    snapshotHash: row.snapshot_hash as string,
+    route: row.route as CalculatedRoute,
+  }));
+}
+
+function mutableBoard(board: OrderBoard, frozen: FrozenRoute[]): OrderBoard {
+  const ids = new Set(frozen.map((route) => route.vehicleId));
+  return {
+    ...board,
+    vehicles: board.vehicles.filter((vehicle) => !ids.has(vehicle.id)),
+    shipments: board.shipments.filter(
+      (shipment) => !shipment.vehicle_id || !ids.has(shipment.vehicle_id),
+    ),
+  };
+}
+
+function combineRoutes(
+  board: OrderBoard,
+  frozen: FrozenRoute[],
+  calculated: Awaited<ReturnType<typeof calculateManualRoutes>>,
+) {
+  const byVehicle = new Map([
+    ...frozen.map((item) => [item.vehicleId, item.route] as const),
+    ...calculated.routes.map((route) => [route.vehicleId, route] as const),
+  ]);
+  const routes = board.vehicles.map((vehicle) => byVehicle.get(vehicle.id));
+  if (routes.some((route) => !route))
+    throw new AppError("ROUTING_RESPONSE_INVALID", 503);
+  const metrics = emptyMetrics();
+  for (const route of routes)
+    for (const key of Object.keys(metrics) as (keyof RouteMetrics)[])
+      metrics[key] += route!.metrics[key];
+  return { routes: routes as CalculatedRoute[], metrics };
+}
 export async function claimRecalculation(
   pool: Pool,
 ): Promise<RecalculationJob | null> {
@@ -54,6 +108,7 @@ export async function finishRecalculation(
   version: number,
   fingerprint: string,
   result: Awaited<ReturnType<typeof calculateManualRoutes>>,
+  frozen: FrozenRoute[] = [],
 ) {
   return transaction(pool, async (sql) => {
     await assertActiveActor(sql, job.actor);
@@ -63,6 +118,16 @@ export async function finishRecalculation(
     if (
       board.plan.version !== version ||
       routeFingerprint(board, settings.version) !== fingerprint
+    )
+      throw new AppError("VERSION_CONFLICT", 409);
+    const currentFrozen = await sql.query(
+      `SELECT vehicle_id,revision,snapshot_hash FROM route_plan_publications
+       WHERE plan_id=$1 AND started_at IS NOT NULL ORDER BY vehicle_id FOR SHARE`,
+      [job.planId],
+    );
+    if (
+      JSON.stringify(currentFrozen.rows.map((row) => [row.vehicle_id, Number(row.revision), row.snapshot_hash])) !==
+      JSON.stringify(frozen.map((row) => [row.vehicleId, row.revision, row.snapshotHash]))
     )
       throw new AppError("VERSION_CONFLICT", 409);
     const deleted = await sql.query(
@@ -176,15 +241,18 @@ export async function processRecalculation(pool: Pool, timezone: string) {
     const board = await orderBoard(pool, job.planId),
       settings = await getRoutingSettings(pool);
     const fingerprint = routeFingerprint(board, settings.version);
-    const result = await calculateManualRoutes(board, settings, timezone, () =>
+    const frozen = await startedRoutes(pool, job.planId);
+    const calculated = await calculateManualRoutes(mutableBoard(board, frozen), settings, timezone, () =>
       renewRecalculation(pool, job),
     );
+    const result = combineRoutes(board, frozen, calculated);
     await finishRecalculation(
       pool,
       job,
       board.plan.version,
       fingerprint,
       result,
+      frozen,
     );
   } catch (error) {
     await failRecalculation(pool, job, error);

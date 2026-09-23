@@ -28,6 +28,7 @@ import { DeletePlanDialog } from "./delete-plan-dialog";
 import { CustomerPanel } from "./customer-panel";
 import { GoogleConsumptionPanel } from "./google-consumption-panel";
 import { IncidentsPanel } from "./incidents-panel";
+import { UnitControlPanel } from "./unit-control-panel";
 
 type Section =
   | "plans"
@@ -37,11 +38,13 @@ type Section =
   | "users"
   | "audit"
   | "incidents"
-  | "consumption";
+  | "consumption"
+  | "unit_control";
 const sections = [
   { id: "plans" as const, label: "Planificar rutas", icon: Route },
   { id: "incidents" as const, label: "Incidencias", icon: AlertTriangle },
   { id: "vehicles" as const, label: "Camionetas", icon: Truck },
+  { id: "unit_control" as const, label: "Control de unidades", icon: Truck },
   { id: "drivers" as const, label: "Choferes", icon: Users },
   {
     id: "customers" as const,
@@ -110,6 +113,7 @@ export function Dashboard({
   const [boardRevision, setBoardRevision] = useState(0);
   const [customerRevision, setCustomerRevision] = useState(0);
   const [consumptionRevision, setConsumptionRevision] = useState(0);
+  const [unitRevision, setUnitRevision] = useState(0);
   const [plans, setPlans] = useState<Plan[]>([]),
     [users, setUsers] = useState<User[]>([]),
     [audit, setAudit] = useState<AuditRow[]>([]);
@@ -149,6 +153,7 @@ export function Dashboard({
       if (section === "audit") setAudit(await api<AuditRow[]>("/api/audit"));
       if (section === "consumption")
         setConsumptionRevision((value) => value + 1);
+      if (section === "unit_control") setUnitRevision((value) => value + 1);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -181,6 +186,7 @@ export function Dashboard({
       customers: () => Promise.resolve(),
       consumption: () => Promise.resolve(),
       incidents: () => Promise.resolve(),
+      unit_control: () => Promise.resolve(),
     };
     void requests[section]().catch(fail).finally(done);
     return () => {
@@ -348,6 +354,8 @@ export function Dashboard({
                 <p>
                   {section === "vehicles"
                     ? "Registra tus unidades y administra la asignación de choferes."
+                    : section === "unit_control"
+                      ? "Fotografías privadas de cada camioneta, organizadas por fecha y disponibles durante 15 días."
                     : section === "drivers"
                       ? "Datos de contacto, disponibilidad y documentos privados de tu equipo."
                       : section === "customers"
@@ -398,6 +406,7 @@ export function Dashboard({
             <CustomerPanel revision={customerRevision} />
           )}
           {section === "incidents" && <IncidentsPanel />}
+          {section === "unit_control" && <UnitControlPanel today={today} timezone={timezone} revision={unitRevision} />}
           {section === "consumption" && (
             <GoogleConsumptionPanel
               revision={consumptionRevision}
@@ -507,8 +516,8 @@ export function Dashboard({
                   )}
                   <div className="note-line">
                     <Info size={17} style={{ flexShrink: 0 }} />
-                    Los cambios y la optimización se guardan en el borrador. El
-                    envío a choferes se incorporará con la aplicación Android.
+                    Los cambios y la optimización se guardan en el borrador.
+                    El chofer sólo ve una ruta después de publicarla.
                   </div>
                 </section>
               </div>

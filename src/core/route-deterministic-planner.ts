@@ -145,6 +145,12 @@ export async function planRouteDeterministically(
     ]);
     if (board.plan.version !== expectedVersion)
       throw new AppError("VERSION_CONFLICT", 409);
+    const started = await pool.query(
+      "SELECT 1 FROM route_plan_publications WHERE plan_id=$1 AND started_at IS NOT NULL LIMIT 1",
+      [planId],
+    );
+    if (started.rowCount)
+      throw new AppError("ROUTE_ALREADY_STARTED", 409);
     const { request, groups } = buildDirectFleetRequest(
       board,
       settings,

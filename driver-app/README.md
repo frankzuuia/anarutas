@@ -1,4 +1,4 @@
-# Ana Rutas Chofer — Android, bloques 1 y 2A
+# Ana Rutas Chofer — Android, bloques 1, 2A y 2B
 
 App Android nativa para vincular automáticamente un dispositivo, entrar con teléfono y PIN,
 y leer únicamente la ruta y los pedidos de la camioneta asignada. No registra
@@ -11,6 +11,17 @@ anteriores en una sección separada. La navegación `Inicio`, `Ruta`, `Pedidos` 
 `Perfil` abre pantallas reales; sus acciones no ejecutan entregas ficticias.
 Distancias, tiempos y horarios son previsiones guardadas, no progreso real del
 chofer. Si falta una optimización vigente se muestra su ausencia.
+
+El bloque 2B añade publicación explícita por camioneta, fotos privadas de la
+unidad (WebP, máximo ocho, eliminación a los 15 días) y el inicio de ruta tras
+cinco fotos distintas. `Inicio` y `Ruta` muestran sólo el snapshot publicado.
+Las tarjetas de paradas y pedidos abren su detalle. Después de iniciar, el
+acceso compacto `Mapa` queda en el centro de la barra inferior. Usa el
+Navigation SDK oficial: el mapa y los giros no son simulaciones. Abrir el mapa
+dibuja sólo el trazo publicado previamente calculado, cuando existe, y no solicita
+un recorrido nuevo; `Iniciar guía` sí puede generar una solicitud
+facturable. Para más de 25 paradas, se solicita el siguiente bloque únicamente
+cuando el chofer lo decide. La navegación no marca pedidos como entregados.
 
 ## Compilación
 
@@ -28,6 +39,30 @@ En `driver-app/`, con `JAVA_HOME` y `ANDROID_HOME` configurados:
 La APK de depuración quedará en `app/build/outputs/apk/debug/`. Requiere
 prueba en Android real antes de distribución. No utilizar esta APK de debug
 como firma de producción.
+
+## Configuración de fotos y mapa antes de probar 2B
+
+- En EasyPanel develop, montar un volumen persistente **privado** en una ruta
+  absoluta del contenedor, sin exposición web, y configurar
+  `RUTAS_UNIT_PHOTO_DIR` con esa ruta. Sin el volumen, la captura y el inicio
+  fallan cerrados; no se guardan fotos en PostgreSQL/base64. El worker borra
+  metadatos y archivos al vencer 15 días; los respaldos del volumen deben
+  respetar también esa retención.
+- Habilitar Navigation SDK y su facturación en el proyecto de Google Maps.
+  Crear una clave Android restringida al paquete
+  `com.five.anarutas.driver` y la huella SHA-1 del certificado que firma la
+  APK que se instalará. Una clave de servidor para Routes **no** sustituye
+  esta clave. Inyectarla fuera de Git, por ejemplo como variable local
+  `ORG_GRADLE_PROJECT_ANA_RUTAS_NAVIGATION_API_KEY` al compilar.
+- Si la clave falta, la APK compila y muestra un aviso en Ruta, pero no ofrece
+  el botón de mapa. Si el GPS o la cuota falla, el SDK devuelve error y no se
+  inventa una instrucción de giro. Se requiere prueba física con datos reales
+  antes de distribuir.
+- Antes de distribuir, completar los avisos legales y licencias exigidos por
+  Navigation SDK (`NOTICE.txt` y `LICENSES.txt` de su distribución) y verificar
+  en dispositivo el diálogo de términos de Google y las advertencias al chofer
+  sobre condiciones reales de la vía y costos de peaje. Este bloque aún no
+  certifica ese requisito de distribución.
 
 ## Acceso
 

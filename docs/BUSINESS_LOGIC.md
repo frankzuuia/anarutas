@@ -139,3 +139,15 @@ no exportable de Android Keystore; los accesos posteriores exigen la prueba
 criptográfica del dispositivo. La identidad móvil no reutiliza las cuentas administrativas.
 La APK lee únicamente la ruta del chofer autenticado. Llegadas, incidencias,
 transferencias y cobros requieren sus propios bloques y no se simulan aquí.
+
+## Bloque móvil 2B aprobado — ruta publicada, fotos e inicio
+
+BL-088..095 y MR01..17 están desarrollados en `BLOQUE-APK-RUTA-PUBLICACION.md`.
+El borrador del panel no es visible al chofer hasta publicación por camioneta;
+una republicación reemplaza su snapshot sin duplicarlo. Cinco fotos WebP válidas
+de la unidad y fecha habilitan el inicio, con máximo ocho y retención de quince
+días en almacenamiento privado persistente. El inicio bloquea sólo la camioneta
+dentro de ese plan: sus pedidos, orden y responsable publicado quedan fijos;
+la asignación persistente de flota puede cambiar para rutas futuras. Las otras
+camionetas del plan continúan editables. El mapa usa datos reales de ruta y,
+para giros en vivo, Navigation SDK con costo observado por destino.

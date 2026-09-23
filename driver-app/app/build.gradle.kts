@@ -20,6 +20,10 @@ require(
         driverServerUri.query == null &&
         driverServerUri.fragment == null,
 ) { "ANA_RUTAS_SERVER_URL must be an HTTPS origin without path or credentials" }
+val navigationKey = providers.gradleProperty("ANA_RUTAS_NAVIGATION_API_KEY").orNull?.trim().orEmpty()
+require(navigationKey.all { it.isLetterOrDigit() || it == '-' || it == '_' }) {
+    "ANA_RUTAS_NAVIGATION_API_KEY contains invalid characters"
+}
 
 android {
     namespace = "com.five.anarutas.driver"
@@ -33,6 +37,7 @@ android {
         versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "SERVER_URL", "\"$driverServerUrl\"")
+        buildConfigField("String", "NAVIGATION_API_KEY", "\"$navigationKey\"")
     }
 
     buildTypes {
@@ -45,6 +50,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
@@ -65,6 +71,10 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("com.google.android.libraries.navigation:navigation:7.9.0")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

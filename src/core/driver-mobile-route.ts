@@ -2,22 +2,26 @@ import type { Pool } from "pg";
 import { transaction } from "./database";
 import { AppError } from "./errors";
 import { uuid } from "./orders-validation";
-import { readOrderBoard } from "./orders";
-import { readPlanOptimization } from "./route-optimization";
 import { todayInTimezone } from "./local-date";
 
 export async function listDriverPlans(pool: Pool, driverId: string) {
   const { rows } = await pool.query(
-    `SELECT p.id,p.service_date::text AS service_date,p.label,p.version,
+    `SELECT p.id,p.service_date::text AS service_date,
+            pub.snapshot->'plan'->>'label' AS label,
+            pub.source_plan_version AS version,
             pv.vehicle_id,v.name AS vehicle_name,v.plate,
-            count(s.id)::integer AS orders
-     FROM route_plan_vehicles pv
-     JOIN route_plans p ON p.id=pv.plan_id
-     JOIN route_vehicles v ON v.id=pv.vehicle_id
-     LEFT JOIN route_shipments s
-       ON s.plan_id=p.id AND s.vehicle_id=pv.vehicle_id
-     WHERE pv.driver_id=$1 AND v.driver_id=$1 AND v.available
-     GROUP BY p.id,p.service_date,p.label,p.version,pv.vehicle_id,v.name,v.plate
+            jsonb_array_length(pub.snapshot->'orders') AS orders
+     FROM route_plan_publications pub
+     JOIN route_plan_vehicles pv
+       ON pv.plan_id=pub.plan_id AND pv.vehicle_id=pub.vehicle_id
+     JOIN route_plans p ON p.id=pub.plan_id
+     JOIN route_vehicles v ON v.id=pub.vehicle_id
+     JOIN route_drivers d ON d.id=pub.driver_id
+     WHERE d.active AND (
+       (pub.started_at IS NOT NULL AND pub.started_driver_id=$1 AND pv.driver_id=$1)
+       OR (pub.started_at IS NULL AND pub.driver_id=$1 AND pv.driver_id=$1
+           AND v.driver_id=$1 AND v.available)
+     )
      ORDER BY p.service_date DESC,p.id DESC`,
     [driverId],
   );
@@ -36,7 +40,7 @@ export async function readDriverDashboard(
   return {
     serviceDate,
     plans,
-    today: today ? await readDriverPlan(pool, driverId, today.id) : null,
+    today: today ? await readDriverPlan(pool, driverId, today.id, timezone) : null,
   };
 }
 
@@ -44,80 +48,45 @@ export async function readDriverPlan(
   pool: Pool,
   driverId: string,
   planId: string,
+  timezone: string,
 ) {
   const id = uuid(planId);
   return transaction(pool, async (sql) => {
-    // Match the planner's lock order (plan, then vehicle) to avoid a
-    // read/move deadlock while an administrator changes assignments.
+    // Match the planner's lock order (plan, then vehicle/publication).
     const plan = await sql.query(
       "SELECT id FROM route_plans WHERE id=$1 FOR SHARE",
       [id],
     );
     if (!plan.rowCount) throw new AppError("NOT_FOUND", 404);
-    const membership = await sql.query(
-      `SELECT pv.vehicle_id,v.name AS vehicle_name,v.plate
-       FROM route_plan_vehicles pv
-       JOIN route_vehicles v ON v.id=pv.vehicle_id
-       JOIN route_drivers d ON d.id=pv.driver_id
-       WHERE pv.plan_id=$1 AND pv.driver_id=$2 AND v.driver_id=$2
-         AND v.available AND d.active
-       FOR SHARE OF pv,v,d`,
-      [id, driverId],
+    const publication = await sql.query(
+      `SELECT pub.snapshot,pub.revision,pub.started_at,
+              (SELECT count(*)::integer FROM route_unit_photos photo
+                WHERE photo.plan_id=pub.plan_id AND photo.vehicle_id=pub.vehicle_id
+                  AND photo.driver_id=pub.driver_id AND photo.expires_at>now()
+                  AND (photo.created_at AT TIME ZONE $3)::date=plan.service_date) AS photo_count
+       FROM route_plan_publications pub
+       JOIN route_plans plan ON plan.id=pub.plan_id
+       JOIN route_plan_vehicles pv
+         ON pv.plan_id=pub.plan_id AND pv.vehicle_id=pub.vehicle_id
+       JOIN route_vehicles v ON v.id=pub.vehicle_id
+       JOIN route_drivers d ON d.id=pub.driver_id
+       WHERE pub.plan_id=$1 AND d.active AND (
+         (pub.started_at IS NOT NULL AND pub.started_driver_id=$2 AND pv.driver_id=$2)
+         OR (pub.started_at IS NULL AND pub.driver_id=$2 AND pv.driver_id=$2
+             AND v.driver_id=$2 AND v.available)
+       )
+       FOR SHARE OF pub,pv,v,d`,
+      [id, driverId, timezone],
     );
-    const assigned = membership.rows[0];
+    const assigned = publication.rows[0];
     if (!assigned) throw new AppError("NOT_FOUND", 404);
-    const board = await readOrderBoard(sql, id);
-    const own = board.shipments
-      .filter((shipment) => shipment.vehicle_id === assigned.vehicle_id)
-      .map((shipment) => ({
-        id: shipment.id,
-        orderName: shipment.orderName,
-        customerName: shipment.customerName,
-        address: shipment.address,
-        position: shipment.position,
-        phone: shipment.phone,
-        priority: shipment.priority,
-        deliveryWindows: shipment.deliveryWindows,
-        deliveryNote: shipment.deliveryNote,
-        fulfillmentMode: shipment.fulfillmentMode,
-        latitude: shipment.latitude,
-        longitude: shipment.longitude,
-        locationStatus: shipment.locationStatus,
-        lines: shipment.lines.map((line) => ({
-          name: line.name,
-          quantity: line.quantity,
-          unit: line.unit,
-          pickerNote: line.pickerNote ?? null,
-        })),
-      }));
-    const optimization = await readPlanOptimization(sql, id);
-    const route = optimization?.current
-      ? (optimization.routes.find(
-          (route) => route.vehicleId === assigned.vehicle_id,
-        ) ?? null)
-      : null;
     return {
-      plan: {
-        id: board.plan.id,
-        label: board.plan.label,
-        serviceDate: board.plan.service_date,
-        version: board.plan.version,
+      ...assigned.snapshot,
+      publication: {
+        revision: Number(assigned.revision),
+        startedAt: assigned.started_at,
+        photoCount: Number(assigned.photo_count),
       },
-      vehicle: {
-        id: assigned.vehicle_id as string,
-        name: assigned.vehicle_name as string,
-        plate: assigned.plate as string,
-      },
-      orders: own,
-      routeStatus:
-        own.length === 0
-          ? "empty"
-          : !optimization
-            ? "not_calculated"
-            : optimization.current
-              ? "current"
-              : "stale",
-      route,
     };
   });
 }

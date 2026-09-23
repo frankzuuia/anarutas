@@ -100,14 +100,14 @@ describe("Google consumption persistence / real PostgreSQL", () => {
     await db?.close();
   });
 
-  it("installs schema v8 and exposes no fabricated values when unconfigured", async () => {
+  it("installs the current schema and exposes no fabricated values when unconfigured", async () => {
     expect(
       (
         await db.pool.query(
           "SELECT schema_version FROM rutas_installation WHERE singleton=true",
         )
       ).rows[0].schema_version,
-    ).toBe(11);
+    ).toBe(15);
     await expect(
       getGoogleConsumptionState(db.pool, {
         RUTAS_GOOGLE_CLOUD_PROJECT_ID: "ana-rutas-develop",
