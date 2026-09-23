@@ -6,7 +6,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-enum class DriverDestination { HOME, ROUTE, ORDERS, PROFILE }
+enum class DriverDestination { HOME, ROUTE, ORDERS, UNIT, HISTORY, PROFILE, SETTINGS }
 enum class DashboardLoadState { LOADING, FAILED, READY }
 
 internal fun dashboardLoadState(
@@ -70,3 +70,26 @@ internal fun routeStatusLabel(status: String): String = when (status) {
 
 internal fun otherPlans(dashboard: DriverDashboard): List<PlanSummary> =
     dashboard.plans.filter { it.id != dashboard.today?.id }
+
+internal fun DriverUiState.activePlan(): AssignedPlan? = selected ?: dashboard?.today
+
+internal fun DriverUiState.runningPlan(): AssignedPlan? =
+    dashboard?.today?.takeIf { it.startedAt != null }
+
+internal fun canPrepareRoute(route: AssignedPlan?, serviceDate: String?): Boolean =
+    route != null && route.date == serviceDate && route.startedAt == null
+
+internal fun canStartRoute(route: AssignedPlan?, serviceDate: String?): Boolean =
+    canPrepareRoute(route, serviceDate) && route!!.photoCount >= 5 &&
+        route.orders.isNotEmpty() && route.routeStatus == "current"
+
+internal fun filterDriverOrders(orders: List<DeliveryOrder>, query: String): List<DeliveryOrder> {
+    val term = query.trim()
+    if (term.isEmpty()) return orders
+    return orders.filter { order ->
+        listOf(order.customer, order.name, order.address).any { it.contains(term, ignoreCase = true) }
+    }
+}
+
+internal fun vehicleLabel(vehicle: String, plate: String): String =
+    if (plate.isBlank()) vehicle else "$vehicle · $plate"

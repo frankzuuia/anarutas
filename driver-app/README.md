@@ -1,5 +1,19 @@
 # Ana Rutas Chofer — Android, bloques 1, 2A y 2B
 
+## Espacio del chofer — 0.3.0
+
+Inicio con tarjetas Ruta activa, Pedidos, Mi unidad y Mis rutas; logo original
+Five, tema grafito/lima, iconos locales y menú lateral. Las listas de paradas y
+pedidos son virtualizadas. Búsqueda local por cliente, folio y dirección, detalle
+real y fotos mantienen sus contratos existentes. Rutas de otra fecha sólo son
+de consulta. El acceso central al mapa siempre abre la ruta iniciada de hoy.
+
+Preferencias guarda sólo la opción local de pantalla activa durante una ruta;
+la gestión de permisos abre Ajustes Android. No cambia permisos del servidor.
+La actualización manual conserva la pantalla actual y muestra errores de red.
+La sesión sigue protegida por Keystore. QA: `docs/QA-ESPACIO-CHOFER.md` en raíz.
+Actualizar esta APK no requiere Deploy/Rebuild del backend.
+
 App Android nativa para vincular automáticamente un dispositivo, entrar con teléfono y PIN,
 y leer únicamente la ruta y los pedidos de la camioneta asignada. No registra
 entregas, cobros, incidencias ni transferencias todavía. No llama Google Route

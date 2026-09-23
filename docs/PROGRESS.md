@@ -1,5 +1,14 @@
 # Progreso — bloque 1
 
+## Espacio del chofer — BL-101
+
+- [x] UX-T01 (UX01,02): tema, iconos, logo original Five, shell con drawer y barra compacta, Inicio de tarjetas.
+- [x] UX-T02 (UX03..05): Ruta/Pedidos/Unidad/Mis rutas, búsqueda virtualizada, detalle y fotos con estilo compartido.
+- [x] UX-T03 (UX06,07): mapa actual persistente, preferencias reales y perfil; clave Android sigue pendiente de configuración.
+- [x] UX-T04 (UX04,08): 25 pruebas Android, 20 PostgreSQL y 2 E2E HTTP/panel verdes; 8/8 mutantes detectados, política 100 % líneas / 95.89 % ramas.
+- [x] UX-T05: APK 0.3.0/code 8 y APK instrumentada compiladas, lint sin errores; entrega de desarrollo. No necesita Deploy/Rebuild del panel.
+- [ ] UX-T06: aprobación visual y E2E Android en dispositivo. Usuario eligió explícitamente probar la APK él mismo y no habilitar ADB en BlueStacks. No se declara certificación productiva. Evidencia y QA: `QA-ESPACIO-CHOFER.md`.
+
 ## Panel en vivo — BL-100 / RT01..08
 
 - [x] RT-T01: migración de eventos transaccionales y listener compartido con limpieza y reconexión.

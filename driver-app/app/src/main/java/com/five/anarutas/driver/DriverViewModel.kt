@@ -255,15 +255,16 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
         }
     }
 
-    fun syncDashboard() {
+    fun syncDashboard(manual: Boolean = false) {
         if (syncing || state.busy || state.token.isBlank()) return
         syncing = true
         val accessToken = state.token
         val observedGeneration = routeMutationGeneration
+        if (manual) state = state.copy(busy = true, error = "", notice = "")
         viewModelScope.launch {
             try {
                 val latest = DriverApi(BuildConfig.SERVER_URL).dashboard(accessToken)
-                if (state.token == accessToken && observedGeneration == routeMutationGeneration && !state.busy) {
+                if (state.token == accessToken && observedGeneration == routeMutationGeneration && (!state.busy || manual)) {
                     val withdrawn = (state.selected ?: state.dashboard?.today)?.let { route ->
                         latest.plans.none { it.id == route.id }
                     } == true
@@ -273,10 +274,11 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                if (failure is DriverApiException && failure.status == 401)
+                if (manual || (failure is DriverApiException && failure.status == 401))
                     handleApiFailure(failure)
             } finally {
                 syncing = false
+                if (manual) state = state.copy(busy = false)
             }
         }
     }
@@ -304,9 +306,9 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
     fun navigate(destination: DriverDestination) {
         val selected = when (destination) {
             DriverDestination.HOME -> state.dashboard?.today
-            DriverDestination.ROUTE, DriverDestination.ORDERS ->
+            DriverDestination.ROUTE, DriverDestination.ORDERS, DriverDestination.UNIT ->
                 state.selected ?: state.dashboard?.today
-            DriverDestination.PROFILE -> state.selected
+            DriverDestination.PROFILE, DriverDestination.HISTORY, DriverDestination.SETTINGS -> state.selected
         }
         state = state.copy(
             destination = destination,
@@ -314,6 +316,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
             error = "",
             notice = "",
             orderDetailId = null,
+            showPhotos = false,
         )
     }
 
@@ -355,7 +358,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
 
     fun deleteUnitPhoto(photoId: String) {
         val route = state.selected ?: state.dashboard?.today
-        if (state.busy || state.token.isBlank() || !canDeleteUnitPhoto(route, state.photos, photoId)) return
+        if (state.busy || state.token.isBlank() || !canPrepareRoute(route, state.dashboard?.serviceDate) || !canDeleteUnitPhoto(route, state.photos, photoId)) return
         val activeRoute = route ?: return
         val planId = activeRoute.id
         val token = state.token
@@ -394,10 +397,11 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
 
     fun uploadUnitPhoto(context: Context, cameraFile: File) {
         val route = state.selected ?: state.dashboard?.today
-        if (route == null || state.busy || state.token.isBlank()) {
+        if (!canPrepareRoute(route, state.dashboard?.serviceDate) || state.busy || state.token.isBlank()) {
             cameraFile.delete()
             return
         }
+        route ?: return
         val token = state.token
         routeMutationGeneration++
         state = state.copy(busy = true, error = "", notice = "")
@@ -452,7 +456,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
         val route = state.selected ?: state.dashboard?.today ?: return
         if (state.busy || state.token.isBlank() || route.startedAt != null ||
             route.id != planId || route.publicationRevision != expectedRevision ||
-            route.photoCount < 5 || route.orders.isEmpty()) return
+            !canStartRoute(route, state.dashboard?.serviceDate)) return
         val token = state.token
         routeMutationGeneration++
         state = state.copy(busy = true, error = "", notice = "")
@@ -467,7 +471,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
                         if (dashboard.today?.id == refreshed.id) dashboard.copy(today = refreshed) else dashboard
                     },
                     destination = DriverDestination.ROUTE,
-                    notice = "Ruta iniciada. Ya puedes abrir el mapa de tu recorrido.",
+                    notice = "Ruta iniciada. Administración ya puede ver tu salida.",
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled

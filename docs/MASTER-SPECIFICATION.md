@@ -1,5 +1,36 @@
 # Bloque 1 — especificación y auditoría previa
 
+## BL-101 / UX01..08 — rediseño nativo del chofer
+
+Componentes Compose con tokens comunes, iconos vectoriales locales, drawer modal,
+Inicio de tarjetas, listas compactas, búsqueda de pedidos y diálogos coherentes.
+Logo original Five integrado como recurso local en acceso, cabecera, drawer e
+icono adaptativo. Listas extensas virtualizadas; actualización manual conserva
+destino y muestra fallos de red sin cerrar sesión.
+La API existente es la autoridad. El ViewModel conserva mutaciones y autenticación.
+Preferencia de pantalla en SharedPreferences local (sin tokens), aplicada sólo a
+ruta iniciada visible; permiso de ubicación se gestiona en Ajustes Android.
+
+| Caso | Datos/acción | Resultado y prueba |
+| --- | --- | --- |
+| UX01 Inicio | Dashboard autenticado | Nombre/fecha reales y cuatro accesos; estado sin ruta explícito |
+| UX02 Drawer/atrás | Estado de navegación local | Cierra drawer primero, vuelve a Inicio desde destinos; sin logout accidental |
+| UX03 Ruta/historial | Snapshot publicado | Métricas y pedidos reales; ruta anterior no se confunde con hoy |
+| UX04 Inicio/fotos | Mutaciones existentes | Cinco fotos de hoy, confirmación y revisión vigente; histórico sólo consulta |
+| UX05 Pedidos | Lista autorizada | Búsqueda local por cliente/folio/dirección, detalle completo y sin resultados explícito |
+| UX06 Mapa persistente | Ruta de hoy iniciada | Sigue apuntando a ruta actual aunque se consulte otra; clave ausente explica disponibilidad |
+| UX07 Preferencias | Almacenamiento local | Pantalla activa sólo cuando corresponde; permisos abren ajustes del sistema |
+| UX08 Carga/fallo/revocación | Contratos existentes | Reintento, sesión real, retiro de ruta y cambio de día mantienen sus guardas |
+
+Referencias oficiales: [drawer](https://developer.android.com/develop/ui/compose/components/drawer),
+[accesibilidad Compose](https://developer.android.com/develop/ui/compose/accessibility/api-defaults),
+[pruebas Compose](https://developer.android.com/develop/ui/compose/testing).
+Targets táctiles de 48 dp con aspecto compacto, contraste alto, texto adaptable,
+estados vacíos y estructura apta para más módulos reales. Sin nuevas llamadas
+Google/Odoo por navegación. No se añade captura de incidencias en este bloque.
+Revisión local: GREEN LIGHT para implementación; coherente con BL-088..100.
+Tareas UX-T01..05 corresponden a UX01..08; MATCH PERFECT documental.
+
 ## BL-100 / RT01..08 — panel en vivo, 23/09/2026
 
 Diagnóstico: OPTIONS live de fotos sólo permite GET/HEAD/OPTIONS; develop desplegado

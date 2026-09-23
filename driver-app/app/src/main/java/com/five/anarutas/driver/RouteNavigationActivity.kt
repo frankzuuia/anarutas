@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -320,6 +322,12 @@ class RouteNavigationActivity : FragmentActivity() {
         message = "Destino elegido: ${activeRoute.orders[index].customer}. Pulsa Iniciar guía cuando estés listo."
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (DriverPreferences(applicationContext).keepRouteAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
     override fun onDestroy() {
         clearPreview()
         previewMap = null
@@ -358,8 +366,7 @@ class RouteNavigationActivity : FragmentActivity() {
     @Composable
     private fun NavigationChrome() {
         val activeRoute = route
-        MaterialTheme(colorScheme = darkColorScheme(primary = NAV_GREEN, surface = NAV_PANEL,
-            onSurface = Color.White, onPrimary = Color(0xFF17200C))) {
+        DriverTheme {
             Surface(color = NAV_PANEL, shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
                 border = BorderStroke(1.dp, NAV_BORDER), modifier = Modifier.navigationBarsPadding()) {
                 Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 18.dp),
@@ -371,8 +378,7 @@ class RouteNavigationActivity : FragmentActivity() {
                             Text(activeRoute?.let { "${it.vehicle} · ${it.orders.size} paradas" } ?: "Navegación",
                                 color = NAV_MUTED, fontSize = 11.sp)
                         }
-                        OutlinedButton(onClick = ::finish, modifier = Modifier.height(36.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Cerrar", fontSize = 11.sp) }
+                        AppIconButton(DriverIcon.CLOSE, "Cerrar mapa", onClick = ::finish)
                     }
                     Text(message, color = if (loading) NAV_MUTED else NAV_GREEN, fontSize = 12.sp)
                     if (activeRoute != null && activeRoute.orders.isNotEmpty()) {
@@ -387,19 +393,11 @@ class RouteNavigationActivity : FragmentActivity() {
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (arrivedIndex >= 0) {
-                                Button(onClick = ::continueAfterArrival, modifier = Modifier.height(38.dp),
-                                    contentPadding = PaddingValues(horizontal = 14.dp)) {
-                                    Text("Continuar", fontSize = 12.sp)
-                                }
+                                AppAction("Continuar", DriverIcon.ARROW, Modifier.weight(1f), onClick = ::continueAfterArrival)
                             } else if (!guidanceRunning && navigator != null && !foreignGuidance) {
-                                Button(onClick = { guideFrom(selectedIndex) }, enabled = !loading,
-                                    modifier = Modifier.height(38.dp), contentPadding = PaddingValues(horizontal = 14.dp)) {
-                                    Text("Iniciar guía", fontSize = 12.sp)
-                                }
+                                AppAction("Iniciar guía", DriverIcon.MAP, Modifier.weight(1f), enabled = !loading) { guideFrom(selectedIndex) }
                             }
-                            OutlinedButton(onClick = { showOrderDetail = true }, enabled = current != null,
-                                modifier = Modifier.height(38.dp),
-                                contentPadding = PaddingValues(horizontal = 14.dp)) { Text("Ver pedido", fontSize = 12.sp) }
+                            AppAction("Ver pedido", DriverIcon.ORDERS, Modifier.weight(1f), enabled = current != null, quiet = true) { showOrderDetail = true }
                         }
                         if (guidanceRunning && !foreignGuidance)
                             TextButton(onClick = { showStopPicker = true },
@@ -414,7 +412,7 @@ class RouteNavigationActivity : FragmentActivity() {
                                     Surface(color = if (index == selectedIndex) NAV_GREEN.copy(alpha = 0.2f) else NAV_PANEL,
                                         shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp,
                                             if (index == selectedIndex) NAV_GREEN else NAV_BORDER),
-                                        modifier = Modifier.clickable { selectedIndex = index; renderPreview() }) {
+                                        modifier = Modifier.heightIn(min = 48.dp).clickable { selectedIndex = index; renderPreview() }) {
                                         Text("${order.position} · ${order.customer}", fontSize = 11.sp,
                                             maxLines = 1, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
                                     }
@@ -457,7 +455,7 @@ class RouteNavigationActivity : FragmentActivity() {
     }
 }
 
-private val NAV_PANEL = Color(0xFF171E19)
-private val NAV_GREEN = Color(0xFF93CD4B)
-private val NAV_MUTED = Color(0xFFAEB9AF)
-private val NAV_BORDER = Color(0xFF344137)
+private val NAV_PANEL = DriverColors.surface
+private val NAV_GREEN = DriverColors.lime
+private val NAV_MUTED = DriverColors.muted
+private val NAV_BORDER = DriverColors.line

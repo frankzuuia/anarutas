@@ -1,5 +1,20 @@
 # Ana Rutas — bloque 1 aprobado
 
+## BL-101: espacio del chofer y navegación compacta
+
+Actor: chofer autenticado. Inicio muestra saludo real y tarjetas Ruta activa,
+Pedidos, Mi unidad e Historial conectadas al estado autorizado. Drawer y barra
+inferior comparten destinos; Atrás cierra overlays y vuelve a Inicio. Las rutas
+históricas se etiquetan y no habilitan Inicio ni captura del día actual. Las
+preferencias locales permiten mantener encendida la pantalla durante una ruta
+iniciada y abrir permisos de Android; no cambian datos ni permisos de servidor.
+Pedidos se filtran localmente y abren detalle real. Inicio conserva confirmación,
+revisión, fecha y cinco fotos. El mapa apunta a la ruta iniciada de hoy incluso
+cuando se consulta historial. Lecturas/sesión y auditoría de mutaciones existentes
+se conservan; diseño sin contadores, mapas ni progreso ficticios.
+Validación: navegación, filtros, ruta del día frente a historial, permiso de Inicio,
+pruebas Android/contratos existentes y revisión visual del artefacto disponible.
+
 ## BL-100: panel operativo en vivo
 
 Administrador: los cambios confirmados de rutas, publicaciones/inicios, fotos,
