@@ -58,6 +58,7 @@ export const errors: Record<string, string> = {
     "El recorrido no contiene todos los pedidos de esta camioneta. Revisa el plan y vuelve a armar la ruta.",
   ROUTE_ALREADY_STARTED:
     "El chofer ya inició esta ruta; no se puede cambiar su camioneta ni sus pedidos.",
+  ROUTE_NOT_STARTED: "La ruta ya no figura como iniciada. Actualiza el tablero.",
   ROUTING_DEPARTURE_INVALID:
     "Escribe una hora de salida válida en formato de 24 horas: HH:mm.",
   ROUTING_DEPARTURE_REQUIRED:

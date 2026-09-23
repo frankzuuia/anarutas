@@ -38,6 +38,26 @@ data class DriverUiState(
     val orderDetailId: String? = null,
 )
 
+internal fun reconcilePublishedRoutes(state: DriverUiState, dashboard: DriverDashboard): DriverUiState {
+    val previous = state.selected ?: state.dashboard?.today
+    val withdrawn = previous != null && dashboard.plans.none { it.id == previous.id }
+    val selected = when {
+        withdrawn -> dashboard.today
+        previous?.id == dashboard.today?.id -> dashboard.today
+        previous != null -> previous
+        else -> dashboard.today
+    }
+    return state.copy(
+        dashboard = dashboard,
+        selected = selected,
+        destination = if (withdrawn) DriverDestination.HOME else state.destination,
+        photos = if (withdrawn) emptyList() else state.photos,
+        showPhotos = if (withdrawn) false else state.showPhotos,
+        orderDetailId = if (withdrawn) null else state.orderDetailId,
+        notice = if (withdrawn) "Administración retiró esta ruta. Espera una nueva publicación." else state.notice,
+    )
+}
+
 internal fun friendlyError(error: Throwable): String = when (error) {
     is DriverApiException -> when (error.code) {
         "MOBILE_LOGIN_INVALID" -> "Teléfono o PIN incorrectos. Verifica tus datos con administración."
@@ -85,6 +105,7 @@ internal fun canReenrollAfterChallengeFailure(failure: Throwable): Boolean =
 class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() {
     var state by mutableStateOf(DriverUiState())
         private set
+    private var syncing = false
 
     init {
         viewModelScope.launch {
@@ -220,6 +241,31 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
                 handleApiFailure(failure)
             } finally {
                 state = state.copy(busy = false)
+            }
+        }
+    }
+
+    fun syncDashboard() {
+        if (syncing || state.busy || state.token.isBlank()) return
+        syncing = true
+        val accessToken = state.token
+        viewModelScope.launch {
+            try {
+                val latest = DriverApi(BuildConfig.SERVER_URL).dashboard(accessToken)
+                if (state.token == accessToken) {
+                    val withdrawn = (state.selected ?: state.dashboard?.today)?.let { route ->
+                        latest.plans.none { it.id == route.id }
+                    } == true
+                    if (withdrawn) NavigationRegistry.endSession()
+                    state = reconcilePublishedRoutes(state, latest)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (failure is DriverApiException && failure.status == 401)
+                    handleApiFailure(failure)
+            } finally {
+                syncing = false
             }
         }
     }

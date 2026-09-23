@@ -14,6 +14,7 @@ import {
   MapPinned,
   Sparkles,
   Send,
+  Ban,
 } from "lucide-react";
 import type { Plan } from "@/core/plans";
 import type { Vehicle } from "@/core/fleet-contract";
@@ -51,6 +52,14 @@ type PublishTarget = {
   scope: "all" | "vehicle";
   vehicleId?: string;
   label: string;
+};
+
+type CancelTarget = {
+  planId: string;
+  vehicleId: string;
+  label: string;
+  revision: number;
+  orderCount: number;
 };
 
 type ManualRecalculationStatus = {
@@ -148,6 +157,64 @@ function PublishRouteDialog({
             : busy
               ? "Publicando…"
               : "Confirmar publicación"}
+        </button>
+      </footer>
+    </dialog>
+  );
+}
+
+function CancelRouteDialog({
+  target,
+  busy,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  target: CancelTarget;
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const title = useId();
+  useEffect(() => {
+    const element = dialog.current;
+    const previous = document.activeElement as HTMLElement | null;
+    element?.showModal();
+    return () => {
+      element?.close();
+      previous?.focus();
+    };
+  }, []);
+  return (
+    <dialog
+      className="fleet-dialog publish-route-dialog"
+      ref={dialog}
+      aria-labelledby={title}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <header className="panel-header">
+        <h2 id={title}>Cancelar inicio de ruta</h2>
+        <button type="button" className="quiet" aria-label="Cerrar confirmación" disabled={busy} onClick={onClose}>
+          <X size={16} aria-hidden="true" />
+        </button>
+      </header>
+      <div className="panel-body stack">
+        <p>¿Cancelar la ruta iniciada de {target.label} con {target.orderCount} pedidos?</p>
+        <p className="muted">
+          Se retirará de la app del chofer y podrás modificar los pedidos. Las fotos y el registro del inicio se conservarán. Para enviarla de nuevo tendrás que publicarla. Confirma con el chofer que todavía no haya salido: el sistema aún no puede verificar su ubicación.
+        </p>
+        {error && <p className="notice error" role="alert">{error}</p>}
+      </div>
+      <footer className="fleet-actions">
+        <button type="button" className="quiet" disabled={busy} onClick={onClose}>Conservar ruta</button>
+        <button type="button" className="lane-cancel confirm-cancel" disabled={busy} onClick={onConfirm}>
+          <Ban size={15} aria-hidden="true" />
+          {busy ? "Cancelando…" : "Sí, cancelar ruta"}
         </button>
       </footer>
     </dialog>
@@ -812,6 +879,8 @@ export function OrdersBoard({
     null,
   );
   const [publishError, setPublishError] = useState("");
+  const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
+  const [cancelError, setCancelError] = useState("");
   const [calculatingManual, setCalculatingManual] = useState(false);
   const publishing = useRef(false);
   const [error, setError] = useState("");
@@ -1147,6 +1216,28 @@ export function OrdersBoard({
     } finally {
       setCalculatingManual(false);
       publishing.current = false;
+      working(false);
+    }
+  }
+  async function cancelRoute() {
+    if (!cancelTarget || !board || busy || cancelTarget.planId !== plan.id) return;
+    working(true);
+    setCancelError("");
+    try {
+      const result = await api<{ publications: RoutePublication[] }>(
+        `${publicationEndpoint}/${cancelTarget.vehicleId}/cancel`,
+        "POST",
+        {
+          expectedVersion: board.plan.version,
+          expectedRevision: cancelTarget.revision,
+        },
+      );
+      setPublicationState({ key: publicationKey, data: result.publications, error: "" });
+      setCancelTarget(null);
+      setNotice(`Inicio de ${cancelTarget.label} cancelado. La ruta ya no está publicada para el chofer.`);
+    } catch (caught) {
+      setCancelError((caught as Error).message);
+    } finally {
       working(false);
     }
   }
@@ -1533,9 +1624,27 @@ export function OrdersBoard({
                   {v.id && lane.length > 0 && publications && (
                     <div className="lane-publication">
                       {publication?.started_at ? (
-                        <span className="lane-publication-state">
-                          Ruta iniciada
-                        </span>
+                        <>
+                          <span className="lane-publication-state">Ruta iniciada</span>
+                          <button
+                            type="button"
+                            className="lane-cancel"
+                            disabled={busy}
+                            onClick={() => {
+                              setCancelError("");
+                              setCancelTarget({
+                                planId: plan.id,
+                                vehicleId: v.id,
+                                label: v.name,
+                                revision: publication.revision,
+                                orderCount: lane.length,
+                              });
+                            }}
+                          >
+                            <Ban size={12} aria-hidden="true" />
+                            Cancelar ruta
+                          </button>
+                        </>
                       ) : (
                         <>
                           {publication && (
@@ -1662,6 +1771,15 @@ export function OrdersBoard({
           calculating={calculatingManual}
           onClose={() => setPublishTarget(null)}
           onConfirm={() => void publish()}
+        />
+      )}
+      {cancelTarget?.planId === plan.id && (
+        <CancelRouteDialog
+          target={cancelTarget}
+          busy={busy}
+          error={cancelError}
+          onClose={() => setCancelTarget(null)}
+          onConfirm={() => void cancelRoute()}
         />
       )}
     </div>

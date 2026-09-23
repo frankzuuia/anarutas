@@ -10,8 +10,9 @@ const stop = (
   stopNumber: number,
   lat = 20,
   lng = -103,
+  vehicleId: string | null = "unit-a",
 ) => ({
-  shipment: { id, partnerId },
+  shipment: { id, partnerId, vehicle_id: vehicleId },
   position: { lat, lng },
   stopNumber,
 });
@@ -37,6 +38,23 @@ describe("route map marker identity", () => {
     expect(
       groupRouteMapStops([stop("one", 44, 2), stop("far", 75, 4, 21)])[0].label,
     ).toBe("2");
+  });
+
+  it("identifies two trucks serving the exact same coordinates without moving the point", () => {
+    const groups = groupRouteMapStops([
+      stop("S00001", 44, 1, 20.673, -103.348, "ford-2026"),
+      stop("S00004", 44, 1, 20.673, -103.348, "ford-2025"),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      position: { lat: 20.673, lng: -103.348 },
+      label: "2 pedidos · 2 camionetas",
+    });
+    expect(groups[0].stops.map((stop) => stop.shipment.vehicle_id))
+      .toEqual(["ford-2026", "ford-2025"]);
+    expect(groupRouteMapStops([
+      stop("S00001", 44, 1, 20.673, -103.348, "ford-2026"),
+    ])[0].label).toBe("1");
   });
 
   it("toggles the same marker closed and switches between different markers", () => {

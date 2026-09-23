@@ -19,10 +19,12 @@ import {
 import { routeFingerprint } from "../src/core/route-fingerprint";
 import { getPlanOptimization } from "../src/core/route-optimization";
 import {
+  cancelStartedRoute,
   listRoutePublications,
   publishRoutes,
 } from "../src/core/route-publications";
 import {
+  readDriverDashboard,
   listDriverPlans,
   readDriverPlan,
 } from "../src/core/driver-mobile-route";
@@ -262,6 +264,9 @@ describe("route publication boundary / real PostgreSQL", () => {
     expect(first.changes).toMatchObject([
       { vehicleId, revision: 1, action: "published" },
     ]);
+    await expect(cancelStartedRoute(db.pool, actor, planId, vehicleId, {
+      expectedVersion: planVersion, expectedRevision: 1,
+    })).rejects.toMatchObject({ code: "ROUTE_NOT_STARTED", status: 409 });
     expect(await listDriverPlans(db.pool, driverId)).toMatchObject([
       { id: planId, orders: 1, label: "Ruta publicada QA" },
     ]);
@@ -555,6 +560,90 @@ describe("route publication boundary / real PostgreSQL", () => {
     expect(nextBoard.vehicles[0].driver_id).toBe(relief.id);
   });
 
+  it("lets an admin revoke a started route without deleting photos, then edit and republish safely", async () => {
+    const board = await orderBoard(db.pool, planId);
+    const started = (await listRoutePublications(db.pool, planId))[0];
+    const photo = (await listDriverUnitPhotos(db.pool, driverId, planId, serviceTimezone))[0];
+    expect(started.started_at).toBeTruthy();
+    expect(photo).toBeTruthy();
+    const request = { expectedVersion: board.plan.version, expectedRevision: started.revision };
+    await expect(cancelStartedRoute(db.pool, actor, randomUUID(), vehicleId, request))
+      .rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    await expect(cancelStartedRoute(db.pool, randomUUID(), planId, vehicleId, request))
+      .rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
+    await expect(cancelStartedRoute(db.pool, actor, planId, vehicleId, { ...request, expectedVersion: board.plan.version - 1 }))
+      .rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
+    await expect(cancelStartedRoute(db.pool, actor, planId, randomUUID(), request))
+      .rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    await expect(cancelStartedRoute(db.pool, actor, planId, vehicleId, { ...request, expectedRevision: started.revision - 1 }))
+      .rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
+    await expect(db.pool.query(
+      "UPDATE route_plan_publications SET started_at=NULL,started_driver_id=NULL,revoked_at=now(),revision=revision+1 WHERE plan_id=$1 AND vehicle_id=$2",
+      [planId, vehicleId],
+    )).rejects.toMatchObject({ code: "PZR01" });
+    expect((await listRoutePublications(db.pool, planId))[0].started_at).toBeTruthy();
+
+    const competing = await Promise.allSettled([
+      cancelStartedRoute(db.pool, actor, planId, vehicleId, request),
+      cancelStartedRoute(db.pool, actor, planId, vehicleId, request),
+    ]);
+    expect(competing.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(competing.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const cancelled = competing.find((result) => result.status === "fulfilled")!.value;
+    expect(cancelled.publications).toEqual([]);
+    expect(await listDriverPlans(db.pool, driverId)).toEqual([]);
+    expect((await readDriverDashboard(db.pool, driverId, serviceTimezone, photoCaptureAt)).today).toBeNull();
+    await expect(readDriverPlan(db.pool, driverId, planId, serviceTimezone))
+      .rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    await expect(startDriverRoute(db.pool, driverId, planId, started.revision, serviceTimezone, photoCaptureAt, photoRoot))
+      .rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    await expect(listDriverUnitPhotos(db.pool, driverId, planId, serviceTimezone))
+      .rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    await expect(readDriverUnitPhoto(db.pool, driverId, photo.id, photoRoot))
+      .rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    expect((await readAdminUnitPhoto(db.pool, actor, photo.id, photoRoot)).length).toBeGreaterThan(0);
+    expect((await listAdminUnitPhotos(db.pool, actor, vehicleId, "2026-09-22", serviceTimezone)).length)
+      .toBeGreaterThan(0);
+    await expect(cancelStartedRoute(db.pool, actor, planId, vehicleId, request))
+      .rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    const audit = await db.pool.query(
+      "SELECT details FROM route_audit WHERE action='route.start.cancelled' AND entity_id=$1 ORDER BY id DESC LIMIT 1",
+      [planId],
+    );
+    expect(audit.rows[0].details).toMatchObject({ vehicleId, previousRevision: started.revision });
+    expect(Number((await db.pool.query(
+      "SELECT count(*)::integer AS n FROM route_audit WHERE action='route.start.cancelled' AND entity_id=$1",
+      [planId],
+    )).rows[0].n)).toBe(1);
+
+    await moveShipment(db.pool, actor, planId, {
+      shipmentId: board.shipments[0].id, vehicleId: null, beforeId: null,
+      expectedVersion: board.plan.version,
+    });
+    const edited = await orderBoard(db.pool, planId);
+    expect(edited.shipments[0].vehicle_id).toBeNull();
+    await moveShipment(db.pool, actor, planId, {
+      shipmentId: board.shipments[0].id, vehicleId, beforeId: null,
+      expectedVersion: edited.plan.version,
+    });
+    let fleet = await getVehicle(db.pool, vehicleId);
+    await assignDriver(db.pool, actor, vehicleId, { driver_id: null, expectedVersion: fleet.version });
+    fleet = await getVehicle(db.pool, vehicleId);
+    await assignDriver(db.pool, actor, vehicleId, { driver_id: driverId, expectedVersion: fleet.version });
+    await storeCalculatedRoute();
+    const republished = await publishRoutes(db.pool, actor, planId, {
+      scope: "vehicle", vehicleId, expectedVersion: (await orderBoard(db.pool, planId)).plan.version,
+    });
+    expect(republished.changes).toMatchObject([
+      { vehicleId, revision: started.revision + 2, action: "published" },
+    ]);
+    await expect(startDriverRoute(db.pool, driverId, planId, started.revision, serviceTimezone, photoCaptureAt, photoRoot))
+      .rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
+    expect((await readDriverPlan(db.pool, driverId, planId, serviceTimezone)).publication.revision)
+      .toBe(started.revision + 2);
+    await startDriverRoute(db.pool, driverId, planId, started.revision + 2, serviceTimezone, photoCaptureAt, photoRoot);
+  });
+
   it("cleans expired photos and their private files", async () => {
     await db.pool.query("UPDATE route_unit_photos SET expires_at=now()-interval '1 second' WHERE plan_id=$1", [planId]);
     expect(await cleanExpiredUnitPhotos(db.pool, photoRoot)).toBe(8);
@@ -564,6 +653,10 @@ describe("route publication boundary / real PostgreSQL", () => {
   });
 
   it("upgrades an existing v14 database so a started unit can be reassigned for future plans", async () => {
+    const assigned = await getVehicle(db.pool, vehicleId);
+    await assignDriver(db.pool, actor, vehicleId, {
+      driver_id: null, expectedVersion: assigned.version,
+    });
     await db.pool.query(`
       CREATE OR REPLACE FUNCTION guard_started_fleet_vehicle()
       RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
@@ -586,7 +679,7 @@ describe("route publication boundary / real PostgreSQL", () => {
       driver_id: driverId, expectedVersion: vehicle.version,
     })).rejects.toMatchObject({ code: "ROUTE_ALREADY_STARTED" });
     await migrate(db.pool, db.config.instanceId);
-    expect((await db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(16);
+    expect((await db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(17);
     vehicle = await getVehicle(db.pool, vehicleId);
     await assignDriver(db.pool, actor, vehicleId, {
       driver_id: driverId, expectedVersion: vehicle.version,

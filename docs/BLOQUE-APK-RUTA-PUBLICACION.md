@@ -23,7 +23,7 @@
 
 ## Estados por camioneta
 
-`borrador` → `publicada` → `iniciada`. Publicar de nuevo una camioneta publicada y no iniciada actualiza el snapshot, no crea otro estado paralelo. `iniciada` es irreversible desde las acciones actuales; el eventual cierre de ruta será otro bloque. Un plan puede tener camionetas en estados distintos. El borrado de un plan sólo procede si ninguna camioneta inició. El estado de una camioneta no se infiere de la versión global del plan.
+`borrador` → `publicada` → `iniciada`. Publicar de nuevo una camioneta publicada y no iniciada actualiza el snapshot, no crea otro estado paralelo. Desde v17, un administrador puede revocar un inicio accidental con confirmación: `iniciada` → `revocada` → `publicada` (republicación con revisión nueva). La revocación retira inmediatamente la publicación de las API móviles, libera la edición de esa camioneta, conserva fotos durante su retención normal y deja auditoría. No comprueba salida física: administración debe confirmarla con el chofer. Un plan puede tener camionetas en estados distintos. El borrado de un plan sólo procede si ninguna camioneta permanece iniciada. El estado de una camioneta no se infiere de la versión global del plan.
 
 ## Escenarios de aceptación
 

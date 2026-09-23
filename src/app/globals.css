@@ -2515,6 +2515,28 @@ button.lane-publish:hover:not(:disabled) {
   border-color: #43bb82;
   background: #235238;
 }
+button.lane-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 25px;
+  padding: 3px 7px;
+  border: 1px solid #8b4b51;
+  background: #392326;
+  color: #ffe0e1;
+  font-size: 11px;
+  font-weight: 650;
+}
+button.lane-cancel:hover:not(:disabled) {
+  border-color: #cc6973;
+  background: #512b30;
+}
+button.confirm-cancel {
+  min-height: 34px;
+  padding: 5px 11px;
+  font-size: 13px;
+}
 .lane-publication-state {
   color: #9acbaa;
   font-size: 11px;

@@ -34,6 +34,8 @@
     "test:mutation:driver-mobile": "stryker run stryker.driver-mobile.config.mjs",
     "test:mutation:route-start": "stryker run stryker.route-start.config.mjs",
     "test:mutation:route-publications": "stryker run stryker.route-publications.config.mjs",
+    "test:mutation:route-cancellation": "stryker run stryker.route-cancellation.config.mjs",
+    "test:mutation:route-map-markers": "stryker run stryker.route-map-markers.config.mjs",
     "test:mutation:unit-photos": "stryker run stryker.unit-photos.config.mjs",
     "test:mutation:driver-dashboard": "stryker run stryker.driver-dashboard.config.mjs",
     "pretest:e2e": "npm run build",

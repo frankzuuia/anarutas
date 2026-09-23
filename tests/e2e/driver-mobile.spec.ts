@@ -371,6 +371,35 @@ test("admin provisioning, native device login, route isolation and revocation ov
   expect(await repeatedStart.json()).toMatchObject({ alreadyStarted: true });
   expect((await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization }).then((response) => response.json())).publication.startedAt)
     .toBeTruthy();
+  const cancelUrl = `${origin}/api/plans/${planId}/publications/${vehicleId}/cancel`;
+  const cancelled = await request.post(cancelUrl, {
+    headers: { Origin: origin },
+    data: { expectedVersion: board.plan.version, expectedRevision: 1 },
+  });
+  expect(cancelled.status()).toBe(200);
+  expect(await cancelled.json()).toMatchObject({ publications: [] });
+  expect(await (await request.get(`${origin}/api/mobile/dashboard`, { headers: authorization })).json())
+    .toMatchObject({ plans: [], today: null });
+  expect((await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization })).status()).toBe(404);
+  expect((await request.post(startUrl, startRequest)).status()).toBe(404);
+  expect((await request.get(`${origin}/api/mobile/unit-photos/${photoIds[0]}`, { headers: authorization })).status()).toBe(404);
+  expect((await request.get(`${origin}/api/unit-photos/${photoIds[0]}`)).status()).toBe(200);
+  expect((await request.post(cancelUrl, {
+    headers: { Origin: origin },
+    data: { expectedVersion: board.plan.version, expectedRevision: 1 },
+  })).status()).toBe(404);
+  const republished = await request.post(`${origin}/api/plans/${planId}/publications`, {
+    headers: { Origin: origin },
+    data: { scope: "vehicle", vehicleId, expectedVersion: board.plan.version },
+  });
+  expect(republished.status()).toBe(200);
+  expect(await republished.json()).toMatchObject({ changes: [{ vehicleId, revision: 3 }] });
+  expect((await request.post(startUrl, startRequest)).status()).toBe(409);
+  expect(await (await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization })).json())
+    .toMatchObject({ publication: { revision: 3, startedAt: null } });
+  expect((await request.post(startUrl, {
+    headers: authorization, data: { expectedRevision: 3 },
+  })).status()).toBe(200);
   const challenge = await request.post(`${origin}/api/mobile/challenge`, {
     data: { phone, deviceId },
   });
@@ -485,4 +514,13 @@ test("driver edit modal enables direct phone and PIN access", async ({
   await page.getByLabel("Abrir borrador").selectOption(planId);
   await expect(page.getByText("Ruta de Chofer HTTP A · Flota: Relevo HTTP")).toBeVisible();
   await expect(page.getByText("Ruta iniciada", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Cancelar ruta" }).click();
+  const cancelDialog = page.getByRole("dialog", { name: "Cancelar inicio de ruta" });
+  await expect(cancelDialog).toContainText("Confirma con el chofer que todavía no haya salido");
+  await cancelDialog.getByRole("button", { name: "Conservar ruta" }).click();
+  await expect(page.getByText("Ruta iniciada", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Cancelar ruta" }).click();
+  await cancelDialog.getByRole("button", { name: "Sí, cancelar ruta" }).click();
+  await expect(page.getByText("Ruta iniciada", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cancelar ruta" })).toHaveCount(0);
 });

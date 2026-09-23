@@ -64,6 +64,32 @@ class DriverDashboardPolicyTest {
         assertEquals(listOf(oldSummary), otherPlans(dashboard))
     }
 
+    @Test
+    fun `withdrawing a started route clears driver screens while keeping the session`() {
+        val assigned = AssignedPlan(
+            id = "route-1", label = "Ruta", date = "2026-09-23", vehicle = "Unidad A",
+            plate = "AAA-001", routeStatus = "current", overview = null, orders = emptyList(),
+            startedAt = "2026-09-23T14:00:00Z",
+        )
+        val profile = DriverProfile("driver", "Chofer", "3312345678")
+        val priorDashboard = DriverDashboard(profile, "America/Mexico_City", "2026-09-23", listOf(summary("route-1", "2026-09-23")), assigned)
+        val state = DriverUiState(
+            initializing = false, token = "session", dashboard = priorDashboard, selected = assigned,
+            destination = DriverDestination.ROUTE, orderDetailId = "order-1", showPhotos = true,
+        )
+        val withdrawn = DriverDashboard(profile, "America/Mexico_City", "2026-09-23", emptyList(), null)
+        val reconciled = reconcilePublishedRoutes(state, withdrawn)
+        assertEquals("session", reconciled.token)
+        assertEquals(null, reconciled.selected)
+        assertEquals(DriverDestination.HOME, reconciled.destination)
+        assertEquals(null, reconciled.orderDetailId)
+        assertEquals(false, reconciled.showPhotos)
+
+        val unchanged = reconcilePublishedRoutes(state, priorDashboard)
+        assertEquals(DriverDestination.ROUTE, unchanged.destination)
+        assertEquals("route-1", unchanged.selected?.id)
+    }
+
     private fun summary(id: String, date: String) = PlanSummary(
         id = id,
         label = id,

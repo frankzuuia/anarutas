@@ -1,6 +1,6 @@
 import type { Shipment } from "./orders-contract";
 
-type MarkerShipment = Pick<Shipment, "id" | "partnerId">;
+type MarkerShipment = Pick<Shipment, "id" | "partnerId" | "vehicle_id">;
 type MarkerPosition = { lat: number; lng: number };
 type MarkerStop<T extends MarkerShipment> = {
   shipment: T;
@@ -39,11 +39,16 @@ export function groupRouteMapStops<T extends MarkerShipment>(
     const customers = new Set(
       group.stops.map((stop) => stop.shipment.partnerId),
     );
+    const vehicles = new Set(
+      group.stops.map((stop) => stop.shipment.vehicle_id),
+    );
     const numbers = [...new Set(group.stops.map((stop) => stop.stopNumber))];
     group.label =
-      group.stops.length > 1 && customers.size === 1
-        ? `${group.stops.length} pedidos`
-        : numbers.join(" / ");
+      vehicles.size > 1 && !vehicles.has(null)
+        ? `${group.stops.length} pedidos · ${vehicles.size} camionetas`
+        : group.stops.length > 1 && customers.size === 1
+          ? `${group.stops.length} pedidos`
+          : numbers.join(" / ");
   }
   return [...groups.values()];
 }

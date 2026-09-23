@@ -237,14 +237,19 @@ export function RouteMapDialog({
       bounds.extend(position);
       const pin = document.createElement("div");
       pin.className = "map-pin";
-      pin.style.background = color(laneIndex(orders[0]));
+      const lanes = [...new Set(orders.map((order) => laneIndex(order)))];
+      pin.style.background = lanes.length === 1
+        ? color(lanes[0])
+        : `linear-gradient(90deg, ${lanes.map((lane, index) =>
+            `${color(lane)} ${Math.round(index * 100 / lanes.length)}% ${Math.round((index + 1) * 100 / lanes.length)}%`
+          ).join(", ")})`;
       pin.textContent = group.label;
       const marker = new google.maps.marker.AdvancedMarkerElement({
         map: currentMap,
         position,
         content: pin,
         title: orders
-          .map((s) => `${s.customerName} · ${s.orderName}`)
+          .map((s) => `${vehicles[laneIndex(s)].name}: ${s.customerName} · ${s.orderName}`)
           .join(" / "),
       });
       marker.addListener("click", () => {

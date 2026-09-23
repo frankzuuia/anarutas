@@ -16,6 +16,7 @@ import { migrateRoutePublications } from "./route-publications-schema";
 import { migrateRouteStartGuards } from "./route-start-guards-schema";
 import { migrateRouteFleetReassignment } from "./route-fleet-reassignment-schema";
 import { migrateManualPublication } from "./route-manual-publication-schema";
+import { migrateRouteCancellation } from "./route-cancellation-schema";
 import { migrateUnitPhotos } from "./unit-photos-schema";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
@@ -88,7 +89,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       );
       let version = result.rows[0]?.schema_version;
       if (
-        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].includes(
+        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].includes(
           version,
         )
       )
@@ -120,6 +121,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (version < 14) await migrateUnitPhotos(client);
       if (version < 15) await migrateRouteFleetReassignment(client);
       if (version < 16) await migrateManualPublication(client);
+      if (version < 17) await migrateRouteCancellation(client);
       return;
     }
     await client.query(`
@@ -150,6 +152,7 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migrateUnitPhotos(client);
     await migrateRouteFleetReassignment(client);
     await migrateManualPublication(client);
+    await migrateRouteCancellation(client);
   });
 }
 export async function audit(

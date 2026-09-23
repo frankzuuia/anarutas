@@ -20,7 +20,7 @@ type PublicationRow = {
 export async function listRoutePublications(sql: Sql, planId: string) {
   const { rows } = await sql.query(
     `SELECT vehicle_id,driver_id,revision,source_plan_version,published_at,started_at
-       FROM route_plan_publications WHERE plan_id=$1 ORDER BY vehicle_id`,
+       FROM route_plan_publications WHERE plan_id=$1 AND revoked_at IS NULL ORDER BY vehicle_id`,
     [uuid(planId)],
   );
   return rows as PublicationRow[];
@@ -69,7 +69,7 @@ export async function publishRoutes(
       membership.rows.map((row) => [row.vehicle_id as string, row]),
     );
     const prior = await sql.query(
-      `SELECT vehicle_id,driver_id,revision,snapshot_hash,started_at
+      `SELECT vehicle_id,driver_id,revision,snapshot_hash,started_at,revoked_at
          FROM route_plan_publications WHERE plan_id=$1 ORDER BY vehicle_id FOR UPDATE`,
       [id],
     );
@@ -98,7 +98,7 @@ export async function publishRoutes(
       );
       const previous = published.get(vehicle.id);
       if (!own.length) {
-        if (previous) {
+        if (previous && !previous.revoked_at) {
           await sql.query(
             "DELETE FROM route_plan_publications WHERE plan_id=$1 AND vehicle_id=$2",
             [id, vehicle.id],
@@ -175,7 +175,8 @@ export async function publishRoutes(
       const serialized = JSON.stringify(snapshot);
       const hash = createHash("sha256").update(serialized).digest("hex");
       if (
-        previous?.snapshot_hash === hash &&
+        previous?.revoked_at === null &&
+        previous.snapshot_hash === hash &&
         previous.driver_id === currentAssignment.fleet_driver_id
       )
         continue;
@@ -190,7 +191,8 @@ export async function publishRoutes(
            snapshot=EXCLUDED.snapshot,
            snapshot_hash=EXCLUDED.snapshot_hash,
            published_by=EXCLUDED.published_by,
-           published_at=now()
+           published_at=now(),
+           revoked_at=NULL
          WHERE route_plan_publications.started_at IS NULL
          RETURNING revision`,
         [
@@ -224,5 +226,62 @@ export async function publishRoutes(
         sourcePlanVersion: board.plan.version,
       });
     return { changes, publications: await listRoutePublications(sql, id) };
+  });
+}
+
+export async function cancelStartedRoute(
+  pool: Pool,
+  actor: string,
+  planId: string,
+  vehicleId: string,
+  input: Record<string, unknown>,
+) {
+  const id = uuid(planId);
+  const vehicle = uuid(vehicleId);
+  const expectedVersion = integer(input.expectedVersion, 1);
+  const expectedRevision = integer(input.expectedRevision, 1);
+  return transaction(pool, async (sql) => {
+    await assertActiveActor(sql, actor);
+    const plan = await sql.query(
+      "SELECT version FROM route_plans WHERE id=$1 FOR UPDATE",
+      [id],
+    );
+    if (!plan.rowCount) throw new AppError("NOT_FOUND", 404);
+    if (Number(plan.rows[0].version) !== expectedVersion)
+      throw new AppError("VERSION_CONFLICT", 409);
+    const current = await sql.query(
+      `SELECT driver_id,revision,started_at,revoked_at
+         FROM route_plan_publications
+        WHERE plan_id=$1 AND vehicle_id=$2 FOR UPDATE`,
+      [id, vehicle],
+    );
+    const publication = current.rows[0];
+    if (!publication || publication.revoked_at)
+      throw new AppError("NOT_FOUND", 404);
+    if (Number(publication.revision) !== expectedRevision)
+      throw new AppError("VERSION_CONFLICT", 409);
+    if (!publication.started_at)
+      throw new AppError("ROUTE_NOT_STARTED", 409);
+    await sql.query(
+      "SELECT set_config('ana_rutas.cancel_started_route','on',true)",
+    );
+    const saved = await sql.query(
+      `UPDATE route_plan_publications
+          SET started_at=NULL,started_driver_id=NULL,
+              revoked_at=now(),revision=revision+1
+        WHERE plan_id=$1 AND vehicle_id=$2 AND revision=$3 AND started_at IS NOT NULL
+        RETURNING revision,revoked_at`,
+      [id, vehicle, expectedRevision],
+    );
+    if (!saved.rowCount) throw new AppError("VERSION_CONFLICT", 409);
+    await audit(sql, actor, "route.start.cancelled", id, {
+      vehicleId: vehicle,
+      driverId: publication.driver_id,
+      previousRevision: expectedRevision,
+      revision: Number(saved.rows[0].revision),
+      startedAt: publication.started_at,
+      revokedAt: saved.rows[0].revoked_at,
+    });
+    return { publications: await listRoutePublications(sql, id) };
   });
 }

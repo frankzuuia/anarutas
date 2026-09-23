@@ -83,7 +83,7 @@ async function assertPublishedDriver(sql: Sql, planId: string, driverId: string)
        JOIN route_plan_vehicles pv ON pv.plan_id=pub.plan_id AND pv.vehicle_id=pub.vehicle_id
        JOIN route_vehicles v ON v.id=pub.vehicle_id
        JOIN route_drivers d ON d.id=pub.driver_id
-      WHERE pub.plan_id=$1 AND d.active AND (
+      WHERE pub.plan_id=$1 AND d.active AND pub.revoked_at IS NULL AND (
         (pub.started_at IS NOT NULL AND pub.started_driver_id=$2 AND pv.driver_id=$2)
         OR (pub.started_at IS NULL AND pub.driver_id=$2 AND pv.driver_id=$2
             AND v.driver_id=$2 AND v.available)
@@ -215,7 +215,8 @@ export async function readDriverUnitPhoto(
      JOIN route_plan_vehicles pv ON pv.plan_id=pub.plan_id AND pv.vehicle_id=pub.vehicle_id
      JOIN route_vehicles v ON v.id=pub.vehicle_id
      JOIN route_drivers d ON d.id=pub.driver_id
-     WHERE p.id=$1 AND p.expires_at>now() AND p.driver_id=$2 AND d.active AND (
+     WHERE p.id=$1 AND p.expires_at>now() AND p.driver_id=$2 AND d.active
+       AND pub.revoked_at IS NULL AND (
        (pub.started_at IS NOT NULL AND pub.started_driver_id=$2 AND pv.driver_id=$2)
        OR (pub.started_at IS NULL AND pub.driver_id=$2 AND pv.driver_id=$2
            AND v.driver_id=$2 AND v.available)

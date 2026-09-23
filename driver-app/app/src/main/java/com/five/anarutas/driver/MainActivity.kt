@@ -39,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +58,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 
 private val backdrop = Color(0xFF0C100D)
 private val panel = Color(0xFF171E19)
@@ -176,6 +181,16 @@ private fun AccessScreen(state: DriverUiState, model: DriverViewModel) {
 @Composable
 private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner, state.token) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            model.syncDashboard()
+            while (true) {
+                delay(30_000L)
+                model.syncDashboard()
+            }
+        }
+    }
     val activeRoute = state.activePlan()
     val mapAvailable = activeRoute?.startedAt != null && BuildConfig.NAVIGATION_API_KEY.isNotBlank()
     val openMap: () -> Unit = {
