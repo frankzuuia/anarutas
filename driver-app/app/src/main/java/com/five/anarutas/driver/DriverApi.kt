@@ -20,6 +20,7 @@ data class PlanSummary(
     val vehicle: String,
     val plate: String,
     val orderCount: Int,
+    val publicationRevision: Int = 0,
 )
 data class DeliveryLine(val name: String, val quantity: Double, val unit: String)
 data class DeliveryOrder(
@@ -77,6 +78,7 @@ internal fun parsePlanSummary(item: JSONObject) = PlanSummary(
     vehicle = item.getString("vehicle_name"),
     plate = item.optString("plate"),
     orderCount = item.getInt("orders"),
+    publicationRevision = item.optInt("publication_revision"),
 )
 
 internal fun parseAssignedPlan(response: JSONObject): AssignedPlan {
@@ -169,7 +171,53 @@ internal fun parseDriverDashboard(raw: String): DriverDashboard {
 
 class DriverApiException(val status: Int, val code: String) : Exception(code)
 
+internal class DriverEventParser {
+    private var pending = ""
+
+    fun accept(line: String): String? {
+        if (line.length > 1024) throw IOException("EVENT_TOO_LARGE")
+        return when {
+            line.startsWith("event: ") -> {
+                pending = line.substring(7)
+                null
+            }
+            line.isEmpty() -> pending.takeIf(String::isNotBlank).also { pending = "" }
+            else -> null
+        }
+    }
+}
+
 class DriverApi(private val server: String) {
+    suspend fun observeEvents(token: String, onEvent: suspend (String) -> Unit) = withContext(Dispatchers.IO) {
+        val connection = (URL("$server/api/mobile/events").openConnection() as HttpURLConnection)
+        try {
+            connection.requestMethod = "GET"
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 10000
+            connection.readTimeout = 45000
+            connection.setRequestProperty("Accept", "text/event-stream")
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            connection.setRequestProperty("Cache-Control", "no-cache")
+            val status = connection.responseCode
+            if (status !in 200..299) {
+                val code = runCatching { JSONObject(connection.errorStream?.readLimited().orEmpty()).optString("error") }
+                    .getOrDefault("")
+                throw DriverApiException(status, code)
+            }
+            if (!connection.contentType.orEmpty().startsWith("text/event-stream"))
+                throw IOException("UNEXPECTED_EVENT_CONTENT_TYPE")
+            connection.inputStream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
+                val parser = DriverEventParser()
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    parser.accept(line)?.let { onEvent(it) }
+                }
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun InputStream.readLimited(): String =
         bufferedReader(StandardCharsets.UTF_8).use { reader ->
             val result = StringBuilder()

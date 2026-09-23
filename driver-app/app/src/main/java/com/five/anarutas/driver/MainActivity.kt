@@ -30,7 +30,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -104,6 +107,29 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
     LaunchedEffect(lifecycle, state.token) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             model.syncDashboard()
+            launch {
+                val token = state.token
+                val api = DriverApi(BuildConfig.SERVER_URL)
+                var retryMillis = 2000L
+                while (isActive && token.isNotBlank()) {
+                    try {
+                        api.observeEvents(token) { event ->
+                            when (event) {
+                                "reset", "change", "session-expired" -> withContext(Dispatchers.Main) {
+                                    model.requestDashboardRefresh()
+                                }
+                            }
+                        }
+                        retryMillis = 2000L
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        // The periodic dashboard fetch remains the recovery path.
+                    }
+                    delay(retryMillis)
+                    retryMillis = (retryMillis * 2).coerceAtMost(30000L)
+                }
+            }
             while (true) {
                 delay(30_000)
                 model.syncDashboard()

@@ -1,5 +1,24 @@
 # Bloque 1 — especificación y auditoría previa
 
+## BL-102 / MN01..08 — ruta en vivo para la APK abierta
+
+Diagnóstico: la APK sólo consulta al abrir y cada 30 s. La publicación sí genera una señal transaccional global para el panel, pero no existe un canal móvil. Una señal global no autoriza enviar datos de otros choferes.
+
+Flujo: tras `LISTEN`, `GET /api/mobile/events` valida el token móvil, calcula la huella de publicaciones visibles exclusivamente para ese chofer y emite `reset`. Los cambios de PostgreSQL se coalescen; sólo una huella distinta emite `change` sin datos privados. La APK relee `/api/mobile/dashboard` como fuente de verdad, reconcilia ruta/versión y muestra aviso de asignación nueva o modificada. Reconexión y consulta periódica recuperan cortes y cambios de día. Latidos validan revocación, sin extender sesiones. Nada invoca Google/Odoo.
+
+| Escenario                             | Resultado                                                        | Validación         |
+| ------------------------------------- | ---------------------------------------------------------------- | ------------------ |
+| MN01 Publicación propia confirmada    | Cambio inmediato, dashboard actualizado y aviso local            | PostgreSQL/Android |
+| MN02 Cambio ajeno o rollback          | Cero evento de ruta propia                                       | PostgreSQL         |
+| MN03 Republicación idéntica           | Cero aviso duplicado                                             | PostgreSQL/Android |
+| MN04 Retiro o reasignación            | Ruta anterior deja de ser visible                                | PostgreSQL/Android |
+| MN05 Corte, reinicio o evento perdido | Reset al reconectar y consulta de respaldo                       | HTTP/Android       |
+| MN06 Sesión revocada/expirada         | Cierra canal, sin datos privados                                 | HTTP               |
+| MN07 Ráfaga y lectura ocupada         | Una actualización pendiente no se pierde                         | Unitarias/Android  |
+| MN08 App cerrada                      | Push remoto pendiente de Firebase real, nunca se promete con SSE | QA de entorno      |
+
+Seguridad: el evento sólo contiene tipo y parámetros de latido; autorización de filas se ejecuta en el servidor. Sin cache/buffering, sin token en URL, conexión compartida a PostgreSQL. SLO de desarrollo: cambio visible <2 s con conexión sana; cero API Google/Odoo por evento. Referencias: documentación local Next 16 Route Handlers, PostgreSQL LISTEN/NOTIFY y Firebase/Android oficiales. Auditoría forense: GREEN LIGHT para canal foreground, RED ALERT para push en segundo plano hasta contar con proyecto Firebase y secreto del servidor. Integridad con BL-100: comparte listener, no cambia snapshot ni reglas de publicación. Correspondencia MN-T01..04: MATCH PERFECT para el bloque foreground.
+
 ## BL-101 / UX01..08 — rediseño nativo del chofer
 
 Componentes Compose con tokens comunes, iconos vectoriales locales, drawer modal,
@@ -11,16 +30,16 @@ La API existente es la autoridad. El ViewModel conserva mutaciones y autenticaci
 Preferencia de pantalla en SharedPreferences local (sin tokens), aplicada sólo a
 ruta iniciada visible; permiso de ubicación se gestiona en Ajustes Android.
 
-| Caso | Datos/acción | Resultado y prueba |
-| --- | --- | --- |
-| UX01 Inicio | Dashboard autenticado | Nombre/fecha reales y cuatro accesos; estado sin ruta explícito |
-| UX02 Drawer/atrás | Estado de navegación local | Cierra drawer primero, vuelve a Inicio desde destinos; sin logout accidental |
-| UX03 Ruta/historial | Snapshot publicado | Métricas y pedidos reales; ruta anterior no se confunde con hoy |
-| UX04 Inicio/fotos | Mutaciones existentes | Cinco fotos de hoy, confirmación y revisión vigente; histórico sólo consulta |
-| UX05 Pedidos | Lista autorizada | Búsqueda local por cliente/folio/dirección, detalle completo y sin resultados explícito |
-| UX06 Mapa persistente | Ruta de hoy iniciada | Sigue apuntando a ruta actual aunque se consulte otra; clave ausente explica disponibilidad |
-| UX07 Preferencias | Almacenamiento local | Pantalla activa sólo cuando corresponde; permisos abren ajustes del sistema |
-| UX08 Carga/fallo/revocación | Contratos existentes | Reintento, sesión real, retiro de ruta y cambio de día mantienen sus guardas |
+| Caso                        | Datos/acción               | Resultado y prueba                                                                          |
+| --------------------------- | -------------------------- | ------------------------------------------------------------------------------------------- |
+| UX01 Inicio                 | Dashboard autenticado      | Nombre/fecha reales y cuatro accesos; estado sin ruta explícito                             |
+| UX02 Drawer/atrás           | Estado de navegación local | Cierra drawer primero, vuelve a Inicio desde destinos; sin logout accidental                |
+| UX03 Ruta/historial         | Snapshot publicado         | Métricas y pedidos reales; ruta anterior no se confunde con hoy                             |
+| UX04 Inicio/fotos           | Mutaciones existentes      | Cinco fotos de hoy, confirmación y revisión vigente; histórico sólo consulta                |
+| UX05 Pedidos                | Lista autorizada           | Búsqueda local por cliente/folio/dirección, detalle completo y sin resultados explícito     |
+| UX06 Mapa persistente       | Ruta de hoy iniciada       | Sigue apuntando a ruta actual aunque se consulte otra; clave ausente explica disponibilidad |
+| UX07 Preferencias           | Almacenamiento local       | Pantalla activa sólo cuando corresponde; permisos abren ajustes del sistema                 |
+| UX08 Carga/fallo/revocación | Contratos existentes       | Reintento, sesión real, retiro de ruta y cambio de día mantienen sus guardas                |
 
 Referencias oficiales: [drawer](https://developer.android.com/develop/ui/compose/components/drawer),
 [accesibilidad Compose](https://developer.android.com/develop/ui/compose/accessibility/api-defaults),
@@ -48,16 +67,16 @@ de LISTEN para releer estado y recuperar eventos perdidos. Cola acotada por
 coalescencia, limpieza al abortar/desmontar/ocultar. Las consultas de cada sección
 usan contratos existentes y su control de versión; no remonta formularios.
 
-| Caso | Resultado y validación |
-| --- | --- |
-| RT01 Inicio/cancelación/foto confirmada | Evento tras commit; panel relee publicaciones/fotos sin F5 (PostgreSQL+HTTP+E2E) |
-| RT02 Cambio de otro admin | Lista visible actualizada; borrador local intacto; conflicto de versión seguro (E2E) |
-| RT03 Rollback/lote | Cero evento por rollback; señales iguales del commit coalescidas (integración) |
-| RT04 Corte/reinicio/ocultar pestaña | Reconectar, reset y releer; estado de conexión visible (E2E) |
-| RT05 Sesión vencida/revocada | Ningún dato privado por SSE; cierre del canal y login (HTTP) |
-| RT06 Panel visible | Latidos renuevan inactividad sin extender caducidad absoluta; F5 conserva cookie (integración+E2E) |
-| RT07 Ráfaga/carrera edición | Sin solicitudes paralelas redundantes; última invalidación no se pierde (unitaria+E2E) |
-| RT08 Incidencias futuras | No crear incidencias falsas; auditoría transaccional queda suscrita para conectar el módulo real |
+| Caso                                    | Resultado y validación                                                                             |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| RT01 Inicio/cancelación/foto confirmada | Evento tras commit; panel relee publicaciones/fotos sin F5 (PostgreSQL+HTTP+E2E)                   |
+| RT02 Cambio de otro admin               | Lista visible actualizada; borrador local intacto; conflicto de versión seguro (E2E)               |
+| RT03 Rollback/lote                      | Cero evento por rollback; señales iguales del commit coalescidas (integración)                     |
+| RT04 Corte/reinicio/ocultar pestaña     | Reconectar, reset y releer; estado de conexión visible (E2E)                                       |
+| RT05 Sesión vencida/revocada            | Ningún dato privado por SSE; cierre del canal y login (HTTP)                                       |
+| RT06 Panel visible                      | Latidos renuevan inactividad sin extender caducidad absoluta; F5 conserva cookie (integración+E2E) |
+| RT07 Ráfaga/carrera edición             | Sin solicitudes paralelas redundantes; última invalidación no se pierde (unitaria+E2E)             |
+| RT08 Incidencias futuras                | No crear incidencias falsas; auditoría transaccional queda suscrita para conectar el módulo real   |
 
 Referencias: PostgreSQL LISTEN/NOTIFY oficial
 (https://www.postgresql.org/docs/current/sql-notify.html,
@@ -515,14 +534,14 @@ de `PROGRESS.md`.
 
 La APK usa exclusivamente la captura de cámara de Android hacia un archivo temporal privado; no solicita medios existentes. El servidor transforma a WebP y compara su hash normalizado contra fotos vigentes de la misma unidad, serializando cargas concurrentes. Una repetición de la misma ruta/fecha es idempotente y no aumenta el conteo; el mismo contenido de otra fecha o plan se rechaza. La UI de fotos se abre sólo tras una lectura exitosa del endpoint, y distingue 404 HTML de versión antigua de `NOT_FOUND` de autorización. La retención sigue visible sólo en Control de unidades.
 
-| Escenario | Actor, precondición y disparador | Datos/permisos, resultado y recuperación |
-| --- | --- | --- |
-| MR18 | Chofer publicado toca Fotos y el servidor ejecuta un commit anterior | GET devuelve HTML 404; la APK no abre un modal vacío ni intenta subir; muestra actualizar develop. No cambia BD. |
-| MR19 | Chofer cancela cámara, la cámara falla o entrega archivo vacío | Se limpia caché temporal; cero POST, cero foto contabilizada; permite reintento. |
-| MR20 | Chofer repite imagen en la misma ruta o intenta reutilizarla otro día | En el primer caso se informa duplicado sin sumar; en el segundo el servidor devuelve 409 sin exponer datos de otra ruta. Carga concurrente no evade la regla. |
-| MR21 | Chofer toca Iniciar por error y cancela | Diálogo muestra paradas reales; ninguna llamada de inicio ni cambio de estado. |
-| MR22 | Admin republica mientras el chofer confirma | POST incluye revisión esperada; 409 y actualización necesaria, sin arrancar otra secuencia. |
-| MR23 | Develop aún no tiene volumen privado | GET puede listar metadatos; la carga e inicio fallan cerrados con error de almacenamiento hasta configurar un volumen persistente. |
+| Escenario | Actor, precondición y disparador                                      | Datos/permisos, resultado y recuperación                                                                                                                      |
+| --------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MR18      | Chofer publicado toca Fotos y el servidor ejecuta un commit anterior  | GET devuelve HTML 404; la APK no abre un modal vacío ni intenta subir; muestra actualizar develop. No cambia BD.                                              |
+| MR19      | Chofer cancela cámara, la cámara falla o entrega archivo vacío        | Se limpia caché temporal; cero POST, cero foto contabilizada; permite reintento.                                                                              |
+| MR20      | Chofer repite imagen en la misma ruta o intenta reutilizarla otro día | En el primer caso se informa duplicado sin sumar; en el segundo el servidor devuelve 409 sin exponer datos de otra ruta. Carga concurrente no evade la regla. |
+| MR21      | Chofer toca Iniciar por error y cancela                               | Diálogo muestra paradas reales; ninguna llamada de inicio ni cambio de estado.                                                                                |
+| MR22      | Admin republica mientras el chofer confirma                           | POST incluye revisión esperada; 409 y actualización necesaria, sin arrancar otra secuencia.                                                                   |
+| MR23      | Develop aún no tiene volumen privado                                  | GET puede listar metadatos; la carga e inicio fallan cerrados con error de almacenamiento hasta configurar un volumen persistente.                            |
 
 Flujo: cámara → archivo en caché privada → POST autenticado con límite → validación, deduplicación y auditoría en PostgreSQL → WebP privado; confirmación → POST con revisión → bloqueo transaccional de publicación → foto/fecha/asignación → inicio. No se llama Odoo ni Google al capturar o confirmar. Permisos: sesión móvil y publicación vigente, lectura administrativa separada. Fallos de red preservan el conteo del servidor; reintento idéntico no crea otra foto. Verificación: unitarias Android, integración PostgreSQL, HTTP/E2E, Gherkin, cobertura y mutación de duplicado/revisión, inspección física pendiente. No se declara infalsificable el origen de los píxeles en un dispositivo comprometido.
 
@@ -536,13 +555,13 @@ La sesión móvil autenticada solicita `DELETE /api/mobile/unit-photos/[photoId]
 
 ### Matriz de escenarios
 
-| ID | Actor/precondición/disparador | Datos, permiso y resultado | Auditoría/efecto/fallo/validación |
-| --- | --- | --- | --- |
-| MR24 | Chofer publicado toca una foto borrosa y confirma | Elimina sólo su foto previa al inicio; GET/lista dejan de mostrarla; el conteo baja y el umbral de cinco se reevalúa | Un evento `mobile.unit_photo.deleted`; prueba PostgreSQL, HTTP y APK |
-| MR25 | Chofer cancela confirmación | Cero petición, cero escritura; conserva foto y conteo | Prueba de política/UI Android |
-| MR26 | Ruta ya iniciada o inicia al mismo tiempo | La misma publicación serializa ambas acciones; si inició primero, 409 y foto intacta; si borró primero y quedan menos de cinco, el inicio falla | Carrera PostgreSQL y error accesible en APK |
-| MR27 | Sesión revocada, foto ajena, vencida o publicación retirada | 401/404 sin revelar propietario ni archivo; cero borrados | HTTP y aislamiento de filas |
-| MR28 | Archivo privado ausente, fallo de disco o respuesta de red perdida | La validación de almacenamiento falla antes de borrar; tras commit el metadato ya no da acceso y el huérfano se limpia luego. La APK relee el conteo para resolver un éxito incierto | QA de fallo de almacenamiento y recuperación |
+| ID   | Actor/precondición/disparador                                      | Datos, permiso y resultado                                                                                                                                                           | Auditoría/efecto/fallo/validación                                    |
+| ---- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| MR24 | Chofer publicado toca una foto borrosa y confirma                  | Elimina sólo su foto previa al inicio; GET/lista dejan de mostrarla; el conteo baja y el umbral de cinco se reevalúa                                                                 | Un evento `mobile.unit_photo.deleted`; prueba PostgreSQL, HTTP y APK |
+| MR25 | Chofer cancela confirmación                                        | Cero petición, cero escritura; conserva foto y conteo                                                                                                                                | Prueba de política/UI Android                                        |
+| MR26 | Ruta ya iniciada o inicia al mismo tiempo                          | La misma publicación serializa ambas acciones; si inició primero, 409 y foto intacta; si borró primero y quedan menos de cinco, el inicio falla                                      | Carrera PostgreSQL y error accesible en APK                          |
+| MR27 | Sesión revocada, foto ajena, vencida o publicación retirada        | 401/404 sin revelar propietario ni archivo; cero borrados                                                                                                                            | HTTP y aislamiento de filas                                          |
+| MR28 | Archivo privado ausente, fallo de disco o respuesta de red perdida | La validación de almacenamiento falla antes de borrar; tras commit el metadato ya no da acceso y el huérfano se limpia luego. La APK relee el conteo para resolver un éxito incierto | QA de fallo de almacenamiento y recuperación                         |
 
 ### Seguridad, límites y validación
 

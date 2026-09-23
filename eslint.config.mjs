@@ -12,6 +12,8 @@ export default defineConfig([
     "test-results/**",
     "playwright-report/**",
     ".stryker-tmp/**",
+    "driver-app/app/build/**",
+    "driver-app/.kotlin/**",
     "next-env.d.ts",
   ]),
 ]);

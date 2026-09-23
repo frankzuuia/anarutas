@@ -204,6 +204,7 @@ test("admin provisioning, native device login, route isolation and revocation ov
   const accessUrl = `${origin}/api/drivers/${driverId}/mobile-access`;
   expect((await request.get(accessUrl)).status()).toBe(401);
   expect((await request.get(`${origin}/api/events`)).status()).toBe(401);
+  expect((await request.get(`${origin}/api/mobile/events`)).status()).toBe(401);
   const adminSession = await request.post(`${origin}/api/session`, {
     headers: { Origin: origin },
     data: { login: adminLogin, password: adminPassword },
@@ -249,17 +250,42 @@ test("admin provisioning, native device login, route isolation and revocation ov
   expect((await repeatedEnrollment.json()).deviceId).toBe(deviceId);
   expect((await request.get(`${origin}/api/mobile/plans`)).status()).toBe(401);
   const authorization = { Authorization: `Bearer ${token}` };
+  const liveAbort = new AbortController();
+  const liveResponse = await fetch(`${origin}/api/mobile/events`, {
+    headers: { ...authorization, Accept: "text/event-stream" },
+    signal: liveAbort.signal,
+  });
+  expect(liveResponse.status).toBe(200);
+  expect(liveResponse.headers.get("content-type")).toContain(
+    "text/event-stream",
+  );
+  const liveReader = liveResponse.body!.getReader();
+  const resetEvent = await liveReader.read();
+  expect(new TextDecoder().decode(resetEvent.value)).toContain("event: reset");
   const plans = await request.get(`${origin}/api/mobile/plans`, {
     headers: authorization,
   });
   expect(plans.status()).toBe(200);
   expect(await plans.json()).toEqual([]);
-  const hiddenDashboard = await request.get(`${origin}/api/mobile/dashboard`, { headers: authorization });
-  expect(await hiddenDashboard.json()).toMatchObject({ plans: [], today: null });
-  expect((await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization })).status()).toBe(404);
+  const hiddenDashboard = await request.get(`${origin}/api/mobile/dashboard`, {
+    headers: authorization,
+  });
+  expect(await hiddenDashboard.json()).toMatchObject({
+    plans: [],
+    today: null,
+  });
+  expect(
+    (
+      await request.get(`${origin}/api/mobile/plans/${planId}`, {
+        headers: authorization,
+      })
+    ).status(),
+  ).toBe(404);
 
   const board = await orderBoard(db.pool, planId);
-  const firstOrder = board.shipments.find((order) => order.vehicle_id === vehicleId)!;
+  const firstOrder = board.shipments.find(
+    (order) => order.vehicle_id === vehicleId,
+  )!;
   const metrics = {
     travelDistanceMeters: 1000,
     travelDurationSeconds: 600,
@@ -271,33 +297,67 @@ test("admin provisioning, native device login, route isolation and revocation ov
     `INSERT INTO route_optimization_runs
        (id,plan_id,base_plan_version,applied_plan_version,request_hash,input_fingerprint,metrics,routes,skipped,created_by)
      VALUES($1,$2,$3,$3,$4,$5,$6,$7,'[]',$8)`,
-    [randomUUID(), planId, board.plan.version,
+    [
+      randomUUID(),
+      planId,
+      board.plan.version,
       createHash("sha256").update(`mobile-e2e-${planId}`).digest("hex"),
-      routeFingerprint(board, 0), JSON.stringify(metrics), JSON.stringify([{
-        vehicleId,
-        vehicleName: "HTTP camioneta 1",
-        encodedPolyline: null,
-        segmentPolylines: [],
-        departureAt: `${serviceDate}T13:00:00.000Z`,
-        finishedAt: `${serviceDate}T13:10:00.000Z`,
-        trafficMode: "static",
-        metrics,
-        stops: [{
-          shipmentId: firstOrder.id,
-          position: 1,
-          eta: `${serviceDate}T13:10:00.000Z`,
-          travelDistanceMeters: 1000,
-          travelDurationSeconds: 600,
-          waitDurationSeconds: 0,
-        }],
-      }]), adminId],
+      routeFingerprint(board, 0),
+      JSON.stringify(metrics),
+      JSON.stringify([
+        {
+          vehicleId,
+          vehicleName: "HTTP camioneta 1",
+          encodedPolyline: null,
+          segmentPolylines: [],
+          departureAt: `${serviceDate}T13:00:00.000Z`,
+          finishedAt: `${serviceDate}T13:10:00.000Z`,
+          trafficMode: "static",
+          metrics,
+          stops: [
+            {
+              shipmentId: firstOrder.id,
+              position: 1,
+              eta: `${serviceDate}T13:10:00.000Z`,
+              travelDistanceMeters: 1000,
+              travelDurationSeconds: 600,
+              waitDurationSeconds: 0,
+            },
+          ],
+        },
+      ]),
+      adminId,
+    ],
   );
-  const published = await request.post(`${origin}/api/plans/${planId}/publications`, {
-    headers: { Origin: origin },
-    data: { scope: "vehicle", vehicleId, expectedVersion: board.plan.version },
-  });
+  const publicationStartedAt = Date.now();
+  const published = await request.post(
+    `${origin}/api/plans/${planId}/publications`,
+    {
+      headers: { Origin: origin },
+      data: {
+        scope: "vehicle",
+        vehicleId,
+        expectedVersion: board.plan.version,
+      },
+    },
+  );
   expect(published.status()).toBe(200);
-  expect((await request.get(`${origin}/api/mobile/plans`, { headers: authorization }).then((response) => response.json()))).toHaveLength(1);
+  const publicationEvent = await Promise.race([
+    liveReader.read(),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("MOBILE_EVENT_TIMEOUT")), 5000),
+    ),
+  ]);
+  expect(new TextDecoder().decode(publicationEvent.value)).toContain(
+    "event: change",
+  );
+  console.info(`Mobile publication event visible in ${Date.now() - publicationStartedAt} ms`);
+  liveAbort.abort();
+  expect(
+    await request
+      .get(`${origin}/api/mobile/plans`, { headers: authorization })
+      .then((response) => response.json()),
+  ).toHaveLength(1);
   const dashboard = await request.get(`${origin}/api/mobile/dashboard`, {
     headers: authorization,
   });
@@ -324,29 +384,55 @@ test("admin provisioning, native device login, route isolation and revocation ov
     publication: { revision: 1, startedAt: null },
   });
   const startUrl = `${origin}/api/mobile/plans/${planId}/start`;
-  const startRequest = { headers: authorization, data: { expectedRevision: 1 } };
-  const missingConfirmation = await request.post(startUrl, { headers: authorization });
+  const startRequest = {
+    headers: authorization,
+    data: { expectedRevision: 1 },
+  };
+  const missingConfirmation = await request.post(startUrl, {
+    headers: authorization,
+  });
   expect(missingConfirmation.status()).toBe(415);
-  const staleConfirmation = await request.post(startUrl, { headers: authorization, data: { expectedRevision: 0 } });
+  const staleConfirmation = await request.post(startUrl, {
+    headers: authorization,
+    data: { expectedRevision: 0 },
+  });
   expect(staleConfirmation.status()).toBe(400);
   const blockedStart = await request.post(startUrl, startRequest);
-  const liveContext = await browser.newContext({ storageState: await request.storageState() });
+  const liveContext = await browser.newContext({
+    storageState: await request.storageState(),
+  });
   const livePanel = await liveContext.newPage();
   await livePanel.goto(origin);
-  await expect(livePanel.getByLabel("Estado de sincronización")).toHaveText("En vivo");
+  await expect(livePanel.getByLabel("Estado de sincronización")).toHaveText(
+    "En vivo",
+  );
   await livePanel.getByLabel("Abrir borrador").selectOption(planId);
-  await expect(livePanel.getByText("Ruta publicada", { exact: true })).toBeVisible();
+  await expect(
+    livePanel.getByText("Ruta publicada", { exact: true }),
+  ).toBeVisible();
   expect(blockedStart.status()).toBe(409);
-  expect(await blockedStart.json()).toMatchObject({ error: "UNIT_PHOTOS_REQUIRED" });
+  expect(await blockedStart.json()).toMatchObject({
+    error: "UNIT_PHOTOS_REQUIRED",
+  });
   const photoIds: string[] = [];
   for (let index = 0; index < 5; index++) {
     const image = await sharp({
-      create: { width: 50, height: 50, channels: 3, background: { r: index * 30, g: 80, b: 120 } },
-    }).jpeg().toBuffer();
-    const uploaded = await request.post(`${origin}/api/mobile/plans/${planId}/unit-photos`, {
-      headers: { ...authorization, "Content-Type": "image/jpeg" },
-      data: image,
-    });
+      create: {
+        width: 50,
+        height: 50,
+        channels: 3,
+        background: { r: index * 30, g: 80, b: 120 },
+      },
+    })
+      .jpeg()
+      .toBuffer();
+    const uploaded = await request.post(
+      `${origin}/api/mobile/plans/${planId}/unit-photos`,
+      {
+        headers: { ...authorization, "Content-Type": "image/jpeg" },
+        data: image,
+      },
+    );
     expect(uploaded.status()).toBe(201);
     photoIds.push((await uploaded.json()).id);
   }
@@ -355,60 +441,122 @@ test("admin provisioning, native device login, route isolation and revocation ov
   const removed = await request.delete(deleteUrl, { headers: authorization });
   expect(removed.status()).toBe(200);
   expect(await removed.json()).toMatchObject({ deleted: true, photoCount: 4 });
-  expect((await request.get(deleteUrl, { headers: authorization })).status()).toBe(404);
+  expect(
+    (await request.get(deleteUrl, { headers: authorization })).status(),
+  ).toBe(404);
   expect((await request.post(startUrl, startRequest)).status()).toBe(409);
   const replacementImage = await sharp({
-    create: { width: 50, height: 50, channels: 3, background: { r: 220, g: 80, b: 120 } },
-  }).jpeg().toBuffer();
-  const replacement = await request.post(`${origin}/api/mobile/plans/${planId}/unit-photos`, {
-    headers: { ...authorization, "Content-Type": "image/jpeg" },
-    data: replacementImage,
-  });
+    create: {
+      width: 50,
+      height: 50,
+      channels: 3,
+      background: { r: 220, g: 80, b: 120 },
+    },
+  })
+    .jpeg()
+    .toBuffer();
+  const replacement = await request.post(
+    `${origin}/api/mobile/plans/${planId}/unit-photos`,
+    {
+      headers: { ...authorization, "Content-Type": "image/jpeg" },
+      data: replacementImage,
+    },
+  );
   expect(replacement.status()).toBe(201);
   photoIds[4] = (await replacement.json()).id;
-  const visiblePhotos = await request.get(`${origin}/api/vehicles/${vehicleId}/unit-photos?date=${serviceDate}`);
+  const visiblePhotos = await request.get(
+    `${origin}/api/vehicles/${vehicleId}/unit-photos?date=${serviceDate}`,
+  );
   expect(visiblePhotos.status()).toBe(200);
   expect(await visiblePhotos.json()).toHaveLength(5);
-  await livePanel.getByRole("button", { name: "Control de unidades", exact: true }).click();
+  await livePanel
+    .getByRole("button", { name: "Control de unidades", exact: true })
+    .click();
   await livePanel.getByRole("button", { name: /HTTP camioneta 1/ }).click();
-  await expect(livePanel.getByLabel("Fotos de Contrato HTTP móvil")).toContainText("5 fotos");
-  expect((await request.get(`${origin}/api/unit-photos/${photoIds[0]}`)).headers()["content-type"])
-    .toContain("image/webp");
-  expect((await request.get(`${origin}/api/mobile/unit-photos/${photoIds[0]}`)).status()).toBe(401);
-  const firstPhotoTimestamp = (await db.pool.query(
-    "SELECT created_at FROM route_unit_photos WHERE id=$1", [photoIds[0]],
-  )).rows[0].created_at;
+  await expect(
+    livePanel.getByLabel("Fotos de Contrato HTTP móvil"),
+  ).toContainText("5 fotos");
+  expect(
+    (await request.get(`${origin}/api/unit-photos/${photoIds[0]}`)).headers()[
+      "content-type"
+    ],
+  ).toContain("image/webp");
+  expect(
+    (
+      await request.get(`${origin}/api/mobile/unit-photos/${photoIds[0]}`)
+    ).status(),
+  ).toBe(401);
+  const firstPhotoTimestamp = (
+    await db.pool.query(
+      "SELECT created_at FROM route_unit_photos WHERE id=$1",
+      [photoIds[0]],
+    )
+  ).rows[0].created_at;
   await db.pool.query(
     "UPDATE route_unit_photos SET created_at=created_at-interval '1 day' WHERE id=$1",
     [photoIds[0]],
   );
-  const stalePhotoRoute = await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization });
+  const stalePhotoRoute = await request.get(
+    `${origin}/api/mobile/plans/${planId}`,
+    { headers: authorization },
+  );
   expect((await stalePhotoRoute.json()).publication.photoCount).toBe(4);
-  await expect(livePanel.getByLabel("Fotos de Contrato HTTP móvil")).toContainText("4 fotos");
+  await expect(
+    livePanel.getByLabel("Fotos de Contrato HTTP móvil"),
+  ).toContainText("4 fotos");
   expect((await request.post(startUrl, startRequest)).status()).toBe(409);
-  await db.pool.query("UPDATE route_unit_photos SET created_at=$2 WHERE id=$1",
-    [photoIds[0], firstPhotoTimestamp]);
-  await expect(livePanel.getByLabel("Fotos de Contrato HTTP móvil")).toContainText("5 fotos");
-  await livePanel.getByRole("button", { name: "Planificar rutas", exact: true }).click();
-  await expect(livePanel.getByText("Ruta publicada", { exact: true })).toBeVisible();
-  const wrongRevision = await request.post(startUrl, { headers: authorization, data: { expectedRevision: 2 } });
+  await db.pool.query(
+    "UPDATE route_unit_photos SET created_at=$2 WHERE id=$1",
+    [photoIds[0], firstPhotoTimestamp],
+  );
+  await expect(
+    livePanel.getByLabel("Fotos de Contrato HTTP móvil"),
+  ).toContainText("5 fotos");
+  await livePanel
+    .getByRole("button", { name: "Planificar rutas", exact: true })
+    .click();
+  await expect(
+    livePanel.getByText("Ruta publicada", { exact: true }),
+  ).toBeVisible();
+  const wrongRevision = await request.post(startUrl, {
+    headers: authorization,
+    data: { expectedRevision: 2 },
+  });
   expect(wrongRevision.status()).toBe(409);
-  expect(await wrongRevision.json()).toMatchObject({ error: "VERSION_CONFLICT" });
+  expect(await wrongRevision.json()).toMatchObject({
+    error: "VERSION_CONFLICT",
+  });
   const firstStart = await request.post(startUrl, startRequest);
   const receivedStartAt = Date.now();
   expect(firstStart.status()).toBe(200);
   expect(await firstStart.json()).toMatchObject({ alreadyStarted: false });
-  await expect(livePanel.getByText("Ruta iniciada", { exact: true })).toBeVisible({ timeout: 2000 });
-  console.info(`Realtime driver start visible in ${Date.now() - receivedStartAt} ms`);
-  await expect(livePanel.getByRole("button", { name: "Cancelar ruta", exact: true })).toBeVisible();
-  const deniedDelete = await request.delete(`${origin}/api/mobile/unit-photos/${photoIds[4]}`, { headers: authorization });
+  await expect(
+    livePanel.getByText("Ruta iniciada", { exact: true }),
+  ).toBeVisible({ timeout: 2000 });
+  console.info(
+    `Realtime driver start visible in ${Date.now() - receivedStartAt} ms`,
+  );
+  await expect(
+    livePanel.getByRole("button", { name: "Cancelar ruta", exact: true }),
+  ).toBeVisible();
+  const deniedDelete = await request.delete(
+    `${origin}/api/mobile/unit-photos/${photoIds[4]}`,
+    { headers: authorization },
+  );
   expect(deniedDelete.status()).toBe(409);
-  expect(await deniedDelete.json()).toMatchObject({ error: "ROUTE_ALREADY_STARTED" });
+  expect(await deniedDelete.json()).toMatchObject({
+    error: "ROUTE_ALREADY_STARTED",
+  });
   const repeatedStart = await request.post(startUrl, startRequest);
   expect(repeatedStart.status()).toBe(200);
   expect(await repeatedStart.json()).toMatchObject({ alreadyStarted: true });
-  expect((await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization }).then((response) => response.json())).publication.startedAt)
-    .toBeTruthy();
+  expect(
+    (
+      await request
+        .get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization })
+        .then((response) => response.json())
+    ).publication.startedAt,
+  ).toBeTruthy();
   const cancelUrl = `${origin}/api/plans/${planId}/publications/${vehicleId}/cancel`;
   const cancelled = await request.post(cancelUrl, {
     headers: { Origin: origin },
@@ -416,32 +564,78 @@ test("admin provisioning, native device login, route isolation and revocation ov
   });
   expect(cancelled.status()).toBe(200);
   expect(await cancelled.json()).toMatchObject({ publications: [] });
-  await expect(livePanel.getByText("Ruta iniciada", { exact: true })).toHaveCount(0, { timeout: 2000 });
+  await expect(
+    livePanel.getByText("Ruta iniciada", { exact: true }),
+  ).toHaveCount(0, { timeout: 2000 });
   await livePanel.reload();
-  await expect(livePanel.getByRole("heading", { name: "Planificar rutas", exact: true })).toBeVisible();
+  await expect(
+    livePanel.getByRole("heading", { name: "Planificar rutas", exact: true }),
+  ).toBeVisible();
   await liveContext.close();
-  expect(await (await request.get(`${origin}/api/mobile/dashboard`, { headers: authorization })).json())
-    .toMatchObject({ plans: [], today: null });
-  expect((await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization })).status()).toBe(404);
+  expect(
+    await (
+      await request.get(`${origin}/api/mobile/dashboard`, {
+        headers: authorization,
+      })
+    ).json(),
+  ).toMatchObject({ plans: [], today: null });
+  expect(
+    (
+      await request.get(`${origin}/api/mobile/plans/${planId}`, {
+        headers: authorization,
+      })
+    ).status(),
+  ).toBe(404);
   expect((await request.post(startUrl, startRequest)).status()).toBe(404);
-  expect((await request.get(`${origin}/api/mobile/unit-photos/${photoIds[0]}`, { headers: authorization })).status()).toBe(404);
-  expect((await request.get(`${origin}/api/unit-photos/${photoIds[0]}`)).status()).toBe(200);
-  expect((await request.post(cancelUrl, {
-    headers: { Origin: origin },
-    data: { expectedVersion: board.plan.version, expectedRevision: 1 },
-  })).status()).toBe(404);
-  const republished = await request.post(`${origin}/api/plans/${planId}/publications`, {
-    headers: { Origin: origin },
-    data: { scope: "vehicle", vehicleId, expectedVersion: board.plan.version },
-  });
+  expect(
+    (
+      await request.get(`${origin}/api/mobile/unit-photos/${photoIds[0]}`, {
+        headers: authorization,
+      })
+    ).status(),
+  ).toBe(404);
+  expect(
+    (await request.get(`${origin}/api/unit-photos/${photoIds[0]}`)).status(),
+  ).toBe(200);
+  expect(
+    (
+      await request.post(cancelUrl, {
+        headers: { Origin: origin },
+        data: { expectedVersion: board.plan.version, expectedRevision: 1 },
+      })
+    ).status(),
+  ).toBe(404);
+  const republished = await request.post(
+    `${origin}/api/plans/${planId}/publications`,
+    {
+      headers: { Origin: origin },
+      data: {
+        scope: "vehicle",
+        vehicleId,
+        expectedVersion: board.plan.version,
+      },
+    },
+  );
   expect(republished.status()).toBe(200);
-  expect(await republished.json()).toMatchObject({ changes: [{ vehicleId, revision: 3 }] });
+  expect(await republished.json()).toMatchObject({
+    changes: [{ vehicleId, revision: 3 }],
+  });
   expect((await request.post(startUrl, startRequest)).status()).toBe(409);
-  expect(await (await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization })).json())
-    .toMatchObject({ publication: { revision: 3, startedAt: null } });
-  expect((await request.post(startUrl, {
-    headers: authorization, data: { expectedRevision: 3 },
-  })).status()).toBe(200);
+  expect(
+    await (
+      await request.get(`${origin}/api/mobile/plans/${planId}`, {
+        headers: authorization,
+      })
+    ).json(),
+  ).toMatchObject({ publication: { revision: 3, startedAt: null } });
+  expect(
+    (
+      await request.post(startUrl, {
+        headers: authorization,
+        data: { expectedRevision: 3 },
+      })
+    ).status(),
+  ).toBe(200);
   const challenge = await request.post(`${origin}/api/mobile/challenge`, {
     data: { phone, deviceId },
   });
@@ -533,36 +727,69 @@ test("driver edit modal enables direct phone and PIN access", async ({
   await modal.getByRole("button", { name: "Cerrar formulario" }).click();
   await page.getByRole("button", { name: "Control de unidades" }).click();
   await page.getByRole("button", { name: /HTTP camioneta 1/ }).click();
-  await expect(page.getByRole("heading", { name: "HTTP camioneta 1" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Contrato HTTP móvil" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "HTTP camioneta 1" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Contrato HTTP móvil" }),
+  ).toBeVisible();
   await expect(page.getByAltText("Fotografía de la unidad")).toHaveCount(5);
-  await expect.poll(async () => page.getByAltText("Fotografía de la unidad").evaluateAll(
-    (images) => images.every((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0),
-  )).toBe(true);
-  await page.screenshot({ path: "reports/screenshots/unit-control-390.png", fullPage: true });
+  await expect
+    .poll(async () =>
+      page
+        .getByAltText("Fotografía de la unidad")
+        .evaluateAll((images) =>
+          images.every(
+            (image) =>
+              image instanceof HTMLImageElement &&
+              image.complete &&
+              image.naturalWidth > 0,
+          ),
+        ),
+    )
+    .toBe(true);
+  await page.screenshot({
+    path: "reports/screenshots/unit-control-390.png",
+    fullPage: true,
+  });
   const relief = await createDriver(db.pool, adminId, {
-    id: randomUUID(), name: "Relevo HTTP", phone: "3312345699",
-    emergency_name: "", emergency_phone: "", blood_type: "", active: true,
+    id: randomUUID(),
+    name: "Relevo HTTP",
+    phone: "3312345699",
+    emergency_name: "",
+    emergency_phone: "",
+    blood_type: "",
+    active: true,
   });
   let vehicle = await getVehicle(db.pool, vehicleId);
   await assignDriver(db.pool, adminId, vehicleId, {
-    driver_id: null, expectedVersion: vehicle.version,
+    driver_id: null,
+    expectedVersion: vehicle.version,
   });
   vehicle = await getVehicle(db.pool, vehicleId);
   await assignDriver(db.pool, adminId, vehicleId, {
-    driver_id: relief.id, expectedVersion: vehicle.version,
+    driver_id: relief.id,
+    expectedVersion: vehicle.version,
   });
   await page.getByRole("button", { name: "Planificar rutas" }).click();
   await page.getByLabel("Abrir borrador").selectOption(planId);
-  await expect(page.getByText("Ruta de Chofer HTTP A · Flota: Relevo HTTP")).toBeVisible();
+  await expect(
+    page.getByText("Ruta de Chofer HTTP A · Flota: Relevo HTTP"),
+  ).toBeVisible();
   await expect(page.getByText("Ruta iniciada", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Cancelar ruta" }).click();
-  const cancelDialog = page.getByRole("dialog", { name: "Cancelar inicio de ruta" });
-  await expect(cancelDialog).toContainText("Confirma con el chofer que todavía no haya salido");
+  const cancelDialog = page.getByRole("dialog", {
+    name: "Cancelar inicio de ruta",
+  });
+  await expect(cancelDialog).toContainText(
+    "Confirma con el chofer que todavía no haya salido",
+  );
   await cancelDialog.getByRole("button", { name: "Conservar ruta" }).click();
   await expect(page.getByText("Ruta iniciada", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Cancelar ruta" }).click();
   await cancelDialog.getByRole("button", { name: "Sí, cancelar ruta" }).click();
   await expect(page.getByText("Ruta iniciada", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Cancelar ruta" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cancelar ruta" })).toHaveCount(
+    0,
+  );
 });

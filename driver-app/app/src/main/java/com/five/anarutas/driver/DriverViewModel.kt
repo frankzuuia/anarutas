@@ -12,6 +12,7 @@ import java.io.File
 import java.security.GeneralSecurityException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONException
@@ -46,6 +47,11 @@ internal fun reconcilePublishedRoutes(state: DriverUiState, dashboard: DriverDas
     val withdrawn = previous != null && dashboard.plans.none { it.id == previous.id }
     val dayChanged = state.dashboard?.serviceDate?.let { it != dashboard.serviceDate } ?: false
     val resetRoute = withdrawn || dayChanged
+    val priorRevisions = state.dashboard?.plans?.associate { it.id to it.publicationRevision }.orEmpty()
+    val newlyPublished = state.dashboard != null && dashboard.plans.any { plan ->
+        val prior = priorRevisions[plan.id]
+        prior == null || prior < plan.publicationRevision
+    }
     val selected = when {
         resetRoute -> dashboard.today
         previous?.id == dashboard.today?.id -> dashboard.today
@@ -62,6 +68,7 @@ internal fun reconcilePublishedRoutes(state: DriverUiState, dashboard: DriverDas
         notice = when {
             dayChanged -> "Nuevo día de operación. Toma las fotos de hoy antes de iniciar tu ruta."
             withdrawn -> "Administración retiró esta ruta. Espera una nueva publicación."
+            newlyPublished -> "Tienes una ruta nueva o actualizada. Ya aparece en tu jornada."
             else -> state.notice
         },
     )
@@ -115,6 +122,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
     var state by mutableStateOf(DriverUiState())
         private set
     private var syncing = false
+    private var refreshQueued = false
     private var routeMutationGeneration = 0
 
     init {
@@ -280,6 +288,23 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
                 syncing = false
                 if (manual) state = state.copy(busy = false)
             }
+        }
+    }
+
+    fun requestDashboardRefresh() {
+        if (state.token.isBlank() || refreshQueued) return
+        val token = state.token
+        refreshQueued = true
+        viewModelScope.launch {
+            while (refreshQueued && state.token == token) {
+                if (state.busy || syncing) {
+                    delay(150)
+                    continue
+                }
+                refreshQueued = false
+                syncDashboard()
+            }
+            if (state.token != token) refreshQueued = false
         }
     }
 

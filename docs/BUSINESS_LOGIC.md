@@ -1,5 +1,16 @@
 # Ana Rutas — bloque 1 aprobado
 
+## BL-102: entrega visible de rutas publicadas
+
+- Actor: administrador publica y chofer autenticado recibe su ruta.
+- Regla: la publicación confirmada aparece automáticamente en la APK abierta, sin pulsar Actualizar; una asignación nueva o revisada muestra un aviso en la app. Una ruta retirada desaparece igualmente.
+- Dirección técnica: señal PostgreSQL después del commit, canal móvil autenticado y acotado por chofer, lectura del dashboard como autoridad y consulta periódica de respaldo. Cero llamadas Google/Odoo al recibir señales.
+- Datos: publicaciones y asignación vigentes; el evento no lleva pedidos, teléfonos ni tokens.
+- Permiso: sesión móvil vigente, chofer activo y asignación real; cierre ante revocación.
+- Auditoría: la publicación conserva el evento `route.publication.changed`; la señal no crea mutaciones.
+- Validación: integración PostgreSQL, contrato SSE, pruebas Android, desconexión/reconexión y aislamiento entre choferes.
+- Límite: una notificación del sistema con la APK cerrada requiere Firebase Cloud Messaging y credenciales de entorno; no se simula con un servicio permanente.
+
 ## BL-101: espacio del chofer y navegación compacta
 
 Actor: chofer autenticado. Inicio muestra saludo real y tarjetas Ruta activa,

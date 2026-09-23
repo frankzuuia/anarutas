@@ -129,6 +129,33 @@ class DriverDashboardPolicyTest {
         assertEquals(null, reconcilePublishedRoutes(state, after.copy(today = null)).selected)
     }
 
+    @Test
+    fun `a newly published route appears automatically and identical refresh does not repeat the notice`() {
+        val profile = DriverProfile("driver", "Chofer", "3312345678")
+        val empty = DriverDashboard(profile, "America/Mexico_City", "2026-09-23", emptyList(), null)
+        val route = AssignedPlan(
+            id = "route", label = "Ruta de hoy", date = "2026-09-23", vehicle = "Unidad A",
+            plate = "AAA-001", routeStatus = "current", overview = null, orders = emptyList(),
+            publicationRevision = 1,
+        )
+        val published = empty.copy(plans = listOf(summary("route", "2026-09-23").copy(publicationRevision = 1)), today = route)
+        val first = reconcilePublishedRoutes(DriverUiState(token = "session", dashboard = empty), published)
+        assertEquals("route", first.selected?.id)
+        assertEquals("Tienes una ruta nueva o actualizada. Ya aparece en tu jornada.", first.notice)
+
+        val unchanged = reconcilePublishedRoutes(first.copy(notice = ""), published)
+        assertEquals("", unchanged.notice)
+
+        val revised = published.copy(plans = listOf(published.plans.single().copy(publicationRevision = 2)),
+            today = route.copy(publicationRevision = 2))
+        val update = reconcilePublishedRoutes(unchanged, revised)
+        assertEquals(2, update.selected?.publicationRevision)
+        assertEquals("Tienes una ruta nueva o actualizada. Ya aparece en tu jornada.", update.notice)
+
+        val initialLoad = reconcilePublishedRoutes(DriverUiState(token = "session"), published)
+        assertEquals("", initialLoad.notice)
+    }
+
     private fun summary(id: String, date: String) = PlanSummary(
         id = id,
         label = id,

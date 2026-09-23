@@ -9,6 +9,7 @@ export async function listDriverPlans(pool: Pool, driverId: string) {
     `SELECT p.id,p.service_date::text AS service_date,
             pub.snapshot->'plan'->>'label' AS label,
             pub.source_plan_version AS version,
+            pub.revision AS publication_revision,pub.started_at,
             pv.vehicle_id,v.name AS vehicle_name,v.plate,
             jsonb_array_length(pub.snapshot->'orders') AS orders
      FROM route_plan_publications pub
@@ -40,7 +41,9 @@ export async function readDriverDashboard(
   return {
     serviceDate,
     plans,
-    today: today ? await readDriverPlan(pool, driverId, today.id, timezone) : null,
+    today: today
+      ? await readDriverPlan(pool, driverId, today.id, timezone)
+      : null,
   };
 }
 

@@ -37,6 +37,17 @@ un recorrido nuevo; `Iniciar guía` sí puede generar una solicitud
 facturable. Para más de 25 paradas, se solicita el siguiente bloque únicamente
 cuando el chofer lo decide. La navegación no marca pedidos como entregados.
 
+## Actualización automática de rutas
+
+Mientras la APK está abierta, el servidor avisa de publicaciones y retiros por
+un canal móvil autenticado. La app relee su dashboard y muestra la ruta nueva o
+actualizada sin tocar «Actualizar»; la consulta periódica sigue como respaldo
+si se corta el canal. El evento no contiene pedidos ni datos personales y no
+solicita cálculos de Google/Odoo. Con la APK cerrada Android no mantiene ese
+canal: la notificación del sistema queda pendiente de integrar Firebase Cloud
+Messaging con el proyecto real de esta APK y credenciales de servidor fuera
+del repositorio. No se instala un servicio permanente en segundo plano.
+
 ## Compilación
 
 Requiere JDK 17, Android SDK API 37, Build Tools 36.0.0 y Gradle 9.4.1. Las
