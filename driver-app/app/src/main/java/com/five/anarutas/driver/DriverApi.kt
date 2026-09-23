@@ -274,6 +274,10 @@ class DriverApi(private val server: String) {
         }
     }
 
+    suspend fun deleteUnitPhoto(token: String, photoId: String): Int = withContext(Dispatchers.IO) {
+        JSONObject(exchange("DELETE", "/api/mobile/unit-photos/$photoId", token)).getInt("photoCount")
+    }
+
     suspend fun uploadUnitPhoto(token: String, planId: String, bytes: ByteArray): UnitPhotoUpload =
         withContext(Dispatchers.IO) {
             val connection = URL("$server/api/mobile/plans/$planId/unit-photos").openConnection() as HttpURLConnection

@@ -21,6 +21,9 @@ internal fun isPrivateCameraCapture(cacheDir: File, file: File): Boolean =
         file.name.startsWith("unit-") && file.name.endsWith(".jpg") &&
         file.isFile && file.length() > 0L
 
+internal fun canDeleteUnitPhoto(route: AssignedPlan?, photos: List<UnitPhoto>, photoId: String): Boolean =
+    route != null && route.startedAt == null && photos.any { it.id == photoId }
+
 data class DriverUiState(
     val initializing: Boolean = true,
     val phone: String = "",
@@ -106,6 +109,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
     var state by mutableStateOf(DriverUiState())
         private set
     private var syncing = false
+    private var routeMutationGeneration = 0
 
     init {
         viewModelScope.launch {
@@ -249,10 +253,11 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
         if (syncing || state.busy || state.token.isBlank()) return
         syncing = true
         val accessToken = state.token
+        val observedGeneration = routeMutationGeneration
         viewModelScope.launch {
             try {
                 val latest = DriverApi(BuildConfig.SERVER_URL).dashboard(accessToken)
-                if (state.token == accessToken) {
+                if (state.token == accessToken && observedGeneration == routeMutationGeneration && !state.busy) {
                     val withdrawn = (state.selected ?: state.dashboard?.today)?.let { route ->
                         latest.plans.none { it.id == route.id }
                     } == true
@@ -342,6 +347,45 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
         state = state.copy(error = "No se pudo abrir la cámara. Revisa que haya una app de cámara disponible.")
     }
 
+    fun deleteUnitPhoto(photoId: String) {
+        val route = state.selected ?: state.dashboard?.today
+        if (state.busy || state.token.isBlank() || !canDeleteUnitPhoto(route, state.photos, photoId)) return
+        val activeRoute = route ?: return
+        val planId = activeRoute.id
+        val token = state.token
+        routeMutationGeneration++
+        state = state.copy(busy = true, error = "", notice = "")
+        viewModelScope.launch {
+            try {
+                val api = DriverApi(BuildConfig.SERVER_URL)
+                val photoCount = api.deleteUnitPhoto(token, photoId)
+                if (state.token == token && (state.selected ?: state.dashboard?.today)?.id == planId) {
+                    val updated = activeRoute.copy(photoCount = photoCount)
+                    state = state.copy(
+                        selected = updated,
+                        dashboard = state.dashboard?.let { dashboard ->
+                            if (dashboard.today?.id == planId) dashboard.copy(today = updated) else dashboard
+                        },
+                        photos = state.photos.filterNot { it.id == photoId },
+                        notice = "Foto eliminada · $photoCount de 8",
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                handleApiFailure(failure)
+                if (failure is DriverApiException && failure.code == "ROUTE_ALREADY_STARTED") {
+                    runCatching { DriverApi(BuildConfig.SERVER_URL).plan(token, planId) }
+                        .getOrNull()?.let { refreshed ->
+                            if (state.token == token) state = state.copy(selected = refreshed)
+                        }
+                }
+            } finally {
+                state = state.copy(busy = false)
+            }
+        }
+    }
+
     fun uploadUnitPhoto(context: Context, cameraFile: File) {
         val route = state.selected ?: state.dashboard?.today
         if (route == null || state.busy || state.token.isBlank()) {
@@ -349,6 +393,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
             return
         }
         val token = state.token
+        routeMutationGeneration++
         state = state.copy(busy = true, error = "", notice = "")
         viewModelScope.launch {
             try {
@@ -403,6 +448,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
             route.id != planId || route.publicationRevision != expectedRevision ||
             route.photoCount < 5 || route.orders.isEmpty()) return
         val token = state.token
+        routeMutationGeneration++
         state = state.copy(busy = true, error = "", notice = "")
         viewModelScope.launch {
             try {

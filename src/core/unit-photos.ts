@@ -230,6 +230,61 @@ export async function readDriverUnitPhoto(
   });
 }
 
+export async function deleteDriverUnitPhoto(
+  pool: Pool,
+  driverId: string,
+  photoId: string,
+  timezone: string,
+  configuredRoot?: string,
+) {
+  const id = uuid(photoId);
+  const deleted = await transaction(pool, async (sql) => {
+    await sql.query("SELECT pg_advisory_xact_lock(hashtext('ana-rutas:fleet'))");
+    const target = await sql.query(
+      `SELECT plan_id,vehicle_id,created_at FROM route_unit_photos
+        WHERE id=$1 AND driver_id=$2 AND expires_at>now()`,
+      [id, driverId],
+    );
+    if (!target.rowCount) throw new AppError("NOT_FOUND", 404);
+    const planId = target.rows[0].plan_id as string;
+    const plan = await sql.query(
+      "SELECT service_date::text FROM route_plans WHERE id=$1 FOR SHARE",
+      [planId],
+    );
+    if (!plan.rowCount) throw new AppError("NOT_FOUND", 404);
+    const publication = await assertPublishedDriver(sql, planId, driverId);
+    if (target.rows[0].vehicle_id !== publication.vehicle_id ||
+        todayInTimezone(timezone, target.rows[0].created_at as Date) !== plan.rows[0].service_date)
+      throw new AppError("NOT_FOUND", 404);
+    if (publication.started_at) throw new AppError("ROUTE_ALREADY_STARTED", 409);
+    const root = await unitPhotoRoot(configuredRoot);
+    const removed = await sql.query(
+      `DELETE FROM route_unit_photos
+        WHERE id=$1 AND plan_id=$2 AND vehicle_id=$3 AND driver_id=$4 AND expires_at>now()
+        RETURNING id`,
+      [id, planId, publication.vehicle_id, driverId],
+    );
+    if (!removed.rowCount) throw new AppError("NOT_FOUND", 404);
+    const remaining = await sql.query(
+      `SELECT count(*)::integer AS n FROM route_unit_photos
+        WHERE plan_id=$1 AND vehicle_id=$2 AND driver_id=$3
+          AND (created_at AT TIME ZONE $4)::date=$5::date AND expires_at>now()`,
+      [planId, publication.vehicle_id, driverId, timezone, plan.rows[0].service_date],
+    );
+    await sql.query(
+      `INSERT INTO route_driver_mobile_audit(driver_id,action,details)
+       VALUES($1,'mobile.unit_photo.deleted',$2::jsonb)`,
+      [driverId, JSON.stringify({ planId, vehicleId: publication.vehicle_id, photoId: id })],
+    );
+    return { root, photoCount: Number(remaining.rows[0].n) };
+  });
+  await unlink(join(deleted.root, `${id}.webp`)).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT")
+      console.warn(JSON.stringify({ action: "unit-photo-cleanup-deferred", photoId: id }));
+  });
+  return { deleted: true, photoCount: deleted.photoCount };
+}
+
 export async function listAdminUnitPhotos(
   pool: Pool,
   actorId: string,

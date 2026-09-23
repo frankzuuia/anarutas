@@ -457,3 +457,25 @@ La APK usa exclusivamente la captura de cámara de Android hacia un archivo temp
 Flujo: cámara → archivo en caché privada → POST autenticado con límite → validación, deduplicación y auditoría en PostgreSQL → WebP privado; confirmación → POST con revisión → bloqueo transaccional de publicación → foto/fecha/asignación → inicio. No se llama Odoo ni Google al capturar o confirmar. Permisos: sesión móvil y publicación vigente, lectura administrativa separada. Fallos de red preservan el conteo del servidor; reintento idéntico no crea otra foto. Verificación: unitarias Android, integración PostgreSQL, HTTP/E2E, Gherkin, cobertura y mutación de duplicado/revisión, inspección física pendiente. No se declara infalsificable el origen de los píxeles en un dispositivo comprometido.
 
 Veredicto documental: GREEN LIGHT para implementación local; INTEGRITY TOTAL con BL-090..093; MATCH PERFECT con MP-T09..MP-T12 en `PROGRESS.md`.
+
+## Batch 11: BL-099 — descartar foto de salida antes del inicio
+
+### Requisitos y flujo
+
+La sesión móvil autenticada solicita `DELETE /api/mobile/unit-photos/[photoId]`. El servidor valida UUID y propietario sin revelar fotos ajenas, bloquea plan y publicación con el mismo orden que la carga y el inicio, exige publicación vigente de la unidad y ruta **no iniciada**, y borra sólo la foto de esa fecha de servicio. El borrado y su auditoría se confirman en PostgreSQL antes de retirar el WebP privado; si el archivo ya no existe o no puede borrarse, queda inaccesible y el limpiador de huérfanos lo reintenta. El conteo móvil se consulta otra vez al terminar. No hay llamada a Odoo ni Google ni migración de esquema.
+
+### Matriz de escenarios
+
+| ID | Actor/precondición/disparador | Datos, permiso y resultado | Auditoría/efecto/fallo/validación |
+| --- | --- | --- | --- |
+| MR24 | Chofer publicado toca una foto borrosa y confirma | Elimina sólo su foto previa al inicio; GET/lista dejan de mostrarla; el conteo baja y el umbral de cinco se reevalúa | Un evento `mobile.unit_photo.deleted`; prueba PostgreSQL, HTTP y APK |
+| MR25 | Chofer cancela confirmación | Cero petición, cero escritura; conserva foto y conteo | Prueba de política/UI Android |
+| MR26 | Ruta ya iniciada o inicia al mismo tiempo | La misma publicación serializa ambas acciones; si inició primero, 409 y foto intacta; si borró primero y quedan menos de cinco, el inicio falla | Carrera PostgreSQL y error accesible en APK |
+| MR27 | Sesión revocada, foto ajena, vencida o publicación retirada | 401/404 sin revelar propietario ni archivo; cero borrados | HTTP y aislamiento de filas |
+| MR28 | Archivo privado ausente, fallo de disco o respuesta de red perdida | La validación de almacenamiento falla antes de borrar; tras commit el metadato ya no da acceso y el huérfano se limpia luego. La APK relee el conteo para resolver un éxito incierto | QA de fallo de almacenamiento y recuperación |
+
+### Seguridad, límites y validación
+
+El UUID nunca se usa como ruta arbitraria; el archivo sigue el nombre privado derivado del ID. No se ofrece borrar desde Control de unidades. Máximo ocho y mínimo cinco siguen siendo reglas del servidor. La acción de la APK es pequeña, accesible y sólo aparece antes del inicio; la confirmación muestra la foto específica. Objetivo: cero fotos ajenas borradas, cero rutas iniciadas con menos de cinco por carrera, cero WebP accesibles tras borrar, cobertura de los predicados de permiso/estado y mutation testing dirigido. El smoke físico y el despliegue quedan pendientes de develop.
+
+Veredicto forense: GREEN LIGHT para el bloque local; INTEGRITY TOTAL con BL-090, BL-092 y BL-093; MATCH PERFECT con MP-T13..MP-T15 en `PROGRESS.md`.

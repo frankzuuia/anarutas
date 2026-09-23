@@ -22,6 +22,12 @@ Estado local al 22/09: MP-T02, T03, T05 y T07 tienen implementación y pruebas l
 - [ ] MP-T11 (BL-097 / MR21..22): confirmación compacta con paradas reales y revisión esperada validada en la transacción de inicio.
 - [ ] MP-T12 (BL-096..098): actualizar aceptación, unitarias, PostgreSQL/HTTP, Android, cobertura, mutación y QA; no declarar listo sin prueba física y volumen.
 
+### Ajuste de foto descartable — 23/09/2026
+
+- [x] MP-T13 (BL-099 / MR24,26..28): DELETE móvil autenticado, bloqueo transaccional con inicio, aislamiento, auditoría, retiro privado de WebP y recuperación de archivo huérfano.
+- [x] MP-T14 (BL-099 / MR24..26): vista previa y confirmación compacta por foto en APK, acción ausente tras inicio y conteo recargado desde el servidor.
+- [ ] MP-T15 (BL-099 / MR24..28): PostgreSQL/HTTP reales, carrera con Inicio, Android, Gherkin, cobertura, mutación, seguridad y QA físico; sin declarar listo para producción por sólo compilar.
+
 ## Higiene de almacenamiento de pruebas — 15/09/2026
 
 - [x] HA-T01: autopsia local confirmó 4,042 clústeres PostgreSQL temporales y diez sandboxes Stryker abandonados; no eran código ni datos productivos.

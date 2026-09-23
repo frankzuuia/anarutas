@@ -342,6 +342,22 @@ test("admin provisioning, native device login, route isolation and revocation ov
     expect(uploaded.status()).toBe(201);
     photoIds.push((await uploaded.json()).id);
   }
+  const deleteUrl = `${origin}/api/mobile/unit-photos/${photoIds[4]}`;
+  expect((await request.delete(deleteUrl)).status()).toBe(401);
+  const removed = await request.delete(deleteUrl, { headers: authorization });
+  expect(removed.status()).toBe(200);
+  expect(await removed.json()).toMatchObject({ deleted: true, photoCount: 4 });
+  expect((await request.get(deleteUrl, { headers: authorization })).status()).toBe(404);
+  expect((await request.post(startUrl, startRequest)).status()).toBe(409);
+  const replacementImage = await sharp({
+    create: { width: 50, height: 50, channels: 3, background: { r: 220, g: 80, b: 120 } },
+  }).jpeg().toBuffer();
+  const replacement = await request.post(`${origin}/api/mobile/plans/${planId}/unit-photos`, {
+    headers: { ...authorization, "Content-Type": "image/jpeg" },
+    data: replacementImage,
+  });
+  expect(replacement.status()).toBe(201);
+  photoIds[4] = (await replacement.json()).id;
   const visiblePhotos = await request.get(`${origin}/api/vehicles/${vehicleId}/unit-photos?date=${serviceDate}`);
   expect(visiblePhotos.status()).toBe(200);
   expect(await visiblePhotos.json()).toHaveLength(5);
@@ -366,6 +382,9 @@ test("admin provisioning, native device login, route isolation and revocation ov
   const firstStart = await request.post(startUrl, startRequest);
   expect(firstStart.status()).toBe(200);
   expect(await firstStart.json()).toMatchObject({ alreadyStarted: false });
+  const deniedDelete = await request.delete(`${origin}/api/mobile/unit-photos/${photoIds[4]}`, { headers: authorization });
+  expect(deniedDelete.status()).toBe(409);
+  expect(await deniedDelete.json()).toMatchObject({ error: "ROUTE_ALREADY_STARTED" });
   const repeatedStart = await request.post(startUrl, startRequest);
   expect(repeatedStart.status()).toBe(200);
   expect(await repeatedStart.json()).toMatchObject({ alreadyStarted: true });

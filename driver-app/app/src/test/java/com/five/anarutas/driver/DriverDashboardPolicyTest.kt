@@ -90,6 +90,19 @@ class DriverDashboardPolicyTest {
         assertEquals("route-1", unchanged.selected?.id)
     }
 
+    @Test
+    fun `photo deletion is offered only for a listed photo before route start`() {
+        val route = AssignedPlan(
+            id = "route", label = "Ruta", date = "2026-09-23", vehicle = "Unidad A",
+            plate = "AAA-001", routeStatus = "current", overview = null, orders = emptyList(),
+        )
+        val photos = listOf(UnitPhoto("photo-1", "2026-09-23T10:00:00Z", "2026-10-08T10:00:00Z"))
+        assertEquals(true, canDeleteUnitPhoto(route, photos, "photo-1"))
+        assertEquals(false, canDeleteUnitPhoto(route, photos, "photo-other"))
+        assertEquals(false, canDeleteUnitPhoto(null, photos, "photo-1"))
+        assertEquals(false, canDeleteUnitPhoto(route.copy(startedAt = "2026-09-23T11:00:00Z"), photos, "photo-1"))
+    }
+
     private fun summary(id: String, date: String) = PlanSummary(
         id = id,
         label = id,
