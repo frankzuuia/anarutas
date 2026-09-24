@@ -4,9 +4,10 @@ import { assertActiveActor, audit, transaction, type Sql } from "./database";
 import { AppError } from "./errors";
 import { readOrderBoard } from "./orders";
 import { integer, uuid } from "./orders-validation";
-import { routeFingerprint } from "./route-fingerprint";
+import { routeFingerprint, vehicleRouteFingerprints } from "./route-fingerprint";
 import { readPlanOptimization, lockRouteInputs } from "./route-optimization";
 import { getRoutingSettings } from "./routing-settings";
+import { routePublicationContentChanged, routePublicationSnapshot } from "./route-publication-content";
 
 type PublicationRow = {
   vehicle_id: string;
@@ -15,15 +16,38 @@ type PublicationRow = {
   source_plan_version: number;
   published_at: Date;
   started_at: Date | null;
+  has_changes: boolean;
+  published_order_count: number;
 };
 
 export async function listRoutePublications(sql: Sql, planId: string) {
   const { rows } = await sql.query(
-    `SELECT vehicle_id,driver_id,revision,source_plan_version,published_at,started_at
+    `SELECT vehicle_id,driver_id,revision,source_plan_version,published_at,started_at,snapshot
        FROM route_plan_publications WHERE plan_id=$1 AND revoked_at IS NULL ORDER BY vehicle_id`,
     [uuid(planId)],
   );
-  return rows as PublicationRow[];
+  if (!rows.length) return [] as PublicationRow[];
+  const board = await readOrderBoard(sql, planId);
+  const settings = await getRoutingSettings(sql);
+  const hashes = vehicleRouteFingerprints(board, settings.version);
+  const optimization = await readPlanOptimization(sql, planId);
+  const calculated = optimization ? await sql.query(
+    "SELECT vehicle_input_hashes FROM route_optimization_runs WHERE id=$1", [optimization.runId],
+  ) : null;
+  const calculatedHashes = calculated?.rows[0]?.vehicle_input_hashes ?? {};
+  return rows.map(({ snapshot, ...publication }) => {
+    const vehicle = board.vehicles.find((item) => item.id === publication.vehicle_id);
+    const previousInput = snapshot.routingInputHash ?? calculatedHashes[publication.vehicle_id];
+    const hasChanges = !publication.started_at && (
+      !vehicle || vehicle.fleet_driver_id !== publication.driver_id ||
+      Boolean(previousInput && previousInput !== hashes[publication.vehicle_id]) ||
+      routePublicationContentChanged(snapshot, routePublicationSnapshot(
+        board, vehicle, optimization?.routes.find((route) => route.vehicleId === vehicle.id) ?? null,
+        hashes[vehicle.id],
+      ))
+    );
+    return { ...publication, has_changes: hasChanges, published_order_count: snapshot.orders?.length ?? 0 } as PublicationRow;
+  });
 }
 
 export async function publishRoutes(
@@ -69,7 +93,7 @@ export async function publishRoutes(
       membership.rows.map((row) => [row.vehicle_id as string, row]),
     );
     const prior = await sql.query(
-      `SELECT vehicle_id,driver_id,revision,snapshot_hash,started_at,revoked_at
+      `SELECT vehicle_id,driver_id,revision,snapshot,snapshot_hash,started_at,revoked_at
          FROM route_plan_publications WHERE plan_id=$1 ORDER BY vehicle_id FOR UPDATE`,
       [id],
     );
@@ -89,6 +113,8 @@ export async function publishRoutes(
       : null;
     if (withOrders.length && !optimization?.current)
       throw new AppError("ROUTE_NOT_CURRENT", 409);
+    const settings = await getRoutingSettings(sql);
+    const inputHashes = vehicleRouteFingerprints(board, settings.version);
 
     const changes: { vehicleId: string; revision: number; action: string }[] = [];
     let assignmentChanged = false;
@@ -99,13 +125,14 @@ export async function publishRoutes(
       const previous = published.get(vehicle.id);
       if (!own.length) {
         if (previous && !previous.revoked_at) {
-          await sql.query(
-            "DELETE FROM route_plan_publications WHERE plan_id=$1 AND vehicle_id=$2",
+          const withdrawn = await sql.query(
+            `UPDATE route_plan_publications SET revoked_at=now(),revision=revision+1
+              WHERE plan_id=$1 AND vehicle_id=$2 RETURNING revision`,
             [id, vehicle.id],
           );
           changes.push({
             vehicleId: vehicle.id,
-            revision: Number(previous.revision),
+            revision: Number(withdrawn.rows[0].revision),
             action: "unpublished",
           });
         }
@@ -136,47 +163,12 @@ export async function publishRoutes(
         );
         assignmentChanged = true;
       }
-      const snapshot = {
-        plan: {
-          id: board.plan.id,
-          label: board.plan.label,
-          serviceDate: board.plan.service_date,
-          version: board.plan.version,
-        },
-        vehicle: {
-          id: vehicle.id,
-          name: vehicle.name,
-          plate: vehicle.plate,
-        },
-        orders: own.map((shipment) => ({
-          id: shipment.id,
-          orderName: shipment.orderName,
-          customerName: shipment.customerName,
-          address: shipment.address,
-          position: shipment.position,
-          phone: shipment.phone,
-          priority: shipment.priority,
-          deliveryWindows: shipment.deliveryWindows,
-          deliveryNote: shipment.deliveryNote,
-          fulfillmentMode: shipment.fulfillmentMode,
-          latitude: shipment.latitude,
-          longitude: shipment.longitude,
-          locationStatus: shipment.locationStatus,
-          lines: shipment.lines.map((line) => ({
-            name: line.name,
-            quantity: line.quantity,
-            unit: line.unit,
-            pickerNote: line.pickerNote ?? null,
-          })),
-        })),
-        routeStatus: "current",
-        route,
-      };
+      const snapshot = routePublicationSnapshot(board, vehicle, route, inputHashes[vehicle.id]);
       const serialized = JSON.stringify(snapshot);
       const hash = createHash("sha256").update(serialized).digest("hex");
       if (
         previous?.revoked_at === null &&
-        previous.snapshot_hash === hash &&
+        !routePublicationContentChanged(previous.snapshot, snapshot) &&
         previous.driver_id === currentAssignment.fleet_driver_id
       )
         continue;
@@ -213,7 +205,6 @@ export async function publishRoutes(
       });
     }
     if (assignmentChanged && optimization) {
-      const settings = await getRoutingSettings(sql);
       const fingerprint = routeFingerprint(await readOrderBoard(sql, id), settings.version);
       await sql.query(
         "UPDATE route_optimization_runs SET input_fingerprint=$2 WHERE id=$1",
@@ -229,7 +220,7 @@ export async function publishRoutes(
   });
 }
 
-export async function cancelStartedRoute(
+export async function cancelPublishedRoute(
   pool: Pool,
   actor: string,
   planId: string,
@@ -260,8 +251,6 @@ export async function cancelStartedRoute(
       throw new AppError("NOT_FOUND", 404);
     if (Number(publication.revision) !== expectedRevision)
       throw new AppError("VERSION_CONFLICT", 409);
-    if (!publication.started_at)
-      throw new AppError("ROUTE_NOT_STARTED", 409);
     await sql.query(
       "SELECT set_config('ana_rutas.cancel_started_route','on',true)",
     );
@@ -269,12 +258,12 @@ export async function cancelStartedRoute(
       `UPDATE route_plan_publications
           SET started_at=NULL,started_driver_id=NULL,
               revoked_at=now(),revision=revision+1
-        WHERE plan_id=$1 AND vehicle_id=$2 AND revision=$3 AND started_at IS NOT NULL
+        WHERE plan_id=$1 AND vehicle_id=$2 AND revision=$3 AND revoked_at IS NULL
         RETURNING revision,revoked_at`,
       [id, vehicle, expectedRevision],
     );
     if (!saved.rowCount) throw new AppError("VERSION_CONFLICT", 409);
-    await audit(sql, actor, "route.start.cancelled", id, {
+    await audit(sql, actor, publication.started_at ? "route.start.cancelled" : "route.publication.cancelled", id, {
       vehicleId: vehicle,
       driverId: publication.driver_id,
       previousRevision: expectedRevision,

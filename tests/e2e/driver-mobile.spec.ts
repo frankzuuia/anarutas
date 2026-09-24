@@ -639,11 +639,57 @@ test("admin provisioning, native device login, route isolation and revocation ov
       })
     ).json(),
   ).toMatchObject({ publication: { revision: 3, startedAt: null } });
+  const preStartContext = await browser.newContext({ storageState: await request.storageState() });
+  const preStartPanel = await preStartContext.newPage();
+  await preStartPanel.goto(origin);
+  await preStartPanel.getByLabel("Abrir borrador").selectOption(planId);
+  const lane = preStartPanel.locator(".order-lane").filter({ hasText: "HTTP camioneta 1" });
+  await expect(lane.getByText("Ruta publicada", { exact: true })).toBeVisible();
+  await expect(preStartPanel.getByRole("button", { name: "Guardar y publicar", exact: true })).toHaveCount(0);
+  await expect(lane.getByRole("button", { name: "Cancelar ruta", exact: true })).toBeVisible();
+  const driverOnlyContext = await browser.newContext();
+  expect((await driverOnlyContext.request.post(cancelUrl, {
+    headers: { ...authorization, Origin: origin },
+    data: { expectedVersion: board.plan.version, expectedRevision: 3 },
+  })).status()).toBe(401);
+  await driverOnlyContext.close();
+  expect((await request.post(cancelUrl, {
+    headers: { Origin: "https://untrusted.example" },
+    data: { expectedVersion: board.plan.version, expectedRevision: 3 },
+  })).status()).toBe(403);
+  await lane.getByRole("button", { name: "Cancelar ruta", exact: true }).click();
+  const preStartDialog = preStartPanel.getByRole("dialog", { name: "Cancelar ruta", exact: true });
+  await expect(preStartDialog).toContainText("ruta publicada de HTTP camioneta 1 con 1 pedido");
+  await expect(preStartDialog).not.toContainText("Confirma con el chofer");
+  await preStartDialog.getByRole("button", { name: "Conservar ruta" }).click();
+  await expect(lane.getByText("Ruta publicada", { exact: true })).toBeVisible();
+  await lane.getByRole("button", { name: "Cancelar ruta", exact: true }).click();
+  const cancelSubmittedAt = Date.now();
+  await preStartDialog.getByRole("button", { name: "Sí, cancelar ruta" }).click();
+  await expect(lane.getByRole("button", { name: "Activar ruta", exact: true })).toBeVisible();
+  expect((await orderBoard(db.pool, planId)).shipments.map((order) => ({ id: order.id, vehicle: order.vehicle_id, position: order.position })))
+    .toEqual(board.shipments.map((order) => ({ id: order.id, vehicle: order.vehicle_id, position: order.position })));
+  expect(await (await request.get(`${origin}/api/mobile/dashboard`, { headers: authorization })).json())
+    .toMatchObject({ today: null, plans: [] });
+  console.info(`Pre-start cancellation visible in panel and mobile API in ${Date.now() - cancelSubmittedAt} ms`);
+  expect((await request.post(startUrl, { headers: authorization, data: { expectedRevision: 3 } })).status()).toBe(404);
+  expect((await db.pool.query(
+    "SELECT id FROM route_mobile_push_deliveries WHERE plan_id=$1 AND vehicle_id=$2 AND revision=4 AND kind='withdrawn'",
+    [planId, vehicleId],
+  )).rowCount).toBe(1);
+  await lane.getByRole("button", { name: "Activar ruta", exact: true }).click();
+  await preStartPanel.getByRole("dialog", { name: "Confirmar publicación" })
+    .getByRole("button", { name: "Confirmar publicación" }).click();
+  await expect(lane.getByText("Ruta publicada", { exact: true })).toBeVisible();
+  await expect(lane.getByRole("button", { name: "Guardar y publicar", exact: true })).toHaveCount(0);
+  await mkdir("reports/screenshots", { recursive: true });
+  await preStartPanel.screenshot({ path: "reports/screenshots/route-published-cancel-before-start.png", fullPage: true });
+  await preStartContext.close();
   expect(
     (
       await request.post(startUrl, {
         headers: authorization,
-        data: { expectedRevision: 3 },
+        data: { expectedRevision: 5 },
       })
     ).status(),
   ).toBe(200);
@@ -790,7 +836,7 @@ test("driver edit modal enables direct phone and PIN access", async ({
   await expect(page.getByText("Ruta iniciada", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Cancelar ruta" }).click();
   const cancelDialog = page.getByRole("dialog", {
-    name: "Cancelar inicio de ruta",
+    name: "Cancelar ruta",
   });
   await expect(cancelDialog).toContainText(
     "Confirma con el chofer que todavía no haya salido",

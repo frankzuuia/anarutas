@@ -1,4 +1,4 @@
-import { cancelStartedRoute } from "@/core/route-publications";
+import { cancelPublishedRoute } from "@/core/route-publications";
 import { body, endpoint, json, principal } from "@/server/http";
 
 export function POST(
@@ -9,6 +9,6 @@ export function POST(
     const input = await body(request);
     const { pool, user } = await principal();
     const { id, vehicleId } = await context.params;
-    return json(await cancelStartedRoute(pool, user.id, id, vehicleId, input));
+    return json(await cancelPublishedRoute(pool, user.id, id, vehicleId, input));
   });
 }

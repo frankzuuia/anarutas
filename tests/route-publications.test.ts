@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -16,10 +16,10 @@ import {
   removeShipment,
   selectPlanVehicles,
 } from "../src/core/orders";
-import { routeFingerprint } from "../src/core/route-fingerprint";
+import { routeFingerprint, vehicleRouteFingerprints } from "../src/core/route-fingerprint";
 import { getPlanOptimization } from "../src/core/route-optimization";
 import {
-  cancelStartedRoute,
+  cancelPublishedRoute as cancelStartedRoute,
   listRoutePublications,
   publishRoutes,
 } from "../src/core/route-publications";
@@ -143,7 +143,6 @@ afterAll(async () => {
 
 async function storeCalculatedRoute(targetPlanId = planId) {
   const board = await orderBoard(db.pool, targetPlanId);
-  const shipment = board.shipments[0];
   const metrics = {
     travelDistanceMeters: 1000,
     travelDurationSeconds: 600,
@@ -153,8 +152,8 @@ async function storeCalculatedRoute(targetPlanId = planId) {
   };
   await db.pool.query(
     `INSERT INTO route_optimization_runs
-       (id,plan_id,base_plan_version,applied_plan_version,request_hash,input_fingerprint,metrics,routes,skipped,created_by)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,'[]',$9)`,
+       (id,plan_id,base_plan_version,applied_plan_version,request_hash,input_fingerprint,metrics,routes,skipped,created_by,vehicle_input_hashes)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,'[]',$9,$10)`,
     [
       randomUUID(),
       targetPlanId,
@@ -163,35 +162,46 @@ async function storeCalculatedRoute(targetPlanId = planId) {
       createHash("sha256").update(`publication-${board.plan.version}-${randomUUID()}`).digest("hex"),
       routeFingerprint(board, 0),
       JSON.stringify(metrics),
-      JSON.stringify([
+      JSON.stringify(board.vehicles.map((vehicle) => (
         {
-          vehicleId,
-          vehicleName: "Unidad real QA",
+          vehicleId: vehicle.id,
+          vehicleName: vehicle.name,
           encodedPolyline: null,
           segmentPolylines: [],
           departureAt: `${board.plan.service_date}T13:00:00.000Z`,
           finishedAt: `${board.plan.service_date}T13:10:00.000Z`,
           trafficMode: "static",
           metrics,
-          stops: [
+          stops: board.shipments.filter((shipment) => shipment.vehicle_id === vehicle.id).map((shipment, index) => (
             {
               shipmentId: shipment.id,
-              position: 1,
+              position: index + 1,
               eta: `${board.plan.service_date}T13:10:00.000Z`,
               travelDistanceMeters: 1000,
               travelDurationSeconds: 600,
               waitDurationSeconds: 0,
-            },
-          ],
-        },
-      ]),
+            }
+          )),
+        }
+      ))),
       actor,
+      JSON.stringify(vehicleRouteFingerprints(board, 0)),
     ],
   );
 }
 
-describe("route publication boundary / real PostgreSQL", () => {
-  it("hides drafts and rejects publication without a current calculated route", async () => {
+async function scenario(name: string, run: () => Promise<void>) {
+  try {
+    await run();
+  } catch (cause) {
+    throw new Error(`Publication lifecycle: ${name}`, { cause });
+  }
+}
+
+// These steps intentionally share one publication. Keep them in one atomic test so
+// mutation runners cannot select a later step without executing its prerequisites.
+it("route publication lifecycle / real PostgreSQL", async () => {
+  await scenario("hides drafts and rejects publication without a current calculated route", async () => {
     expect(await listDriverPlans(db.pool, driverId)).toEqual([]);
     await expect(readDriverPlan(db.pool, driverId, planId, serviceTimezone)).rejects.toThrow(
       "NOT_FOUND",
@@ -206,7 +216,7 @@ describe("route publication boundary / real PostgreSQL", () => {
     expect(await listRoutePublications(db.pool, planId)).toEqual([]);
   });
 
-  it("rejects an unassigned, unavailable or inactive fleet driver", async () => {
+  await scenario("rejects an unassigned, unavailable or inactive fleet driver", async () => {
     await storeCalculatedRoute();
     const publish = () => publishRoutes(db.pool, actor, planId, {
       scope: "vehicle", vehicleId, expectedVersion: planVersion,
@@ -226,7 +236,7 @@ describe("route publication boundary / real PostgreSQL", () => {
     }
   });
 
-  it("rejects a route with the wrong vehicle or incomplete stops", async () => {
+  await scenario("rejects a route with the wrong vehicle or incomplete stops", async () => {
     const run = await db.pool.query(
       "SELECT id,routes FROM route_optimization_runs WHERE plan_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1",
       [planId],
@@ -255,7 +265,7 @@ describe("route publication boundary / real PostgreSQL", () => {
     }
   });
 
-  it("publishes once, isolates the driver and keeps a frozen snapshot after draft edits", async () => {
+  await scenario("publishes once, isolates the driver and keeps a frozen snapshot after draft edits", async () => {
     await storeCalculatedRoute();
     const first = await publishRoutes(db.pool, actor, planId, {
       scope: "vehicle",
@@ -265,9 +275,7 @@ describe("route publication boundary / real PostgreSQL", () => {
     expect(first.changes).toMatchObject([
       { vehicleId, revision: 1, action: "published" },
     ]);
-    await expect(cancelStartedRoute(db.pool, actor, planId, vehicleId, {
-      expectedVersion: planVersion, expectedRevision: 1,
-    })).rejects.toMatchObject({ code: "ROUTE_NOT_STARTED", status: 409 });
+    expect(first.publications[0]).toMatchObject({ has_changes: false, published_order_count: 1 });
     expect(await listDriverPlans(db.pool, driverId)).toMatchObject([
       { id: planId, orders: 1, label: "Ruta publicada QA" },
     ]);
@@ -285,6 +293,24 @@ describe("route publication boundary / real PostgreSQL", () => {
     });
     expect(repeated.changes).toEqual([]);
     expect(repeated.publications).toHaveLength(1);
+    expect(repeated.publications[0].has_changes).toBe(false);
+    // A legacy JSONB snapshot without the new input hash still compares semantically.
+    await db.pool.query("UPDATE route_plan_publications SET snapshot=snapshot-'routingInputHash' WHERE plan_id=$1", [planId]);
+    expect((await listRoutePublications(db.pool, planId))[0].has_changes).toBe(false);
+    const previousDeparture = (await orderBoard(db.pool, planId)).plan.departure_minute;
+    await db.pool.query("UPDATE route_plans SET departure_minute=COALESCE(departure_minute,480)+15 WHERE id=$1", [planId]);
+    expect((await listRoutePublications(db.pool, planId))[0].has_changes).toBe(true);
+    await db.pool.query("UPDATE route_plans SET departure_minute=$2 WHERE id=$1", [planId, previousDeparture ?? null]);
+    expect((await listRoutePublications(db.pool, planId))[0].has_changes).toBe(false);
+    // Another draft edit increments the global version without changing this vehicle.
+    await db.pool.query("UPDATE route_plans SET version=version+1 WHERE id=$1", [planId]);
+    planVersion++;
+    await storeCalculatedRoute();
+    const untouched = await publishRoutes(db.pool, actor, planId, {
+      scope: "all", expectedVersion: planVersion,
+    });
+    expect(untouched.changes).toEqual([]);
+    expect(untouched.publications[0]).toMatchObject({ revision: 1, has_changes: false });
     const runCount = Number((await db.pool.query(
       "SELECT count(*)::integer AS n FROM route_optimization_runs WHERE plan_id=$1", [planId],
     )).rows[0].n);
@@ -302,6 +328,7 @@ describe("route publication boundary / real PostgreSQL", () => {
       fleet_driver_id: relief.id,
       fleet_driver_name: "Relevo para publicación QA",
     });
+    expect((await listRoutePublications(db.pool, planId))[0].has_changes).toBe(true);
     await expect(readDriverPlan(db.pool, driverId, planId, serviceTimezone)).rejects.toThrow("NOT_FOUND");
     await expect(readDriverPlan(db.pool, relief.id, planId, serviceTimezone)).rejects.toThrow("NOT_FOUND");
     const transferred = await publishRoutes(db.pool, actor, planId, {
@@ -339,9 +366,10 @@ describe("route publication boundary / real PostgreSQL", () => {
       }),
     ).rejects.toThrow("ROUTE_NOT_CURRENT");
     expect((await listRoutePublications(db.pool, planId))[0].revision).toBe(3);
+    expect((await listRoutePublications(db.pool, planId))[0].has_changes).toBe(true);
   });
 
-  it("requires five distinct private WebP photos, limits eight, and starts idempotently", async () => {
+  await scenario("requires five distinct private WebP photos, limits eight, and starts idempotently", async () => {
     const now = photoCaptureAt;
     await expect(startDriverRoute(db.pool, driverId, planId, 2, serviceTimezone, now, photoRoot))
       .rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
@@ -533,7 +561,7 @@ describe("route publication boundary / real PostgreSQL", () => {
     expect(deletionAudit.rows[0].details).toMatchObject({ planId, vehicleId });
   });
 
-  it("serializes a five-photo deletion against route start on the same publication", async () => {
+  await scenario("serializes a five-photo deletion against route start on the same publication", async () => {
     const racePlan = await createPlan(db.pool, actor, {
       date: "2026-09-24", label: "Carrera inicio y foto QA",
     });
@@ -590,7 +618,7 @@ describe("route publication boundary / real PostgreSQL", () => {
     await deletePlan(db.pool, actor, racePlan.id, { expectedVersion: board.plan.version });
   });
 
-  it("enforces a started lane in PostgreSQL, not just in the UI", async () => {
+  await scenario("enforces a started lane in PostgreSQL, not just in the UI", async () => {
     const board = await orderBoard(db.pool, planId);
     const shipmentId = board.shipments[0].id;
     await expect(
@@ -627,7 +655,7 @@ describe("route publication boundary / real PostgreSQL", () => {
     expect((await orderBoard(db.pool, planId)).shipments).toHaveLength(1);
   });
 
-  it("keeps a started route with its original driver while the fleet assignment changes for future plans", async () => {
+  await scenario("keeps a started route with its original driver while the fleet assignment changes for future plans", async () => {
     const relief = await createDriver(db.pool, actor, {
       id: randomUUID(), name: "Chofer futuro QA", phone: "3312345792",
       emergency_name: "", emergency_phone: "", blood_type: "", active: true,
@@ -641,6 +669,7 @@ describe("route publication boundary / real PostgreSQL", () => {
       driver_id: relief.id, expectedVersion: vehicle.version,
     });
     expect((await readDriverPlan(db.pool, driverId, planId, serviceTimezone)).publication.startedAt).toBeTruthy();
+    expect((await listRoutePublications(db.pool, planId))[0].has_changes).toBe(false);
     expect((await listDriverPlans(db.pool, driverId)).some((row) => row.id === planId)).toBe(true);
     expect((await startDriverRoute(db.pool, driverId, planId, 3, serviceTimezone, new Date("2026-09-23T03:00:00.000Z"), photoRoot)).alreadyStarted).toBe(true);
     expect((await readDriverUnitPhoto(db.pool, driverId,
@@ -657,7 +686,7 @@ describe("route publication boundary / real PostgreSQL", () => {
     expect(nextBoard.vehicles[0].driver_id).toBe(relief.id);
   });
 
-  it("lets an admin revoke a started route without deleting photos, then edit and republish safely", async () => {
+  await scenario("lets an admin revoke a started route without deleting photos, then edit and republish safely", async () => {
     const board = await orderBoard(db.pool, planId);
     const started = (await listRoutePublications(db.pool, planId))[0];
     const photo = (await listDriverUnitPhotos(db.pool, driverId, planId, serviceTimezone))[0];
@@ -738,10 +767,24 @@ describe("route publication boundary / real PostgreSQL", () => {
       .rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
     expect((await readDriverPlan(db.pool, driverId, planId, serviceTimezone)).publication.revision)
       .toBe(started.revision + 2);
-    await startDriverRoute(db.pool, driverId, planId, started.revision + 2, serviceTimezone, photoCaptureAt, photoRoot);
+    const currentRevision = started.revision + 2;
+    const racePlanVersion = (await orderBoard(db.pool, planId)).plan.version;
+    const race = await Promise.allSettled([
+      startDriverRoute(db.pool, driverId, planId, currentRevision, serviceTimezone, photoCaptureAt, photoRoot),
+      cancelStartedRoute(db.pool, actor, planId, vehicleId, {
+        expectedVersion: racePlanVersion, expectedRevision: currentRevision,
+      }),
+    ]);
+    expect(race[1].status).toBe("fulfilled");
+    expect(await listRoutePublications(db.pool, planId)).toEqual([]);
+    await expect(startDriverRoute(db.pool, driverId, planId, currentRevision, serviceTimezone, photoCaptureAt, photoRoot)).rejects.toThrow("NOT_FOUND");
+    const afterRace = await publishRoutes(db.pool, actor, planId, {
+      scope: "vehicle", vehicleId, expectedVersion: (await orderBoard(db.pool, planId)).plan.version,
+    });
+    await startDriverRoute(db.pool, driverId, planId, afterRace.publications[0].revision, serviceTimezone, photoCaptureAt, photoRoot);
   });
 
-  it("cleans expired photos and their private files", async () => {
+  await scenario("cleans expired photos and their private files", async () => {
     await db.pool.query("UPDATE route_unit_photos SET expires_at=now()-interval '1 second' WHERE plan_id=$1", [planId]);
     expect(await cleanExpiredUnitPhotos(db.pool, photoRoot)).toBe(8);
     expect(await listDriverUnitPhotos(db.pool, driverId, planId, serviceTimezone)).toEqual([]);
@@ -749,7 +792,90 @@ describe("route publication boundary / real PostgreSQL", () => {
       .rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
   });
 
-  it("upgrades an existing v14 database so a started unit can be reassigned for future plans", async () => {
+  await scenario("marks only changed vehicles and can withdraw an unstarted publication with an empty draft", async () => {
+    const otherDriver = await createDriver(db.pool, actor, {
+      id: randomUUID(), name: "Segundo chofer", phone: "3312345777",
+      emergency_name: "", emergency_phone: "", blood_type: "", active: true,
+    });
+    const otherVehicle = await createVehicle(db.pool, actor, {
+      id: randomUUID(), name: "Segunda unidad", brand: "Ford", model: "Transit",
+      plate: randomUUID().slice(0, 8), mileage: 0, fuel: "Gasolina", available: true,
+    });
+    await assignDriver(db.pool, actor, otherVehicle.id, { driver_id: otherDriver.id, expectedVersion: otherVehicle.version });
+    const isolated = await createPlan(db.pool, actor, { date: "2026-09-25", label: "Cambios propios" });
+    await selectPlanVehicles(db.pool, actor, isolated.id, {
+      vehicleIds: [vehicleId, otherVehicle.id], expectedVersion: isolated.version,
+    });
+    const sourceOrder = (await orderBoard(db.pool, planId)).shipments[0];
+    await persistImportPage(db.pool, actor, isolated.id, {
+      fingerprint: source,
+      shipments: [900, 901, 902].map((index) => ({ ...sourceOrder, pickingId: index, orderId: index, orderName: `S${index}` })),
+      nextCursor: 902, ceiling: 902, hasMore: false, inspected: 3, excluded: 0,
+    });
+    let draft = await orderBoard(db.pool, isolated.id);
+    for (const [index, shipment] of draft.shipments.entries()) {
+      await db.pool.query("UPDATE route_shipments SET vehicle_id=$2 WHERE id=$1",
+        [shipment.id, index < 2 ? vehicleId : otherVehicle.id]);
+    }
+    await storeCalculatedRoute(isolated.id);
+    await publishRoutes(db.pool, actor, isolated.id, { scope: "all", expectedVersion: draft.plan.version });
+    expect((await listRoutePublications(db.pool, isolated.id)).every((item) => !item.has_changes)).toBe(true);
+    draft = await orderBoard(db.pool, isolated.id);
+    const own = draft.shipments.filter((shipment) => shipment.vehicle_id === vehicleId);
+    await moveShipment(db.pool, actor, isolated.id, {
+      shipmentId: own[1].id, vehicleId, beforeId: own[0].id, expectedVersion: draft.plan.version,
+    });
+    let states = await listRoutePublications(db.pool, isolated.id);
+    expect(states.find((item) => item.vehicle_id === vehicleId)?.has_changes).toBe(true);
+    expect(states.find((item) => item.vehicle_id === otherVehicle.id)?.has_changes).toBe(false);
+    await storeCalculatedRoute(isolated.id);
+    draft = await orderBoard(db.pool, isolated.id);
+    const republished = await publishRoutes(db.pool, actor, isolated.id, { scope: "all", expectedVersion: draft.plan.version });
+    expect(republished.changes).toEqual([{ vehicleId, revision: 2, action: "published" }]);
+    // Reordering global slots without changing either lane's own sequence is not a publication change.
+    await moveShipment(db.pool, actor, isolated.id, {
+      shipmentId: own[0].id, vehicleId, beforeId: null, expectedVersion: draft.plan.version,
+    });
+    expect((await listRoutePublications(db.pool, isolated.id)).every((item) => !item.has_changes)).toBe(true);
+    await storeCalculatedRoute(isolated.id);
+    draft = await orderBoard(db.pool, isolated.id);
+    expect((await publishRoutes(db.pool, actor, isolated.id, { scope: "all", expectedVersion: draft.plan.version })).changes).toEqual([]);
+    const otherOrder = draft.shipments.find((shipment) => shipment.vehicle_id === otherVehicle.id)!;
+    await moveShipment(db.pool, actor, isolated.id, {
+      shipmentId: otherOrder.id, vehicleId: null, beforeId: null, expectedVersion: draft.plan.version,
+    });
+    states = await listRoutePublications(db.pool, isolated.id);
+    expect(states.find((item) => item.vehicle_id === vehicleId)?.has_changes).toBe(false);
+    expect(states.find((item) => item.vehicle_id === otherVehicle.id)).toMatchObject({ has_changes: true, published_order_count: 1 });
+    draft = await orderBoard(db.pool, isolated.id);
+    await cancelStartedRoute(db.pool, actor, isolated.id, otherVehicle.id, { expectedVersion: draft.plan.version, expectedRevision: 1 });
+    await expect(readDriverPlan(db.pool, otherDriver.id, isolated.id, serviceTimezone)).rejects.toThrow("NOT_FOUND");
+    await expect(startDriverRoute(db.pool, otherDriver.id, isolated.id, 1, serviceTimezone, new Date("2026-09-25T16:00:00Z"), photoRoot))
+      .rejects.toThrow("NOT_FOUND");
+    expect((await orderBoard(db.pool, isolated.id)).shipments).toHaveLength(3);
+    expect((await listRoutePublications(db.pool, isolated.id))[0]).toMatchObject({ vehicle_id: vehicleId, revision: 2, has_changes: false });
+    await moveShipment(db.pool, actor, isolated.id, {
+      shipmentId: otherOrder.id, vehicleId: otherVehicle.id, beforeId: null, expectedVersion: draft.plan.version,
+    });
+    await storeCalculatedRoute(isolated.id);
+    draft = await orderBoard(db.pool, isolated.id);
+    expect((await publishRoutes(db.pool, actor, isolated.id, {
+      scope: "vehicle", vehicleId: otherVehicle.id, expectedVersion: draft.plan.version,
+    })).changes).toEqual([{ vehicleId: otherVehicle.id, revision: 3, action: "published" }]);
+    await moveShipment(db.pool, actor, isolated.id, {
+      shipmentId: otherOrder.id, vehicleId: null, beforeId: null, expectedVersion: draft.plan.version,
+    });
+    draft = await orderBoard(db.pool, isolated.id);
+    expect((await publishRoutes(db.pool, actor, isolated.id, {
+      scope: "vehicle", vehicleId: otherVehicle.id, expectedVersion: draft.plan.version,
+    })).changes).toEqual([{ vehicleId: otherVehicle.id, revision: 4, action: "unpublished" }]);
+    expect((await db.pool.query(
+      "SELECT revision,revoked_at FROM route_plan_publications WHERE plan_id=$1 AND vehicle_id=$2",
+      [isolated.id, otherVehicle.id],
+    )).rows[0]).toMatchObject({ revision: 4, revoked_at: expect.any(Date) });
+  });
+
+  await scenario("upgrades an existing v14 database so a started unit can be reassigned for future plans", async () => {
     const assigned = await getVehicle(db.pool, vehicleId);
     await assignDriver(db.pool, actor, vehicleId, {
       driver_id: null, expectedVersion: assigned.version,
@@ -783,4 +909,4 @@ describe("route publication boundary / real PostgreSQL", () => {
     });
     expect((await readDriverPlan(db.pool, driverId, planId, serviceTimezone)).publication.startedAt).toBeTruthy();
   });
-});
+}, 120000);

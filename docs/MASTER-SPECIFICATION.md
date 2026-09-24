@@ -1,5 +1,22 @@
 # Bloque 1 — especificación y auditoría previa
 
+## BL-104 / CP01..06 — cancelación previa al inicio y publicación selectiva
+
+Autopsia: cancelar exige `started_at` tanto en UI como en servidor. La UI presenta republicación por mera existencia de publicación y el snapshot incluye `plan.version` en la comparación; cambios ajenos pueden republicar una ruta idéntica.
+
+Flujo: comparar contenido propio contra snapshot publicado, excluyendo versión global y usando huellas viales por camioneta. Exponer `has_changes` y cantidad publicada en la API existente; acciones compactas según estado. Cancelación versionada conserva locks plan→publicación, revoca e incrementa revisión. La auditoría distingue retiro previo e inicio cancelado. Los triggers existentes emiten SSE y FCM tras commit. No requiere migración ni APK nueva ni consultas Google/Odoo.
+
+| Caso | Actor / condición | Acción y resultado | Datos / auditoría / validación |
+| --- | --- | --- | --- |
+| CP01 | Admin, publicada sin inicio | Cancelar con modal; chofer deja de verla/iniciarla | Publicación revocada, `route.publication.cancelled`, PostgreSQL/API/UI/FCM |
+| CP02 | Admin, iniciada | Cancelar conserva flujo previo y evidencia | `route.start.cancelled`, fotos intactas, regresión |
+| CP03 | Admin, publicada idéntica | Sólo Cancelar; POST repetido no genera revisión ni push | Comparación semántica sin versión global, unitarias/PostgreSQL |
+| CP04 | Admin, edición propia/ajena | Guardar y publicar sólo en camionetas afectadas; nuevo chofer/orden sí cuentan | Snapshot y huellas propias, sin cobros por lectura, pruebas |
+| CP05 | Admin/chofer concurrentes | Serializar cancelar vs inicio; una publicación revocada no inicia | Locks/versiones, 401/404/409, QA concurrente |
+| CP06 | Admin, ruta vacía/republicación | Puede retirar publicación aunque borrador no tenga pedidos; republicar vuelve a notificar | Draft/fotos conservados, revisión creciente, E2E |
+
+Referencia: documentación local Next Route Handlers e instrumentación; contratos reales `route_plan_publications`, `route_mobile_push_deliveries` y `vehicle_input_hashes`. Seguridad: sólo API admin autenticada, no acción móvil de cancelación; sin nuevas credenciales. Recuperación: mantener borrador y republicar explícitamente. Veredicto local: GREEN LIGHT para implementación, INTEGRITY TOTAL, MATCH PERFECT con CP-T01..03. Riesgo externo pendiente: smoke de retiro en teléfono tras Deploy del usuario.
+
 ## BL-103 / PN01..09 — push de publicación y retiro, 23/09/2026
 
 Autopsia: el canal SSE existente cubre sólo la app abierta; Android puede suspenderlo o matar el proceso. No existe registro FCM, cola de envíos ni credencial de servidor. Ya hay transacciones de publicación y cancelación y el dashboard móvil autorizado es la fuente de verdad. Se registró una app Android real del paquete `com.five.anarutas.driver` en Firebase develop; no se toma el proyecto Firebase como base de datos de rutas.

@@ -1,5 +1,12 @@
 # Progreso — bloque 1
 
+## Cancelación antes del inicio y cambios propios — BL-104
+
+- [x] CP-T01 (CP01,02,05,06): cancelar publicación sin exigir inicio, conservar pedidos/asignaciones/orden/fotos, locks/permisos/auditoría y retiro móvil/outbox FCM.
+- [x] CP-T02 (CP03,04): comparación por camioneta sin versión ni posiciones globales, API de cambios pendientes y botones coherentes; compatible con snapshots anteriores.
+- [x] CP-T03 (CP01..06): 506 pruebas locales, 2 E2E, cobertura 94.82 % líneas, mutación 94.74 % / 96.15 %, tipos/lint/build; evidencia y límites en `QA-CANCELACION-PUBLICACION.md`. Los escenarios dependientes se agruparon para impedir falsos positivos de mutación.
+- [ ] CP-T04: Deploy manual del usuario en develop y prueba física del aviso de cancelación. No requiere otra APK ni cambio de esquema. Producción no se toca.
+
 ## Push FCM nativo — BL-103 / PN01..09
 
 - [x] PN-T00: auditoría del flujo de publicación/cancelación, sesión, SSE, Android y documentación oficial; proyecto y app Android Firebase develop registrados.
@@ -7,7 +14,7 @@
 - [x] PN-T02: API de registro autenticado y desactivación al salir/revocar; pruebas HTTP/seguridad.
 - [x] PN-T03: worker HTTP v1 con credencial de servicio en runtime, lease, reintento, caducidad y observabilidad; contrato FCM real negativo y pruebas PostgreSQL.
 - [x] PN-T04: SDK Android, permiso, recepción y refresco; APK 0.4.0 de develop compilada y firmada.
-- [ ] PN-T05: Gherkin, cobertura, mutación, QA reproducible, lint, tipos y build verdes en `QA-PUSH-FCM-RUTAS.md`; falta configurar el secreto sólo en EasyPanel develop y el smoke FCM en teléfono del usuario. Sin certificación productiva hasta completarlo.
+- [ ] PN-T05: Gherkin, cobertura, mutación, QA reproducible, lint, tipos y build en `QA-PUSH-FCM-RUTAS.md`; el usuario configuró las variables en develop y confirmó recepción real de «Nueva ruta disponible» con APK 0.4.0. Falta smoke físico del aviso de retiro/cancelación; sin certificación productiva.
 
 ## Entrega móvil en vivo — BL-102 / MN01..08
 

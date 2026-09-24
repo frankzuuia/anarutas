@@ -8,7 +8,7 @@ import { selectPlanVehicles } from "../src/core/orders";
 import { authenticateMobile, logoutMobile } from "../src/core/driver-mobile-auth";
 import { registerMobilePush, firebaseInstallationId } from "../src/core/route-push-registration";
 import { claimRoutePush, dispatchRoutePushBatch, firebasePushFailure, readFirebasePushConfig, routePushMessage, shouldSendRoutePush } from "../src/core/route-push";
-import { cancelStartedRoute } from "../src/core/route-publications";
+import { cancelPublishedRoute as cancelStartedRoute } from "../src/core/route-publications";
 import { tokenHash } from "../src/core/crypto";
 
 describe("route push decision and FCM contract", () => {
@@ -239,6 +239,39 @@ describe("route push transactional outbox / PostgreSQL real", () => {
     const registration = await db.pool.query("SELECT disabled_at FROM route_mobile_push_registrations WHERE device_id=$1", [deviceA]);
     expect(registration.rows[0].disabled_at).toBeInstanceOf(Date);
     await expect(authenticateMobile(db.pool, `Bearer ${bearerA}`)).rejects.toThrow("MOBILE_UNAUTHENTICATED");
+  });
+
+  it("cancels before start, emits one withdrawal, keeps the draft and rejects a stale second cancellation", async () => {
+    await db.pool.query(
+      "UPDATE route_plan_publications SET revoked_at=NULL,revision=revision+1 WHERE plan_id=$1", [planId],
+    );
+    const publication = (await db.pool.query(
+      "SELECT revision,started_at FROM route_plan_publications WHERE plan_id=$1", [planId],
+    )).rows[0];
+    expect(publication.started_at).toBeNull();
+    const input = { expectedVersion: planVersion + 1, expectedRevision: publication.revision };
+    const attempts = await Promise.allSettled([
+      cancelStartedRoute(db.pool, actor, planId, vehicleId, input),
+      cancelStartedRoute(db.pool, actor, planId, vehicleId, input),
+    ]);
+    expect(attempts.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(attempts.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const revoked = (await db.pool.query(
+      "SELECT revoked_at,started_at,revision FROM route_plan_publications WHERE plan_id=$1", [planId],
+    )).rows[0];
+    expect(revoked.revoked_at).toBeInstanceOf(Date);
+    expect(revoked.started_at).toBeNull();
+    expect(revoked.revision).toBe(publication.revision + 1);
+    expect((await db.pool.query("SELECT id FROM route_plans WHERE id=$1", [planId])).rowCount).toBe(1);
+    expect((await db.pool.query(
+      "SELECT id FROM route_mobile_push_deliveries WHERE plan_id=$1 AND revision=$2 AND kind='withdrawn' AND driver_id=$3",
+      [planId, revoked.revision, driverB],
+    )).rowCount).toBe(1);
+    expect((await db.pool.query(
+      "SELECT details FROM route_audit WHERE action='route.publication.cancelled' AND entity_id=$1", [planId],
+    )).rows[0].details).toMatchObject({ startedAt: null, previousRevision: publication.revision });
+    // Keep later lease/expiry assertions isolated from these new deliveries.
+    await claimRoutePush(db.pool);
   });
 
   it("discards expired deliveries instead of sending them after a worker outage", async () => {
