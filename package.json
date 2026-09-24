@@ -39,6 +39,7 @@
     "test:mutation:unit-photos": "stryker run stryker.unit-photos.config.mjs",
     "test:mutation:unit-photo-deletion": "stryker run stryker.unit-photo-deletion.config.mjs",
     "test:mutation:driver-dashboard": "stryker run stryker.driver-dashboard.config.mjs",
+    "test:mutation:route-push": "stryker run stryker.route-push.config.mjs",
     "pretest:e2e": "npm run build",
     "test:e2e": "playwright test",
     "db:migrate": "tsx scripts/migrate.ts",

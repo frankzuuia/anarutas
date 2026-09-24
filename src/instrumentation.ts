@@ -4,8 +4,10 @@ export async function register() {
     const { startGoogleConsumptionWorker } =
       await import("./server/google-consumption-worker");
     const { startUnitPhotoWorker } = await import("./server/unit-photo-worker");
+    const { startRoutePushWorker } = await import("./server/route-push-worker");
     startRoutingWorker();
     startGoogleConsumptionWorker();
     startUnitPhotoWorker();
+    startRoutePushWorker();
   }
 }

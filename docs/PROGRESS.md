@@ -1,11 +1,20 @@
 # Progreso — bloque 1
 
+## Push FCM nativo — BL-103 / PN01..09
+
+- [x] PN-T00: auditoría del flujo de publicación/cancelación, sesión, SSE, Android y documentación oficial; proyecto y app Android Firebase develop registrados.
+- [x] PN-T01: migración de registro FID y cola transaccional por dispositivo; prueba PostgreSQL de rollback, retiro y reasignación.
+- [x] PN-T02: API de registro autenticado y desactivación al salir/revocar; pruebas HTTP/seguridad.
+- [x] PN-T03: worker HTTP v1 con credencial de servicio en runtime, lease, reintento, caducidad y observabilidad; contrato FCM real negativo y pruebas PostgreSQL.
+- [x] PN-T04: SDK Android, permiso, recepción y refresco; APK 0.4.0 de develop compilada y firmada.
+- [ ] PN-T05: Gherkin, cobertura, mutación, QA reproducible, lint, tipos y build verdes en `QA-PUSH-FCM-RUTAS.md`; falta configurar el secreto sólo en EasyPanel develop y el smoke FCM en teléfono del usuario. Sin certificación productiva hasta completarlo.
+
 ## Entrega móvil en vivo — BL-102 / MN01..08
 
 - [x] MN-T01: endpoint SSE móvil autorizado con huella propia, reset, coalescencia, latidos y limpieza.
 - [x] MN-T02: APK observa eventos visible, reconecta y conserva consulta de respaldo; aviso de ruta nueva/revisada sin duplicado inicial.
 - [x] MN-T03: Gherkin, PostgreSQL/HTTP, Android, cobertura/mutación, tipos/lint/build y QA reproducible; evidencia local en `QA-RUTA-MOVIL-EN-VIVO.md`. Smoke del proxy y dispositivo pendiente del usuario.
-- [ ] MN-T04: notificación del sistema con APK cerrada mediante Firebase real; pendiente de proyecto Firebase, archivo Android y credencial de servidor. No instalar servicios de fondo improvisados.
+- [ ] MN-T04: integración FCM real implementada y validada contra Google con FID inexistente; pendiente configuración EasyPanel develop y smoke con APK cerrada en teléfono del usuario. No se instalaron servicios de fondo improvisados.
 
 ## Espacio del chofer — BL-101
 

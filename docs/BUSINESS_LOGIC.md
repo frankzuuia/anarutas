@@ -1,5 +1,14 @@
 # Ana Rutas — bloque 1 aprobado
 
+## BL-103: avisos nativos de ruta para la APK cerrada
+
+- Sólo dos eventos: publicación/asignación de una ruta para el chofer y retiro/cancelación de su ruta. Republicar sin cambios no genera otro aviso; reasignar notifica retiro al anterior y publicación al nuevo.
+- La publicación, retiro y su intención de notificar se confirman en una sola transacción PostgreSQL. Un rollback no envía nada. FCM es transporte asíncrono: su falla nunca revierte la operación de rutas.
+- El aviso no lleva nombre de cliente, pedidos, dirección, teléfono ni enlace con credenciales. Al abrirlo, la APK consulta `/api/mobile/dashboard` con su sesión; éste sigue siendo la autoridad. La APK visible mantiene SSE y consulta de respaldo.
+- Cada instalación Firebase (FID) se vincula a un dispositivo móvil autenticado, no a un chofer indicado por el cliente. Cerrar sesión desactiva los avisos de ese dispositivo; revocar acceso o dispositivo impide nuevos envíos. La app vuelve a registrar la instalación al entrar.
+- La entrega usa cola durable con intentos acotados, deduplicación por cambio y dispositivo, caducidad, validación de asignación vigente antes de enviar y aislamiento por instalación. FCM puede duplicar o demorar entregas; la pantalla nunca acepta el contenido push como estado de ruta.
+- Se requiere proyecto Firebase Android real, permiso de notificaciones de Android y credencial de servicio sólo en el servidor de cada instalación. Ninguna credencial privada se incluye en APK o Git.
+
 ## BL-102: entrega visible de rutas publicadas
 
 - Actor: administrador publica y chofer autenticado recibe su ruta.

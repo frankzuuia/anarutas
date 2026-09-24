@@ -295,6 +295,10 @@ class DriverApi(private val server: String) {
         exchange("DELETE", "/api/mobile/session", token)
     }
 
+    suspend fun registerPush(token: String, fid: String) {
+        exchange("POST", "/api/mobile/push-registration", token, JSONObject().put("fid", fid))
+    }
+
     suspend fun plans(token: String): List<PlanSummary> {
         return withContext(Dispatchers.Default) {
             val response = JSONArray(exchange("GET", "/api/mobile/plans", token))

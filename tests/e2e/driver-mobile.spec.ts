@@ -250,6 +250,17 @@ test("admin provisioning, native device login, route isolation and revocation ov
   expect((await repeatedEnrollment.json()).deviceId).toBe(deviceId);
   expect((await request.get(`${origin}/api/mobile/plans`)).status()).toBe(401);
   const authorization = { Authorization: `Bearer ${token}` };
+  const pushUrl = `${origin}/api/mobile/push-registration`;
+  const fid = randomBytes(18).toString("base64url");
+  expect((await request.post(pushUrl, { data: { fid } })).status()).toBe(401);
+  expect((await request.post(pushUrl, { headers: authorization, data: { fid: "invalid fid" } })).status()).toBe(400);
+  const registration = await request.post(pushUrl, { headers: authorization, data: { fid } });
+  expect(registration.status()).toBe(200);
+  expect(await registration.json()).toEqual({ registered: true });
+  expect((await db.pool.query(
+    "SELECT device_id,driver_id,fid FROM route_mobile_push_registrations WHERE device_id=$1",
+    [deviceId],
+  )).rows).toEqual([{ device_id: deviceId, driver_id: driverId, fid }]);
   const liveAbort = new AbortController();
   const liveResponse = await fetch(`${origin}/api/mobile/events`, {
     headers: { ...authorization, Accept: "text/event-stream" },

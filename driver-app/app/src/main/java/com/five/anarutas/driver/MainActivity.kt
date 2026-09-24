@@ -1,7 +1,13 @@
 package com.five.anarutas.driver
 
 import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -86,6 +92,7 @@ internal val DriverDestination.icon: DriverIcon get() = when (this) {
 @Composable
 private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
     val context = LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val view = LocalView.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val preferences = remember { DriverPreferences(context.applicationContext) }
@@ -97,6 +104,18 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
     val mapAvailable = running != null && BuildConfig.NAVIGATION_API_KEY.isNotBlank()
     val openMap: () -> Unit = {
         if (mapAvailable) context.startActivity(Intent(context, RouteNavigationActivity::class.java).putExtra(RouteNavigationActivity.EXTRA_PLAN_ID, running.id))
+    }
+
+    LaunchedEffect(state.token) {
+        if (state.token.isNotBlank()) {
+            RoutePushRegistration.register()
+            if (Build.VERSION.SDK_INT >= 33 &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+    LaunchedEffect(model) {
+        RoutePushEvents.refresh.collect { model.requestDashboardRefresh() }
     }
 
     DisposableEffect(view, running?.id, keepAwake) {

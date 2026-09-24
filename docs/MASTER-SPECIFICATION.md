@@ -1,5 +1,25 @@
 # Bloque 1 — especificación y auditoría previa
 
+## BL-103 / PN01..09 — push de publicación y retiro, 23/09/2026
+
+Autopsia: el canal SSE existente cubre sólo la app abierta; Android puede suspenderlo o matar el proceso. No existe registro FCM, cola de envíos ni credencial de servidor. Ya hay transacciones de publicación y cancelación y el dashboard móvil autorizado es la fuente de verdad. Se registró una app Android real del paquete `com.five.anarutas.driver` en Firebase develop; no se toma el proyecto Firebase como base de datos de rutas.
+
+Diseño: trigger transaccional crea entregas por dispositivo registrado al insertar/republicar/retirar una publicación, sin disparar en `started_at`. Reasignación crea retiro para el chofer anterior y publicación para el nuevo. El worker toma filas con lease y `SKIP LOCKED`, verifica dispositivo/acceso y vigencia de la publicación, usa HTTP v1 con OAuth de cuenta de servicio y elimina credenciales inválidas; reintenta sólo fallos transitorios con retroceso. Payload mínimo `event`, `planId` y `revision`, sin pedidos. Android registra su FID al autenticar, pide permiso Android 13+, muestra aviso nativo y sincroniza dashboard al abrir/recibir. Entrega no es garantía de tiempo real si el SO restringe red o el usuario niega permiso.
+
+| Escenario | Resultado esperado |
+| --- | --- |
+| PN01 publicar ruta propia | una intención por dispositivo del chofer, aviso nativo tras commit |
+| PN02 rollback o publicación idéntica | ninguna intención nueva |
+| PN03 retirar/cancelar | aviso de retiro, ruta desaparece al releer dashboard |
+| PN04 reasignar | aviso de retiro al chofer anterior y de ruta al nuevo, sin cruce de datos |
+| PN05 inicio/foto/cambio ajeno | ningún push de ruta |
+| PN06 cierre/revocación/FID inválido | no enviar más al dispositivo afectado; otro dispositivo no se altera |
+| PN07 caída FCM/reinicio/doble worker | reintento durable, sin doble claim; estado final siempre del dashboard |
+| PN08 app cerrada/permiso denegado | con permiso: bandeja y apertura; sin permiso: dashboard al abrir, sin prometer bandeja |
+| PN09 evento obsoleto/cambio de fecha | descartar aviso obsoleto y mantener nueva ruta/fotos del día correctas |
+
+Puertas: pruebas unitarias de decisión y contratos, PostgreSQL real para trigger/aislamiento/rollback/concurrencia, HTTP autenticado, Android JVM e instrumentación física por el usuario, cobertura crítica y mutation testing. Credencial de servicio y permiso HTTP v1 se validan en develop sin tocar producción. No publicar datos privados en logs. SLO propuesto: p95 de la cola <60 s con FCM sano; alerta si hay entregas pendientes >5 min; tasa de fallo permanente y reintentos medidos. No se certifica entrega física sin la prueba del teléfono del usuario.
+
 ## BL-102 / MN01..08 — ruta en vivo para la APK abierta
 
 Diagnóstico: la APK sólo consulta al abrir y cada 30 s. La publicación sí genera una señal transaccional global para el panel, pero no existe un canal móvil. Una señal global no autoriza enviar datos de otros choferes.

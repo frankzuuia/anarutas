@@ -111,6 +111,10 @@ export async function configureMobileAccess(
       [driverId],
     );
     await sql.query(
+      "UPDATE route_mobile_push_registrations SET disabled_at=now() WHERE driver_id=$1 AND disabled_at IS NULL",
+      [driverId],
+    );
+    await sql.query(
       "UPDATE route_driver_mobile_sessions SET revoked_at=now() WHERE driver_id=$1 AND revoked_at IS NULL",
       [driverId],
     );
@@ -145,6 +149,10 @@ export async function revokeMobileAccess(
     );
     await sql.query(
       "UPDATE route_driver_mobile_devices SET revoked_at=now() WHERE driver_id=$1 AND revoked_at IS NULL",
+      [driverId],
+    );
+    await sql.query(
+      "UPDATE route_mobile_push_registrations SET disabled_at=now() WHERE driver_id=$1 AND disabled_at IS NULL",
       [driverId],
     );
     await sql.query(
@@ -389,7 +397,7 @@ export async function authenticateMobile(pool: Pool, header: string | null) {
   if (!/^[0-9a-f]{64}$/.test(token))
     throw new AppError("MOBILE_UNAUTHENTICATED", 401);
   const { rows } = await pool.query(
-    `SELECT s.driver_id,d.name,d.phone
+    `SELECT s.driver_id,s.device_id,d.name,d.phone
        FROM route_driver_mobile_sessions s
        JOIN route_driver_mobile_devices v
          ON v.id=s.device_id AND v.driver_id=s.driver_id
@@ -400,7 +408,7 @@ export async function authenticateMobile(pool: Pool, header: string | null) {
     [tokenHash(token)],
   );
   if (!rows.length) throw new AppError("MOBILE_UNAUTHENTICATED", 401);
-  return rows[0] as { driver_id: string; name: string; phone: string };
+  return rows[0] as { driver_id: string; device_id: string; name: string; phone: string };
 }
 
 export async function logoutMobile(pool: Pool, header: string | null) {
@@ -410,10 +418,15 @@ export async function logoutMobile(pool: Pool, header: string | null) {
   await transaction(pool, async (sql) => {
     const result = await sql.query(
       `UPDATE route_driver_mobile_sessions SET revoked_at=now()
-       WHERE token_hash=$1 AND revoked_at IS NULL RETURNING driver_id`,
+       WHERE token_hash=$1 AND revoked_at IS NULL RETURNING driver_id,device_id`,
       [tokenHash(token)],
     );
-    if (result.rows[0])
+    if (result.rows[0]) {
+      await sql.query(
+        "UPDATE route_mobile_push_registrations SET disabled_at=now() WHERE device_id=$1 AND disabled_at IS NULL",
+        [result.rows[0].device_id],
+      );
       await mobileAudit(sql, result.rows[0].driver_id, "mobile.session.logout");
+    }
   });
 }
