@@ -116,6 +116,7 @@ export function Dashboard({
   const [customerRevision, setCustomerRevision] = useState(0);
   const [consumptionRevision, setConsumptionRevision] = useState(0);
   const [unitRevision, setUnitRevision] = useState(0);
+  const [incidentRevision, setIncidentRevision] = useState(0);
   const [plans, setPlans] = useState<Plan[]>([]),
     [users, setUsers] = useState<User[]>([]),
     [audit, setAudit] = useState<AuditRow[]>([]);
@@ -162,6 +163,7 @@ export function Dashboard({
       if (section === "consumption")
         setConsumptionRevision((value) => value + 1);
       if (section === "unit_control") setUnitRevision((value) => value + 1);
+      if (section === "incidents") setIncidentRevision((value) => value + 1);
       return true;
     } catch (e) {
       setError((e as Error).message);
@@ -418,7 +420,7 @@ export function Dashboard({
           {section === "customers" && (
             <CustomerPanel revision={customerRevision} />
           )}
-          {section === "incidents" && <IncidentsPanel />}
+          {section === "incidents" && <IncidentsPanel today={today} timezone={timezone} revision={incidentRevision} />}
           {section === "unit_control" && <UnitControlPanel today={today} timezone={timezone} revision={unitRevision} />}
           {section === "consumption" && (
             <GoogleConsumptionPanel

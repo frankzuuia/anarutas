@@ -1,5 +1,35 @@
 # Progreso — bloque 1
 
+## Mapa/llegada/repunte — BL-105..108 / ML01..24
+
+Documento: `BLOQUE-MAPA-LLEGADA-REPUNTE.md`. Implementado, con puertas locales cerradas;
+no entregar como integración Google terminada. El usuario confirmó repunte permanente y filtros
+de incidencias por fecha/chofer. Bloque y parámetros aprobados con «dale» el 24/09.
+
+- [x] ML-T00: autopsia, documentación oficial y bloque/política aprobados; MATCH PERFECT documental. Integración Google física sigue pendiente.
+- [x] ML-T01: migración 19→20, ejecución/paradas, política y autoría/histórico; PostgreSQL/backfill/rollback reales.
+- [x] ML-T02: lectura autorizada, revisión operativa y SSE; HTTP prueba retiro y nueva ejecución; APK anterior conserva contratos.
+- [x] ML-T03: llegada, GPS/ventanas/hora/idempotencia; pruebas de unidad, PostgreSQL y HTTP.
+- [x] ML-T04: repunte atómico e historial/incidencia/versiones; aislamiento y carreras PG, sincronización del cliente preservada.
+- [ ] ML-T05: código y APK debug compilan, política GPS probada; falta validación visual/GPS/rotación en dispositivo por el usuario.
+- [ ] ML-T06: guía de destino único, limpieza y avisos locales implementados; licencia original del SDK empaquetada automáticamente y verificada byte a byte. Clave Android restringida ya configurada; pendientes navegación y diálogo real de términos Google en dispositivo.
+  ML24: usuario autoriza configuración Android en develop. Proyecto Maps con billing
+  existente verificado; FCM independiente e intacto. Navigation SDK y Maps SDK Android
+  habilitados, clave restringida a paquete/firma/APIs e inyección local ignorada y
+  protegida por ACL. Siete casos Gradle reales y cinco mutaciones detectadas;
+  APK recompilada con clave real, 43 JVM y lint/assemble verdes, sin prueba vial.
+- [x] ML-T07: incidencias fecha/chofer, política, paginación y SSE; prueba HTTP muestra repunte sin recargar y conserva filtros.
+- [ ] ML-T08: Gherkin ML01..24, unidad/PG/API/E2E/seguridad, cobertura/mutación,
+  métricas, QA y APK; dispositivo y navegación Google pendientes. Backend antes
+  de APK, Deploy manual del usuario. Evidencia local y límites en `QA-MAPA-LLEGADA-REPUNTE.md`;
+  puertas locales cerradas: 540 pruebas servidor, 43 JVM Android, 3 E2E navegador;
+  cobertura core 95.11 % líneas; mutación 98.61 % política, 98.96 % comando y
+  18/18 Android. APK 0.5.0/code11 compilada y firma anterior verificada. T08
+  permanece abierta por términos de Google y prueba física.
+  Commit y push exclusivamente a develop autorizados por el usuario para probar
+  la APK, con excepción explícita para GPS/navegación físicos pendientes.
+  Deploy manual del usuario; main y producción fuera de alcance.
+
 ## Cancelación antes del inicio y cambios propios — BL-104
 
 - [x] CP-T01 (CP01,02,05,06): cancelar publicación sin exigir inicio, conservar pedidos/asignaciones/orden/fotos, locks/permisos/auditoría y retiro móvil/outbox FCM.

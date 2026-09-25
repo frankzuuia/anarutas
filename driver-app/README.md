@@ -1,5 +1,30 @@
 # Ana Rutas Chofer — Android, bloques 1, 2A y 2B
 
+## Mapa, llegada y repunte — 0.5.0 (validación local)
+
+Tras iniciar se abre el mapa de la ejecución propia, con todos sus puntos,
+posición GPS precisa y ficha inferior Five. «Llegué» se valida otra vez en el
+servidor y abre los productos reales: no completa una entrega. «Mal punteado»
+permite arrastrar el pin o usar el GPS, confirma cerca del nuevo domicilio y
+actualiza el cliente para futuras rutas. Registra incidencia consultable por
+fecha y chofer; conserva los snapshots y orden de otras camionetas.
+
+El radio inicial es 100 m, precisión máxima 50 m y antigüedad 30 s; administración
+puede cambiarlo en Incidencias → Reglas de llegada. La incertidumbre GPS se suma
+a la distancia, no al radio. Sin señal reciente, permiso preciso, sesión/ruta
+vigente o conexión confirmada, no se registra un éxito ficticio.
+
+La guía solicita un destino explícito, no lotes de paradas. GPS, repunte previo,
+refresco e incidencias no llaman Routes/Fleet. Si hubo corrección, las métricas
+publicadas se identifican como originales; no se dibuja el trazo anterior como
+vigente. Las confirmaciones ambiguas se cifran por ruta y se reintentan con la
+misma clave. El canal se cierra al abandonar su pantalla.
+
+Esta versión requiere **backend con esquema 20 antes de instalar la APK**.
+La clave Android restringida ya está configurada localmente para develop;
+términos nativos Google y prueba física siguen pendientes. No es autorización de Deploy ni certificación
+de navegación real. Ver `docs/QA-MAPA-LLEGADA-REPUNTE.md` en la raíz.
+
 ## Espacio del chofer — 0.3.0
 
 Inicio con tarjetas Ruta activa, Pedidos, Mi unidad y Mis rutas; logo original
@@ -16,7 +41,7 @@ Actualizar esta APK no requiere Deploy/Rebuild del backend.
 
 App Android nativa para vincular automáticamente un dispositivo, entrar con teléfono y PIN,
 y leer únicamente la ruta y los pedidos de la camioneta asignada. No registra
-entregas, cobros, incidencias ni transferencias todavía. No llama Google Route
+entregas completadas, cobros ni transferencias. No llama Google Route
 Optimization, Routes ni Odoo.
 
 El bloque 2A añade el panel de inicio del chofer: identidad, ruta exacta de hoy,
@@ -34,8 +59,7 @@ acceso compacto `Mapa` queda en el centro de la barra inferior. Usa el
 Navigation SDK oficial: el mapa y los giros no son simulaciones. Abrir el mapa
 dibuja sólo el trazo publicado previamente calculado, cuando existe, y no solicita
 un recorrido nuevo; `Iniciar guía` sí puede generar una solicitud
-facturable. Para más de 25 paradas, se solicita el siguiente bloque únicamente
-cuando el chofer lo decide. La navegación no marca pedidos como entregados.
+facturable para el destino seleccionado. La navegación no marca pedidos como entregados.
 
 ## Actualización automática de rutas
 
@@ -44,9 +68,9 @@ un canal móvil autenticado. La app relee su dashboard y muestra la ruta nueva o
 actualizada sin tocar «Actualizar»; la consulta periódica sigue como respaldo
 si se corta el canal. El evento no contiene pedidos ni datos personales y no
 solicita cálculos de Google/Odoo. Con la APK cerrada Android no mantiene ese
-canal: la notificación del sistema queda pendiente de integrar Firebase Cloud
-Messaging con el proyecto real de esta APK y credenciales de servidor fuera
-del repositorio. No se instala un servicio permanente en segundo plano.
+canal: Firebase Cloud Messaging integrado desde 0.4.0 avisa de publicación y
+cancelación con permiso del usuario; las credenciales de servidor permanecen
+fuera del repositorio. No se instala un servicio permanente en segundo plano.
 
 ## Compilación
 
@@ -79,15 +103,27 @@ como firma de producción.
   APK que se instalará. Una clave de servidor para Routes **no** sustituye
   esta clave. Inyectarla fuera de Git, por ejemplo como variable local
   `ORG_GRADLE_PROJECT_ANA_RUTAS_NAVIGATION_API_KEY` al compilar.
-- Si la clave falta, la APK compila y muestra un aviso en Ruta, pero no ofrece
-  el botón de mapa. Si el GPS o la cuota falla, el SDK devuelve error y no se
+- Alternativa local automática: `navigation.local.properties` en `driver-app/`,
+  excluido de Git, contiene `ANA_RUTAS_NAVIGATION_API_KEY` y el origen asociado
+  `ANA_RUTAS_SERVER_URL`. Las propiedades explícitas Gradle tienen prioridad;
+  una clave explícita vacía desactiva navegación. Si el origen local no coincide
+  con el servidor de la compilación, falla en lugar de reutilizar otra clave.
+  La configuración de develop quedó protegida por ACL. No copiar ese archivo
+  a producción, logs ni respaldos públicos. Una clave Android sigue contenida
+  en la APK: la protección efectiva son sus restricciones de API/paquete/firma.
+  Verificar con `.\scripts\verify-navigation-config.ps1`; no llama Google ni ADB.
+- Si la clave falta, la APK compila y la pantalla operativa explica que el mapa
+  aún no está disponible. Si el GPS o la cuota falla, el SDK devuelve error y no se
   inventa una instrucción de giro. Se requiere prueba física con datos reales
   antes de distribuir.
-- Antes de distribuir, completar los avisos legales y licencias exigidos por
-  Navigation SDK (`NOTICE.txt` y `LICENSES.txt` de su distribución) y verificar
-  en dispositivo el diálogo de términos de Google y las advertencias al chofer
-  sobre condiciones reales de la vía y costos de peaje. Este bloque aún no
-  certifica ese requisito de distribución.
+- El build extrae los archivos legales originales del mismo AAR Navigation que
+  se compila; en 7.9.0 el archivo presente es `LICENSE`. Si falta la licencia,
+  falla el build. Menú → Avisos y licencias permite leer el texto completo sin
+  conexión. El aviso de seguridad requiere confirmación explícita versionada;
+  no acepta ni sustituye los términos nativos de Google.
+- Antes de distribuir, verificar en dispositivo el diálogo de términos de
+  Google, atribuciones visibles y advertencias sobre condiciones reales de la
+  vía y costos de peaje. Compilar y empaquetar la licencia no certifica ese QA.
 
 ## Acceso
 

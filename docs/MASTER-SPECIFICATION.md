@@ -1,5 +1,45 @@
 # Bloque 1 — especificación y auditoría previa
 
+## BL-105..108 / ML01..24 — mapa, llegada, repunte e incidencias
+
+Especificación aprobada: `BLOQUE-MAPA-LLEGADA-REPUNTE.md`. Autopsia real,
+contratos nuevos diferenciados de los existentes, permisos, datos/locks, costos,
+recuperación y matriz ML01..24. Fuentes: `references/MAPA-LLEGADA-REPUNTE.md`.
+El usuario confirmó repunte automático del cliente y filtros fecha/chofer.
+Bloque y parámetros aprobados con «dale» el 24/09: GREEN LIGHT para construcción,
+INTEGRITY TOTAL y MATCH PERFECT documental ML-T00..08. Clave Android configurada
+en develop; pendiente validación física antes de certificar el mapa y navegación.
+El plan conserva snapshots iniciados, orden de pedidos, cancelación, fotos y FCM;
+introduce estado operativo separado y no sustituye pronósticos por hechos.
+
+Implementación local esquema20: rutas móviles execution/arrival/location,
+consulta administrativa incidents y política driver-operation-settings.
+Evidencia en `QA-MAPA-LLEGADA-REPUNTE.md`; no certifica SDK/Android físico.
+El trigger de recálculo de clientes excluye autor chofer para no recalcular
+otras rutas por repunte; comandos usan locks explícitos de sesión/plan/publicación/
+ejecución/cliente. Incidencias conserva microsegundos en cursor. Reintentos Android
+cifrados por plan y efectos de guía posteriores a la lectura confirmada.
+La respuesta atrasada del SDK se valida contra ejecución/parada/coordenadas y
+generación antes de iniciar guía; destino cambiado requiere confirmación nueva.
+Aviso previo versionado con confirmación explícita; menú local de licencias
+extraídas sin cambios del mismo AAR instalado. La guía se bloquea sin confirmar
+el aviso y mantiene los términos nativos Google; prueba física pendiente.
+Validación local cerrada: 540 servidor, 43 Android, 3 E2E; informe registra
+mutación, cobertura y límites físicos. El usuario autorizó commit y push de este
+bloque exclusivamente a develop para probar la APK, aceptando GPS/navegación
+físicos pendientes. Deploy manual del usuario; sin autorización para main ni
+producción. Esta entrega no certifica navegación real.
+
+ML24 / autorización del usuario: configurar sólo la clave Android de develop
+en el proyecto Maps con billing ya activo. Archivo local ignorado, ACL e inyección
+Gradle con prioridad explícita y comprobación del origen de servidor; servicio,
+paquete y certificado restringidos. No modificar el proyecto FCM ni producción.
+No habilitar billing nuevo ni generar peticiones de navegación de prueba.
+Resultado de configuración: ambos SDK habilitados en el proyecto Maps develop,
+clave limitada a paquete/firma y esos dos servicios, claves anteriores intactas.
+BuildConfig coincide con archivo local protegido e ignorado. Siete casos de
+configuración y cinco mutaciones detectadas; APK con la misma firma previa.
+
 ## BL-104 / CP01..06 — cancelación previa al inicio y publicación selectiva
 
 Autopsia: cancelar exige `started_at` tanto en UI como en servidor. La UI presenta republicación por mera existencia de publicación y el snapshot incluye `plan.version` en la comparación; cambios ajenos pueden republicar una ruta idéntica.

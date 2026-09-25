@@ -410,7 +410,7 @@ export async function updateCustomer(
         fulfillment_mode=$6,delivery_address=$7,address_overridden=true,
         map_url=$8,latitude=$9,longitude=$10,place_id=$11,
         location_status=$12,location_version=$13,search_key=$14,
-        version=version+1,updated_by=$15,updated_at=now()
+        version=version+1,updated_by=$15,updated_by_driver=NULL,updated_at=now()
        WHERE id=$1`,
       [
         id,
@@ -493,7 +493,7 @@ async function setArchived(
     if (already) return getCustomer(sql, id);
     await sql.query(
       `UPDATE route_customers SET archived_at=${archived ? "now()" : "NULL"},
-       archived_by=${archived ? "$2" : "NULL"},version=version+1,updated_by=$2,updated_at=now()
+       archived_by=${archived ? "$2" : "NULL"},version=version+1,updated_by=$2,updated_by_driver=NULL,updated_at=now()
        WHERE id=$1`,
       [id, actor],
     );

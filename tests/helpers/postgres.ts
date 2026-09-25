@@ -8,6 +8,11 @@ import { readConfig } from "../../src/core/config";
 
 type TestPool = ReturnType<typeof createPool>;
 
+// Only for reconstructing pre-v20 schemas in isolated migration tests.
+export async function dropExecutionTablesForLegacyFixture(pool: TestPool) {
+  await pool.query("DROP TABLE route_driver_command_receipts,route_driver_stop_events,route_driver_execution_stops,route_driver_executions,route_driver_operation_settings");
+}
+
 async function captureCleanupFailure(
   errors: unknown[],
   cleanup: () => Promise<unknown>,
@@ -88,7 +93,10 @@ export async function startPostgres(options: { databaseRoot?: string } = {}) {
       user: "postgres",
       password,
       port,
-      persistent: false,
+      // This helper owns disposal. embedded-postgres otherwise removes the folder
+      // once, before Windows releases all child-process file handles, and raises
+      // EBUSY even if our retrying cleanup below subsequently succeeds.
+      persistent: true,
       authMethod: "scram-sha-256",
       postgresFlags: ["-h", "127.0.0.1"],
       createPostgresUser: false,

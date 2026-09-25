@@ -10,6 +10,8 @@ export async function listDriverPlans(pool: Pool, driverId: string) {
             pub.snapshot->'plan'->>'label' AS label,
             pub.source_plan_version AS version,
             pub.revision AS publication_revision,pub.started_at,
+            COALESCE((SELECT e.revision FROM route_driver_executions e WHERE e.plan_id=pub.plan_id
+              AND e.vehicle_id=pub.vehicle_id AND e.publication_revision=pub.revision),0) AS execution_revision,
             pv.vehicle_id,v.name AS vehicle_name,v.plate,
             jsonb_array_length(pub.snapshot->'orders') AS orders
      FROM route_plan_publications pub
@@ -62,7 +64,7 @@ export async function readDriverPlan(
     );
     if (!plan.rowCount) throw new AppError("NOT_FOUND", 404);
     const publication = await sql.query(
-      `SELECT pub.snapshot,pub.revision,pub.started_at,
+      `SELECT pub.snapshot,pub.revision,pub.started_at,pub.vehicle_id,
               (SELECT count(*)::integer FROM route_unit_photos photo
                 WHERE photo.plan_id=pub.plan_id AND photo.vehicle_id=pub.vehicle_id
                   AND photo.driver_id=pub.driver_id AND photo.expires_at>now()
@@ -83,8 +85,22 @@ export async function readDriverPlan(
     );
     const assigned = publication.rows[0];
     if (!assigned) throw new AppError("NOT_FOUND", 404);
+    const corrections = await sql.query<{ shipment_ids: string[]; latitude: number; longitude: number }>(
+      `SELECT s.shipment_ids,s.latitude,s.longitude FROM route_driver_execution_stops s
+         JOIN route_driver_executions e ON e.id=s.execution_id
+        WHERE e.plan_id=$1 AND e.vehicle_id=$2 AND e.publication_revision=$3 AND s.corrected_at IS NOT NULL`,
+      [id, assigned.vehicle_id, assigned.revision],
+    );
+    const points = new Map(corrections.rows.flatMap((stop) => stop.shipment_ids.map((shipmentId) => [shipmentId, stop] as const)));
     return {
       ...assigned.snapshot,
+      ...(points.size ? {
+        routeStatus: "point_corrected",
+        orders: assigned.snapshot.orders.map((order: { id: string }) => {
+          const point = points.get(order.id);
+          return point ? { ...order, latitude: point.latitude, longitude: point.longitude, locationStatus: "driver_confirmed" } : order;
+        }),
+      } : {}),
       publication: {
         revision: Number(assigned.revision),
         startedAt: assigned.started_at,

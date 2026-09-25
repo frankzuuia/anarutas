@@ -192,12 +192,12 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   ).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "Sin incidencias reales registradas",
+      name: "Sin incidencias en este periodo",
       exact: true,
     }),
   ).toBeVisible();
   await expect(
-    page.getByText("Las ETA, ventanas y previsiones de Google no crean", {
+    page.getByText("Los pronósticos de Google no generan incidencias.", {
       exact: false,
     }),
   ).toBeVisible();
@@ -223,7 +223,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(
     page.getByRole("heading", {
-      name: "Sin incidencias reales registradas",
+      name: "Sin incidencias en este periodo",
       exact: true,
     }),
   ).toBeVisible();
@@ -329,7 +329,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await page.getByRole("button", { name: "Incidencias", exact: true }).click();
   await expect(
     page.getByRole("heading", {
-      name: "Sin incidencias reales registradas",
+      name: "Sin incidencias en este periodo",
       exact: true,
     }),
   ).toBeVisible();

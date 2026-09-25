@@ -1,7 +1,7 @@
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
-import { startPostgres } from "./helpers/postgres";
+import { startPostgres, dropExecutionTablesForLegacyFixture } from "./helpers/postgres";
 import { bootstrap } from "../src/core/auth";
 import { migrate } from "../src/core/database";
 import {
@@ -65,6 +65,7 @@ afterAll(async () => {
 describe("fleet / real PostgreSQL", () => {
   it("upgrades actual v1 structure while preserving preexisting account and plan", async () => {
     // Only this isolated QA cluster: remove empty v2 tables to reproduce original v1 state.
+    await dropExecutionTablesForLegacyFixture(db.pool);
     await db.pool.query(
       "DROP TABLE route_mobile_push_deliveries,route_mobile_push_registrations,route_unit_photos,route_plan_publications,route_driver_mobile_sessions,route_driver_mobile_challenges,route_driver_mobile_activations,route_driver_mobile_devices,route_driver_mobile_audit,route_driver_mobile_access,route_optimization_stops,route_optimization_leases,route_optimization_runs,route_routing_settings,route_customer_location_history,route_customer_windows,route_shipments,route_customers,route_plan_vehicles,route_order_source,route_driver_documents,route_vehicles,route_drivers; UPDATE rutas_installation SET schema_version=1",
     );
@@ -82,7 +83,7 @@ describe("fleet / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(19);
+    ).toBe(20);
     expect((await db.pool.query("SELECT * FROM route_users")).rows).toEqual(
       users,
     );

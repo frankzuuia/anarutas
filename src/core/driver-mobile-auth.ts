@@ -392,10 +392,19 @@ export async function loginMobile(pool: Pool, input: Record<string, unknown>) {
   return { ...result, token };
 }
 
-export async function authenticateMobile(pool: Pool, header: string | null) {
+export async function authenticateMobile(pool: Sql, header: string | null, lock = false) {
   const token = header?.startsWith("Bearer ") ? header.slice(7) : "";
   if (!/^[0-9a-f]{64}$/.test(token))
     throw new AppError("MOBILE_UNAUTHENTICATED", 401);
+  if (lock) {
+    const owner = await authenticateMobile(pool, header);
+    // Explicit order matches admin driver/access/device/session revocation. A joined
+    // FOR SHARE can acquire row locks in planner order and deadlock with that path.
+    await pool.query("SELECT id FROM route_drivers WHERE id=$1 FOR SHARE", [owner.driver_id]);
+    await pool.query("SELECT driver_id FROM route_driver_mobile_access WHERE driver_id=$1 FOR SHARE", [owner.driver_id]);
+    await pool.query("SELECT id FROM route_driver_mobile_devices WHERE id=$1 FOR SHARE", [owner.device_id]);
+    await pool.query("SELECT token_hash FROM route_driver_mobile_sessions WHERE token_hash=$1 FOR SHARE", [tokenHash(token)]);
+  }
   const { rows } = await pool.query(
     `SELECT s.driver_id,s.device_id,d.name,d.phone
        FROM route_driver_mobile_sessions s

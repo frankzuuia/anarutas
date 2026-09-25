@@ -1,5 +1,25 @@
 # Ana Rutas — bloque 1 aprobado
 
+## Propuesta siguiente — BL-105..108 (24/09/2026, aún no implementada)
+
+Diseño y criterios completos en `BLOQUE-MAPA-LLEGADA-REPUNTE.md`:
+
+- BL-105: ejecución propia y mapa al iniciar, todas las paradas, sin reordenar ni
+  confundir navegación con entrega.
+- BL-106: «Llegué» valida ubicación reciente/radio en servidor, es idempotente y
+  abre atención del pedido; radio inicial de 100 m pendiente de confirmación.
+- BL-107: repunte actualiza inmediatamente la parada propia y el cliente para
+  futuras rutas, decisión confirmada por el usuario; historial e incidencia
+  atómicos, sin Odoo ni cambios en publicaciones ajenas.
+- BL-108: incidencias reales filtradas por fecha y chofer, decisión confirmada
+  por el usuario; actualización en vivo conserva filtros e histórico.
+
+Actor, datos, permisos, auditoría, validación y parámetros propuestos se detallan
+en ese documento. Devoluciones/cobros/evidencias/entrega completada no incluidos.
+Las reglas históricas «captura móvil pendiente» serán sustituidas únicamente al
+implementar y validar este bloque. Construcción aprobada con «dale» el 24/09;
+el radio inicial configurable es 100 m. No certifica integración física.
+
 ## BL-103: avisos nativos de ruta para la APK cerrada
 
 - Sólo dos eventos: publicación/asignación de una ruta para el chofer y retiro/cancelación de su ruta. Republicar sin cambios no genera otro aviso; reasignar notifica retiro al anterior y publicación al nuevo.

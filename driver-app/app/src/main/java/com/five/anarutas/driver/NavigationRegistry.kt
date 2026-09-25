@@ -5,12 +5,14 @@ import com.google.android.libraries.navigation.Navigator
 /** Keeps one SDK navigator alive only while guidance is active between app screens. */
 internal object NavigationRegistry {
     private var active: Navigator? = null
+    var destinationKey: String? = null
 
     fun attach(navigator: Navigator): Boolean {
         val previous = active
         if (previous != null && previous !== navigator) {
             if (previous.isGuidanceRunning) return false
             previous.cleanup()
+            destinationKey = null
         }
         active = navigator
         return true
@@ -19,10 +21,12 @@ internal object NavigationRegistry {
     fun releaseIfInactive(navigator: Navigator?) {
         if (navigator == null || active !== navigator || navigator.isGuidanceRunning) return
         active = null
+        destinationKey = null
         navigator.cleanup()
     }
 
     fun endSession() {
+        destinationKey = null
         val navigator = active ?: return
         active = null
         runCatching { navigator.stopGuidance() }

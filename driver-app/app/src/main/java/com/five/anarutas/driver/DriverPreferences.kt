@@ -9,4 +9,8 @@ internal class DriverPreferences(context: Context) {
     var keepRouteAwake: Boolean
         get() = store.getBoolean("keep_route_awake", false)
         set(value) { store.edit { putBoolean("keep_route_awake", value) } }
+    val needsNavigationNotice: Boolean
+        get() = needsNavigationNotice(store.getInt("navigation_notice_version", 0))
+    // Call off the main thread; a failed write must not be presented as saved.
+    fun acknowledgeNavigationNotice() = store.edit().putInt("navigation_notice_version", NAVIGATION_NOTICE_VERSION).commit()
 }

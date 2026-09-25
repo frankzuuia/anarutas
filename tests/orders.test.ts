@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createHash, randomUUID } from "node:crypto";
-import { startPostgres } from "./helpers/postgres";
+import { startPostgres, dropExecutionTablesForLegacyFixture } from "./helpers/postgres";
 import { bootstrap } from "../src/core/auth";
 import { createPlan, deletePlan, listPlans } from "../src/core/plans";
 import { createVehicle } from "../src/core/fleet";
@@ -147,6 +147,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(board.plan.version).toBe(plan.version + 1);
   });
   it("upgrades v2 without losing plan, account or fleet", async () => {
+    await dropExecutionTablesForLegacyFixture(db.pool);
     const counts = await Promise.all(
       ["route_users", "route_plans", "route_vehicles"].map(async (table) =>
         Number(
@@ -165,7 +166,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(19);
+    ).toBe(20);
     const identityIndex = await db.pool.query(
       "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='route_shipments_plan_source_picking_order'",
     );
@@ -183,6 +184,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
   });
 
   it("upgrades an actual v3 shipment to plan-scoped identity without data loss", async () => {
+    await dropExecutionTablesForLegacyFixture(db.pool);
     const plan = await createPlan(db.pool, actor, {
       date: "2026-09-09",
       label: "Migración v3 QA",
@@ -213,7 +215,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(19);
+    ).toBe(20);
     expect(
       (
         await db.pool.query(

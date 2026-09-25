@@ -86,11 +86,13 @@ class DeviceCredentials(context: Context) {
     }
 
     fun clearToken() {
+        clearPendingStopCommand()
         preferences.edit().remove("token_iv").remove("token_ciphertext").apply()
         navigationProgress.clearAll()
     }
 
     fun clearDevice() {
+        clearPendingStopCommand()
         preferences.edit().remove("device_id").remove("token_iv")
             .remove("token_ciphertext").apply()
         navigationProgress.clearAll()
@@ -113,6 +115,28 @@ class DeviceCredentials(context: Context) {
         }
         val lines = Base64.encodeToString(key, Base64.NO_WRAP).chunked(64).joinToString("\n")
         return "-----BEGIN PUBLIC KEY-----\n$lines\n-----END PUBLIC KEY-----\n"
+    }
+
+    internal fun savePendingStopCommand(planId: String, value: String) {
+        val (iv, ciphertext) = encryptedToken(value)
+        check(preferences.edit().putString("stop:$planId:iv", iv).putString("stop:$planId:ciphertext", ciphertext).commit())
+    }
+
+    internal fun readPendingStopCommand(planId: String): String? {
+        val iv = preferences.getString("stop:$planId:iv", null) ?: return null
+        val ciphertext = preferences.getString("stop:$planId:ciphertext", null) ?: return null
+        return try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, tokenKey(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
+            String(cipher.doFinal(Base64.decode(ciphertext, Base64.NO_WRAP)), Charsets.UTF_8)
+        } catch (_: Exception) { clearPendingStopCommand(planId); null }
+    }
+
+    internal fun clearPendingStopCommand(planId: String? = null) {
+        val editor = preferences.edit()
+        if (planId != null) editor.remove("stop:$planId:iv").remove("stop:$planId:ciphertext")
+        else preferences.all.keys.filter { it.startsWith("stop:") }.forEach(editor::remove)
+        editor.apply()
     }
 
     fun signChallenge(challengeId: String, nonce: String): String {

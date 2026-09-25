@@ -3,18 +3,22 @@ import { authenticateMobile } from "./driver-mobile-auth";
 import { listDriverPlans } from "./driver-mobile-route";
 import { AppError } from "./errors";
 import { subscribePanelChanges } from "./panel-events";
+import { readOperationPolicy } from "./driver-operation-settings";
 
 export async function driverPublicationFingerprint(
   pool: Pool,
   driverId: string,
 ) {
   const plans = await listDriverPlans(pool, driverId);
+  const policy = await readOperationPolicy(pool);
   return JSON.stringify(
     plans.map((plan) => [
       plan.id,
       plan.vehicle_id,
       Number(plan.publication_revision),
       plan.started_at,
+      Number(plan.execution_revision),
+      policy.version,
     ]),
   );
 }

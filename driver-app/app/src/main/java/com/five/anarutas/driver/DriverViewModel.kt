@@ -40,6 +40,7 @@ data class DriverUiState(
     val photos: List<UnitPhoto> = emptyList(),
     val showPhotos: Boolean = false,
     val orderDetailId: String? = null,
+    val openStartedMap: String? = null,
 )
 
 internal fun reconcilePublishedRoutes(state: DriverUiState, dashboard: DriverDashboard): DriverUiState {
@@ -88,6 +89,15 @@ internal fun friendlyError(error: Throwable): String = when (error) {
         "UNIT_PHOTO_REUSED" -> "Esta imagen ya se usó en otra ruta de la unidad. Toma una foto nueva."
         "UNIT_PHOTOS_REQUIRED" -> "Carga al menos cinco fotos distintas de la unidad antes de iniciar."
         "VERSION_CONFLICT" -> "La ruta cambió desde que la abriste. Actualízala y confirma de nuevo."
+        "OPERATION_POLICY_CHANGED" -> "Administración cambió el radio de llegada. Revisa los nuevos límites y confirma otra vez."
+        "LOCATION_STALE" -> "Espera una ubicación GPS reciente antes de confirmar."
+        "LOCATION_IMPRECISE" -> "El GPS aún tiene demasiado margen de error. Espera una señal más precisa."
+        "LOCATION_UNTRUSTED" -> "La ubicación debe venir del GPS real del teléfono."
+        "OUTSIDE_ARRIVAL_RADIUS" -> "Todavía estás fuera del radio permitido para este punto."
+        "CUSTOMER_LOCATION_CONFLICT" -> "El cliente fue repunteado desde otra sesión. Revisa el punto actualizado antes de confirmar."
+        "CUSTOMER_UNAVAILABLE" -> "Administración archivó este cliente. No se puede repuntear."
+        "COMMAND_REUSED" -> "La confirmación no coincide con su intento original. Cierra y vuelve a abrir el mapa."
+        "EXECUTION_NOT_READY" -> "El servidor aún no tiene disponible la ejecución. Contacta a administración."
         "ROUTE_DATE_MISMATCH" -> "Esta ruta no corresponde al día de hoy."
         "ROUTE_ALREADY_STARTED" -> "Esta ruta ya inició y no admite más fotos ni cambios."
         else -> if (error.status == 404 && error.code.isBlank())
@@ -108,6 +118,7 @@ internal fun friendlyError(error: Throwable): String = when (error) {
 
 internal fun routeStatusMessage(status: String): String? = when (status) {
     "current" -> null
+    "point_corrected" -> "Ubicación corregida. Los kilómetros y tiempos son del plan original; abre el mapa para guiarte al punto actualizado."
     "stale" -> "El recorrido cambió; espera que administración lo actualice."
     "not_calculated" -> "Administración todavía no ha calculado el recorrido."
     "empty" -> "Esta camioneta todavía no tiene pedidos asignados."
@@ -497,6 +508,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
                     },
                     destination = DriverDestination.ROUTE,
                     notice = "Ruta iniciada. Administración ya puede ver tu salida.",
+                    openStartedMap = refreshed.id,
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -532,6 +544,8 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
             }
         }
     }
+
+    fun consumeStartedMap() { state = state.copy(openStartedMap = null) }
 
     private suspend fun loadDashboard(accessToken: String) {
         val dashboard = DriverApi(BuildConfig.SERVER_URL).dashboard(accessToken)

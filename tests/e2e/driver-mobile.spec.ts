@@ -569,11 +569,67 @@ test("admin provisioning, native device login, route isolation and revocation ov
     ).publication.startedAt,
   ).toBeTruthy();
   const cancelUrl = `${origin}/api/plans/${planId}/publications/${vehicleId}/cancel`;
+  const executionUrl = `${origin}/api/mobile/plans/${planId}/execution`;
+  const readExecution = async () => {
+    const response = await request.get(executionUrl, { headers: authorization });
+    expect(response.status()).toBe(200);
+    expect(response.headers()["cache-control"]).toContain("no-store");
+    return response.json();
+  };
+  const execution = await readExecution();
+  const stop = execution.stops[0];
+  const anonymous = await browser.newContext();
+  expect((await anonymous.request.get(executionUrl)).status()).toBe(401);
+  expect((await anonymous.request.get(`${origin}/api/incidents`, { headers: authorization })).status()).toBe(401);
+  expect((await anonymous.request.put(`${origin}/api/driver-operation-settings`, { headers: { ...authorization, Origin: origin }, data: {} })).status()).toBe(401);
+  await anonymous.close();
+  expect((await request.put(`${origin}/api/driver-operation-settings`, { headers: { Origin: "https://foreign.example" }, data: {} })).status()).toBe(403);
+  const correctedPoint = { latitude: 20.64, longitude: -103.4 };
+  const command = {
+    commandId: randomUUID(), executionId: execution.id, publicationRevision: execution.publicationRevision,
+    executionRevision: execution.revision, stopVersion: stop.version, policyVersion: execution.policy.version,
+    customerLocationVersion: stop.customerLocationVersion, point: correctedPoint,
+    sample: { ...correctedPoint, accuracyMeters: 5, ageMilliseconds: 0, capturedAt: new Date().toISOString(), mock: false },
+  };
+  const locationUrl = `${origin}/api/mobile/plans/${planId}/stops/${stop.id}/location`;
+  await livePanel.getByRole("button", { name: "Incidencias", exact: true }).click();
+  await expect(livePanel.getByText("Sin incidencias en este periodo", { exact: true })).toBeVisible();
+  await livePanel.getByLabel("Chofer", { exact: true }).selectOption(driverId);
+  const repointSubmitted = Date.now();
+  const repoint = await request.post(locationUrl, { headers: authorization, data: command });
+  expect(repoint.status()).toBe(200);
+  const repointResult = await repoint.json();
+  await expect(livePanel.getByText("Punto corregido", { exact: true })).toBeVisible({ timeout: 2000 });
+  console.info(`Realtime driver incident visible in ${Date.now() - repointSubmitted} ms`);
+  await expect(livePanel.getByLabel("Chofer", { exact: true })).toHaveValue(driverId);
+  expect(await (await request.post(locationUrl, { headers: authorization, data: command })).json()).toMatchObject({ eventId: repointResult.eventId, duplicate: true });
+  const corrected = await readExecution();
+  expect(corrected.stops[0]).toMatchObject(correctedPoint);
+  const arrivalUrl = `${origin}/api/mobile/plans/${planId}/stops/${stop.id}/arrival`;
+  const arrival = { ...command, commandId: randomUUID(), executionRevision: corrected.revision, stopVersion: corrected.stops[0].version,
+    sample: { ...command.sample, capturedAt: new Date().toISOString() } };
+  expect((await request.post(arrivalUrl, { headers: authorization, data: { ...arrival, sample: { ...arrival.sample, latitude: 21 } } })).status()).toBe(422);
+  const confirmations = await Promise.all([1, 2].map(() => request.post(arrivalUrl, { headers: authorization, data: arrival })));
+  expect(confirmations.map(response => response.status())).toEqual([200, 200]);
+  const confirmed = await Promise.all(confirmations.map(response => response.json()));
+  expect(confirmed[0].eventId).toBe(confirmed[1].eventId);
+  expect((await readExecution()).stops[0].arrivedAt).toBeTruthy();
+  await livePanel.getByLabel("Desde", { exact: true }).fill("2000-01-01");
+  await livePanel.getByLabel("Hasta", { exact: true }).fill("2000-01-01");
+  await expect(livePanel.getByText("Sin incidencias en este periodo", { exact: true })).toBeVisible();
+  await livePanel.getByLabel("Hasta", { exact: true }).fill(serviceDate);
+  await livePanel.getByLabel("Desde", { exact: true }).fill(serviceDate);
+  await expect(livePanel.getByText("Punto corregido", { exact: true })).toBeVisible();
+  await mkdir("reports/screenshots", { recursive: true });
+  await livePanel.screenshot({ path: "reports/screenshots/driver-incidents-live.png", fullPage: true });
+  await livePanel.getByRole("button", { name: "Planificar rutas", exact: true }).click();
   const cancelled = await request.post(cancelUrl, {
     headers: { Origin: origin },
     data: { expectedVersion: board.plan.version, expectedRevision: 1 },
   });
   expect(cancelled.status()).toBe(200);
+  expect((await request.get(executionUrl, { headers: authorization })).status()).toBe(404);
+  expect((await request.post(arrivalUrl, { headers: authorization, data: { ...arrival, commandId: randomUUID() } })).status()).toBe(404);
   expect(await cancelled.json()).toMatchObject({ publications: [] });
   await expect(
     livePanel.getByText("Ruta iniciada", { exact: true }),
@@ -616,6 +672,15 @@ test("admin provisioning, native device login, route isolation and revocation ov
       })
     ).status(),
   ).toBe(404);
+  const outdatedPublication = await request.post(`${origin}/api/plans/${planId}/publications`, {
+    headers: { Origin: origin }, data: { scope: "vehicle", vehicleId, expectedVersion: board.plan.version },
+  });
+  expect(outdatedPublication.status()).toBe(409);
+  expect(await outdatedPublication.json()).toMatchObject({ error: "ROUTE_NOT_CURRENT" });
+  // Refresh only the persisted calculation fixture for this HTTP lifecycle. No claim
+  // of a Google street calculation: the repoint must first invalidate the old hash.
+  const correctedBoard = await orderBoard(db.pool, planId);
+  await db.pool.query("UPDATE route_optimization_runs SET input_fingerprint=$2 WHERE plan_id=$1", [planId, routeFingerprint(correctedBoard, 0)]);
   const republished = await request.post(
     `${origin}/api/plans/${planId}/publications`,
     {
@@ -693,6 +758,13 @@ test("admin provisioning, native device login, route isolation and revocation ov
       })
     ).status(),
   ).toBe(200);
+  const restartedExecution = await readExecution();
+  expect(restartedExecution.id).not.toBe(execution.id);
+  expect(restartedExecution).toMatchObject({ revision: 1, publicationRevision: 5, hasCorrections: false });
+  expect(restartedExecution.stops[0]).toMatchObject({ ...correctedPoint, arrivedAt: null });
+  const staleExecutionCommand = await request.post(arrivalUrl, { headers: authorization, data: { ...arrival, commandId: randomUUID() } });
+  expect(staleExecutionCommand.status()).toBe(409);
+  expect(await staleExecutionCommand.json()).toMatchObject({ error: "VERSION_CONFLICT" });
   const challenge = await request.post(`${origin}/api/mobile/challenge`, {
     data: { phone, deviceId },
   });

@@ -10,6 +10,7 @@ playwright-report/
 .stryker-tmp/
 driver-app/.kotlin/
 driver-app/.gradle/
+driver-app/navigation.local.properties
 driver-app/app/build/
 *.tsbuildinfo
 *.log

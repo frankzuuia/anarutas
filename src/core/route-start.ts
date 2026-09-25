@@ -4,6 +4,7 @@ import { AppError } from "./errors";
 import { todayInTimezone } from "./local-date";
 import { integer, uuid } from "./orders-validation";
 import { unitPhotoRoot } from "./unit-photos";
+import { createDriverExecution } from "./driver-execution-seed";
 
 export async function startDriverRoute(
   pool: Pool,
@@ -41,8 +42,10 @@ export async function startDriverRoute(
     const route = publication.rows[0];
     if (!route) throw new AppError("NOT_FOUND", 404);
     if (route.revision !== revision) throw new AppError("VERSION_CONFLICT", 409);
-    if (route.started_at)
+    if (route.started_at) {
+      await createDriverExecution(sql, id, route.vehicle_id);
       return { startedAt: route.started_at as Date, alreadyStarted: true };
+    }
     await unitPhotoRoot(configuredRoot);
     if (plan.rows[0].service_date !== todayInTimezone(timezone, now))
       throw new AppError("ROUTE_DATE_MISMATCH", 409);
@@ -63,6 +66,7 @@ export async function startDriverRoute(
       [id, driverId, now.toISOString(), route.vehicle_id],
     );
     if (!saved.rowCount) throw new AppError("ROUTE_ALREADY_STARTED", 409);
+    await createDriverExecution(sql, id, route.vehicle_id);
     await sql.query(
       `INSERT INTO route_driver_mobile_audit(driver_id,action,details)
        VALUES($1,'mobile.route.started',$2::jsonb)`,

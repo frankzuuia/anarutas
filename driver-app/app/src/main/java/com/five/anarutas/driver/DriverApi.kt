@@ -2,6 +2,7 @@ package com.five.anarutas.driver
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -190,7 +191,7 @@ internal class DriverEventParser {
 class DriverApi(private val server: String) {
     suspend fun observeEvents(token: String, onEvent: suspend (String) -> Unit) = withContext(Dispatchers.IO) {
         val connection = (URL("$server/api/mobile/events").openConnection() as HttpURLConnection)
-        try {
+        withCancellationCleanup({ connection.disconnect() }) {
             connection.requestMethod = "GET"
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 10000
@@ -209,12 +210,12 @@ class DriverApi(private val server: String) {
             connection.inputStream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
                 val parser = DriverEventParser()
                 while (true) {
+                    ensureActive()
                     val line = reader.readLine() ?: break
+                    ensureActive()
                     parser.accept(line)?.let { onEvent(it) }
                 }
             }
-        } finally {
-            connection.disconnect()
         }
     }
 
@@ -391,5 +392,15 @@ class DriverApi(private val server: String) {
     suspend fun startRoute(token: String, planId: String, expectedRevision: Int) {
         exchange("POST", "/api/mobile/plans/$planId/start", token,
             JSONObject().put("expectedRevision", expectedRevision))
+    }
+
+    internal suspend fun execution(token: String, planId: String): DriverExecution {
+        val raw = exchange("GET", "/api/mobile/plans/$planId/execution", token)
+        return parseExecution(raw, android.os.SystemClock.elapsedRealtime())
+    }
+
+    internal suspend fun stopCommand(token: String, planId: String, stopId: String, kind: String, payload: JSONObject): JSONObject {
+        require(kind == "arrival" || kind == "location")
+        return JSONObject(exchange("POST", "/api/mobile/plans/$planId/stops/$stopId/$kind", token, payload))
     }
 }

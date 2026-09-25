@@ -324,6 +324,27 @@ small,
 .between {
   justify-content: space-between;
 }
+.incident-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.incident-filters label { display: grid; gap: 6px; flex: 1; min-width: 150px; font-size: 12px; color: var(--muted); }
+.incident-filters input, .incident-filters select { width: 100%; }
+.incident-summary, .incident-card-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 12px; }
+.arrival-settings { border-block: 1px solid var(--line); padding: 12px 0; }
+.arrival-settings summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+.arrival-settings p { color: var(--muted); font-size: 12px; }
+.incident-feed { display: grid; gap: 12px; }
+.incident-card { display: flex; gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: #111b15; }
+.incident-symbol { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border: 1px solid #24593b; border-radius: 12px; background: #142b1d; color: #79f3b4; }
+.incident-symbol.late { color: var(--amber); border-color: #524529; background: #2d2618; }
+.incident-content { flex: 1; min-width: 0; }
+.incident-content h3 { margin: 12px 0 4px; font-size: 16px; }
+.incident-content p { margin: 5px 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.incident-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 14px; }
+.incident-meta span { display: inline-flex; gap: 7px; align-items: center; font-size: 12px; }
+.incident-orders { padding-block: 5px; }
+.incident-point-change { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; font-size: 12px; }
+.incident-point-change small { display: block; margin-bottom: 4px; color: var(--muted); }
+.incident-point-change a { color: #79f3b4; text-decoration: none; }
+.incident-pagination { display: flex; gap: 10px; justify-content: flex-end; }
 .badge {
   display: inline-flex;
   align-items: center;

@@ -97,6 +97,7 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val preferences = remember { DriverPreferences(context.applicationContext) }
     var keepAwake by remember { mutableStateOf(preferences.keepRouteAwake) }
+    var showNavigationNotice by rememberSaveable { mutableStateOf(BuildConfig.NAVIGATION_API_KEY.isNotBlank() && preferences.needsNavigationNotice) }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val running = state.runningPlan()
@@ -104,6 +105,13 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
     val mapAvailable = running != null && BuildConfig.NAVIGATION_API_KEY.isNotBlank()
     val openMap: () -> Unit = {
         if (mapAvailable) context.startActivity(Intent(context, RouteNavigationActivity::class.java).putExtra(RouteNavigationActivity.EXTRA_PLAN_ID, running.id))
+    }
+
+    LaunchedEffect(state.openStartedMap) {
+        state.openStartedMap?.let { planId ->
+            model.consumeStartedMap()
+            context.startActivity(Intent(context, RouteNavigationActivity::class.java).putExtra(RouteNavigationActivity.EXTRA_PLAN_ID, planId))
+        }
     }
 
     LaunchedEffect(state.token) {
@@ -200,6 +208,10 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
                         }
                     }
                     HorizontalDivider(color = DriverColors.line)
+                    TextButton(onClick = {
+                        scope.launch { drawer.close() }
+                        context.startActivity(Intent(context, NavigationLegalActivity::class.java))
+                    }) { Text("Avisos y licencias") }
                     Text("FIVE FINE VEGETABLES", style = MaterialTheme.typography.labelSmall, color = DriverColors.muted, modifier = Modifier.padding(top = 18.dp))
                     Text("Versión ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted, modifier = Modifier.padding(top = 5.dp, bottom = 8.dp))
                 }
@@ -242,6 +254,7 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
         }
     }
     if (state.showPhotos) UnitPhotosDialog(state, model)
+    if (showNavigationNotice) NavigationSafetyNotice(onAccepted = { showNavigationNotice = false }, onNotNow = { showNavigationNotice = false })
     state.activePlan()?.orders?.firstOrNull { it.id == state.orderDetailId }?.let { order ->
         OrderDetailDialog(order, state.dashboard?.timezone ?: "America/Mexico_City", model::closeOrder)
     }
