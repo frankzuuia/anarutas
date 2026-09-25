@@ -54,4 +54,18 @@ class DriverArrivalPolicyTest {
         assertEquals(server.plusSeconds(20), sampleCapturedAt(server, 100_000, 120_000))
         assertEquals(server, sampleCapturedAt(server, 100_000, 100_000))
     }
+    @Test fun briefAccuracyJitterReusesOnlyTheSameRecentValidSample() {
+        val worse = gps.copy(accuracy = 70.0, elapsedMillis = 101_000)
+        assertEquals(gps, actionableGps(worse, gps, point, point, policy, 101_000))
+        assertNull(actionableGps(worse, gps, point, point, policy, 103_001))
+        assertNull(actionableGps(worse, gps, point, ExecutionPoint(21.0, -103.4), policy, 101_000))
+        assertNull(actionableGps(worse, gps, point, ExecutionPoint(20.6401, -103.4), policy, 101_000))
+        assertNull(actionableGps(worse, gps.copy(mock = true), point, point, policy, 101_000))
+        assertNull(actionableGps(gps.copy(mock = true), gps, point, point, policy, 101_000))
+        assertNull(actionableGps(null, null, null, point, policy, 101_000))
+        assertNull(actionableGps(worse, gps.copy(elapsedMillis = 101_001), point, point, policy, 101_000))
+        assertEquals(gps, actionableGps(gps, null, null, point, policy, 100_000))
+        assertEquals(gps, actionableGps(worse, gps, point, point, policy.copy(maxSampleAgeSeconds = 1), 100_500))
+        assertNull(actionableGps(worse, gps, point, point, policy.copy(maxSampleAgeSeconds = 1), 101_500))
+    }
 }

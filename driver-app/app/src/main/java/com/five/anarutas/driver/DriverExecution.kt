@@ -8,6 +8,17 @@ internal data class ExecutionStop(val id: String, val position: Int, val custome
 internal data class DriverExecution(val id: String, val planId: String, val publicationRevision: Int, val revision: Int,
     val serverTime: Instant, val receivedElapsedMillis: Long, val timezone: String, val policy: ArrivalPolicy,
     val hasCorrections: Boolean, val stops: List<ExecutionStop>)
+internal data class CorrectedAddressFields(val street: String, val neighborhood: String, val postalCode: String, val city: String) {
+    val formatted: String get() = "$street, Col. $neighborhood, C.P. $postalCode, $city"
+    fun json(): JSONObject = JSONObject().put("street", street).put("neighborhood", neighborhood)
+        .put("postalCode", postalCode).put("city", city)
+}
+internal fun confirmedAddressFields(street: String, neighborhood: String, postalCode: String, city: String): CorrectedAddressFields? {
+    fun part(value: String, maximum: Int): String? = value.trim().takeIf { it.isNotEmpty() && it.length <= maximum && it.none { character -> character.code < 32 } }
+    val address = CorrectedAddressFields(part(street, 300) ?: return null,
+        part(neighborhood, 120) ?: return null, part(postalCode, 20) ?: return null, part(city, 120) ?: return null)
+    return address
+}
 internal fun parseExecution(raw: String, receivedElapsed: Long): DriverExecution {
     val json = JSONObject(raw)
     val policy = json.getJSONObject("policy")
@@ -26,7 +37,7 @@ internal fun parseExecution(raw: String, receivedElapsed: Long): DriverExecution
         })
 }
 internal fun stopCommand(execution: DriverExecution, stop: ExecutionStop, gps: DriverGps, elapsed: Long,
-    commandId: String, corrected: ExecutionPoint?): JSONObject {
+    commandId: String, corrected: ExecutionPoint?, confirmedAddress: CorrectedAddressFields? = null): JSONObject {
     // Align the sample's monotonic timestamp to the server clock. A slow response only makes it older.
     val capturedAt = sampleCapturedAt(execution.serverTime, execution.receivedElapsedMillis, gps.elapsedMillis)
     return JSONObject().put("commandId", commandId).put("executionId", execution.id)
@@ -35,7 +46,10 @@ internal fun stopCommand(execution: DriverExecution, stop: ExecutionStop, gps: D
         .put("sample", JSONObject().put("latitude", gps.point.latitude).put("longitude", gps.point.longitude)
             .put("accuracyMeters", gps.accuracy).put("ageMilliseconds", elapsed - gps.elapsedMillis)
             .put("capturedAt", capturedAt.toString()).put("mock", gps.mock)).apply {
-            if (corrected != null) put("point", JSONObject().put("latitude", corrected.latitude).put("longitude", corrected.longitude))
-                .put("customerLocationVersion", stop.customerLocationVersion)
+            if (corrected != null) {
+                put("point", JSONObject().put("latitude", corrected.latitude).put("longitude", corrected.longitude))
+                    .put("customerLocationVersion", stop.customerLocationVersion)
+                if (confirmedAddress != null) put("address", confirmedAddress.json())
+            }
         }
 }

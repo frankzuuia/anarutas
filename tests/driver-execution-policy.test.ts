@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import {
-  arrivalLateness, distanceMeters, geoPoint, gpsSample, groupExecutionStops,
+  arrivalLateness, correctedDeliveryAddress, distanceMeters, geoPoint, gpsSample, groupExecutionStops,
   lastClosingMinute, objectInput, operationPolicyInput, validateProximity,
 } from "../src/core/driver-execution-policy";
 import { incidentFilters } from "../src/core/driver-incidents";
@@ -12,6 +12,17 @@ const point = { latitude: 20.64, longitude: -103.4 };
 const sample = { ...point, accuracyMeters: 5, ageMilliseconds: 0, capturedAt: now.toISOString(), mock: false as const };
 
 describe("arrival policy / no providers", () => {
+  it("accepts only an explicitly confirmed delivery address and keeps legacy omission", () => {
+    expect(correctedDeliveryAddress(undefined)).toBeNull();
+    const fields = { street: "  Calle nueva 4  ", neighborhood: " Centro ", postalCode: " 44100 ", city: " Guadalajara " };
+    expect(correctedDeliveryAddress(fields)).toEqual({ street: "Calle nueva 4", neighborhood: "Centro",
+      postalCode: "44100", city: "Guadalajara", formatted: "Calle nueva 4, Col. Centro, C.P. 44100, Guadalajara" });
+    expect(correctedDeliveryAddress({ ...fields, street: "x".repeat(300) })?.street).toHaveLength(300);
+    for (const value of [null, "", 1, [], { ...fields, street: " " }, { ...fields, city: "" },
+      { ...fields, postalCode: "x".repeat(21) }, { ...fields, street: "x".repeat(301) },
+      { ...fields, street: "Calle\n1" }, { ...fields, neighborhood: null }])
+      expect(() => correctedDeliveryAddress(value)).toThrow("INVALID_INPUT");
+  });
   it.each([null, [], 0, "", true, undefined])("rejects non-object %s", (value) => expect(() => objectInput(value)).toThrow("INVALID_INPUT"));
   it.each([NaN, Infinity, -Infinity, "20", null, undefined, 91, -91])("rejects latitude %s", (latitude) =>
     expect(() => geoPoint({ latitude, longitude: 0 })).toThrow("INVALID_INPUT"));

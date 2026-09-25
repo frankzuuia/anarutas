@@ -13,7 +13,7 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 }
 $sourceFolder = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver'
 $originals = @{}
-foreach ($file in @('DriverArrivalPolicy.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt')) {
+foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt')) {
     $originals[$file] = [IO.File]::ReadAllText((Join-Path $sourceFolder $file))
 }
 $cases = @(
@@ -28,6 +28,15 @@ $cases = @(
     @{ name = 'ignore_destination'; from = 'pointDistance(gps.point, point) +'; to = 'pointDistance(gps.point, gps.point) +' },
     @{ name = 'invert_sample_time'; from = 'sampleElapsed - receivedElapsed'; to = 'receivedElapsed - sampleElapsed' },
     @{ name = 'wrong_latitude_projection'; from = 'cos(a.latitude * rad)'; to = 'cos(a.latitude / rad)' },
+    @{ name = 'fallback_on_mock_current'; from = 'if (current?.mock == true) return null'; to = 'if (false) return null' },
+    @{ name = 'reuse_sample_for_other_stop'; from = 'target != lastReadyPoint'; to = 'false' },
+    @{ name = 'reuse_old_geofence_sample'; from = 'minOf(3_000L, policy.maxSampleAgeSeconds * 1_000L)'; to = 'minOf(30_000L, policy.maxSampleAgeSeconds * 1_000L)' },
+    @{ name = 'reuse_untrusted_sample'; from = 'return lastReady.takeIf { arrivalEligibility(it, target, policy, elapsed) == ArrivalEligibility.READY }'; to = 'return lastReady' },
+    @{ name = 'address_allow_blank'; file = 'DriverExecution.kt'; test = 'CorrectedAddressFieldsTest'; from = 'it.isNotEmpty() && it.length <= maximum'; to = 'true && it.length <= maximum' },
+    @{ name = 'address_allow_long'; file = 'DriverExecution.kt'; test = 'CorrectedAddressFieldsTest'; from = 'it.length <= maximum && it.none'; to = 'true && it.none' },
+    @{ name = 'address_allow_control'; file = 'DriverExecution.kt'; test = 'CorrectedAddressFieldsTest'; from = 'it.none { character -> character.code < 32 }'; to = 'true' },
+    @{ name = 'address_skip_trim'; file = 'DriverExecution.kt'; test = 'CorrectedAddressFieldsTest'; from = 'value.trim().takeIf'; to = 'value.takeIf' },
+    @{ name = 'address_wrong_neighborhood'; file = 'DriverExecution.kt'; test = 'CorrectedAddressFieldsTest'; from = 'Col. $neighborhood, C.P.'; to = 'Col. $city, C.P.' },
     @{ name = 'guide_destroyed_screen'; file = 'GuidanceResultPolicy.kt'; test = 'GuidanceResultPolicyTest'; from = 'destroyed ||'; to = 'false ||' },
     @{ name = 'guide_retired_route'; file = 'GuidanceResultPolicy.kt'; test = 'GuidanceResultPolicyTest'; from = 'retired ||'; to = 'false ||' },
     @{ name = 'guide_old_request'; file = 'GuidanceResultPolicy.kt'; test = 'GuidanceResultPolicyTest'; from = 'requestGeneration != currentGeneration'; to = 'false' },

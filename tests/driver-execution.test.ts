@@ -75,24 +75,31 @@ it("authorizes, validates, persists and retires real driver execution without re
 
     let state = await read();
     const point = { latitude: 20.6403, longitude: -103.4 };
-    const repoint = { ...inputFor(state), point, customerLocationVersion: state.stops[0].customerLocationVersion };
+    const correctedFields = { street: "Av. Domicilio correcto 230", neighborhood: "Centro", postalCode: "44100", city: "Guadalajara" };
+    const correctedAddress = "Av. Domicilio correcto 230, Col. Centro, C.P. 44100, Guadalajara";
+    const repoint = { ...inputFor(state), point, address: correctedFields,
+      customerLocationVersion: state.stops[0].customerLocationVersion };
     // This real trigger would fail the command if driver updates queued recalculation.
     await pool.query(`CREATE OR REPLACE FUNCTION route_customer_recalculation_changed() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN RAISE EXCEPTION 'UNWANTED_FLEET_RECALCULATION'; END $$`);
     await expect(run("repoint", { ...repoint, customerLocationVersion: 99 })).rejects.toMatchObject({ code: "CUSTOMER_LOCATION_CONFLICT" });
+    await expect(run("repoint", { ...repoint, address: { ...correctedFields, street: "   " } })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(run("repoint", { ...repoint, address: { ...correctedFields, postalCode: "x".repeat(21) } })).rejects.toMatchObject({ code: "INVALID_INPUT" });
     // Force a real DB failure after the customer write, proving transaction rollback.
     await pool.query(`CREATE FUNCTION fail_execution_qa() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'QA_ROLLBACK'; END $$;
       CREATE TRIGGER fail_execution_qa BEFORE INSERT ON route_driver_stop_events FOR EACH ROW EXECUTE FUNCTION fail_execution_qa()`);
     await expect(run("repoint", repoint)).rejects.toThrow("QA_ROLLBACK");
-    expect((await read()).stops[0].latitude).toBe(20.64);
-    expect((await pool.query("SELECT latitude FROM route_customers WHERE id=$1", [state.stops[0].customerId])).rows[0].latitude).toBe(20.64);
+    expect((await read()).stops[0]).toMatchObject({ latitude: 20.64, address: "Calle 1" });
+    expect((await pool.query("SELECT latitude,delivery_address FROM route_customers WHERE id=$1", [state.stops[0].customerId])).rows[0])
+      .toEqual({ latitude: 20.64, delivery_address: "Calle 1" });
     await pool.query("DROP TRIGGER fail_execution_qa ON route_driver_stop_events; DROP FUNCTION fail_execution_qa()");
     const saved = await run("repoint", repoint);
     expect(saved).toMatchObject({ duplicate: false, executionRevision: 3 });
     expect((await run("repoint", repoint)).eventId).toBe(saved.eventId);
+    await expect(run("repoint", { ...repoint, address: { ...correctedFields, street: "Otra dirección" } })).rejects.toMatchObject({ code: "COMMAND_REUSED" });
     state = await read();
     expect(state).toMatchObject({ revision: 3, hasCorrections: true });
-    expect(state.stops[0]).toMatchObject({ ...point, arrivedAt: f.now.toISOString(), version: 3 });
+    expect(state.stops[0]).toMatchObject({ ...point, address: correctedAddress, arrivedAt: f.now.toISOString(), version: 3 });
     const customer = (await pool.query("SELECT latitude,longitude,location_status,updated_by,updated_by_driver FROM route_customers WHERE id=$1", [state.stops[0].customerId])).rows[0];
     expect(customer).toEqual({ ...point, location_status: "driver_confirmed", updated_by: null, updated_by_driver: a.driverId });
     const sourceCustomer = (await pool.query("SELECT source,odoo_partner_id FROM route_customers WHERE id=$1", [state.stops[0].customerId])).rows[0];
@@ -101,18 +108,23 @@ it("authorizes, validates, persists and retires real driver execution without re
         commercialName: null, companyId: null, type: "contact", isCompany: true, active: true, name: "Nombre de origen nuevo",
         reference: null, phone: null, mobile: null, address: "Dirección recibida del origen" }], nextCursor: 1, ceiling: 1, hasMore: false });
     expect((await pool.query("SELECT latitude,longitude,location_status,updated_by_driver,display_name,delivery_address FROM route_customers WHERE id=$1", [state.stops[0].customerId])).rows[0])
-      .toEqual({ ...point, location_status: "driver_confirmed", updated_by_driver: a.driverId, display_name: "Cliente 1", delivery_address: "Calle 1" });
+      .toEqual({ ...point, location_status: "driver_confirmed", updated_by_driver: a.driverId, display_name: "Cliente 1", delivery_address: correctedAddress });
     expect((await pool.query("SELECT driver_id,source,actor_id FROM route_customer_location_history")).rows).toEqual([
       { driver_id: a.driverId, source: "driver", actor_id: null },
     ]);
     expect((await readDriverExecution(pool, b.driverId, f.planId, f.timezone)).stops[0].latitude).toBe(20.64);
     expect((await pool.query("SELECT vehicle_id,snapshot FROM route_plan_publications ORDER BY vehicle_id")).rows).toEqual(snapshots);
-    expect(await readDriverPlan(pool, a.driverId, f.planId, f.timezone)).toMatchObject({ routeStatus: "point_corrected" });
-    expect(await run("repoint", { ...inputFor(state), point, customerLocationVersion: state.stops[0].customerLocationVersion })).toMatchObject({ unchanged: true, eventId: null });
+    const mobilePlan = await readDriverPlan(pool, a.driverId, f.planId, f.timezone);
+    expect(mobilePlan.routeStatus).toBe("point_corrected");
+    expect(mobilePlan.orders[0].address).toBe(correctedAddress);
+    expect(await run("repoint", { ...inputFor(state), point, customerLocationVersion: state.stops[0].customerLocationVersion }))
+      .toMatchObject({ unchanged: true, duplicate: false, eventId: null });
     const filters = new URLSearchParams({ from: "2026-09-24", to: "2026-09-24", driverId: a.driverId });
     const incidents = await readDriverIncidents(pool, filters, f.timezone);
     expect(incidents.rows).toHaveLength(2);
     expect(incidents.rows.map(r => r.kind).sort()).toEqual(["late_arrival", "location_corrected"]);
+    expect(incidents.rows.find(r => r.kind === "location_corrected")?.details)
+      .toMatchObject({ previousAddress: "Calle 1", correctedAddress, correctedAddressFields: correctedFields });
     expect(incidents.rows.find(r => r.kind === "late_arrival")?.details.lateSeconds).toBe(3600);
     expect(incidents.rows[0].details).not.toHaveProperty("sample");
     filters.set("driverId", b.driverId);
@@ -132,6 +144,45 @@ it("authorizes, validates, persists and retires real driver execution without re
     await expect(run("arrival", inputFor(state, 1), state.stops[1].id)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await deletePlan(pool, f.actor, f.planId, { expectedVersion: board.plan.version });
     expect((await pool.query("SELECT count(*)::int n FROM route_driver_stop_events")).rows[0].n).toBe(2);
+  } finally { await f.close(); }
+}, 120_000);
+
+it("reconciles customer and execution addresses independently without moving a valid pin", async () => {
+  const f = await executionFixture();
+  const { pool } = f.db;
+  const member = f.members[0];
+  const point = { latitude: 20.64, longitude: -103.4 };
+  const sample = { ...point, accuracyMeters: 5, ageMilliseconds: 0, capturedAt: f.now.toISOString(), mock: false };
+  const read = () => readDriverExecution(pool, member.driverId, f.planId, f.timezone);
+  const repoint = (state: Awaited<ReturnType<typeof read>>, index: number, address: { street: string; neighborhood: string; postalCode: string; city: string }) =>
+    executeStopCommand(pool, member.authorization, f.planId, state.stops[index].id, "repoint", {
+      commandId: randomUUID(), executionId: state.id, publicationRevision: state.publicationRevision,
+      executionRevision: state.revision, stopVersion: state.stops[index].version,
+      policyVersion: state.policy.version, customerLocationVersion: state.stops[index].customerLocationVersion,
+      point, address, sample,
+    }, f.timezone, f.now);
+  try {
+    await f.start();
+    let state = await read();
+    const fieldsA = { street: "Calle 1", neighborhood: "Centro", postalCode: "44100", city: "Guadalajara" };
+    const formattedA = "Calle 1, Col. Centro, C.P. 44100, Guadalajara";
+    await pool.query("UPDATE route_driver_execution_stops SET address=$2,version=version+1 WHERE id=$1", [state.stops[0].id, formattedA]);
+    await pool.query(`UPDATE route_customers SET delivery_address='Dirección administrativa nueva',
+      address_overridden=true,location_version=location_version+1,version=version+1 WHERE id=$1`, [state.stops[0].customerId]);
+    state = await read();
+    expect((await repoint(state, 0, fieldsA)).unchanged).toBeFalsy();
+    expect((await pool.query("SELECT delivery_address FROM route_customers WHERE id=$1", [state.stops[0].customerId])).rows[0].delivery_address).toBe(formattedA);
+
+    state = await read();
+    const fieldsB = { street: "Domicilio confirmado B", neighborhood: "Centro", postalCode: "44100", city: "Guadalajara" };
+    const formattedB = "Domicilio confirmado B, Col. Centro, C.P. 44100, Guadalajara";
+    await pool.query(`UPDATE route_customers SET delivery_address=$2,
+      address_overridden=true,location_version=location_version+1,version=version+1 WHERE id=$1`, [state.stops[1].customerId, formattedB]);
+    state = await read();
+    expect((await repoint(state, 1, fieldsB)).unchanged).toBeFalsy();
+    const updated = await read();
+    expect(updated.stops[1].address).toBe(formattedB);
+    expect((await pool.query("SELECT count(*)::int n FROM route_customer_location_history")).rows[0].n).toBe(2);
   } finally { await f.close(); }
 }, 120_000);
 

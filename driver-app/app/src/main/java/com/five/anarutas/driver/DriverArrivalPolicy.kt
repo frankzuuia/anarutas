@@ -29,6 +29,17 @@ internal fun arrivalEligibility(gps: DriverGps?, point: ExecutionPoint?, policy:
     return if (pointDistance(gps.point, point) + gps.accuracy <= policy.radiusMeters) ArrivalEligibility.READY else ArrivalEligibility.OUTSIDE
 }
 
+/** Keeps a recent, server-valid sample through brief GPS accuracy jitter at the geofence edge. */
+internal fun actionableGps(current: DriverGps?, lastReady: DriverGps?, lastReadyPoint: ExecutionPoint?,
+    target: ExecutionPoint?, policy: ArrivalPolicy, elapsed: Long): DriverGps? {
+    if (current?.mock == true) return null
+    if (arrivalEligibility(current, target, policy, elapsed) == ArrivalEligibility.READY) return current
+    if (target == null || target != lastReadyPoint || lastReady == null) return null
+    val age = elapsed - lastReady.elapsedMillis
+    if (age !in 0..minOf(3_000L, policy.maxSampleAgeSeconds * 1_000L)) return null
+    return lastReady.takeIf { arrivalEligibility(it, target, policy, elapsed) == ArrivalEligibility.READY }
+}
+
 // Server clock + monotonic delta; changing the phone's wall clock cannot make an old sample fresh.
 internal fun sampleCapturedAt(serverTime: Instant, receivedElapsed: Long, sampleElapsed: Long): Instant =
     serverTime.plusMillis(sampleElapsed - receivedElapsed)

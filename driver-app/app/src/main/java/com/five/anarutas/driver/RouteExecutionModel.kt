@@ -95,14 +95,14 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
     fun consumeArrival() { state = state.copy(arrivedStop = null) }
     fun consumeCorrection() { state = state.copy(correctedStop = null) }
 
-    fun submit(stopId: String, gps: DriverGps?, corrected: ExecutionPoint?) {
+    fun submit(stopId: String, gps: DriverGps?, corrected: ExecutionPoint?, confirmedAddress: CorrectedAddressFields? = null) {
         val execution = state.execution ?: return
         val stop = execution.stops.find { it.id == stopId } ?: return
         if (state.busy || state.pending || !state.verified || state.retired) return
         val elapsed = SystemClock.elapsedRealtime()
         if (arrivalEligibility(gps, corrected ?: stop.point, execution.policy, elapsed) != ArrivalEligibility.READY) return
         if (corrected != null && stop.customerArchived) return
-        val payload = stopCommand(execution, stop, gps!!, elapsed, UUID.randomUUID().toString(), corrected)
+        val payload = stopCommand(execution, stop, gps!!, elapsed, UUID.randomUUID().toString(), corrected, confirmedAddress)
         state = state.copy(busy = true, message = "Confirmando con el servidor…")
         viewModelScope.launch {
             gate.withLock {

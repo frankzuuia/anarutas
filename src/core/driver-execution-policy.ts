@@ -35,6 +35,30 @@ export function geoPoint(value: unknown): GeoPoint {
   };
 }
 
+export type CorrectedDeliveryAddress = {
+  street: string; neighborhood: string; postalCode: string; city: string; formatted: string;
+};
+
+/** An absent address preserves the previous APK contract; the new APK confirms all four written fields. */
+export function correctedDeliveryAddress(value: unknown): CorrectedDeliveryAddress | null {
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new AppError("INVALID_INPUT");
+  const input = value as Record<string, unknown>;
+  const field = (part: unknown, maximum: number) => {
+    if (typeof part !== "string") throw new AppError("INVALID_INPUT");
+    const clean = part.trim();
+    if (!clean || clean.length > maximum || [...clean].some(character => character.charCodeAt(0) < 32))
+      throw new AppError("INVALID_INPUT");
+    return clean;
+  };
+  const street = field(input.street, 300);
+  const neighborhood = field(input.neighborhood, 120);
+  const postalCode = field(input.postalCode, 20);
+  const city = field(input.city, 120);
+  const formatted = `${street}, Col. ${neighborhood}, C.P. ${postalCode}, ${city}`;
+  return { street, neighborhood, postalCode, city, formatted };
+}
+
 export function operationPolicyInput(input: Record<string, unknown>): OperationPolicy {
   const radiusMeters = integer(finite(input.radiusMeters, 25, 1000));
   return {

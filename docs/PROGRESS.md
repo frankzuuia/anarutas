@@ -1,5 +1,14 @@
 # Progreso — bloque 1
 
+## Ajuste 0.5.1 — mapa del chofer y domicilio de repunte
+
+- [x] Ficha inferior plegable, consulta de un marcador sin cambiar la guía y voz de Navigation SDK silenciable con preferencia persistida.
+- [x] El GPS usa siempre la muestra más reciente; una muestra válida de la misma parada puede amortiguar variaciones breves de precisión por 3 s como máximo. No se amplían radio, precisión ni edad del servidor; GPS simulado o proveedor desactivado falla cerrado.
+- [x] Repunte en dos confirmaciones: primero pin y después modal obligatorio de dirección, colonia, código postal y ciudad. Cerrar el modal no escribe. Cliente, búsqueda, ejecución propia e incidencia se actualizan en una transacción; Odoo y snapshots de otras camionetas permanecen intactos. APK anterior sin campo nuevo conserva compatibilidad.
+- [ ] QA físico del usuario: plegar/expandir mapa, tocar marcador, silenciar/reactivar voz, llegada en radio y modal de domicilio al repuntar. No se usó ADB por decisión del usuario.
+
+Evidencia reproducible y métricas en `QA-MAPA-LLEGADA-REPUNTE.md`. La APK 0.5.1/code12 es de `develop`; Deploy del backend e instalación manual de la APK corresponden al usuario. No hay promoción a `main`.
+
 ## Mapa/llegada/repunte — BL-105..108 / ML01..24
 
 Documento: `BLOQUE-MAPA-LLEGADA-REPUNTE.md`. Implementado, con puertas locales cerradas;

@@ -9,6 +9,8 @@ export type DriverIncident = {
   id: string; kind: "location_corrected" | "late_arrival"; occurredAt: string;
   date: string; timezone: string; driverId: string;
   details: { driver: string; customer: string; vehicle: string; plate: string; address: string;
+    previousAddress?: string; correctedAddress?: string;
+    correctedAddressFields?: { street: string; neighborhood: string; postalCode: string; city: string };
     orders: string[]; planLabel: string; serviceDate: string; lateSeconds: number | null;
     before: { latitude: number | null; longitude: number | null };
     point: { latitude: number; longitude: number }; distanceMeters: number };

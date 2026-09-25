@@ -95,9 +95,14 @@ remotas accidentales. No limitar artificialmente la distancia antiguo→nuevo.
 Una transacción aplica la coordenada a esa parada/cliente de la ejecución,
 actualiza `route_customers` a `driver_confirmed`, incrementa versión del cliente
 y de ubicación, inserta historial e incidencia con autor real. Mantiene nombre,
-teléfono, dirección textual, ventanas y pedidos; un repunte no adivina ni
-reescribe una dirección mediante geocodificación. El `place_id` anterior no se
-conserva si ya no identifica el nuevo pin. El enlace de mapa se regenera.
+teléfono, ventanas y pedidos. En 0.5.1, confirmar el nuevo pin abre un modal
+para calle y número, colonia, código postal y ciudad. Cerrar el modal no guarda
+el punto. Sólo la confirmación final envía las cuatro partes: la dirección
+formateada actualiza cliente y ejecución propia de forma atómica, y su antes/
+después queda en la incidencia. No se adivina una dirección mediante
+geocodificación. Una APK anterior que omite la dirección conserva su contrato.
+El `place_id` anterior no se conserva si ya no identifica el nuevo pin. El
+enlace de mapa se regenera.
 
 El editor recibe la versión actual del cliente además de la versión operativa.
 Ediciones concurrentes devuelven conflicto: recargar, comparar y confirmar de

@@ -60,11 +60,13 @@ function IncidentCard({ incident }: { incident: DriverIncident }) {
           timeZone: incident.timezone, dateStyle: "medium", timeStyle: "short",
         })}</time>
       </div>
-      <h3>{detail.customer}</h3><p>{detail.address}</p>
+      <h3>{detail.customer}</h3><p>{pointChanged ? detail.correctedAddress ?? detail.address : detail.address}</p>
       <div className="incident-meta"><span><UserRound size={14} aria-hidden="true" />{detail.driver}</span>
         <span><Truck size={14} aria-hidden="true" />{detail.vehicle} · {detail.plate}</span></div>
       <p className="incident-orders">{detail.planLabel} · {detail.orders.join(", ")} · Ruta del {detail.serviceDate}</p>
       {pointChanged ? <div className="incident-point-change">
+        {detail.correctedAddress && detail.previousAddress && detail.correctedAddress !== detail.previousAddress &&
+          <p><small>Dirección anterior:</small> {detail.previousAddress}</p>}
         <span><small>Punto anterior</small>{coordinates(detail.before)}</span><ChevronRight size={16} aria-hidden="true" />
         <a href={`https://www.google.com/maps/search/?api=1&query=${detail.point.latitude},${detail.point.longitude}`} target="_blank" rel="noreferrer">
           <small>Nuevo punto · ver en mapa</small>{coordinates(detail.point)}</a>

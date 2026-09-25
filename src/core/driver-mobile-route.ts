@@ -85,8 +85,8 @@ export async function readDriverPlan(
     );
     const assigned = publication.rows[0];
     if (!assigned) throw new AppError("NOT_FOUND", 404);
-    const corrections = await sql.query<{ shipment_ids: string[]; latitude: number; longitude: number }>(
-      `SELECT s.shipment_ids,s.latitude,s.longitude FROM route_driver_execution_stops s
+    const corrections = await sql.query<{ shipment_ids: string[]; latitude: number; longitude: number; address: string }>(
+      `SELECT s.shipment_ids,s.latitude,s.longitude,s.address FROM route_driver_execution_stops s
          JOIN route_driver_executions e ON e.id=s.execution_id
         WHERE e.plan_id=$1 AND e.vehicle_id=$2 AND e.publication_revision=$3 AND s.corrected_at IS NOT NULL`,
       [id, assigned.vehicle_id, assigned.revision],
@@ -98,7 +98,7 @@ export async function readDriverPlan(
         routeStatus: "point_corrected",
         orders: assigned.snapshot.orders.map((order: { id: string }) => {
           const point = points.get(order.id);
-          return point ? { ...order, latitude: point.latitude, longitude: point.longitude, locationStatus: "driver_confirmed" } : order;
+          return point ? { ...order, address: point.address, latitude: point.latitude, longitude: point.longitude, locationStatus: "driver_confirmed" } : order;
         }),
       } : {}),
       publication: {

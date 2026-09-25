@@ -585,10 +585,12 @@ test("admin provisioning, native device login, route isolation and revocation ov
   await anonymous.close();
   expect((await request.put(`${origin}/api/driver-operation-settings`, { headers: { Origin: "https://foreign.example" }, data: {} })).status()).toBe(403);
   const correctedPoint = { latitude: 20.64, longitude: -103.4 };
+  const correctedFields = { street: "Calle correcta 230", neighborhood: "Centro", postalCode: "44100", city: "Guadalajara" };
+  const correctedAddress = "Calle correcta 230, Col. Centro, C.P. 44100, Guadalajara";
   const command = {
     commandId: randomUUID(), executionId: execution.id, publicationRevision: execution.publicationRevision,
     executionRevision: execution.revision, stopVersion: stop.version, policyVersion: execution.policy.version,
-    customerLocationVersion: stop.customerLocationVersion, point: correctedPoint,
+    customerLocationVersion: stop.customerLocationVersion, point: correctedPoint, address: correctedFields,
     sample: { ...correctedPoint, accuracyMeters: 5, ageMilliseconds: 0, capturedAt: new Date().toISOString(), mock: false },
   };
   const locationUrl = `${origin}/api/mobile/plans/${planId}/stops/${stop.id}/location`;
@@ -600,11 +602,17 @@ test("admin provisioning, native device login, route isolation and revocation ov
   expect(repoint.status()).toBe(200);
   const repointResult = await repoint.json();
   await expect(livePanel.getByText("Punto corregido", { exact: true })).toBeVisible({ timeout: 2000 });
+  await expect(livePanel.getByText(correctedAddress)).toBeVisible();
   console.info(`Realtime driver incident visible in ${Date.now() - repointSubmitted} ms`);
   await expect(livePanel.getByLabel("Chofer", { exact: true })).toHaveValue(driverId);
   expect(await (await request.post(locationUrl, { headers: authorization, data: command })).json()).toMatchObject({ eventId: repointResult.eventId, duplicate: true });
   const corrected = await readExecution();
-  expect(corrected.stops[0]).toMatchObject(correctedPoint);
+  expect(corrected.stops[0]).toMatchObject({ ...correctedPoint, address: correctedAddress });
+  const mobileUpdated = await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization });
+  expect((await mobileUpdated.json()).orders[0].address).toBe(correctedAddress);
+  await livePanel.getByRole("button", { name: "Clientes y horarios", exact: true }).click();
+  await expect(livePanel.getByRole("textbox", { name: "Domicilio de entrega" })).toHaveValue(correctedAddress);
+  await livePanel.getByRole("button", { name: "Incidencias", exact: true }).click();
   const arrivalUrl = `${origin}/api/mobile/plans/${planId}/stops/${stop.id}/arrival`;
   const arrival = { ...command, commandId: randomUUID(), executionRevision: corrected.revision, stopVersion: corrected.stops[0].version,
     sample: { ...command.sample, capturedAt: new Date().toISOString() } };

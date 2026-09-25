@@ -1,5 +1,11 @@
 # Bloque 1 — especificación y auditoría previa
 
+## Ajuste 0.5.1 — visualización y domicilio confirmado
+
+La ficha del mapa puede plegarse sin perder guía, selección ni GPS; tocar un marcador abre su parada sin redirigir Navigation SDK. La voz se silencia mediante el ajuste oficial del navegador y el estado se conserva en la APK. Una muestra GPS reciente y válida de la misma parada amortigua sólo variaciones transitorias de precisión; la API mantiene la autoridad y rechaza muestras viejas, simuladas o fuera del radio.
+
+Mover un pin no permite deducir un domicilio postal. Confirmar el pin abre un modal obligatorio con calle y número, colonia, código postal y ciudad; cerrar el modal no escribe. La confirmación final manda las cuatro partes con las coordenadas en un único comando. La misma transacción cambia `route_customers.delivery_address`, su índice de búsqueda, la parada operativa propia y el historial/incidencia; las lecturas del panel y pedido móvil muestran el nuevo texto. La sobreescritura local sobrevive a la sincronización con Odoo. Se conserva la compatibilidad de la APK anterior al omitir el campo. No se escribe en Odoo ni se recalculan otras camionetas. Validación física pendiente.
+
 ## BL-105..108 / ML01..24 — mapa, llegada, repunte e incidencias
 
 Especificación aprobada: `BLOQUE-MAPA-LLEGADA-REPUNTE.md`. Autopsia real,

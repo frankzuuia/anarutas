@@ -18,6 +18,33 @@ Feature: Mapa Five, llegada verificable y repunte de la ruta propia
     And seleccionar, rotar o refrescar no cambia pedidos ni registra llegadas
     And no se solicita otra guía para el mismo destino ya activo
 
+  @ML02
+  Scenario: Plegar la ficha para usar todo el mapa
+    When el chofer desliza abajo la cabecera de la ficha o la toca
+    Then el mapa recupera el espacio de la ficha y conserva ruta y guía
+    And puede expandirla otra vez sin perder la parada seleccionada
+
+  @ML02
+  Scenario: Consultar un marcador sin redirigir la navegación
+    When el chofer toca el marcador de otra parada
+    Then ve solamente los pedidos de esa parada
+    And si comparten parada elige uno y ve sólo sus productos
+    And la guía vigente y el orden de la ruta permanecen iguales
+
+  @ML02
+  Scenario: Silenciar la voz de la guía
+    When el chofer silencia la voz en la ficha abierta o plegada
+    Then los avisos hablados se desactivan sin detener la navegación
+    And al reabrir la app sigue silenciada hasta que el chofer la reactive
+
+  @ML03 @ML04
+  Scenario: Oscilación breve del GPS en el radio de llegada
+    Given una muestra real y válida para la parada actual
+    When la siguiente muestra empeora brevemente su precisión
+    Then Llegué no parpadea por ese jitter y conserva como máximo tres segundos la muestra válida
+    But no se reutiliza para otro destino ni después de superar la edad permitida
+    And GPS simulado o proveedor desactivado impiden confirmar
+
   @ML03 @ML04 @ML08
   Scenario Outline: Presencia comprobable antes de confirmar
     Given una muestra GPS <condicion>
@@ -53,6 +80,42 @@ Feature: Mapa Five, llegada verificable y repunte de la ruta propia
     And conserva los snapshots y puntos de las otras camionetas
     And no escribe en Odoo ni encola recálculos de flota
     And la sincronización posterior de clientes no borra la ubicación local
+
+  @ML07
+  Scenario: Dirección confirmada al corregir el pin
+    Given el domicilio escrito del cliente ya no corresponde al punto correcto
+    When el chofer confirma el pin y captura calle y número, colonia, código postal y ciudad en el modal
+    And confirma el domicilio nuevo
+    Then una transacción actualiza coordenadas y dirección de entrega del cliente
+    And la ficha de la parada y el pedido propio muestran sólo la nueva dirección
+    And el panel Clientes y horarios e Incidencias muestran la corrección sin recargar
+    And el historial conserva dirección anterior y nueva con el chofer autor
+    And Odoo y los snapshots de otras camionetas no se modifican
+
+  @ML07
+  Scenario: No confirmar mientras se arrastra el pin
+    When el chofer está moviendo el marcador del domicilio correcto
+    Then Confirmar punto permanece inactivo hasta que suelta el marcador
+    And sólo se habilita con dirección confirmada y GPS válido para el nuevo punto
+
+  @ML07
+  Scenario: Cerrar el modal de domicilio
+    When el chofer confirma el pin pero cierra el modal sin confirmar los cuatro campos
+    Then no se modifica ni la coordenada ni el domicilio en el servidor
+    And puede reabrirlo para completar el domicilio correcto
+
+  @ML05 @ML19
+  Scenario: Error o respuesta ambigua al guardar el domicilio corregido
+    When el chofer completa los cuatro campos y confirma el domicilio
+    And el servidor rechaza el comando o se pierde la respuesta
+    Then el modal conserva el texto capturado y muestra el estado real
+    And si la respuesta es ambigua permite verificar el mismo comando pendiente
+    And sólo se cierra cuando la app vuelve a leer el punto confirmado
+
+  @ML07
+  Scenario: Compatibilidad de la APK anterior
+    When una APK previa omite el campo estructurado de domicilio
+    Then conserva su contrato previo y no inventa otro domicilio textual
 
   @ML07
   Scenario: Falla de base de datos después de actualizar el cliente

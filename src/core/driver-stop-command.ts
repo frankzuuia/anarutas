@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { transaction, type Sql } from "./database";
+import { searchKey } from "./customers";
 import { authenticateMobile } from "./driver-mobile-auth";
 import { executableRoute, type ExecutionRow, type ExecutionStopRow } from "./driver-execution-read";
 import { readOperationPolicy } from "./driver-operation-settings";
-import { arrivalLateness, geoPoint, gpsSample, lastClosingMinute, validateProximity, type GeoPoint } from "./driver-execution-policy";
+import { arrivalLateness, correctedDeliveryAddress, geoPoint, gpsSample, lastClosingMinute, validateProximity, type CorrectedDeliveryAddress, type GeoPoint } from "./driver-execution-policy";
 import { integer, uuid } from "./orders-validation";
 import { todayInTimezone } from "./local-date";
 import { AppError } from "./errors";
@@ -19,6 +20,7 @@ function commandInput(raw: Record<string, unknown>, kind: StopCommandKind) {
     stopVersion: integer(raw.stopVersion, 1), policyVersion: integer(raw.policyVersion, 1),
     sample: gpsSample(raw.sample),
     point: kind === "repoint" ? geoPoint(raw.point) : null,
+    address: kind === "repoint" ? correctedDeliveryAddress(raw.address) : null,
     customerLocationVersion: kind === "repoint" ? integer(raw.customerLocationVersion) : null,
   };
 }
@@ -46,34 +48,44 @@ function historicalContext(route: ExecutionRow, stop: ExecutionStopRow) {
 }
 
 async function correctCustomer(sql: Sql, route: ExecutionRow, stop: ExecutionStopRow,
-  point: GeoPoint, expectedLocationVersion: number, now: Date, commandId: string) {
+  point: GeoPoint, address: CorrectedDeliveryAddress | null, expectedLocationVersion: number, now: Date, commandId: string) {
   const { rows } = await sql.query("SELECT * FROM route_customers WHERE id=$1 FOR UPDATE", [stop.customer_id]);
   const customer = rows[0];
   if (!customer || customer.archived_at) throw new AppError("CUSTOMER_UNAVAILABLE", 409);
   if (customer.location_version !== expectedLocationVersion) throw new AppError("CUSTOMER_LOCATION_CONFLICT", 409);
   const before = { latitude: customer.latitude as number | null, longitude: customer.longitude as number | null };
+  const beforeAddress = String(customer.delivery_address);
+  const newAddress = address?.formatted ?? beforeAddress;
   if (point.latitude === stop.latitude && point.longitude === stop.longitude &&
-      point.latitude === customer.latitude && point.longitude === customer.longitude) return { unchanged: true, before };
+      point.latitude === customer.latitude && point.longitude === customer.longitude &&
+      newAddress === beforeAddress && newAddress === stop.address) return { unchanged: true, before, beforeAddress, address: newAddress };
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${point.latitude},${point.longitude}`;
+  const updatedSearch = searchKey([customer.display_name, customer.odoo_name, customer.phone,
+    customer.odoo_phone, customer.odoo_mobile, newAddress, customer.odoo_address,
+    customer.odoo_ref, customer.odoo_partner_id, customer.delivery_note,
+    customer.parent_name, customer.commercial_name]);
   await sql.query(
     `UPDATE route_customers SET latitude=$2,longitude=$3,place_id=NULL,map_url=$4,
        location_status='driver_confirmed',location_version=location_version+1,version=version+1,
-       updated_by=NULL,updated_by_driver=$5,updated_at=$6 WHERE id=$1`,
-    [stop.customer_id, point.latitude, point.longitude, mapUrl, route.driver_id, now],
+       updated_by=NULL,updated_by_driver=$5,updated_at=$6,
+       delivery_address=$7,address_overridden=address_overridden OR $8::boolean,
+       search_key=$9 WHERE id=$1`,
+    [stop.customer_id, point.latitude, point.longitude, mapUrl, route.driver_id, now,
+      newAddress, address !== null, updatedSearch],
   );
   await sql.query(
     `INSERT INTO route_customer_location_history(id,customer_id,location_version,address,latitude,
        longitude,map_url,source,driver_id,shipment_id,idempotency_key,created_at)
      VALUES($1,$2,$3,$4,$5,$6,$7,'driver',$8,$9,$10,$11)`,
-    [randomUUID(), stop.customer_id, customer.location_version + 1, customer.delivery_address,
+    [randomUUID(), stop.customer_id, customer.location_version + 1, newAddress,
       point.latitude, point.longitude, mapUrl, route.driver_id, stop.shipment_ids[0],
       `${route.id}:${commandId}`, now],
   );
   await sql.query(
-    `UPDATE route_driver_execution_stops SET latitude=$3,longitude=$4,corrected_at=$5,version=version+1
-      WHERE execution_id=$1 AND customer_id=$2`, [route.id, stop.customer_id, point.latitude, point.longitude, now],
+    `UPDATE route_driver_execution_stops SET latitude=$3,longitude=$4,address=$6,corrected_at=$5,version=version+1
+      WHERE execution_id=$1 AND customer_id=$2`, [route.id, stop.customer_id, point.latitude, point.longitude, now, newAddress],
   );
-  return { unchanged: false, before };
+  return { unchanged: false, before, beforeAddress, address: newAddress };
 }
 
 export async function executeStopCommand(pool: Pool, authorization: string | null, planId: string,
@@ -107,6 +119,9 @@ export async function executeStopCommand(pool: Pool, authorization: string | nul
     const distance = validateProximity(input.sample, point, policy, now);
     let lateSeconds: number | null = null;
     let customerBefore: { latitude: number | null; longitude: number | null } | null = null;
+    let previousAddress: string | null = null;
+    let correctedAddress: string | null = null;
+    let correctedAddressFields: Omit<CorrectedDeliveryAddress, "formatted"> | null = null;
     if (kind === "arrival") {
       const closing = lastClosingMinute(stop.windows);
       const close = closing === null ? null : (await sql.query(
@@ -116,9 +131,13 @@ export async function executeStopCommand(pool: Pool, authorization: string | nul
       lateSeconds = arrivalLateness(now, close);
       await sql.query("UPDATE route_driver_execution_stops SET arrived_at=$2,version=version+1 WHERE id=$1", [stop.id, now]);
     } else {
-      const corrected = await correctCustomer(sql, route, stop, point, input.customerLocationVersion!, now, input.commandId);
+      const corrected = await correctCustomer(sql, route, stop, point, input.address, input.customerLocationVersion!, now, input.commandId);
       if (corrected.unchanged) return remember({ eventId: null, occurredAt: now.toISOString(), executionRevision: route.revision, duplicate: false, unchanged: true });
       customerBefore = corrected.before;
+      previousAddress = corrected.beforeAddress;
+      correctedAddress = corrected.address;
+      correctedAddressFields = input.address && { street: input.address.street, neighborhood: input.address.neighborhood,
+        postalCode: input.address.postalCode, city: input.address.city };
     }
     const eventId = randomUUID();
     await sql.query(
@@ -128,6 +147,7 @@ export async function executeStopCommand(pool: Pool, authorization: string | nul
         kind === "repoint" ? "location_corrected" : lateSeconds !== null && lateSeconds > 0 ? "late_arrival" : null,
         now, todayInTimezone(timezone, now), timezone, JSON.stringify({ ...historicalContext(route, stop),
           point, before: { latitude: stop.latitude, longitude: stop.longitude }, customerBefore,
+          previousAddress, correctedAddress, correctedAddressFields,
           sample: input.sample, policy, distanceMeters: distance, windows: stop.windows, lateSeconds })],
     );
     await sql.query("UPDATE route_driver_executions SET revision=revision+1 WHERE id=$1", [route.id]);

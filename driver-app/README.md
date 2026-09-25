@@ -1,6 +1,6 @@
 # Ana Rutas Chofer — Android, bloques 1, 2A y 2B
 
-## Mapa, llegada y repunte — 0.5.0 (validación local)
+## Mapa, llegada y repunte — 0.5.1 (validación local)
 
 Tras iniciar se abre el mapa de la ejecución propia, con todos sus puntos,
 posición GPS precisa y ficha inferior Five. «Llegué» se valida otra vez en el
@@ -8,6 +8,18 @@ servidor y abre los productos reales: no completa una entrega. «Mal punteado»
 permite arrastrar el pin o usar el GPS, confirma cerca del nuevo domicilio y
 actualiza el cliente para futuras rutas. Registra incidencia consultable por
 fecha y chofer; conserva los snapshots y orden de otras camionetas.
+
+La ficha inferior puede bajarse para ver casi todo el mapa; tocar un marcador
+abre la información de esa parada. Si hay varios pedidos en ella se consulta uno
+a la vez con un selector. El icono de voz silencia o reactiva la
+guía y conserva la preferencia. «Llegué» y «Confirmar punto» mantienen una muestra
+GPS válida reciente durante breves variaciones de precisión; el servidor vuelve
+a verificarla al guardar. Durante el arrastre el botón de confirmación queda
+inactivo hasta soltar el pin. Tras confirmar el nuevo pin se abre un modal para
+capturar calle y número, colonia, código postal y ciudad. Sólo la confirmación
+final envía punto y domicilio juntos; si cierra el modal no se guarda nada.
+La dirección confirmada se guarda en el cliente, la parada, el pedido móvil y
+la incidencia; no se adivina una dirección desde las coordenadas.
 
 El radio inicial es 100 m, precisión máxima 50 m y antigüedad 30 s; administración
 puede cambiarlo en Incidencias → Reglas de llegada. La incertidumbre GPS se suma

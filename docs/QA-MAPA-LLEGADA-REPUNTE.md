@@ -1,12 +1,24 @@
 # QA — mapa, llegada, repunte e incidencias / BL-105..108
 
-24/09/2026. Desarrollo local sobre `develop`, base `c7a0bca`. El usuario autorizó
+25/09/2026. Desarrollo local sobre `develop`, base `75b082a`. El usuario autorizó
 commit y push exclusivamente a `develop` para probar la APK, con excepción
 explícita para la validación física de GPS/navegación pendiente. Deploy manual
 a cargo del usuario; sin cambios de facturación, ADB ni acceso a producción.
 Esta evidencia no certifica Google Navigation ni GPS físico.
 
-## Resultado funcional local
+## Revisión 0.5.1 — ficha, voz, estabilidad GPS y dirección
+
+Autopsia del defecto textual: el repunte anterior sólo actualizaba coordenadas y `location_version`; dejaba `route_customers.delivery_address` y la dirección de la parada operativa con su valor anterior. El tablero lee el domicilio del cliente, por lo que mostraba correctamente —pero de forma indeseada— ese texto viejo. Las coordenadas por sí solas no identifican con certeza una dirección postal. Confirmar el pin abre un modal obligatorio de calle y número, colonia, código postal y ciudad; cerrarlo no persiste nada. El servidor valida las cuatro partes y la confirmación final guarda punto y domicilio en una transacción. El modal conserva los campos ante error o red ambigua y sólo se cierra tras releer la confirmación del servidor.
+
+La ficha plegable deja libre casi todo el mapa y conserva destino/guía. Tocar un marcador abre únicamente la ficha de esa parada. El interruptor de voz usa `AudioGuidanceSettings` oficial y conserva preferencia. El GPS ya no mantiene una muestra degradada como si fuera actual; conserva como máximo 3 s una muestra válida de **la misma parada** ante jitter, sin superar las validaciones del servidor. No reutiliza un GPS simulado ni uno de otro destino; arrastrar el pin desactiva la confirmación hasta soltarlo.
+
+Evidencia local de esta revisión: 543 pruebas servidor pasaron (1 contrato FCM externo omitido), 49 archivos, 95.14 % líneas y 88.14 % ramas globales; `driver-stop-command.ts` 100 % líneas y 98.43 % ramas. `npm run build` y `npm run lint` verdes. Tres E2E HTTP/navegador pasaron: el domicilio nuevo aparece en cliente, incidencia, ejecución y pedido móvil; repunte→incidencia SSE se observó en 267 ms en la última corrida. Android: 45 pruebas JVM, APK 0.5.1/code12 e APK instrumentada compiladas, lint 0 errores/32 avisos; política de GPS 26/26 líneas y 84/84 ramas. Mutación Android 27/27 detectadas, incluyendo cinco alteraciones del contrato de domicilio; validador servidor 39/40, con un mutante equivalente; comando transaccional 117/119 (98.32 %), cero timeouts, cero sin cobertura y dos equivalentes de salida explicados abajo. El APK final SHA-256 `239925837c8997791653fd4aca4983bfcd771b59db6a1e720ee14aa0a578cc3a` conserva la firma debug de la versión anterior y verifica esquema v2. No se considera evidencia la APK instalada previamente.
+
+Los dos supervivientes actuales del comando: eliminar `closing === null` haría una consulta PostgreSQL adicional con parámetro nulo y seguiría produciendo `lateSeconds=null` (no una incidencia); eliminar `lateSeconds !== null` conserva la clasificación porque `null > 0` es falso en JavaScript. Se conservan las guardas por claridad y para evitar trabajo SQL innecesario. La mutación cubre guardas/idempotencia/clasificación, no todos los literales SQL; rollback, aislamiento y dirección fueron verificados además con PostgreSQL real.
+
+QA reproducible: `npm run test:coverage`, `npm run build`, `npm run lint`, `npx playwright test tests/e2e/driver-mobile.spec.ts tests/e2e/panel.spec.ts`; en `driver-app`, `./gradlew.bat testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug createDebugUnitTestCoverageReport` con Android SDK y configuración local de develop. La comprobación física pendiente en el teléfono del usuario debe cubrir arrastrar/plegar panel, toque de marcadores colocalizados, voz tras cerrar/reabrir, GPS oscilante y modal de cuatro campos; cerrar el modal no debe cambiar el punto ni el domicilio. Probar además pérdida de red al confirmar: los campos deben seguir visibles y el mismo comando pendiente debe poder verificarse. Confirmar en panel Clientes y horarios e Incidencias y comprobar que otra camioneta no cambió. Sin ADB ni navegación vial simulada.
+
+## Resultado funcional base (0.5.0; histórico)
 
 - Migración aditiva 19→20: ejecuciones por revisión publicada, paradas estables,
   política versionada, actor chofer y eventos/recibos inmutables. Backfill de
@@ -32,7 +44,7 @@ Esta evidencia no certifica Google Navigation ni GPS físico.
   del AAR instalado, sin texto copiado manualmente; el build falla si no encuentra
   licencia. Confirmación explícita persistida, sin sustituir términos Google.
 
-## Evidencia ejecutada
+## Evidencia ejecutada del bloque inicial (0.5.0)
 
 | Puerta | Resultado local |
 | --- | --- |

@@ -23,7 +23,7 @@ import type { SourceShipment } from "./orders-contract";
 
 type Row = Record<string, unknown>;
 
-function searchKey(parts: unknown[]) {
+export function searchKey(parts: unknown[]) {
   return normalizeSearch(
     parts
       .filter((part) => typeof part === "string" || typeof part === "number")
