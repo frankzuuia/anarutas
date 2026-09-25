@@ -104,15 +104,25 @@ class RouteNavigationActivity : FragmentActivity() {
             val next = DriverGps(ExecutionPoint(location.latitude, location.longitude),
                 if (location.hasAccuracy()) location.accuracy.toDouble() else Double.NaN,
                 location.elapsedRealtimeNanos / 1_000_000, LocationCompat.isMock(location))
+            if (!isNewLocationSample(gps, next)) return
             gps = next
             val target = if (editing) draftPoint else currentStop?.point
             val policy = model.state.execution?.policy
             if (target != null && policy != null && arrivalEligibility(next, target, policy, SystemClock.elapsedRealtime()) == ArrivalEligibility.READY) {
                 lastReadyGps = next
                 lastReadyPoint = target
+            } else if (target != null && policy != null &&
+                arrivalEligibility(next, target, policy, SystemClock.elapsedRealtime()) == ArrivalEligibility.OUTSIDE) {
+                lastReadyGps = null
+                lastReadyPoint = null
             }
         }
-        override fun onProviderDisabled(provider: String) { gps = null; lastReadyGps = null; lastReadyPoint = null }
+        override fun onProviderDisabled(provider: String) {
+            if (provider == LocationManager.GPS_PROVIDER ||
+                !locations.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                gps = null; lastReadyGps = null; lastReadyPoint = null
+            }
+        }
         override fun onProviderEnabled(provider: String) = Unit
         @Deprecated("Legacy Android callback") override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
     }
@@ -145,6 +155,8 @@ class RouteNavigationActivity : FragmentActivity() {
         if (BuildConfig.NAVIGATION_API_KEY.isNotBlank()) {
             val fragment = supportFragmentManager.findFragmentByTag("execution_map") as? SupportNavigationFragment
                 ?: SupportNavigationFragment.newInstance().also { supportFragmentManager.commitNow { replace(containerId, it, "execution_map") } }
+            fragment.setEtaCardEnabled(false)
+            fragment.setReportIncidentButtonEnabled(false)
             fragment.getMapAsync { ready ->
                 map = ready
                 ready.setPadding(0, 0, 0, chromeHeight)
@@ -243,6 +255,7 @@ class RouteNavigationActivity : FragmentActivity() {
         active.setAudioGuidanceSettings(AudioGuidanceSettings.builder()
             .setGuidanceMode(if (voiceMuted) AudioGuidanceSettings.GuidanceMode.SILENT else AudioGuidanceSettings.GuidanceMode.VOICE_ALERTS_AND_GUIDANCE)
             .build())
+        active.setAudioGuidance(if (voiceMuted) Navigator.AudioGuidance.SILENT else Navigator.AudioGuidance.VOICE_ALERTS_AND_GUIDANCE)
     }
     private fun toggleVoice() {
         val next = !voiceMuted
@@ -287,6 +300,7 @@ class RouteNavigationActivity : FragmentActivity() {
                 if (result == Navigator.RouteStatus.OK) {
                     NavigationRegistry.destinationKey = key
                     nav.startGuidance()
+                    applyVoicePreference(nav)
                     guidance = true
                     navMessage = "Guía activa · el orden de tus pedidos no cambia"
                 } else { guidance = false; navMessage = "No se pudo trazar la guía: $result. Puedes reintentar sin volver a guardar el punto." }
@@ -331,7 +345,7 @@ class RouteNavigationActivity : FragmentActivity() {
         addressDialog = false
         street = ""; neighborhood = ""; postalCode = ""; city = ""
         if (resumeGuide && currentStop?.let(::destinationKey) == NavigationRegistry.destinationKey) {
-            navigator?.startGuidance(); guidance = true
+            navigator?.startGuidance(); navigator?.let(::applyVoicePreference); guidance = true
         }
         resumeGuide = false
         renderMap()
@@ -505,7 +519,7 @@ class RouteNavigationActivity : FragmentActivity() {
                         }
                     }
                     val proximity = when (eligibility) {
-                        ArrivalEligibility.READY -> "Dentro del radio de ${execution.policy.radiusMeters} m · GPS ±${gps?.accuracy?.toInt()} m"
+                        ArrivalEligibility.READY -> "Dentro del radio de ${execution.policy.radiusMeters} m · GPS ±${usableGps?.accuracy?.toInt()} m"
                         ArrivalEligibility.OUTSIDE -> "Acércate al punto · radio ${execution.policy.radiusMeters} m incluyendo precisión GPS"
                         ArrivalEligibility.IMPRECISE -> "Esperando precisión GPS ≤ ${execution.policy.maxAccuracyMeters} m"
                         ArrivalEligibility.UNTRUSTED -> "Se necesita una ubicación real, no simulada"

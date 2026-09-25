@@ -761,3 +761,29 @@ Feature: Ana Rutas independiente y portable
     And no coloca el estado sobre las tarjetas ni agrega un temporizador
     When el conteo llega a cero
     Then retira el estado del encabezado
+
+  Scenario: Primer mapa manual calcula una sola vez y nunca publica solo
+    Given un borrador con bodega, salida y puntos confirmados en orden manual
+    When el administrador abre el mapa por primera vez
+    Then se solicita un cálculo vial durable sin modificar camioneta ni orden
+    And al reabrir el mapa se reutiliza el cálculo o el trabajo pendiente
+    And la ruta no se publica sin confirmación explícita
+
+  Scenario: GPS impreciso alternado no hace parpadear Llegué ni permite salir del radio
+    Given una muestra real y precisa todavía vigente dentro del radio configurado
+    When llega una muestra más nueva pero imprecisa
+    Then Llegué y Confirmar punto usan la muestra precisa aún válida
+    But una muestra precisa fuera del radio, simulada o caducada deshabilita ambas acciones
+
+  Scenario: Fallo del cálculo previo requiere reintento explícito
+    Given el cálculo vial automático falló por conexión o proveedor
+    When el administrador cierra y vuelve a abrir el mapa
+    Then no se inicia otro cálculo automáticamente
+    And puede reintentarlo expresamente sin publicar ni alterar el orden
+
+  Scenario: Silenciar la guía conserva el mapa y la atribución
+    Given el chofer tiene una guía activa y silencia la voz
+    When cambia de parada o reanuda la guía
+    Then no se anuncian instrucciones hasta que reactive la voz
+    And la ficha de Ana Rutas reemplaza la tarjeta ETA y el reporte de Google
+    But la atribución obligatoria de Google Maps sigue visible

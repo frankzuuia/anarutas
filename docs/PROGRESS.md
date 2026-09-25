@@ -1,9 +1,18 @@
 # Progreso — bloque 1
 
+## Ajuste 0.5.2 — vista previa manual y controles de navegación
+
+- [x] Mapa del borrador completo: primera apertura solicita recorrido manual una vez por versión; aperturas siguientes reutilizan resultado/trabajo. Publicar sigue siendo una decisión separada.
+- [x] GPS: una lectura imprecisa posterior no invalida visualmente una muestra todavía aceptable para el servidor; lectura confiable fuera del radio, simulación o caducidad sí bloquean. Se descartan callbacks anteriores.
+- [x] Audio aplicado al crear/iniciar/reanudar la guía; tarjeta ETA y botón de reporte de Google desactivados con las APIs oficiales. La atribución permanece visible.
+- [ ] Deploy del panel y QA físico de GPS, voz y Navigation SDK con el teléfono del usuario. Sin autorización para main.
+
+Evidencia y métricas: `QA-AJUSTE-MAPA-NAVEGACION-0.5.2.md`. APK debug local 0.5.2/code13; el usuario autorizó commit y push sólo a `develop` tras las puertas locales.
+
 ## Ajuste 0.5.1 — mapa del chofer y domicilio de repunte
 
 - [x] Ficha inferior plegable, consulta de un marcador sin cambiar la guía y voz de Navigation SDK silenciable con preferencia persistida.
-- [x] El GPS usa siempre la muestra más reciente; una muestra válida de la misma parada puede amortiguar variaciones breves de precisión por 3 s como máximo. No se amplían radio, precisión ni edad del servidor; GPS simulado o proveedor desactivado falla cerrado.
+- [x] En 0.5.1 el GPS usaba la muestra más reciente y amortiguaba imprecisión sólo 3 s; el ajuste 0.5.2 en curso extiende la amortiguación únicamente hasta la vigencia del servidor y revoca ante una nueva lectura confiable fuera del radio. No se amplían radio ni precisión; GPS simulado o proveedor desactivado falla cerrado.
 - [x] Repunte en dos confirmaciones: primero pin y después modal obligatorio de dirección, colonia, código postal y ciudad. Cerrar el modal no escribe. Cliente, búsqueda, ejecución propia e incidencia se actualizan en una transacción; Odoo y snapshots de otras camionetas permanecen intactos. APK anterior sin campo nuevo conserva compatibilidad.
 - [ ] QA físico del usuario: plegar/expandir mapa, tocar marcador, silenciar/reactivar voz, llegada en radio y modal de domicilio al repuntar. No se usó ADB por decisión del usuario.
 

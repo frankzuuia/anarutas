@@ -8,6 +8,10 @@ import type {
   RoutingSettings,
 } from "@/core/routing-contract";
 import { groupRouteMapStops, nextOpenMarker } from "@/core/route-map-markers";
+import {
+  manualPreviewDecision,
+  type ManualPreviewStatus,
+} from "@/core/manual-route-preview";
 import { api, errors } from "./api";
 import { loadGoogleMaps } from "./google-maps";
 
@@ -41,7 +45,12 @@ export function RouteMapDialog({
   const [filter, setFilter] = useState("all");
   const [revision, setRevision] = useState(0);
   const [refreshError, setRefreshError] = useState("");
+  const [previewRequestError, setPreviewRequestError] = useState("");
   const [retrying, setRetrying] = useState(false);
+  const [manualStatus, setManualStatus] = useState<ManualPreviewStatus | null>(
+    null,
+  );
+  const attemptedVersions = useRef(new Set<number>());
   const vehicles = [
     { id: "unassigned", name: "Sin asignar" },
     ...board.vehicles,
@@ -60,12 +69,15 @@ export function RouteMapDialog({
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
       try {
-        const [nextBoard, nextRun, nextOrigin] = await Promise.all([
+        const [nextBoard, nextRun, nextOrigin, nextStatus] = await Promise.all([
           api<OrderBoard>(`/api/plans/${initialBoard.plan.id}/orders`),
           api<PublicOptimization | null>(
             `/api/plans/${initialBoard.plan.id}/optimization`,
           ),
           api<RoutingSettings>("/api/routing/settings"),
+          api<ManualPreviewStatus>(
+            `/api/plans/${initialBoard.plan.id}/recalculation/manual`,
+          ),
         ]);
         if (!active) return;
         setBoard((previous) =>
@@ -83,6 +95,17 @@ export function RouteMapDialog({
             ? previous
             : nextOrigin,
         );
+        setManualStatus((previous) =>
+          JSON.stringify(previous) === JSON.stringify(nextStatus)
+            ? previous
+            : nextStatus,
+        );
+        if (
+          nextStatus.current ||
+          nextStatus.status === "pending" ||
+          nextStatus.status === "running"
+        )
+          setPreviewRequestError("");
         setRefreshError("");
       } catch (caught) {
         if (active) setRefreshError((caught as Error).message);
@@ -96,6 +119,33 @@ export function RouteMapDialog({
       clearTimeout(timer);
     };
   }, [initialBoard.plan.id]);
+  useEffect(() => {
+    if (!origin || !manualStatus) return;
+    if (manualPreviewDecision(board, origin, manualStatus) !== "request")
+      return;
+    const version = board.plan.version;
+    if (attemptedVersions.current.has(version)) return;
+    attemptedVersions.current.add(version);
+    let active = true;
+    void api(`/api/plans/${board.plan.id}/recalculation/manual`, "POST", {
+      expectedVersion: version,
+    })
+      .then(() => {
+        if (active)
+          setManualStatus({
+            version,
+            current: false,
+            status: "pending",
+            errorCode: null,
+          });
+      })
+      .catch((caught) => {
+        if (active) setPreviewRequestError((caught as Error).message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [board, origin, manualStatus]);
   useEffect(() => {
     const element = dialog.current,
       previous = document.activeElement as HTMLElement;
@@ -238,18 +288,25 @@ export function RouteMapDialog({
       const pin = document.createElement("div");
       pin.className = "map-pin";
       const lanes = [...new Set(orders.map((order) => laneIndex(order)))];
-      pin.style.background = lanes.length === 1
-        ? color(lanes[0])
-        : `linear-gradient(90deg, ${lanes.map((lane, index) =>
-            `${color(lane)} ${Math.round(index * 100 / lanes.length)}% ${Math.round((index + 1) * 100 / lanes.length)}%`
-          ).join(", ")})`;
+      pin.style.background =
+        lanes.length === 1
+          ? color(lanes[0])
+          : `linear-gradient(90deg, ${lanes
+              .map(
+                (lane, index) =>
+                  `${color(lane)} ${Math.round((index * 100) / lanes.length)}% ${Math.round(((index + 1) * 100) / lanes.length)}%`,
+              )
+              .join(", ")})`;
       pin.textContent = group.label;
       const marker = new google.maps.marker.AdvancedMarkerElement({
         map: currentMap,
         position,
         content: pin,
         title: orders
-          .map((s) => `${vehicles[laneIndex(s)].name}: ${s.customerName} · ${s.orderName}`)
+          .map(
+            (s) =>
+              `${vehicles[laneIndex(s)].name}: ${s.customerName} · ${s.orderName}`,
+          )
           .join(" / "),
       });
       marker.addListener("click", () => {
@@ -336,6 +393,10 @@ export function RouteMapDialog({
     (sum, route) => sum + route.metrics.travelDistanceMeters,
     0,
   );
+  const previewDecision =
+    origin && manualStatus
+      ? manualPreviewDecision(board, origin, manualStatus)
+      : null;
   const time = (value: string) =>
     new Date(value).toLocaleTimeString("es-MX", {
       timeZone: timezone,
@@ -346,15 +407,19 @@ export function RouteMapDialog({
   async function retryRoute() {
     setRetrying(true);
     setRefreshError("");
+    setPreviewRequestError("");
     try {
-      await api(`/api/plans/${board.plan.id}/recalculation`, "POST");
-      setOptimization(
-        await api<PublicOptimization | null>(
-          `/api/plans/${board.plan.id}/optimization`,
-        ),
-      );
+      await api(`/api/plans/${board.plan.id}/recalculation/manual`, "POST", {
+        expectedVersion: board.plan.version,
+      });
+      setManualStatus({
+        version: board.plan.version,
+        current: false,
+        status: "pending",
+        errorCode: null,
+      });
     } catch (caught) {
-      setRefreshError((caught as Error).message);
+      setPreviewRequestError((caught as Error).message);
     } finally {
       setRetrying(false);
     }
@@ -405,12 +470,17 @@ export function RouteMapDialog({
           </span>
         ) : optimization ? (
           <span className="small warning" role="status">
-            {optimization.recalculation?.status === "pending" ||
+            {manualStatus?.status === "pending" ||
+            manualStatus?.status === "running" ||
+            optimization.recalculation?.status === "pending" ||
             optimization.recalculation?.status === "running"
               ? "Recalculando recorrido; se conserva tu acomodo…"
               : "Tu acomodo está guardado. El recorrido necesita recalcularse."}
-            {(!optimization.recalculation ||
-              optimization.recalculation.status === "failed") && (
+            {(previewRequestError ||
+              manualStatus?.status === "failed" ||
+              (!manualStatus?.status &&
+                (!optimization.recalculation ||
+                  optimization.recalculation.status === "failed"))) && (
               <button
                 className="quiet"
                 disabled={retrying}
@@ -423,14 +493,39 @@ export function RouteMapDialog({
           </span>
         ) : (
           <span className="small">
-            Puntos y orden manual; ruta aún no calculada.
+            {manualStatus?.status === "pending" ||
+            manualStatus?.status === "running"
+              ? "Calculando recorrido vial; conservamos tu orden manual…"
+              : manualStatus?.status === "failed" || previewRequestError
+                ? "No se pudo calcular el recorrido. Reintenta cuando haya conexión."
+                : previewDecision === "incomplete"
+                  ? "Para trazar calles faltan bodega, hora de salida o puntos confirmados."
+                  : "Puntos y orden manual; ruta aún no calculada."}
+            {(manualStatus?.status === "failed" || previewRequestError) && (
+              <button
+                className="quiet"
+                disabled={retrying}
+                onClick={() => void retryRoute()}
+              >
+                <RefreshCw size={14} />
+                {retrying ? "Solicitando…" : "Reintentar cálculo"}
+              </button>
+            )}
           </span>
         )}
       </div>
-      {(refreshError || optimization?.recalculation?.errorCode) && (
+      {(refreshError ||
+        previewRequestError ||
+        manualStatus?.errorCode ||
+        optimization?.recalculation?.errorCode) && (
         <p className="notice error" role="alert">
           {refreshError ||
-            errors[optimization!.recalculation!.errorCode!] ||
+            previewRequestError ||
+            errors[
+              manualStatus?.errorCode ||
+                optimization?.recalculation?.errorCode ||
+                ""
+            ] ||
             "El recálculo no pudo completarse; tus cambios siguen guardados."}
         </p>
       )}

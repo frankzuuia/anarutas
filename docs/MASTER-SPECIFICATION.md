@@ -4,6 +4,14 @@
 
 La ficha del mapa puede plegarse sin perder guía, selección ni GPS; tocar un marcador abre su parada sin redirigir Navigation SDK. La voz se silencia mediante el ajuste oficial del navegador y el estado se conserva en la APK. Una muestra GPS reciente y válida de la misma parada amortigua sólo variaciones transitorias de precisión; la API mantiene la autoridad y rechaza muestras viejas, simuladas o fuera del radio.
 
+Revisión 0.5.2: la última lectura precisa se conserva como candidata sólo mientras cumpla
+la edad máxima configurada por el servidor y exista una lectura actual posterior
+imprecisa; una lectura confiable fuera de radio, simulada, vencida o de otro destino
+revoca esa posibilidad. Se descartan callbacks de proveedor con tiempo monotónico
+anterior. El ajuste de voz se aplica al crear el Navigator, al comenzar/reanudar la
+guía y al cambiar el interruptor. Se ocultan mediante APIs oficiales la tarjeta ETA
+y el botón de reporte de Google, no su atribución obligatoria.
+
 Mover un pin no permite deducir un domicilio postal. Confirmar el pin abre un modal obligatorio con calle y número, colonia, código postal y ciudad; cerrar el modal no escribe. La confirmación final manda las cuatro partes con las coordenadas en un único comando. La misma transacción cambia `route_customers.delivery_address`, su índice de búsqueda, la parada operativa propia y el historial/incidencia; las lecturas del panel y pedido móvil muestran el nuevo texto. La sobreescritura local sobrevive a la sincronización con Odoo. Se conserva la compatibilidad de la APK anterior al omitir el campo. No se escribe en Odoo ni se recalculan otras camionetas. Validación física pendiente.
 
 ## BL-105..108 / ML01..24 — mapa, llegada, repunte e incidencias
@@ -357,8 +365,12 @@ indicador visual de progreso y exclusión mutua.
 ### S39A: publicación de secuencia manual sin optimización (BL-030)
 
 Arrastrar o reordenar pedidos mantiene exactamente la camioneta y secuencia elegidas.
-Antes del primer recorrido, los movimientos no llaman Google: la confirmación explícita
-de publicación encola la primera medición vial durable. Después, cada movimiento
+Antes del primer recorrido, los movimientos no llaman Google: abrir el mapa de un
+borrador completo encola automáticamente una sola medición vial durable para esa
+versión. Reabrirlo reutiliza el resultado o el trabajo pendiente; un fallo requiere
+reintento explícito y un borrador sin bodega, salida o puntos confirmados no consume
+Google. La publicación confirma por separado y reutiliza el recorrido vigente.
+Después, cada movimiento
 encola un recálculo durable y coalescible, sin Fleet Routing y sólo para la camioneta
 afectada (origen y destino si se transfiere un pedido); los carriles intactos reutilizan
 su último recorrido. La migración v16 guarda huellas por camioneta; recorridos previos

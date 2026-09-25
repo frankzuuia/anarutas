@@ -37,6 +37,7 @@
     "test:mutation:route-cancellation": "stryker run stryker.route-cancellation.config.mjs",
     "test:mutation:route-publication-state": "stryker run stryker.route-publication-state.config.mjs",
     "test:mutation:route-map-markers": "stryker run stryker.route-map-markers.config.mjs",
+    "test:mutation:manual-route-preview": "stryker run stryker.manual-route-preview.config.mjs",
     "test:mutation:unit-photos": "stryker run stryker.unit-photos.config.mjs",
     "test:mutation:unit-photo-deletion": "stryker run stryker.unit-photo-deletion.config.mjs",
     "test:mutation:driver-dashboard": "stryker run stryker.driver-dashboard.config.mjs",
