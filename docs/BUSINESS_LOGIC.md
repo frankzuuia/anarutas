@@ -1,5 +1,30 @@
 # Ana Rutas — bloque 1 aprobado
 
+## Regresiones operativas 0.6.1 — BL-120..123 (26/09/2026)
+
+- BL-120: Chofer/admin -> un cerrado con foto sólo se confirma con recibo
+  persistido y su ID; el panel recupera una señal perdida sin recarga, con
+  filtros/métricas coherentes. Datos: caso/evidencia/recibo; mismos permisos
+  privados. Auditoría histórica intacta. Pruebas: HTTP/PG/SSE y señal ausente.
+  El incidente real reportado aún no tiene causa raíz demostrada; no se
+  cambia la regla de ocultarlo durante una nueva llegada de reintento.
+- BL-121: Chofer -> cerrado naranja incluso seleccionado. Una parada sin
+  pedidos operativos (todos entregados/reprogramados) desaparece sólo del
+  mapa, no de Ver paradas; grupos mixtos conservan los pedidos abiertos.
+  Datos: proyección visual de su ejecución; sin escrituras ni nueva autoridad.
+  Validación JVM: paleta, todos los estados y grupos mixtos.
+- BL-122: Chofer -> Reintentar un reprogramado reabre sólo ese pedido en la
+  misma ejecución vigente. Confirmación/cancelación explícitas, ninguna fecha
+  ni entrega ficticia. Invalidar visita anterior y exigir nueva llegada GPS.
+  Datos: pedido, visita, caso y eventos append-only; permiso: dispositivo
+  dueño, publicación vigente; versiones/locks/recibos contra carreras y replay.
+  La reprogramación original y su resolución administrativa siguen auditables.
+- BL-123: Chofer -> GPS caducado solicita automáticamente una muestra actual;
+  cancelación al salir, reintentos acotados y recuperación al activar proveedor.
+  Sin GPS real/preciso/reciente, permiso o radio válido no se habilita Llegué.
+  Datos: ubicación efímera, sin nuevas llamadas Routes/Fleet ni telemetría
+  privada en logs. Validación: política JVM, ciclo de vida y QA físico sin ADB.
+
 ## Atención e incidencias operativas — BL-111..116 (25/09/2026)
 
 - BL-111 · Llegada y cambio de destino. Actor: chofer de la ejecución vigente.
@@ -61,7 +86,9 @@
   resuelta, sin reabrir ni entregar el pedido original. Datos: pedido, nota,
   chofer y ruta origen; permiso: ejecución propia. Auditoría: aceptación y
   resolución; validación: no duplicación, conflicto con entrega/rechazo y
-  actualización del panel. Este botón no mueve ni crea rutas futuras.
+  actualización del panel. Este botón no mueve ni crea rutas futuras. BL-122
+  permite al chofer reabrir explícitamente ese pedido en esta misma ruta;
+  Resolver nunca lo reabre por sí solo.
 - BL-118 · Liquidación y cierre (bloque posterior). Actor: chofer entrega su
   liquidación y un administrador **autorizado para liquidar** registra efectivo
   recibido y comprueba el cuadre. La ruta sólo podrá cerrarse tras ambos hechos
@@ -74,7 +101,8 @@
   ni escrituras Odoo sin un contrato de origen y autorización explícitos.
 - BL-119 · Lectura del mapa. Actor: chofer en ruta. Todas las paradas no
   seleccionadas conservan un contorno visible sobre el mapa oscuro; sólo el
-  destino seleccionado mantiene el relleno destacado actual. Datos: estado
+  destino seleccionado mantiene el relleno destacado actual, salvo cliente
+  cerrado que conserva naranja según BL-121. Datos: estado
   visual derivado de la ejecución propia, sin escritura. Permiso: mapa de su
   ejecución vigente. Auditoría: no aplica por ser presentación. Validación:
   estados normal/llegada/selección distinguibles sin cambiar la guía.

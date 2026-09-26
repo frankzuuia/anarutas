@@ -33,8 +33,8 @@ function historicalContext(route: ExecutionRow, stop: ExecutionStopRow) {
     address: stop.address, shipmentIds: stop.shipment_ids, orders: stop.order_names, position: stop.position };
 }
 
-async function recordVisitExit(sql: Sql, route: ExecutionRow, stop: ExecutionStopRow,
-  driverId: string, deviceId: string, now: Date, timezone: string, reason: "destination_changed" | "new_arrival") {
+export async function recordVisitExit(sql: Sql, route: ExecutionRow, stop: ExecutionStopRow,
+  driverId: string, deviceId: string, now: Date, timezone: string, reason: "destination_changed" | "new_arrival" | "order_reopened") {
   const eventId = randomUUID();
   await caseVisitEvent(sql, route.id, stop.id, driverId, "retry_abandoned", stop.visit_sequence, now);
   await sql.query(

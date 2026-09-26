@@ -127,7 +127,7 @@ it("keeps live-case, order and 24-hour evidence identity atomic in real PostgreS
     await pool.query("UPDATE rutas_installation SET schema_version=21 WHERE singleton=true");
     await migrate(pool, fixture.db.config.instanceId);
     expect((await pool.query("SELECT schema_version FROM rutas_installation WHERE singleton=true"))
-      .rows[0].schema_version).toBe(22);
+      .rows[0].schema_version).toBe(23);
     expect((await pool.query("SELECT count(*)::int n FROM route_driver_service_incidents WHERE id=$1", [incidentId]))
       .rows[0].n).toBe(1);
     expect((await pool.query("SELECT count(*)::int n FROM route_driver_incident_events WHERE incident_id=$1", [incidentId]))

@@ -13,6 +13,7 @@ import android.location.LocationManager
 import android.os.Bundle
 import android.os.Looper
 import android.os.SystemClock
+import android.os.CancellationSignal
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationCompat
+import androidx.core.location.LocationManagerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.commitNow
 import androidx.lifecycle.Lifecycle
@@ -66,6 +68,10 @@ class RouteNavigationActivity : FragmentActivity() {
     private var lastReadyGps by mutableStateOf<DriverGps?>(null)
     private var lastReadyPoint by mutableStateOf<ExecutionPoint?>(null)
     private var tick by mutableLongStateOf(0L)
+    private val gpsRequests = mutableMapOf<String, CancellationSignal>()
+    private var gpsRequestStarted: Long? = null
+    private var gpsLastAttempt: Long? = null
+    private var gpsGeneration = 0
     private var selectedId by mutableStateOf("")
     private var panelExpanded by mutableStateOf(true)
     private var voiceMuted by mutableStateOf(false)
@@ -120,12 +126,13 @@ class RouteNavigationActivity : FragmentActivity() {
             }
         }
         override fun onProviderDisabled(provider: String) {
+            cancelGpsRecovery()
             if (provider == LocationManager.GPS_PROVIDER ||
                 !locations.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 gps = null; lastReadyGps = null; lastReadyPoint = null
             }
         }
-        override fun onProviderEnabled(provider: String) = Unit
+        override fun onProviderEnabled(provider: String) { startGps() }
         @Deprecated("Legacy Android callback") override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
     }
     private val permission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -192,7 +199,7 @@ class RouteNavigationActivity : FragmentActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { model.observe() }
                 launch { while (isActive) { model.sync(); delay(30_000) } }
-                launch { while (isActive) { tick = SystemClock.elapsedRealtime(); delay(1000) } }
+                launch { while (isActive) { tick = SystemClock.elapsedRealtime(); recoverGps(tick); delay(1000) } }
             }
         }
         if (!precisePermission()) permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
@@ -214,14 +221,60 @@ class RouteNavigationActivity : FragmentActivity() {
         if (!precisePermission() || !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
             gps = null; lastReadyGps = null; lastReadyPoint = null; return
         }
-        locations.removeUpdates(locationListener)
-        for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
-            if (locations.allProviders.contains(provider)) locations.requestLocationUpdates(provider, 1000L, 0f, locationListener, Looper.getMainLooper())
+        try {
+            locations.removeUpdates(locationListener)
+            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+                if (locations.allProviders.contains(provider)) locations.requestLocationUpdates(provider, 1000L, 0f, locationListener, Looper.getMainLooper())
+            }
+            map?.isMyLocationEnabled = true
+            recoverGps(SystemClock.elapsedRealtime())
+        } catch (_: SecurityException) { cancelGpsRecovery(); gps = null; lastReadyGps = null; lastReadyPoint = null }
+    }
+    private fun cancelGpsRecovery() {
+        gpsGeneration++
+        val pending = gpsRequests.values.toList()
+        gpsRequests.clear(); gpsRequestStarted = null
+        pending.forEach { it.cancel() }
+    }
+    @SuppressLint("MissingPermission")
+    private fun recoverGps(now: Long) {
+        if (!::model.isInitialized) return
+        val active = precisePermission() && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && !model.state.retired
+        if (!active) {
+            cancelGpsRecovery(); gps = null; lastReadyGps = null; lastReadyPoint = null
+            return
         }
-        map?.isMyLocationEnabled = true
+        val enabled = locations.isProviderEnabled(LocationManager.GPS_PROVIDER)
+        when (gpsRecoveryDecision(gps, model.state.execution?.policy, now, active, enabled, gpsRequestStarted, gpsLastAttempt)) {
+            GpsRecoveryDecision.NONE -> Unit
+            GpsRecoveryDecision.CANCEL -> cancelGpsRecovery()
+            GpsRecoveryDecision.REQUEST -> {
+                gpsLastAttempt = now; gpsRequestStarted = now
+                val generation = ++gpsGeneration
+                val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+                    .filter { locations.allProviders.contains(it) && locations.isProviderEnabled(it) }
+                // Populate first: a current-location API is allowed to return a cached fix immediately.
+                providers.forEach { gpsRequests[it] = CancellationSignal() }
+                providers.forEach { provider ->
+                    val signal = gpsRequests[provider] ?: return@forEach
+                    try {
+                        LocationManagerCompat.getCurrentLocation(locations, provider, signal, ContextCompat.getMainExecutor(this)) { fix ->
+                            if (acceptsGpsRecoveryCallback(generation, gpsGeneration,
+                                    precisePermission() && locations.isProviderEnabled(LocationManager.GPS_PROVIDER) &&
+                                        lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && !model.state.retired)) {
+                                gpsRequests.remove(provider)
+                                if (gpsRequests.isEmpty()) gpsRequestStarted = null
+                                if (fix != null) locationListener.onLocationChanged(fix)
+                            }
+                        }
+                    } catch (_: SecurityException) { cancelGpsRecovery(); gps = null; lastReadyGps = null; lastReadyPoint = null }
+                    catch (_: IllegalArgumentException) { gpsRequests.remove(provider); if (gpsRequests.isEmpty()) gpsRequestStarted = null }
+                }
+            }
+        }
     }
     override fun onStart() { super.onStart(); startGps() }
-    override fun onStop() { locations.removeUpdates(locationListener); gps = null; lastReadyGps = null; lastReadyPoint = null; super.onStop() }
+    override fun onStop() { cancelGpsRecovery(); locations.removeUpdates(locationListener); gps = null; lastReadyGps = null; lastReadyPoint = null; super.onStop() }
     override fun onResume() {
         super.onResume()
         if (DriverPreferences(applicationContext).keepRouteAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -250,7 +303,7 @@ class RouteNavigationActivity : FragmentActivity() {
                 guidance = ready.isGuidanceRunning
                 if (guidance) {
                     val active = model.state.execution?.stops?.find { destinationKey(it) == NavigationRegistry.destinationKey }
-                    if (active == null) stopGuidance() else selectedId = active.id
+                    if (active == null || !active.isVisibleOnMap()) stopGuidance() else selectedId = active.id
                 }
             }
             override fun onError(code: Int) { connecting = false; navMessage = "Google no pudo iniciar el mapa de navegación (código $code). Revisa la conexión y configuración." }
@@ -283,7 +336,7 @@ class RouteNavigationActivity : FragmentActivity() {
     private fun guide(stop: ExecutionStop) {
         val nav = navigator ?: return
         val point = stop.point ?: return
-        if (navigating || noticeRequired || !model.state.verified || model.state.retired || editing) return
+        if (navigating || noticeRequired || !model.state.verified || model.state.retired || editing || !stop.isVisibleOnMap()) return
         val key = destinationKey(stop)
         if (guidance && NavigationRegistry.destinationKey == key) return
         val generation = ++requestGeneration
@@ -345,7 +398,7 @@ class RouteNavigationActivity : FragmentActivity() {
     )
     private fun navigateToStop(id: String, retryVisit: Boolean = false) {
         val stop = model.state.execution?.stops?.find { it.id == id } ?: return
-        if (!navigationActionAllowed(navigationActionState(stop))) return
+        if (!stop.isVisibleOnMap() || !navigationActionAllowed(navigationActionState(stop))) return
         if (retryVisit && stop.arrivedAt != null) {
             model.exitVisit(stop.id, stop.id)
             return
@@ -437,7 +490,7 @@ class RouteNavigationActivity : FragmentActivity() {
             if (points.size > 1) lines.add(ready.addPolyline(PolylineOptions().addAll(points.map { LatLng(it.latitude, it.longitude) })
                 .color(android.graphics.Color.rgb(147, 190, 90)).width(7f)))
         }
-        val groups = execution.stops.filter { it.point != null }.groupBy { it.point }
+        val groups = execution.stops.filter { it.isVisibleOnMap() }.groupBy { it.point }
         for ((point, group) in groups) {
             val p = point!!
             val pending = group.any { it.hasPendingRetry() }
@@ -448,7 +501,7 @@ class RouteNavigationActivity : FragmentActivity() {
                     it.tag = group.map { stop -> stop.id }; markers.add(it)
                 }
         }
-        val point = if (editing) draftPoint else currentStop?.point
+        val point = if (editing) draftPoint else currentStop?.takeIf { it.isVisibleOnMap() }?.point
         if (point != null) {
             radius = ready.addCircle(CircleOptions().center(LatLng(point.latitude, point.longitude))
                 .radius(execution.policy.radiusMeters.toDouble()).strokeWidth(2f)
@@ -488,6 +541,8 @@ class RouteNavigationActivity : FragmentActivity() {
             if (state.retired) { navigating = false; guidance = false; navigator = null; editing = false; orderStopId = null; incidentStopId = null; showStops = false; renderMap() }
             else if (execution != null) {
                 if (execution.stops.none { it.id == selectedId }) selectedId = execution.stops.firstOrNull { it.arrivedAt == null }?.id ?: execution.stops.firstOrNull()?.id.orEmpty()
+                val guided = execution.stops.find { NavigationRegistry.destinationKey == destinationKey(it) }
+                if ((guidance || navigating) && (currentStop?.isServiceFinished() == true || guided?.isServiceFinished() == true)) stopGuidance()
                 renderMap()
                 connectNavigator()
                 currentStop?.let { if (guidance && NavigationRegistry.destinationKey != destinationKey(it)) guide(it) }
@@ -630,9 +685,9 @@ class RouteNavigationActivity : FragmentActivity() {
             SectionLabel(if (stopChoices.isEmpty()) "Tus paradas" else "Pedidos en este punto", "${choices.size}")
             Text(if (stopChoices.isEmpty()) "Elige una parada para verla en el mapa. No reordena pedidos ni confirma entregas."
                 else "Elige el pedido que quieres consultar.", color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
-            choices.forEach { item -> ActionRow(if (item.hasPendingRetry()) DriverIcon.ALERT else if (item.arrivedAt != null) DriverIcon.CHECK else DriverIcon.PIN,
-                "${item.position} · ${item.customer}", if (item.hasPendingRetry()) "Entrega pendiente · reintentar pedido" else if (item.arrivedAt != null) "Llegada registrada" else item.address) {
-                    if (stopChoices.isEmpty()) selectStop(item.id) else openStopInfo(item.id)
+            choices.forEach { item -> ActionRow(if (item.hasPendingRetry()) DriverIcon.ALERT else if (item.isServiceFinished() || item.arrivedAt != null) DriverIcon.CHECK else DriverIcon.PIN,
+                "${item.position} · ${item.customer}", item.serviceSummary()) {
+                    if (stopChoices.isEmpty() && !item.isServiceFinished()) selectStop(item.id) else openStopInfo(item.id)
                 } }
         }
         val detailStop = execution?.stops?.find { it.id == orderStopId }

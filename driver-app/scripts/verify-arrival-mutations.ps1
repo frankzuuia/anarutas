@@ -1,4 +1,4 @@
-param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL)
+param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly)
 $ErrorActionPreference = 'Stop'
 # Mechanical mutations occur only in an isolated copy. No ADB, HTTP stubs or credential output.
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -13,7 +13,7 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 }
 $sourceFolder = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver'
 $originals = @{}
-foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt')) {
+foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt')) {
     $originals[$file] = [IO.File]::ReadAllText((Join-Path $sourceFolder $file))
 }
 $cases = @(
@@ -52,6 +52,30 @@ $cases = @(
     @{ name = 'notice_old_acknowledgement'; file = 'NavigationNoticePolicy.kt'; test = 'NavigationNoticePolicyTest'; from = 'acknowledgedVersion < NAVIGATION_NOTICE_VERSION'; to = 'false' },
     @{ name = 'notice_current_acknowledgement'; file = 'NavigationNoticePolicy.kt'; test = 'NavigationNoticePolicyTest'; from = 'acknowledgedVersion < NAVIGATION_NOTICE_VERSION'; to = 'acknowledgedVersion <= NAVIGATION_NOTICE_VERSION' },
     @{ name = 'notice_license_truncation'; file = 'NavigationNoticePolicy.kt'; test = 'NavigationNoticePolicyTest'; from = '.map { it.joinToString("\n") }.toList()'; to = '.take(1).map { it.joinToString("\n") }.toList()' }
+)
+if ($RecoveryOnly) { $cases = @() }
+$cases += @(
+    @{ name = 'gps_poll_background'; file = 'GpsRecoveryPolicy.kt'; test = 'GpsRecoveryPolicyTest'; from = '!active ||'; to = 'false ||' },
+    @{ name = 'gps_poll_disabled_provider'; file = 'GpsRecoveryPolicy.kt'; test = 'GpsRecoveryPolicyTest'; from = '!providerEnabled ||'; to = 'false ||' },
+    @{ name = 'gps_ignore_freshness'; file = 'GpsRecoveryPolicy.kt'; test = 'GpsRecoveryPolicyTest'; from = 'if (fresh)'; to = 'if (false)' },
+    @{ name = 'gps_cancel_timeout_early'; file = 'GpsRecoveryPolicy.kt'; test = 'GpsRecoveryPolicyTest'; from = '>= GPS_REQUEST_TIMEOUT_MILLIS'; to = '> GPS_REQUEST_TIMEOUT_MILLIS' },
+    @{ name = 'gps_parallel_requests'; file = 'GpsRecoveryPolicy.kt'; test = 'GpsRecoveryPolicyTest'; from = 'if (requestStarted != null) return if'; to = 'if (requestStarted != null && false) return if' },
+    @{ name = 'gps_skip_backoff'; file = 'GpsRecoveryPolicy.kt'; test = 'GpsRecoveryPolicyTest'; from = 'now - lastAttempt < backoff'; to = 'false' },
+    @{ name = 'gps_delay_backoff_boundary'; file = 'GpsRecoveryPolicy.kt'; test = 'GpsRecoveryPolicyTest'; from = 'now - lastAttempt < backoff'; to = 'now - lastAttempt <= backoff' },
+    @{ name = 'gps_wrong_backoff_scale'; file = 'GpsRecoveryPolicy.kt'; test = 'GpsRecoveryPolicyTest'; from = '* 500L'; to = '* 1000L' },
+    @{ name = 'gps_remove_min_backoff'; file = 'GpsRecoveryPolicy.kt'; test = 'GpsRecoveryPolicyTest'; from = 'coerceIn(1_000L, 10_000L)'; to = 'coerceIn(0L, 10_000L)' },
+    @{ name = 'gps_remove_max_backoff'; file = 'GpsRecoveryPolicy.kt'; test = 'GpsRecoveryPolicyTest'; from = 'coerceIn(1_000L, 10_000L)'; to = 'coerceIn(1_000L, 30_000L)' },
+    @{ name = 'gps_accept_stopped_callback'; file = 'GpsRecoveryPolicy.kt'; test = 'GpsRecoveryPolicyTest'; from = 'active && requestGeneration'; to = 'true && requestGeneration' },
+    @{ name = 'gps_accept_old_generation'; file = 'GpsRecoveryPolicy.kt'; test = 'GpsRecoveryPolicyTest'; from = 'requestGeneration == generation'; to = 'true' },
+    @{ name = 'map_hide_partial_delivery'; file = 'DriverServicePolicy.kt'; test = 'DriverServicePolicyTest'; from = 'orderStates.all { it.status in'; to = 'orderStates.any { it.status in' },
+    @{ name = 'map_keep_terminal_pin'; file = 'DriverServicePolicy.kt'; test = 'DriverServicePolicyTest'; from = 'point != null && !isServiceFinished()'; to = 'point != null' },
+    @{ name = 'map_show_missing_point'; file = 'DriverServicePolicy.kt'; test = 'DriverServicePolicyTest'; from = 'point != null && !isServiceFinished()'; to = '!isServiceFinished()' },
+    @{ name = 'retry_allow_delivered'; file = 'DriverServicePolicy.kt'; test = 'DriverServicePolicyTest'; from = 'canRetryRescheduledOrder(status: OrderServiceStatus) = status == OrderServiceStatus.RESCHEDULED'; to = 'canRetryRescheduledOrder(status: OrderServiceStatus) = status == OrderServiceStatus.DELIVERED' },
+    @{ name = 'closed_pin_wrong_color'; file = 'RouteMarkerStyle.kt'; test = 'DriverServicePolicyTest'; from = '#F59E42'; to = '#D0F58A' },
+    @{ name = 'closed_selected_pin_loses_orange'; file = 'RouteMarkerStyle.kt'; test = 'DriverServicePolicyTest'; from = 'pending ->'; to = 'pending && !selected ->' },
+    @{ name = 'receipt_announce_unconfirmed'; file = 'IncidentReceiptPolicy.kt'; test = 'IncidentReceiptPolicyTest'; from = 'if (!confirmed) return null'; to = 'if (false) return null' },
+    @{ name = 'receipt_ignore_canonical_id'; file = 'IncidentReceiptPolicy.kt'; test = 'IncidentReceiptPolicyTest'; from = 'canonical.equals(incidentId, ignoreCase = true)'; to = 'true' },
+    @{ name = 'receipt_drop_valid_id'; file = 'IncidentReceiptPolicy.kt'; test = 'IncidentReceiptPolicyTest'; from = 'return canonical'; to = 'return null' }
 )
 $arguments = @('testDebugUnitTest', '--console=plain')
 if ($ServerUrl) { $arguments += ('-PANA_RUTAS_SERVER_URL=' + $ServerUrl) }

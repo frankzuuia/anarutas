@@ -107,6 +107,9 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
             HorizontalDivider(color = DriverColors.line)
             SectionLabel(order.name, "${order.lines.size} partidas")
             StatusBadge(status.status.label, if (status.status == OrderServiceStatus.DELIVERED) DriverColors.lime else DriverColors.amber)
+            if (confirmation == null && canRetryRescheduledOrder(status.status)) {
+                AppAction("Reintentar pedido", DriverIcon.REFRESH, Modifier.fillMaxWidth(), enabled = available) { confirmation = "retry" }
+            }
             if (order.note.isNotBlank()) Text(order.note, color = DriverColors.amber)
             order.lines.forEach { line -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(line.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
@@ -120,15 +123,17 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
                 if (stop.canAttend() && canRejectOrder(status.status)) AppAction("Registrar incidencia", DriverIcon.ALERT,
                     Modifier.fillMaxWidth(), enabled = available, quiet = true, onClick = { onIncident(order.id) })
             } else {
-                Text(if (confirmation == "deliver") "¿Confirmas la entrega completa de ${order.name}?" else "Reprogramar ${order.name}", style = MaterialTheme.typography.titleMedium)
+                Text(when (confirmation) { "deliver" -> "¿Confirmas la entrega completa de ${order.name}?"; "retry" -> "Reintentar ${order.name}"; else -> "Reprogramar ${order.name}" }, style = MaterialTheme.typography.titleMedium)
                 Text(if (confirmation == "deliver") "Confirma sólo cuando entregaste todos los productos. Esto no liquida ni cierra la ruta."
+                    else if (confirmation == "retry") "Este pedido volverá a abierto y aparecerá en el mapa. Confirma una nueva llegada antes de entregarlo; la reprogramación queda en el historial."
                     else "Se cerrará este pedido en la ruta actual. Administración decidirá cuándo volver a asignarlo. No se fija ninguna fecha.",
                     style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
                 if (confirmation == "reschedule") OutlinedTextField(note, { note = it.take(2000) }, modifier = Modifier.fillMaxWidth(),
                     label = { Text("Notas de reprogramación · opcionales") }, enabled = available, minLines = 2)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     AppAction("Aceptar", DriverIcon.CHECK, Modifier.weight(1f), enabled = available) {
-                        model.submitService(stop.id, order.id, confirmation!!, note = note)
+                        if (confirmation == "retry") model.retryRescheduled(stop.id, order.id)
+                        else model.submitService(stop.id, order.id, confirmation!!, note = note)
                     }
                     TextButton(enabled = !state.busy && !state.pending, onClick = { confirmation = null; note = "" }) { Text("Cancelar") }
                 }

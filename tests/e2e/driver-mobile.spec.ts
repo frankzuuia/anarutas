@@ -698,18 +698,40 @@ test("admin provisioning, native device login, route isolation and revocation ov
   const closedInput = { ...await serviceIdentity(), note: "Local cerrado · evidencia QA" };
   const closedRequest = { headers: { ...authorization, "Content-Type": "image/jpeg",
     "X-Ana-Rutas-Command": Buffer.from(JSON.stringify(closedInput)).toString("base64") }, data: evidenceBytes };
+  // Drop only the real notification transport, not the API/data. No fake response.
+  await livePanel.route("**/api/events", route => route.abort());
+  let droppedPhoto = false;
+  await livePanel.route("**/api/incidents/evidence/*", route => {
+    if (!droppedPhoto) { droppedPhoto = true; return route.abort(); }
+    return route.continue();
+  });
+  await liveContext.setOffline(true);
+  await liveContext.setOffline(false);
+  await expect(liveSection.getByText("Incidencia resuelta por administración")).toBeVisible();
   const incidentSubmitted = Date.now();
   const closedResponse = await request.post(`${serviceStopUrl}/closed`, closedRequest);
   expect(closedResponse.status()).toBe(200);
   const closedCase = await closedResponse.json();
-  await expect(liveSection.getByText("Pendiente de reintento por el chofer", { exact: true })).toBeVisible({ timeout: 2000 });
-  console.info(`Realtime closed-customer case visible in ${Date.now() - incidentSubmitted} ms`);
+  await expect(liveSection.getByText("Pendiente de reintento por el chofer", { exact: true })).toBeVisible({ timeout: 20_000 });
+  console.info(`Closed-customer case recovered without SSE in ${Date.now() - incidentSubmitted} ms`);
+  const closedReport = await (await request.get(`${origin}/api/incidents/live?from=${serviceDate}&to=${serviceDate}`)).json();
+  expect(closedReport.rows.find((row: { id: string }) => row.id === closedCase.incidentId))
+    .toMatchObject({ kind: "customer_closed", driverId, status: "active", canResolve: false });
+  await livePanel.unroute("**/api/events");
+  await liveContext.setOffline(true);
+  await liveContext.setOffline(false);
   expect(await (await request.post(`${serviceStopUrl}/closed`, closedRequest)).json()).toMatchObject({ incidentId: closedCase.incidentId, duplicate: true });
   const receiptUrl = `${origin}/api/mobile/plans/${planId}/commands/${closedInput.commandId}`;
   expect((await noSession.request.get(receiptUrl)).status()).toBe(401);
-  expect(await (await request.get(receiptUrl, { headers: authorization })).json()).toMatchObject({ confirmed: true });
+  expect(await (await request.get(receiptUrl, { headers: authorization })).json())
+    .toMatchObject({ confirmed: true, result: { incidentId: closedCase.incidentId } });
   const evidence = liveSection.getByRole("img", { name: /Evidencia de negocio cerrado/ });
-  await expect(evidence).toBeVisible();
+  await expect.poll(async () => evidence.evaluateAll(elements => elements.some(element => {
+    const image = element as HTMLImageElement;
+    return image.complete && image.naturalWidth > 0;
+  })), { timeout: 20_000 }).toBe(true);
+  expect(droppedPhoto).toBe(true);
+  await livePanel.unroute("**/api/incidents/evidence/*");
   const evidencePath = new URL((await evidence.getAttribute("src"))!, origin).href;
   expect((await noSession.request.get(evidencePath)).status()).toBe(401);
   const protectedImage = await request.get(evidencePath);
@@ -758,6 +780,34 @@ test("admin provisioning, native device login, route isolation and revocation ov
   await liveContext.setOffline(false);
   await expect(liveSection.getByText("Incidencia resuelta por administración")).toHaveCount(2, { timeout: 20_000 });
   console.info(`Incidents recovered after browser reconnect in ${Date.now() - reconnectStarted} ms`);
+  const orderRetryUrl = `${serviceStopUrl}/orders/${currentOrder.shipmentId}/retry`;
+  const beforeReopen = await readExecution();
+  const reopenInput = { ...await serviceIdentity(), orderVersion: beforeReopen.stops[0].orderStates[0].version };
+  expect((await noSession.request.post(orderRetryUrl, { data: reopenInput })).status()).toBe(401);
+  expect((await request.post(orderRetryUrl, { headers: authorization, data: { ...reopenInput, stopVersion: 999 } })).status()).toBe(409);
+  const reopened = await request.post(orderRetryUrl, { headers: authorization, data: reopenInput });
+  expect(reopened.status()).toBe(200);
+  expect(await (await request.post(orderRetryUrl, { headers: authorization, data: reopenInput })).json())
+    .toMatchObject({ eventId: (await reopened.json()).eventId, duplicate: true });
+  const openAgain = await readExecution();
+  expect(openAgain.stops[0]).toMatchObject({ visitState: "open", arrivedAt: null });
+  expect(openAgain.stops[0].orderStates[0].status).toBe("open");
+  expect((await request.post(orderServiceUrl, { headers: authorization, data: {
+    ...await serviceIdentity(), orderVersion: openAgain.stops[0].orderStates[0].version, kind: "deliver",
+  } })).status()).toBe(409);
+  expect((await request.post(arrivalUrl, { headers: authorization, data: {
+    ...await serviceIdentity(), policyVersion: openAgain.policy.version,
+    sample: { ...arrival.sample, capturedAt: new Date().toISOString() },
+  } })).status()).toBe(200);
+  expect((await request.post(orderServiceUrl, { headers: authorization, data: {
+    ...await serviceIdentity(), orderVersion: openAgain.stops[0].orderStates[0].version, kind: "deliver",
+  } })).status()).toBe(200);
+  expect((await readExecution()).stops[0].orderStates[0].status).toBe("delivered");
+  const reprogramCard = liveSection.locator("article").filter({ has: livePanel.getByText("Reprogramado", { exact: true }) });
+  await expect(reprogramCard.getByText("Completada · entrega registrada", { exact: true })).toBeVisible({ timeout: 2000 });
+  expect((await request.post(orderRetryUrl, { headers: authorization, data: {
+    ...await serviceIdentity(), orderVersion: (await readExecution()).stops[0].orderStates[0].version,
+  } })).status()).toBe(409);
   await noSession.close();
   await livePanel.getByLabel("Desde", { exact: true }).fill("2000-01-01");
   await livePanel.getByLabel("Hasta", { exact: true }).fill("2000-01-01");

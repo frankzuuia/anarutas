@@ -11,6 +11,15 @@ internal fun serviceVisitReady(arrived: Boolean, visit: Int, closedVisit: Int) =
 internal fun canDeliverOrder(status: OrderServiceStatus) = status in listOf(OrderServiceStatus.OPEN, OrderServiceStatus.CLOSED_PENDING, OrderServiceStatus.REJECTED)
 internal fun canRejectOrder(status: OrderServiceStatus) = status in listOf(OrderServiceStatus.OPEN, OrderServiceStatus.CLOSED_PENDING)
 internal fun canRescheduleOrder(status: OrderServiceStatus) = status == OrderServiceStatus.CLOSED_PENDING
+internal fun canRetryRescheduledOrder(status: OrderServiceStatus) = status == OrderServiceStatus.RESCHEDULED
 internal fun ExecutionStop.hasPendingRetry() = orderStates.any { it.status == OrderServiceStatus.CLOSED_PENDING }
 internal fun ExecutionStop.isServiceFinished() = orderStates.isNotEmpty() && orderStates.all { it.status in listOf(OrderServiceStatus.DELIVERED, OrderServiceStatus.RESCHEDULED) }
 internal fun ExecutionStop.canAttend() = serviceVisitReady(arrivedAt != null, visitSequence, closedReportedVisitSequence) && !isServiceFinished()
+internal fun ExecutionStop.isVisibleOnMap() = point != null && !isServiceFinished()
+internal fun ExecutionStop.serviceSummary(): String = when {
+    isServiceFinished() && orderStates.all { it.status == OrderServiceStatus.DELIVERED } -> "Entregada · fuera del mapa"
+    isServiceFinished() -> "Reprogramada · puedes reintentar desde Pedido"
+    hasPendingRetry() -> "Cliente cerrado · pendiente de reintento"
+    arrivedAt != null -> "Llegada registrada"
+    else -> address
+}

@@ -80,14 +80,15 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                             "reschedule" -> "Pedido reprogramado. Administración verá tus notas sin una fecha impuesta."
                             else -> "Rechazo registrado. Aún podrás entregarlo si el cliente cambia de opinión."
                         }
-                        "closed" -> "Cliente cerrado registrado con evidencia. Pedidos pendientes de reintento."
+                        "closed" -> "Cliente cerrado registrado con evidencia · folio ${command.getString("incidentId").takeLast(8)}. Pedidos pendientes de reintento."
+                        "order-retry" -> "Pedido reabierto. Confirma una nueva llegada para atenderlo."
                         "phone" -> "Teléfono operativo guardado también en la ficha del cliente."
                         else -> "Punto corregido en tu ruta y en la ficha del cliente."
                     },
                     arrivedStop = command.getString("stopId").takeIf { kind == "arrival" },
                     correctedStop = command.getString("stopId").takeIf { kind == "location" },
-                    exitDestination = command.optString("destinationStopId").takeIf { kind == "visit-exit" && it.isNotBlank() },
-                    serviceRevision = state.serviceRevision + if (kind == "service" || kind == "closed") 1 else 0,
+                    exitDestination = command.optString("destinationStopId").takeIf { (kind == "visit-exit" || kind == "order-retry") && it.isNotBlank() },
+                    serviceRevision = state.serviceRevision + if (kind == "service" || kind == "closed" || kind == "order-retry") 1 else 0,
                 )
                 confirmed = null
             }
@@ -155,6 +156,14 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
         if (!serviceAvailable(stop) || !stop.canAttend() || note.length > 2000) return
         queueCommand(stopId, "closed", visitExitCommand(execution, stop, UUID.randomUUID().toString()).put("note", note), capture = photo)
     }
+    fun retryRescheduled(stopId: String, shipmentId: String) {
+        val execution = state.execution ?: return
+        val stop = execution.stops.find { it.id == stopId } ?: return
+        val order = stop.orderStates.find { it.shipmentId == shipmentId } ?: return
+        if (!state.verified || state.busy || state.pending || state.retired || !canRetryRescheduledOrder(order.status)) return
+        queueCommand(stopId, "order-retry", visitExitCommand(execution, stop, UUID.randomUUID().toString()).put("orderVersion", order.version),
+            destinationStopId = stopId, shipmentId = shipmentId)
+    }
     fun addPhone(stopId: String, phone: String) {
         val execution = state.execution ?: return
         val stop = execution.stops.find { it.id == stopId } ?: return
@@ -207,11 +216,16 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
             val payload = command.getJSONObject("payload")
             when (command.getString("kind")) {
                 "service" -> api.serviceCommand(saved.token, planId, command.getString("stopId"), command.getString("shipmentId"), payload)
+                "order-retry" -> api.retryOrderCommand(saved.token, planId, command.getString("stopId"), command.getString("shipmentId"), payload)
                 "closed" -> {
-                    if (!api.commandConfirmed(saved.token, planId, payload.getString("commandId"))) {
+                    var incidentId = api.confirmedClosedIncident(saved.token, planId, payload.getString("commandId"))
+                    if (incidentId == null) {
                         val bytes = withContext(Dispatchers.IO) { captures.read(command.getString("evidenceKey")) }
-                        api.closedCommand(saved.token, planId, command.getString("stopId"), payload, bytes)
+                        val posted = api.closedCommand(saved.token, planId, command.getString("stopId"), payload, bytes)
+                        incidentId = api.confirmedClosedIncident(saved.token, planId, payload.getString("commandId"))
+                        check(incidentId != null && incidentId == posted.getString("incidentId")) { "Sin confirmación de incidencia" }
                     }
+                    command.put("incidentId", incidentId)
                 }
                 else -> api.stopCommand(saved.token, planId, command.getString("stopId"), command.getString("kind"), payload)
             }

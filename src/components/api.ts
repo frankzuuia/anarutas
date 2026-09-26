@@ -178,11 +178,13 @@ export async function api<T>(
   path: string,
   method = "GET",
   input?: unknown,
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await fetch(path, {
     method,
     credentials: "same-origin",
     cache: "no-store",
+    signal,
     headers: { "Content-Type": "application/json" },
     ...(method === "GET" ? {} : { body: JSON.stringify(input ?? {}) }),
   });

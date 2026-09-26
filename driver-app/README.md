@@ -1,4 +1,25 @@
-# Ana Rutas Chofer — Android, bloques 1, 2A y 2B
+# Ana Rutas Chofer — Android, acceso, ejecución e incidencias
+
+## Recuperación operativa — 0.6.1
+
+Primero Deploy del backend develop: la migración v23 se ejecuta automáticamente
+en el arranque. Después instalar 0.6.1/code17 sobre la APK anterior, conservando
+datos. Firma debug de pruebas; no se certifica producción ni GPS/cámara físicos.
+
+Cliente cerrado mantiene naranja y admiración aunque esté seleccionado. Las
+paradas con todos sus pedidos entregados/reprogramados salen sólo del mapa y
+destino de guía; siguen en Ver paradas. Un reprogramado ofrece Reintentar pedido
+desde su ficha: confirmar reabre sólo ese pedido, conserva auditoría y exige
+una nueva llegada válida antes de entregar. Cancelar no escribe.
+
+El GPS caducado solicita una muestra actual automáticamente, sin cambiar parada
+ni reiniciar. No amplía el radio ni acepta muestras viejas, mock o imprecisas.
+Cliente cerrado sólo se confirma tras comprobar el recibo privado persistido
+con su identificador. La APK muestra folio para seguimiento. El panel conserva
+SSE y recupera automáticamente avisos/fotos fallidos sin recarga. Si el caso real
+reportado vuelve a faltar, conservar folio/hora: su causa exacta no quedó probada
+con datos de la instalación desplegada. QA y procedimiento físico:
+`docs/QA-RECUPERACION-OPERATIVA-0.6.1.md` en la raíz.
 
 ## Mapa, llegada y repunte — 0.5.4 (validación física pendiente)
 
@@ -60,8 +81,9 @@ La sesión sigue protegida por Keystore. QA: `docs/QA-ESPACIO-CHOFER.md` en raí
 Actualizar esta APK no requiere Deploy/Rebuild del backend.
 
 App Android nativa para vincular automáticamente un dispositivo, entrar con teléfono y PIN,
-y leer únicamente la ruta y los pedidos de la camioneta asignada. No registra
-entregas completadas, cobros ni transferencias. No llama Google Route
+y leer únicamente la ruta y los pedidos de la camioneta asignada. Desde 0.6.0
+registra entregas e incidencias, pero no cobros, transferencias ni liquidación.
+No llama Google Route
 Optimization, Routes ni Odoo.
 
 El bloque 2A añade el panel de inicio del chofer: identidad, ruta exacta de hoy,

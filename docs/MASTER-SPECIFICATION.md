@@ -1,5 +1,79 @@
 # Bloque 1 — especificación y auditoría previa
 
+## BL-120..123 / RG01..RG10 — corrección operativa 0.6.1
+
+### Autopsia y alcance
+
+Paleta: `selected` tiene prioridad sobre `pending`. Mapa: filtra sólo punto
+no nulo y conserva marcadores/radio de pedidos terminales. Reprogramación:
+`serviceTransition` es terminal y la ficha no ofrece reapertura. GPS: el
+temporizador caduca la muestra pero no solicita otra; proveedor reactivado
+no hace nada. Mapa SDK y comprobación de llegada usan canales independientes.
+No se afirma que esta sea toda la causa física hasta prueba en teléfono.
+
+Incidencia con foto: PG/HTTP previos prueban guardado/listado, pero la
+reproducción del usuario falla antes de reprogramar. No hay acceso de lectura
+al PG desplegado (sin puerto expuesto), ni evidencia suficiente para atribuir
+el caso real al filtro de reintento. Añadir comprobación de recibo con ID en
+APK y refresco de respaldo visible en panel; conservar filtro de nueva visita.
+No destruir/recrear casos ni fotos históricas para hacer pasar una prueba.
+
+### Flujo, contratos, seguridad y recuperación
+
+Migración aditiva v23 amplía enums de eventos con `order_reopened`/`reopened`,
+sin modificar identidad ni eventos anteriores. POST móvil por pedido `/retry`
+requiere sesión propia, ejecución/publicación vigentes, versiones de ejecución,
+parada, pedido y secuencia. No exige estar físicamente allí para reabrir:
+se abre el pedido, no se registra llegada. Comando cifrado/replay del mismo
+dispositivo; locks dispositivo → ejecución → parada → pedido. Si la parada
+conservaba visita activa, registrar salida en la misma transacción. Después
+del recibo se reconsulta y se ofrece guía; nueva llegada revalida GPS.
+Reprogramación activa queda gestionada al reabrir, no completada; la entrega
+posterior sí completa casos correspondientes. Resolver admin no reabre.
+Entregado no puede reabrirse. Fallo SDK no revierte un hecho confirmado.
+
+Marcadores sólo con algún pedido no terminal; lista completa nunca filtrada.
+Cancelar guía y limpiar destino SDK cuando éste termina, también tras refresco
+remoto. Cerrado tiene prioridad naranja; seleccionado mantiene contorno claro.
+
+GPS: `LocationManagerCompat.getCurrentLocation` con CancellationSignal,
+executor principal y política pura de watchdog. Solicitud única por proveedor,
+timeout/cancelación y backoff; no falsificar edad con tiempo de callback.
+Se conserva `elapsedRealtimeNanos`, precisión y detección mock. Actividad
+detenida/proveedor desactivado cancela; muestra nula no borra una válida.
+Referencia: Android Developers LocationManagerCompat/getCurrentLocation;
+contrato Next instalado `15-route-handlers.md`. No hay nueva dependencia.
+
+Panel: SSE inmediato más reconsulta visible de respaldo sin respuestas
+simuladas, sin costes Google/Odoo. Filtrar y paginar igual; limpiar efectos al
+salir y no lanzar lecturas solapadas. La foto sigue privada y vence a 24 h.
+
+### Matriz (estado leído/escrito, evento, fallback y validación)
+
+| ID | Actor / precondición / acción | Resultado, datos, auditoría, validación y fallo |
+| --- | --- | --- |
+| RG01 | Chofer llegó, cerrado con foto | Recibo con ID persistido, caso/foto en panel por chofer/fecha; PG+HTTP+SSE; red incierta conserva outbox, no éxito ficticio. |
+| RG02 | Admin abierto, falta señal change | Refresco de respaldo obtiene caso/foto/métricas; E2E con canal bloqueado real, sin datos fake; red caída conserva error/datos. |
+| RG03 | Chofer selecciona cerrado | Naranja + ! con contorno; JVM; no cambios de guía/datos. |
+| RG04 | Todos pedidos terminales o mezcla | Ocultar sólo marcadores/radio terminales; SDK sin destino terminal; lista completa y mixtos visibles; JVM/build/QA físico. |
+| RG05 | Reprogramado, confirmar/cancelar Reintentar | Cancelar no escribe; aceptar sólo ese pedido abierto y visita anterior abierta; eventos de salida/reapertura; PG+HTTP, fallo no deja parcial. |
+| RG06 | Pedido reabierto, GPS ausente/lejos | Marcador reaparece y guía posible; entrega rechazada sin nueva llegada válida; PG/JVM. |
+| RG07 | Entregado/abierto, otro chofer, versión vieja | Reapertura rechazada sin alterar otros pedidos; PG autenticación/pertenencia/versiones. |
+| RG08 | Mismo comando doble / comandos concurrentes | Un evento/recibo; replay seguro, payload distinto 409; locks y PG/concurrencia/mutación. |
+| RG09 | GPS caduca, proveedor retorna o muestra nula | Solicitud actual recupera sin cambiar parada/reiniciar; no confundir nula/mock/vieja con válida; JVM/watchdog y teléfono pendiente. |
+| RG10 | Activity detiene/rota, resultado tardío | Cancela solicitud; resultado anterior no modifica sesión nueva; no ampliar 100 m; JVM generación/timeout, lint/build. |
+
+### Puertas y veredicto previo
+
+GREEN LIGHT para construir cambios demostrados y recuperación/observabilidad;
+INTEGRITY TOTAL con BL-111..119 (BL-117 ahora permite reapertura explícita,
+no implícita por Resolver); MATCH PERFECT contra RG-T01..05. Unitarias,
+PG/contrato/HTTP/SSE/E2E, cobertura dirigida, mutación de seguridad/transición
+y política GPS; lint/tipos/build/diff/supply chain. APK 0.6.1 con misma firma.
+Push sólo develop autorizado el 26/09; Deploy manual del usuario. Excepción
+informada: GPS/cámara/SDK físico y reproducción real de foto permanecen QA
+del usuario; no se declara la causa real solucionada sin esa evidencia.
+
 ## BL-111..117 / AI01..AI17 — atención, incidencias y teléfono operativo
 
 ### Autopsia y límites reales

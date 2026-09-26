@@ -407,8 +407,14 @@ class DriverApi(private val server: String) {
     internal suspend fun serviceCommand(token: String, planId: String, stopId: String, shipmentId: String, payload: JSONObject) =
         JSONObject(exchange("POST", "/api/mobile/plans/$planId/stops/$stopId/orders/$shipmentId/service", token, payload))
 
-    internal suspend fun commandConfirmed(token: String, planId: String, commandId: String) =
-        JSONObject(exchange("GET", "/api/mobile/plans/$planId/commands/$commandId", token)).getBoolean("confirmed")
+    internal suspend fun retryOrderCommand(token: String, planId: String, stopId: String, shipmentId: String, payload: JSONObject) =
+        JSONObject(exchange("POST", "/api/mobile/plans/$planId/stops/$stopId/orders/$shipmentId/retry", token, payload))
+
+    internal suspend fun confirmedClosedIncident(token: String, planId: String, commandId: String): String? {
+        val receipt = JSONObject(exchange("GET", "/api/mobile/plans/$planId/commands/$commandId", token))
+        return confirmedIncidentReceipt(receipt.getBoolean("confirmed"),
+            receipt.optJSONObject("result")?.optString("incidentId"))
+    }
 
     internal suspend fun closedCommand(token: String, planId: String, stopId: String, payload: JSONObject, bytes: ByteArray) = withContext(Dispatchers.IO) {
         val connection = URL("$server/api/mobile/plans/$planId/stops/$stopId/closed").openConnection() as HttpURLConnection

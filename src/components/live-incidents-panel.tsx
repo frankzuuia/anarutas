@@ -11,6 +11,12 @@ const reasonNames = { poor_quality: "Mala calidad de producto", late_arrival: "L
 
 function Evidence({ incident }: { incident: LiveIncident }) {
   const [hidden, setHidden] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!failed || hidden) return;
+    const timer = setTimeout(() => setFailed(false), 15_000);
+    return () => clearTimeout(timer);
+  }, [failed, hidden]);
   useEffect(() => {
     if (!incident.evidenceExpiresAt) return;
     const remaining = Date.parse(incident.evidenceExpiresAt) - Date.now();
@@ -19,9 +25,10 @@ function Evidence({ incident }: { incident: LiveIncident }) {
   }, [incident.evidenceExpiresAt]);
   if (hidden || !incident.evidenceId) return incident.kind === "customer_closed"
     ? <p className="muted">Evidencia retirada al resolver o cumplir 24 horas. Se conserva el registro.</p> : null;
+  if (failed) return <p className="muted" role="status">Recuperando fotografía automáticamente…</p>;
   return <a className="live-incident-photo" href={`/api/incidents/evidence/${incident.evidenceId}`} target="_blank" rel="noreferrer">
     <Image src={`/api/incidents/evidence/${incident.evidenceId}`} alt={`Evidencia de negocio cerrado: ${incident.snapshot.customer}`}
-      width={240} height={160} unoptimized onError={() => setHidden(true)} />
+      width={240} height={160} unoptimized onError={() => setFailed(true)} />
     <span>Ver evidencia</span>
   </a>;
 }
@@ -46,10 +53,37 @@ export function LiveIncidentsPanel({ today, timezone, revision }: { today: strin
   useEffect(() => { if (confirm) dialog.current?.showModal(); }, [confirm]);
   useEffect(() => {
     let active = true;
-    api<LiveIncidentReport>(`/api/incidents/live?${query}`).then(report => {
-      if (active) { setData({ query, report }); setFailure(null); }
-    }).catch((e: Error) => { if (active) setFailure({ query, message: e.message }); });
-    return () => { active = false; };
+    let pending: AbortController | null = null;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const read = () => {
+      if (!active || pending || document.visibilityState === "hidden") return;
+      pending = new AbortController();
+      timeout = setTimeout(() => pending?.abort(), 15_000);
+      api<LiveIncidentReport>(`/api/incidents/live?${query}`, "GET", undefined, pending.signal).then(report => {
+        if (active) { setData({ query, report }); setFailure(null); }
+      }).catch((e: Error) => {
+        if (active) setFailure({ query, message: e.name === "AbortError"
+          ? "La consulta tardó demasiado. Reintentando automáticamente…" : e.message });
+      }).finally(() => {
+        if (timeout) clearTimeout(timeout);
+        pending = null;
+      });
+    };
+    // SSE remains the fast path; this read repairs missed notifications and failed snapshots.
+    read();
+    const timer = setInterval(read, 15_000);
+    window.addEventListener("focus", read);
+    window.addEventListener("online", read);
+    document.addEventListener("visibilitychange", read);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      if (timeout) clearTimeout(timeout);
+      pending?.abort();
+      window.removeEventListener("focus", read);
+      window.removeEventListener("online", read);
+      document.removeEventListener("visibilitychange", read);
+    };
   }, [query, revision, refresh]);
   const report = data?.query === query ? data.report : null;
   const error = failure?.query === query ? failure.message : "";
@@ -68,7 +102,7 @@ export function LiveIncidentsPanel({ today, timezone, revision }: { today: strin
       <section className="live-incidents" aria-label="Incidencias en vivo">
     <div className="live-incident-heading"><div><h2><Radio size={20} aria-hidden="true" /> Incidencias en vivo</h2>
       <p>Negocios cerrados, pedidos rechazados y reprogramaciones, agrupados por chofer.</p></div>
-      <span className="badge green">En vivo</span></div>
+      <span className={`badge ${error ? "amber" : "green"}`}>{error ? "Reconectando" : "En vivo"}</span></div>
     <div className="live-incident-metrics" aria-label="Métricas del filtro seleccionado">
       <div><Clock3 size={18} /><strong>{report?.metrics.pending ?? "—"}</strong><span>Pendientes</span></div>
       <div><CheckCircle2 size={18} /><strong>{report?.metrics.completed ?? "—"}</strong><span>Completadas por entrega</span></div>

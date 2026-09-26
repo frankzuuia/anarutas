@@ -13,6 +13,9 @@ import { readDriverPlan } from "../src/core/driver-mobile-route";
 import { readDriverCommandResult } from "../src/core/driver-command-receipts";
 import { cleanIncidentEvidence, readIncidentEvidence } from "../src/core/driver-incident-evidence";
 import { readLiveIncidents, resolveLiveIncident } from "../src/core/driver-live-incidents";
+import { retryDriverOrder } from "../src/core/driver-order-retry";
+import { migrate } from "../src/core/database";
+import { cancelPublishedRoute } from "../src/core/route-publications";
 
 type Fixture = Awaited<ReturnType<typeof executionFixture>>;
 async function state(f: Fixture) { return readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone); }
@@ -39,6 +42,93 @@ async function service(f: Fixture, index: number, orderIndex: number, action: Re
 const filters = () => new URLSearchParams({ from: "2026-09-24", to: "2026-09-24" });
 async function report(f: Fixture) { return readLiveIncidents(f.db.pool, f.actor, filters(), f.timezone, f.now); }
 async function photo() { return sharp({ create: { width: 24, height: 24, channels: 3, background: "#abcdef" } }).jpeg().toBuffer(); }
+
+it("reopens one rescheduled order atomically, preserves history and requires a new verified arrival", async () => {
+  const f = await executionFixture({ groupFourthOrderWithFirst: true });
+  try {
+    await f.start(); await arrive(f);
+    let stop = (await state(f)).stops[0];
+    await reportCustomerClosed(f.db.pool, f.members[0].authorization, f.planId, stop.id,
+      await identity(f), await photo(), "image/jpeg", f.timezone, f.photoRoot, f.now);
+    await (await service(f, 0, 0, { kind: "reschedule", note: "Cliente llamó después" })).run();
+    await (await service(f, 0, 1, { kind: "reschedule" })).run();
+    const originalCases = (await report(f)).rows;
+    expect(originalCases).toHaveLength(2);
+    // Re-run the real additive upgrade on a version-22 installation marker.
+    const beforeUpgrade = (await f.db.pool.query("SELECT id,kind FROM route_driver_stop_events ORDER BY id")).rows;
+    await f.db.pool.query("UPDATE rutas_installation SET schema_version=22");
+    await migrate(f.db.pool, f.db.config.instanceId);
+    await migrate(f.db.pool, f.db.config.instanceId);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(23);
+    expect((await f.db.pool.query("SELECT id,kind FROM route_driver_stop_events ORDER BY id")).rows).toEqual(beforeUpgrade);
+    stop = (await state(f)).stops[0];
+    const order = stop.orderStates[0];
+    const input = { ...await identity(f), orderVersion: order.version };
+    const run = (raw: Record<string, unknown> = input, auth = f.members[0].authorization, stopId = stop.id, shipmentId = order.shipmentId) =>
+      retryDriverOrder(f.db.pool, auth, f.planId, stopId, shipmentId, raw, f.timezone, f.now);
+    await expect(run(input, "Bearer invalid")).rejects.toMatchObject({ status: 401 });
+    await expect(run(input, f.members[1].authorization)).rejects.toMatchObject({ status: 404 });
+    await expect(run(input, f.members[0].authorization, randomUUID())).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    await expect(run(input, f.members[0].authorization, stop.id, randomUUID())).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    for (const key of ["executionRevision", "publicationRevision", "stopVersion", "visitSequence", "orderVersion"])
+      await expect(run({ ...input, [key]: 999 })).rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
+    await expect(run({ ...input, executionId: randomUUID() })).rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
+    const [a, b] = await Promise.all([run(), run()]);
+    expect(a.eventId).toBe(b.eventId);
+    expect([a.duplicate, b.duplicate].sort()).toEqual([false, true]);
+    await expect(run({ ...input, orderVersion: input.orderVersion + 1 })).rejects.toMatchObject({ code: "COMMAND_REUSED" });
+    let current = await state(f);
+    expect(current.stops[0]).toMatchObject({ arrivedAt: null, visitState: "open" });
+    expect(current.stops[0].orderStates.map(order => order.status)).toEqual(["open", "rescheduled"]);
+    expect(current.stops[0].orderStates[1]).toEqual(stop.orderStates[1]);
+    expect((await report(f)).rows).toHaveLength(1);
+    expect((await f.db.pool.query("SELECT count(*)::int AS n FROM route_driver_stop_events WHERE kind='order_reopened'")).rows[0].n).toBe(1);
+    expect((await f.db.pool.query("SELECT kind FROM route_driver_incident_events WHERE kind='reopened'")).rows).toHaveLength(1);
+    expect((await f.db.pool.query("SELECT details FROM route_driver_stop_events WHERE kind='visit_exit'")).rows[0].details)
+      .toMatchObject({ reason: "order_reopened" });
+    expect((await f.db.pool.query("SELECT note FROM route_driver_service_incidents WHERE id=$1", [originalCases.find(c => c.note)?.id])).rows[0].note)
+      .toBe("Cliente llamó después");
+    await expect((await service(f, 0, 0, { kind: "deliver" })).run()).rejects.toMatchObject({ code: "VISIT_NOT_ACTIVE" });
+    await arrive(f);
+    await (await service(f, 0, 0, { kind: "deliver" })).run();
+    current = await state(f);
+    expect(current.stops[0].orderStates.map(order => order.status)).toEqual(["delivered", "rescheduled"]);
+    expect((await report(f)).metrics).toEqual({ pending: 1, completed: 1, resolved: 0 });
+    await expect(run({ ...await identity(f), commandId: randomUUID(), orderVersion: current.stops[0].orderStates[0].version }))
+      .rejects.toMatchObject({ code: "ORDER_STATE_CONFLICT" });
+    // A reprogrammed order remains reopenable even after admin resolution and exit.
+    const remainingCase = (await report(f)).rows.find(row => row.status === "active")!;
+    await resolveLiveIncident(f.db.pool, f.actor, remainingCase.id, { expectedVersion: remainingCase.version }, f.now);
+    await exitDriverVisit(f.db.pool, f.members[0].authorization, f.planId, current.stops[0].id, await identity(f), f.timezone, f.now);
+    current = await state(f);
+    await run({ ...await identity(f), orderVersion: current.stops[0].orderStates[1].version }, f.members[0].authorization, stop.id, current.stops[0].orderStates[1].shipmentId);
+    expect((await state(f)).stops[0].orderStates.map(order => order.status)).toEqual(["delivered", "open"]);
+    expect((await report(f)).metrics.resolved).toBe(1);
+  } finally { await f.close(); }
+}, 120_000);
+
+it("serializes competing reopen commands and rejects stale publication after confirmed replay", async () => {
+  const f = await executionFixture();
+  try {
+    await f.start(); await arrive(f);
+    const stop = (await state(f)).stops[0];
+    await reportCustomerClosed(f.db.pool, f.members[0].authorization, f.planId, stop.id,
+      await identity(f), await photo(), "image/jpeg", f.timezone, f.photoRoot, f.now);
+    await (await service(f, 0, 0, { kind: "reschedule" })).run();
+    const order = (await state(f)).stops[0].orderStates[0];
+    const input = { ...await identity(f), orderVersion: order.version };
+    const run = (raw: Record<string, unknown>) => retryDriverOrder(f.db.pool, f.members[0].authorization, f.planId,
+      stop.id, order.shipmentId, raw, f.timezone);
+    const results = await Promise.allSettled([run(input), run({ ...input, commandId: randomUUID() })]);
+    expect(results.filter(r => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.find(r => r.status === "rejected")).toMatchObject({ reason: { code: "VERSION_CONFLICT", status: 409 } });
+    expect((await f.db.pool.query("SELECT count(*)::int AS n FROM route_driver_stop_events WHERE kind='order_reopened'")).rows[0].n).toBe(1);
+    const version = (await f.db.pool.query("SELECT version FROM route_plans WHERE id=$1", [f.planId])).rows[0].version;
+    await cancelPublishedRoute(f.db.pool, f.actor, f.planId, f.members[0].vehicleId,
+      { expectedVersion: version, expectedRevision: input.publicationRevision });
+    await expect(run(input)).rejects.toMatchObject({ status: 404 });
+  } finally { await f.close(); }
+}, 120_000);
 
 it("rejects independently, authenticates, serializes replays and later delivers without erasing history", async () => {
   const f = await executionFixture({ groupFourthOrderWithFirst: true });

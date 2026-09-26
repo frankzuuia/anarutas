@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { operationalPhone } from "../src/core/driver-customer-phone";
-import { serviceAction, serviceNote, serviceTransition, type DriverOrderStatus, type DriverServiceKind } from "../src/core/driver-service-policy";
+import { retryOrderTransition, serviceAction, serviceNote, serviceTransition, type DriverOrderStatus, type DriverServiceKind } from "../src/core/driver-service-policy";
 
 describe("per-order service policy", () => {
   const statuses: DriverOrderStatus[] = ["open", "closed_pending", "rejected", "rescheduled", "delivered"];
   const actions: DriverServiceKind[] = ["reject", "reschedule", "deliver"];
+  it("only explicitly reopens a rescheduled order, never delivered or already open", () => {
+    expect(retryOrderTransition("rescheduled")).toBe("open");
+    for (const status of statuses.filter(status => status !== "rescheduled"))
+      expect(() => retryOrderTransition(status)).toThrow("ORDER_STATE_CONFLICT");
+  });
   const expected = { open: ["reject", "deliver"], closed_pending: actions, rejected: ["deliver"], rescheduled: [], delivered: [] };
   for (const status of statuses) for (const action of actions) it(`${status} / ${action}`, () => {
     if ((expected[status] as string[]).includes(action)) expect(serviceTransition(status, action))

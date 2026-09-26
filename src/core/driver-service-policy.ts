@@ -4,6 +4,11 @@ export type DriverOrderStatus = "open" | "closed_pending" | "rejected" | "resche
 export type DriverServiceKind = "reject" | "reschedule" | "deliver";
 export type RejectionReason = "poor_quality" | "late_arrival" | "other";
 
+export function retryOrderTransition(status: DriverOrderStatus): DriverOrderStatus {
+  if (status !== "rescheduled") throw new AppError("ORDER_STATE_CONFLICT", 409);
+  return "open";
+}
+
 export function serviceNote(value: unknown) {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string" || Array.from(value).length > 2000) throw new AppError("INVALID_SERVICE_NOTE");

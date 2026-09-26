@@ -1,5 +1,24 @@
 # Progreso — bloque 1
 
+## Corrección operativa 0.6.1 — BL-120..123 / RG01..RG10
+
+- [x] RG-T00: autopsia, reglas y contratos; aprobación del bloque y de commit/
+  push sólo develop; causa real de foto aún no demostrada, sin tocar datos live.
+- [x] RG-T01 / RG05..08: v23 y reapertura por pedido autenticada, atómica,
+  versionada/auditable/idempotente, visita invalidada y nueva llegada necesaria.
+- [x] RG-T02 / RG03..06: APK naranja, mapa filtrado/lista íntegra, reintento
+  explícito desde ficha, retiro destino SDK terminal y revisión de estado.
+- [x] RG-T03 / RG09..10: watchdog GPS actual, cancelación/lifecycle/backoff,
+  sin ampliar radio ni confianza de lecturas.
+- [x] RG-T04 / RG01..02: recibo privado con ID y recuperación de lectura del
+  panel con señal ausente; contratos/HTTP/SSE/E2E/foto reales.
+- [x] RG-T05 / todos: 586 servidor/72 JVM/3 E2E, 174 mutaciones y cobertura
+  dirigida 100 %, tipos/lint/build/seguridad verdes. QA medido y APK 0.6.1
+  firmada lista; commit/push sólo develop autorizados, verificación remota al
+  publicar. Evidencia en QA-RECUPERACION-OPERATIVA-0.6.1.md.
+- [ ] RG-T06: Deploy manual y QA físico por usuario, sin ADB; no certificar
+  reproducción del reporte real ni SDK/GPS por pruebas automatizadas solamente.
+
 ## Atención e incidencias en vivo — BL-111..117
 
 - [x] AI-T00: autopsia de estado de llegada/guía, almacenamiento privado,
