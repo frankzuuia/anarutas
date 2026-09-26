@@ -1,5 +1,129 @@
 # Bloque 1 — especificación y auditoría previa
 
+## Centro de control — CC01..CC12 / BL-126..130
+
+### Autopsia y contratos
+
+GPS local en RouteNavigationActivity se cancela en onStop; DriverApi sólo envía
+GPS en comandos. NavigationRegistry mantiene el destino local. Se necesita
+transporte nuevo, sin modificar revisión operativa ni canal global panel_changed.
+v24 agrega última telemetría por ejecución y preferencias de pantallas por admin.
+POST mobile/plans/:id/tracking: begin (UUID idempotente de sesión), sample
+(secuencia creciente, edad monotónica, punto opcional, destino), stop. Revalida
+dispositivo/publicación en transacción; otra sesión vigente invalida la anterior.
+Sólo la primera apertura de sesión escribe auditoría. GET live-routes devuelve
+snapshot consistente, paradas/pedidos canónicos y GPS con hora del servidor.
+GET/PUT control-center guarda JSON validado con versión/CAS y origen mismo sitio.
+Máximo 32 pantallas por configuración como protección del navegador/Maps y body
+16 KiB; visible en selector. No coordenadas, tokens ni fotos en preferencias.
+
+Android: servicio foreground location, notificación persistente con Detener;
+arranca desde mapa de ejecución verificado/visible. POST secuencial cada 5 s,
+sin backlog de GPS. Muestra edad relativa (no reloj de pared del teléfono), mock
+rechazado. Sesión perdida/revocada detiene servicio; fallos red reintentan sólo
+muestra reciente. Permiso denegado deja mapa sin seguimiento y aviso explícito.
+Panel: refresco 5 s, timeout, aborto y pausa oculto; edad avanza localmente aun
+fallando red. Fecha/chofer/vehículo seleccionados por instancia. Polilínea es
+recorrido publicado, no traza recorrida; se omite cuando hubo repunte. Sin nuevos
+cálculos Google. Pendientes naranjas, entregadas/reprogramadas fuera del mapa,
+lista íntegra y métricas con estados separados. Destino explícito o visita actual,
+nunca adivinar por el primer pedido. Mapas mantienen zoom/centro entre muestras.
+
+Ampliación confirmada por usuario: selector incluye TODAS las secciones del
+panel (planes, incidencias históricas, camionetas, unidades, choferes, clientes,
+usuarios, auditoría, consumo), reutilizando Dashboard en modo embebido sin nav.
+Centro de control no se incluye a sí mismo (evita recursión); Ruta en vivo e
+Incidencias en vivo tienen sus componentes dedicados. Panel embebido conserva
+permisos/comandos/revisiones; SSE único del padre distribuye revisiones, no una
+conexión nueva por pantalla. Expansión por Fullscreen API preserva instancia,
+formularios, filtros y foco; los dialogs nativos siguen dentro del elemento.
+
+### Matriz de escenarios y tareas
+
+| ID | Actor/precondición/acción | Datos/resultado/efecto | Validación y recuperación |
+| --- | --- | --- | --- |
+| CC01 | Chofer autorizado inicia mapa | sesión vinculada ejecución/dispositivo; auditoría inicio | PG real; no ruta -> 404 |
+| CC02 | GPS recibido, duplicado o fuera de orden | última muestra avanza una vez, revisión servicio intacta | unit/PG concurrencia; duplicado no retrocede |
+| CC03 | Otro chofer/dispositivo revocado/publicación cancelada | sin lectura/escritura telemetría ajena | contratos HTTP/PG 401/404/409 |
+| CC04 | SO/red/GPS pierde señal, permiso denegado | última ubicación fechada, sin falsa etiqueta En vivo | JVM/panel reloj; reconectar sin backlog |
+| CC05 | Consulta ficha versus Ir/visita/entrega | destino sólo guía; visita/estados servidor prevalecen | regresión selección/entrega/reintento |
+| CC06 | Admin abre Ruta en vivo | GPS real, progreso y recorrido publicado, filtros | E2E API real; Maps fallo deja lista accesible |
+| CC07 | Admin agrega 1/2/3+ pantallas | grid adaptable, tipos duplicables, filtros independientes | unit/E2E persistir/recargar |
+| CC08 | Expandir/quitar/reordenar | no resetear filtros, Escape restaura foco | E2E teclado/layout |
+| CC09 | Dos pestañas guardan misma versión | CAS rechaza segundo; recargar explícito | PG paralelo/E2E |
+| CC10 | Incidencias en otra pantalla | filtros y acciones existentes, IDs dialog únicos | regresión incidentes/privacidad |
+| CC11 | Logout/detener/cambio ruta | cancela servicio antiguo y autorización revalidada | JVM/build; físico pendiente sin ADB |
+| CC12 | Snapshot vacío/error/oculto | estado honesto, recuperación y peticiones acotadas | E2E/seguridad/tipos/build |
+
+### Fuentes, seguridad, calidad y auditoría
+
+Next16 docs locales route-handlers/server-and-client-components. Android:
+https://developer.android.com/develop/sensors-and-location/location/permissions
+https://developer.android.com/develop/background-work/services/fgs/service-types
+https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start
+SDK Maps instalado: AdvancedMarkerElement y Polyline. Datos privados no-store,
+SQL parametrizado, permisos existentes, FK ejecución/destino, secuencia/lease.
+SLO objetivo en conexión sana: ubicación visible <=15 s; reportar observado,
+no garantía bajo suspensión SO. Pruebas PG reales, unitarias/mutación dirigidas,
+contratos/E2E, cobertura política crítica objetivo 100% ramas; lint/tipos/build.
+GPS/background físico requiere teléfono del usuario sin ADB; no certificarlo por
+compilar. Migración aditiva: una reversión de UI debe conservar soporte de v24;
+el binario previo rechaza versiones desconocidas. No degradar el marcador ni
+borrar historia para desplegar código antiguo.
+Auditoría local: GREEN LIGHT documental; INTEGRITY TOTAL con atención/incidencias;
+MATCH PERFECT CC-T01..06. Cobros/cierre/liquidación permanecen fuera de alcance.
+
+## BL-124..125 / IF01..IF07 — tarjetas y teclado de incidencias 0.6.2
+
+### Autopsia, alcance y flujo
+
+`ServiceIncidentSheet` usa dos FilterChip horizontales. `DetailSurface` calcula
+el máximo fuera del Dialog con LocalWindowInfo del padre; dentro usa contenido
+wrap-content centrado, decorFitsSystemWindows por defecto y scroll, sin insets
+IME explícitos. La altura cambia al escribir múltiples líneas o añadir foto;
+el teclado y la relocalización del campo compiten con el recentrado. Es una
+causa de layout demostrada por código; la reproducción física exacta aún no
+está certificada. No se atribuye el salto a red/GPS ni se altera su política.
+
+Crear un contenedor de formulario específico para incidencias/atención, no
+cambiar las fichas de consulta/fotos. Dialog con decorFitsSystemWindows=false,
+área disponible medida por el propio layout, safeDrawingPadding + imePadding
+consumidos una vez, alineación superior y altura independiente del contenido.
+Encabezado fuera del scroll; cuerpo con scroll recordado, sin scroll/foco por
+cada letra. Comentario máximo cuatro líneas visibles, resto desplazable en
+el editor, 2,000 caracteres existentes; Done cierra teclado sin enviar. Cámara
+mantiene su flujo/custodia y note permanece rememberSaveable por parada.
+
+Tarjetas verticales: tienda cerrada y caja rechazada con los vectores locales
+existentes; borde/fondo lima y check sólo al seleccionar; Role.RadioButton,
+selectableGroup, target al menos 48 dp y deshabilitado real. Ninguna acción
+ocurre por selección. Los dos códigos y validaciones de envío siguen intactos.
+No migración, endpoint, dependencia de servidor ni acceso a producción.
+
+### Escenarios, permisos, auditoría, recuperación y validación
+
+| ID | Actor/precondición/acción | Resultado y datos | Validación/fallback |
+| --- | --- | --- | --- |
+| IF01 | Chofer atendiendo, elige tarjeta | Exclusión mutua, icono/check/borde; borrador local, cero POST/auditoría | JVM/Compose semántica; deshabilitado no cambia selección |
+| IF02 | Sin pedidos rechazables, enviando o sesión no verificada | Tarjeta apropiada no seleccionable, mismas validaciones del servidor | JVM matriz disponible/pedidos; QA de envío |
+| IF03 | Escribe comentario con IME abierto | Ventana/encabezado anclados; editor visible y borrador/foco conservados | Compose geometría y recomposición; QA físico sin ADB |
+| IF04 | Texto largo, pantalla angosta, rotación | Editor acotado, contenido alcanzable por scroll; note rememberSaveable | JVM límite y Compose; fuente grande/multiventana físicos pendientes |
+| IF05 | Rechazo Otro o reprogramación y Done | Texto obligatorio conserva validación; Done sólo cierra teclado | JVM/Compose; cancelar no escribe |
+| IF06 | Cámara cancelada/retorna, red/GPS reconsulta | Se conserva borrador hasta recibo; encabezado no recentra por feedback | Contratos previos intactos; cámara/IME físicos pendientes |
+| IF07 | Consulta productos/fotos/paradas | DetailSurface anterior intacto, API/GPS/guía fuera de alcance | Diff de límites, JVM regresión, build/lint |
+
+### Referencias, calidad y veredicto previo
+
+Android Developers: [insets y consumo](https://developer.android.com/develop/ui/compose/system/insets-ui),
+[Dialog](https://developer.android.com/develop/ui/compose/components/dialog);
+AndroidX AndroidDialog documenta decorFitsSystemWindows=false para ancho propio
+y animación IME. No polling, coste Google ni permiso nuevo. Pruebas unitarias
+de presentación, instrumentadas de layout/semántica compiladas, cobertura y
+mutación dirigidas de selección/límite; lint/assemble y QA reproducible. No
+afirmar validación real del teclado por JVM. No commit/push ni Deploy nuevos
+sin autorización; sólo develop. GREEN LIGHT para este bloque local, INTEGRITY
+TOTAL con BL-111..123; MATCH PERFECT con IF-T00..04.
+
 ## BL-120..123 / RG01..RG10 — corrección operativa 0.6.1
 
 ### Autopsia y alcance

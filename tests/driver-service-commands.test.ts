@@ -15,6 +15,7 @@ import { cleanIncidentEvidence, readIncidentEvidence } from "../src/core/driver-
 import { readLiveIncidents, resolveLiveIncident } from "../src/core/driver-live-incidents";
 import { retryDriverOrder } from "../src/core/driver-order-retry";
 import { migrate } from "../src/core/database";
+import { readLiveRoutes } from "../src/core/live-routes";
 import { cancelPublishedRoute } from "../src/core/route-publications";
 
 type Fixture = Awaited<ReturnType<typeof executionFixture>>;
@@ -54,12 +55,16 @@ it("reopens one rescheduled order atomically, preserves history and requires a n
     await (await service(f, 0, 1, { kind: "reschedule" })).run();
     const originalCases = (await report(f)).rows;
     expect(originalCases).toHaveLength(2);
+    let control = (await readLiveRoutes(f.db.pool, f.actor)).routes[0];
+    expect(control.progress).toMatchObject({ orders: 4, delivered: 0, rescheduled: 2, remainingStops: 2, completedStops: 0 });
+    expect(control.stops[0].progress.visible).toBe(false);
+    expect(control.stops).toHaveLength(3);
     // Re-run the real additive upgrade on a version-22 installation marker.
     const beforeUpgrade = (await f.db.pool.query("SELECT id,kind FROM route_driver_stop_events ORDER BY id")).rows;
     await f.db.pool.query("UPDATE rutas_installation SET schema_version=22");
     await migrate(f.db.pool, f.db.config.instanceId);
     await migrate(f.db.pool, f.db.config.instanceId);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(23);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(24);
     expect((await f.db.pool.query("SELECT id,kind FROM route_driver_stop_events ORDER BY id")).rows).toEqual(beforeUpgrade);
     stop = (await state(f)).stops[0];
     const order = stop.orderStates[0];
@@ -80,6 +85,10 @@ it("reopens one rescheduled order atomically, preserves history and requires a n
     let current = await state(f);
     expect(current.stops[0]).toMatchObject({ arrivedAt: null, visitState: "open" });
     expect(current.stops[0].orderStates.map(order => order.status)).toEqual(["open", "rescheduled"]);
+    control = (await readLiveRoutes(f.db.pool, f.actor)).routes[0];
+    expect(control.stops[0].progress.visible).toBe(true);
+    expect(control.arrivedStopId).toBeNull();
+    expect(control.progress).toMatchObject({ delivered: 0, rescheduled: 1, remainingStops: 3 });
     expect(current.stops[0].orderStates[1]).toEqual(stop.orderStates[1]);
     expect((await report(f)).rows).toHaveLength(1);
     expect((await f.db.pool.query("SELECT count(*)::int AS n FROM route_driver_stop_events WHERE kind='order_reopened'")).rows[0].n).toBe(1);
@@ -93,6 +102,9 @@ it("reopens one rescheduled order atomically, preserves history and requires a n
     await (await service(f, 0, 0, { kind: "deliver" })).run();
     current = await state(f);
     expect(current.stops[0].orderStates.map(order => order.status)).toEqual(["delivered", "rescheduled"]);
+    control = (await readLiveRoutes(f.db.pool, f.actor)).routes[0];
+    expect(control.progress).toMatchObject({ delivered: 1, rescheduled: 1, remainingStops: 2, completedStops: 0 });
+    expect(control.stops[0].progress.visible).toBe(false);
     expect((await report(f)).metrics).toEqual({ pending: 1, completed: 1, resolved: 0 });
     await expect(run({ ...await identity(f), commandId: randomUUID(), orderVersion: current.stops[0].orderStates[0].version }))
       .rejects.toMatchObject({ code: "ORDER_STATE_CONFLICT" });

@@ -1,5 +1,45 @@
 # Ana Rutas — bloque 1 aprobado
 
+## Centro de control y ruta en vivo — BL-126..130
+
+- BL-126: Chofer con ruta iniciada -> transmite ubicación real y destino elegido,
+  no el pedido consultado. Permiso: dispositivo y publicación vigentes. Datos:
+  última muestra por ejecución, sesión y secuencia; sin historial de trayectos.
+  Auditoría: inicio/cambio de sesión, no cada GPS. Validación: aislamiento,
+  revocación, orden de muestras, coordenadas y recuperación sin cola histórica.
+- BL-127: Administrador -> ve las ejecuciones vigentes, entregas/paradas reales
+  y antigüedad/precisión del GPS. Nunca interpretar ETA como entrega ni ubicar un
+  chofer sin muestra. Lectura autenticada; no modifica planes ni consume Routes.
+- BL-128: Administrador -> agrega varias pantallas de Ruta en vivo, Avance de
+  rutas, Incidencias en vivo o cualquiera de las demás secciones del panel,
+  cada una con filtros independientes, expandir,
+  quitar y cambiar orden. Distribución y filtros guardados por usuario con CAS;
+  conflicto entre pestañas visible, nunca sobrescritura silenciosa.
+- BL-129: Chofer -> servicio foreground visible mantiene ubicación durante ruta
+  incluso con mapa minimizado; inicia desde actividad visible con permiso. No
+  rastrear sin ruta, al cerrar sesión/revocar o tras detener seguimiento. Si SO
+  mata proceso no fingir continuidad: panel indica última ubicación sin señal.
+- BL-130: Administrador -> un mismo componente sirve Ruta en vivo y Centro de
+  control. Una consulta compartida de rutas cada 5 s por vista visible; pantallas
+  no multiplican lectura GPS. Incidencias mantienen sus acciones/autorización,
+  fotos privadas y filtros fecha/chofer. No modifica llegada, cobros o cierre.
+
+## Formulario de incidencias 0.6.2 — BL-124..125 (26/09/2026)
+
+- BL-124: Chofer -> Cliente cerrado y Pedido rechazado se seleccionan mediante
+  tarjetas exclusivas con iconos locales y señal de selección, en el diseño
+  grafito/lima existente. No se añade Acceso bloqueado desde la referencia.
+  Datos: selección local; permisos y auditoría: los del envío existente, cero
+  escrituras al tocar una tarjeta. Validación: accesibilidad, exclusión mutua,
+  deshabilitado durante envío y rechazo sin pedidos disponibles.
+- BL-125: Chofer -> teclado y texto no recentran continuamente el formulario.
+  Encabezado estable, cuerpo desplazable y un único propietario de insets del
+  diálogo; el campo mantiene foco/borrador y admite comentarios multilínea.
+  Datos: borrador local hasta confirmación; permisos, envío, cámara, recibo,
+  reprogramación y teléfono operativo sin cambios de contrato. Auditoría: no
+  evento por escribir/cerrar teclado. Validación: geometría/semántica Compose,
+  notas conservadas en recomposición, JVM/lint/build y QA físico de IME.
+
 ## Regresiones operativas 0.6.1 — BL-120..123 (26/09/2026)
 
 - BL-120: Chofer/admin -> un cerrado con foto sólo se confirma con recibo

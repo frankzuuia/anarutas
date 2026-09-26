@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type {
   CandidateBatch,
   CandidateSelection,
@@ -28,6 +28,7 @@ export function OrderCandidatePicker({
   const [filter, setFilter] = useState("all");
   const [page, setPage] = useState(0);
   const [error, setError] = useState("");
+  const errorId = useId();
   const inFlight = useRef(false);
   const all = useRef<HTMLInputElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -76,7 +77,7 @@ export function OrderCandidatePicker({
         </p>
       </div>
       {error && (
-        <p id="candidate-error" role="alert" className="notice error">
+        <p id={errorId} role="alert" className="notice error">
           {error}
         </p>
       )}
@@ -238,7 +239,7 @@ export function OrderCandidatePicker({
         </button>
         <button
           className="primary"
-          aria-describedby={error ? "candidate-error" : undefined}
+          aria-describedby={error ? errorId : undefined}
           disabled={busy || !count}
           onClick={() => void confirm()}
         >

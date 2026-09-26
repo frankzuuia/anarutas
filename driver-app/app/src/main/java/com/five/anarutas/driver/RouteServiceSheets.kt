@@ -9,6 +9,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -81,7 +82,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
     LaunchedEffect(state.serviceRevision) {
         if (confirmedRevision != state.serviceRevision) { confirmation = null; note = ""; confirmedRevision = state.serviceRevision }
     }
-    DetailSurface({ if (!state.busy) close() }) {
+    ServiceFormSurface({ if (!state.busy) close() }, header = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("PARADA ${stop.position}", style = MaterialTheme.typography.labelSmall, color = DriverColors.lime)
@@ -89,6 +90,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
             }
             AppIconButton(DriverIcon.CLOSE, "Cerrar atención", enabled = !state.busy, onClick = close)
         }
+    }) {
         if (stop.canAttend()) stop.arrivedAt?.let { StatusBadge("Llegada · ${formatRouteTime(it, timezone)}") }
         Text(stop.address, color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
         if (!stop.canAttend() && !stop.isServiceFinished()) {
@@ -128,8 +130,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
                     else if (confirmation == "retry") "Este pedido volverá a abierto y aparecerá en el mapa. Confirma una nueva llegada antes de entregarlo; la reprogramación queda en el historial."
                     else "Se cerrará este pedido en la ruta actual. Administración decidirá cuándo volver a asignarlo. No se fija ninguna fecha.",
                     style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
-                if (confirmation == "reschedule") OutlinedTextField(note, { note = it.take(2000) }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Notas de reprogramación · opcionales") }, enabled = available, minLines = 2)
+                if (confirmation == "reschedule") ServiceNoteField(note, { note = it }, "Notas de reprogramación · opcionales", available)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     AppAction("Aceptar", DriverIcon.CHECK, Modifier.weight(1f), enabled = available) {
                         if (confirmation == "retry") model.retryRescheduled(stop.id, order.id)
@@ -185,7 +186,7 @@ internal fun ServiceIncidentSheet(stop: ExecutionStop, initialOrderId: String?, 
     LaunchedEffect(state.serviceRevision) {
         if (confirmedRevision != state.serviceRevision) { confirmedRevision = state.serviceRevision; discardPhoto(); close() }
     }
-    DetailSurface(::dismiss) {
+    ServiceFormSurface(::dismiss, header = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("REPORTAR INCIDENCIA", style = MaterialTheme.typography.labelSmall, color = DriverColors.lime)
@@ -193,22 +194,15 @@ internal fun ServiceIncidentSheet(stop: ExecutionStop, initialOrderId: String?, 
             }
             AppIconButton(DriverIcon.CLOSE, "Cancelar incidencia", enabled = !state.busy, onClick = ::dismiss)
         }
+    }) {
         Text("Selecciona lo que ocurrió. Se enviará a administración con tu nombre y la hora del registro.", color = DriverColors.muted)
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(mode == "customer_closed", { mode = "customer_closed" }, enabled = available, label = { Text("Cliente cerrado") })
-            FilterChip(mode == "reject", { mode = "reject" }, enabled = available && orders.isNotEmpty(), label = { Text("Pedido rechazado") })
+        Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            IncidentChoice.entries.forEach { choice ->
+                IncidentChoiceCard(choice, mode == choice.code, incidentChoiceEnabled(choice, available, orders.isNotEmpty())) { mode = choice.code }
+            }
         }
         if (mode == "customer_closed") {
             Text("Todos los pedidos sin cerrar de esta parada quedarán pendientes de reintento. Toma una foto del negocio cerrado.", color = DriverColors.amber, style = MaterialTheme.typography.bodySmall)
-            preview?.let { Image(it, "Evidencia capturada del negocio", Modifier.fillMaxWidth().height(180.dp), contentScale = ContentScale.Crop) }
-            AppAction(if (photoPath == null) "Tomar fotografía" else "Tomar otra foto", DriverIcon.CAMERA,
-                Modifier.fillMaxWidth(), quiet = true, enabled = available && cameraPath == null) {
-                val directory = File(context.cacheDir, "incident-camera").also { it.mkdirs() }
-                val file = File(directory, "incident-${UUID.randomUUID()}.jpg")
-                cameraPath = file.absolutePath
-                try { camera.launch(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)) }
-                catch (_: RuntimeException) { cameraPath = null; file.delete(); error = "No se pudo abrir la cámara. Revisa que esté disponible." }
-            }
         } else {
             Text("Pedido rechazado", style = MaterialTheme.typography.titleMedium)
             if (orders.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -219,8 +213,18 @@ internal fun ServiceIncidentSheet(stop: ExecutionStop, initialOrderId: String?, 
             }
             Text("Quedará rechazado, pero podrás entregarlo después si el cliente cambia de opinión.", color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
         }
-        OutlinedTextField(note, { note = it.take(2000) }, modifier = Modifier.fillMaxWidth(), minLines = 2, enabled = available,
-            label = { Text(if (mode == "reject" && reason == "other") "Describe el motivo · obligatorio" else "Comentario · opcional") })
+        ServiceNoteField(note, { note = it }, if (mode == "reject" && reason == "other") "Describe el motivo · obligatorio" else "Comentario · opcional", available)
+        if (mode == "customer_closed") {
+            preview?.let { Image(it, "Evidencia capturada del negocio", Modifier.fillMaxWidth().height(180.dp), contentScale = ContentScale.Crop) }
+            AppAction(if (photoPath == null) "Tomar fotografía" else "Tomar otra foto", DriverIcon.CAMERA,
+                Modifier.fillMaxWidth(), quiet = true, enabled = available && cameraPath == null) {
+                val directory = File(context.cacheDir, "incident-camera").also { it.mkdirs() }
+                val file = File(directory, "incident-${UUID.randomUUID()}.jpg")
+                cameraPath = file.absolutePath
+                try { camera.launch(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)) }
+                catch (_: RuntimeException) { cameraPath = null; file.delete(); error = "No se pudo abrir la cámara. Revisa que esté disponible." }
+            }
+        }
         if (error.isNotBlank()) Text(error, color = DriverColors.amber)
         AppAction("Enviar incidencia", DriverIcon.ALERT, Modifier.fillMaxWidth(), enabled = available &&
             (if (mode == "customer_closed") photoPath != null && preview != null else selected != null && reason.isNotBlank() && (reason != "other" || note.isNotBlank()))) {

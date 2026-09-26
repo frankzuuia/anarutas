@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <application
         android:name=".DriverApplication"
         android:allowBackup="false"
@@ -14,6 +16,10 @@
         android:theme="@android:style/Theme.Material.NoActionBar">
         <meta-data android:name="firebase_messaging_installation_id_enabled" android:value="true" />
         <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="routes" />
+        <service
+            android:name=".LiveTrackingService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
         <service
             android:name=".RoutePushService"
             android:exported="false">

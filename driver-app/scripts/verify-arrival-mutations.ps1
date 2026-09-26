@@ -1,4 +1,4 @@
-param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly)
+param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly)
 $ErrorActionPreference = 'Stop'
 # Mechanical mutations occur only in an isolated copy. No ADB, HTTP stubs or credential output.
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -13,7 +13,7 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 }
 $sourceFolder = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver'
 $originals = @{}
-foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt')) {
+foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt')) {
     $originals[$file] = [IO.File]::ReadAllText((Join-Path $sourceFolder $file))
 }
 $cases = @(
@@ -77,6 +77,35 @@ $cases += @(
     @{ name = 'receipt_ignore_canonical_id'; file = 'IncidentReceiptPolicy.kt'; test = 'IncidentReceiptPolicyTest'; from = 'canonical.equals(incidentId, ignoreCase = true)'; to = 'true' },
     @{ name = 'receipt_drop_valid_id'; file = 'IncidentReceiptPolicy.kt'; test = 'IncidentReceiptPolicyTest'; from = 'return canonical'; to = 'return null' }
 )
+if ($IncidentFormOnly) {
+    $cases = @(
+        @{ name = 'form_ignore_availability'; from = 'available &&'; to = 'true &&' },
+        @{ name = 'form_reject_without_orders'; from = '|| hasRejectableOrders'; to = '|| true' },
+        @{ name = 'form_invert_rejection_kind'; from = 'choice != IncidentChoice.ORDER_REJECTED'; to = 'choice == IncidentChoice.ORDER_REJECTED' },
+        @{ name = 'form_wrong_wire_code'; from = 'ORDER_REJECTED("reject"'; to = 'ORDER_REJECTED("rejected"' },
+        @{ name = 'form_wrong_closed_icon'; from = 'DriverIcon.STORE_CLOSED'; to = 'DriverIcon.ORDERS' },
+        @{ name = 'form_note_truncates_early'; from = 'value.take(2000)'; to = 'value.take(1999)' },
+        @{ name = 'form_note_allows_overflow'; from = 'value.take(2000)'; to = 'value.take(2001)' },
+        @{ name = 'form_note_silently_trims'; from = 'value.take(2000)'; to = 'value.trim().take(2000)' }
+    ) | ForEach-Object { $_.file = 'IncidentFormPolicy.kt'; $_.test = 'IncidentFormPolicyTest'; $_ }
+}
+if ($TrackingOnly) {
+    $cases = @(
+        @{ name = 'tracking_accept_mock'; from = '!it.mock'; to = 'true' },
+        @{ name = 'tracking_accept_negative_accuracy'; from = 'it.accuracy >= 0'; to = 'true' },
+        @{ name = 'tracking_reject_zero_accuracy'; from = 'it.accuracy >= 0'; to = 'it.accuracy > 0' },
+        @{ name = 'tracking_accept_infinite_accuracy'; from = 'it.accuracy.isFinite()'; to = 'true' },
+        @{ name = 'tracking_accept_invalid_latitude'; from = 'it.point.latitude in -90.0..90.0'; to = 'true' },
+        @{ name = 'tracking_accept_invalid_longitude'; from = 'it.point.longitude in -180.0..180.0'; to = 'true' },
+        @{ name = 'tracking_accept_stale'; from = 'now - it.elapsedMillis in 0..maximumAge'; to = 'true' },
+        @{ name = 'tracking_reject_age_boundary'; from = '0..maximumAge'; to = '0 until maximumAge' },
+        @{ name = 'tracking_accept_future'; from = '0..maximumAge'; to = 'Long.MIN_VALUE..maximumAge' },
+        @{ name = 'tracking_continue_unauthorized'; from = 'status == 401'; to = 'false' },
+        @{ name = 'tracking_continue_forbidden'; from = 'status == 403'; to = 'false' },
+        @{ name = 'tracking_continue_missing_route'; from = 'status == 404'; to = 'false' },
+        @{ name = 'tracking_continue_lost_session'; from = 'status == 409'; to = 'false' }
+    ) | ForEach-Object { $_.file = 'LiveTrackingPolicy.kt'; $_.test = 'LiveTrackingPolicyTest'; $_ }
+}
 $arguments = @('testDebugUnitTest', '--console=plain')
 if ($ServerUrl) { $arguments += ('-PANA_RUTAS_SERVER_URL=' + $ServerUrl) }
 Push-Location $workRoot

@@ -1,5 +1,41 @@
 # Progreso — bloque 1
 
+## Centro de control — BL-126..130 / CC01..CC12
+
+- [x] CC-T00: inspección real, autorización y contratos; GPS sólo local confirmado.
+- [x] CC-T01 / CC01..05,09: v24, telemetría autorizada/ordenada, snapshot y preferencias CAS;
+  PostgreSQL/HTTP reales, sin alterar revisiones de atención.
+- [x] CC-T02 / CC01..05,11: servicio Android visible, ciclo de vida/destino/revocación;
+  código compilado y política probada, ejecución física reservada a CC-T06.
+- [x] CC-T03 / CC06..08,12: mapa/progreso compartido y tablero adaptable persistido;
+  fullscreen conserva instancia, todas las secciones disponibles en el selector.
+- [x] CC-T04 / CC07..10: filtros independientes e integración incidencias, accesibilidad;
+  E2E duplicación, persistencia, ordenar/quitar y catálogo completo verdes.
+- [x] CC-T05 / todos: 595 pruebas servidor, 78 JVM, 5 E2E; cobertura dirigida
+  100% líneas/98.24% ramas, mutaciones 121 servidor y 13 Android detectadas;
+  tipos/lint/build/audit y firma APK 0.7.0 verificados. Límites y procedimiento
+  reproducible en QA-CENTRO-CONTROL-0.7.0.md. FCM opt-in no ejecutado.
+- [ ] CC-T06 / CC04,11: QA físico del usuario (sin ADB), Deploy manual develop.
+  Incluye Maps real, GPS/segundo plano y formulario/IME. No declarar producción
+  ni publicar sin excepción explícita de estas puertas pendientes.
+- [x] CC-PUB-AUTH: 26/09/2026, usuario autorizó commit y push sólo a develop
+  para pruebas con CC-T06 e IF-T04 pendientes. No autoriza Deploy ni main.
+
+## Formulario de incidencias 0.6.2 — BL-124..125 / IF01..IF07
+
+- [x] IF-T00: inspección de raíz/develop, contenedor, foco, insets, cámara y
+  contratos; especificación y referencias oficiales, sin tocar five/main.
+- [x] IF-T01 / IF01..02: tarjetas con vectores, selección exclusiva/accesible,
+  paleta y mismas restricciones de envío.
+- [x] IF-T02 / IF03..06: formulario anclado, insets una vez, encabezado fijo,
+  scroll/editor acotado y borrador conservado, Done sin envío.
+- [x] IF-T03 / todos: 76 JVM, política 100 % líneas/ramas y 8/8 mutaciones;
+  dos instrumentadas nuevas compiladas (no ejecutadas), lint 0 errores,
+  assemble, seguridad/diff y APK 0.6.2/code18 con misma firma verificada.
+  Evidencia y límites en QA-FORMULARIO-INCIDENCIAS-0.6.2.md.
+- [ ] IF-T04 / IF03..07: teclado/cámara/GPS/rotación físico por usuario sin ADB;
+  no declarar completo el comportamiento del IME sin esa prueba.
+
 ## Corrección operativa 0.6.1 — BL-120..123 / RG01..RG10
 
 - [x] RG-T00: autopsia, reglas y contratos; aprobación del bloque y de commit/

@@ -1,5 +1,55 @@
 # Ana Rutas Chofer — Android, acceso, ejecución e incidencias
 
+## Centro de control y Ruta en vivo — 0.7.0
+
+Primero Deploy manual del backend develop; su arranque aplica automáticamente
+la migración aditiva v24. Después instalar 0.7.0/code19 sobre la APK anterior,
+sin borrar datos. Esta versión incluye también las tarjetas y el formulario
+de incidencias 0.6.2. Es un artefacto debug de pruebas, no release productivo.
+
+Al abrir una ruta iniciada y verificada con ubicación precisa, comienza el
+servicio de seguimiento. Una notificación persistente informa al chofer y
+ofrece Detener seguimiento; desde el mapa puede Reanudar. La captura puede
+continuar al minimizar la app mientras el servicio está activo. Android puede
+terminarlo: el panel muestra antigüedad del GPS, nunca movimiento inventado.
+Cerrar sesión, revocación o cancelación de ruta detienen la autorización.
+
+Cada cinco segundos envía sólo la última ubicación real y el destino de guía,
+sin cola histórica. Consultar un pedido no cambia el destino. Detener guía
+o entrar a corregir un pin deja el destino sin confirmar; iniciar guía lo
+comparte de nuevo. Llegada/entrega/repunte mantienen sus validaciones actuales.
+
+En el panel: Centro de control → Agregar pantalla. Todas las secciones se
+pueden incorporar, repetir, ordenar, quitar o expandir; los mapas y las
+incidencias mantienen filtros independientes. Distribución por cuenta guardada
+en la base; conflictos entre pestañas no sobrescriben silenciosamente.
+Ruta en vivo también tiene entrada propia. La línea es la ruta publicada,
+no una traza de desplazamientos ni un cálculo nuevo de Google.
+
+QA y limitaciones: `docs/QA-CENTRO-CONTROL-0.7.0.md`. GPS/segundo plano,
+permisos del teléfono, Maps real e IME requieren validación física/develop;
+no se certifican por las pruebas JVM o por un build exitoso.
+
+## Formulario de incidencias — 0.6.2
+
+Instalar 0.6.2/code18 sobre la anterior, con la misma firma debug de pruebas.
+Si develop ya tiene el backend v23 de 0.6.1, no requiere otro Deploy: esta
+corrección no cambia servidor ni contratos. Cliente cerrado y Pedido rechazado
+son tarjetas verticales grafito/lima con icono local y selección accesible.
+La referencia no incorpora nuevos tipos de incidencia.
+
+Formularios de incidencia/atención anclados a su propia ventana, encabezado
+fijo, cuerpo desplazable y teclado atendido por insets consumidos una vez.
+Comentario antes de la evidencia; editor de dos a cuatro líneas visibles,
+multilínea con límite existente de 2,000 caracteres. «Listo» del teclado no
+envía ni borra. Cámara, foto obligatoria, rechazo Otro, teléfono, reintento y
+confirmaciones conservan sus contratos. Consultas de fotos/paradas intactas.
+
+76 JVM y ocho mutaciones verdes; dos pruebas instrumentadas nuevas compiladas.
+El teclado real/rotación/cámara aún requieren prueba física del usuario sin
+ADB. No se presenta JVM como prueba de animación IME. Procedimiento completo:
+`docs/QA-FORMULARIO-INCIDENCIAS-0.6.2.md` en la raíz.
+
 ## Recuperación operativa — 0.6.1
 
 Primero Deploy del backend develop: la migración v23 se ejecuta automáticamente

@@ -17,6 +17,8 @@ import {
   Gauge,
   AlertTriangle,
   Radio,
+  PanelsTopLeft,
+  MapPinned,
 } from "lucide-react";
 import type { User } from "@/core/auth";
 import type { DeletedPlan, Plan } from "@/core/plans";
@@ -32,6 +34,9 @@ import { IncidentsPanel } from "./incidents-panel";
 import { LiveIncidentsPanel } from "./live-incidents-panel";
 import { UnitControlPanel } from "./unit-control-panel";
 import { usePanelRealtime } from "./use-panel-realtime";
+import { ControlCenter, ExpandableScreen } from "./control-center";
+import { LiveRoutesPage } from "./live-route-view";
+import type { EmbeddedSection } from "@/core/control-screens";
 
 type Section =
   | "plans"
@@ -42,9 +47,13 @@ type Section =
   | "audit"
   | "incidents"
   | "live_incidents"
+  | "control_center"
+  | "live_routes"
   | "consumption"
   | "unit_control";
 const sections = [
+  { id: "control_center" as const, label: "Centro de control", icon: PanelsTopLeft },
+  { id: "live_routes" as const, label: "Ruta en vivo", icon: MapPinned },
   { id: "plans" as const, label: "Planificar rutas", icon: Route },
   { id: "incidents" as const, label: "Incidencias", icon: AlertTriangle },
   { id: "live_incidents" as const, label: "Incidencias en vivo", icon: Radio },
@@ -104,13 +113,18 @@ export function Dashboard({
   displayName,
   today,
   timezone,
+  embeddedSection,
+  externalRevision = 0,
 }: {
   user: User;
   displayName: string;
   today: string;
   timezone: string;
+  embeddedSection?: EmbeddedSection;
+  externalRevision?: number;
 }) {
-  const [section, setSection] = useState<Section>("plans");
+  const [section, setSection] = useState<Section>(embeddedSection ?? "plans");
+  const [controlRevision, setControlRevision] = useState(0);
   const [menuClosed, setMenuClosed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -170,6 +184,7 @@ export function Dashboard({
       if (section === "unit_control") setUnitRevision((value) => value + 1);
       if (section === "incidents") setIncidentRevision((value) => value + 1);
       if (section === "live_incidents") setLiveIncidentRevision((value) => value + 1);
+      if (section === "control_center" || section === "live_routes") setControlRevision(value => value + 1);
       return true;
     } catch (e) {
       setError((e as Error).message);
@@ -178,7 +193,7 @@ export function Dashboard({
       setLoading(false);
     }
   }, [section]);
-  const liveStatus = usePanelRealtime(refresh, busy);
+  const liveStatus = usePanelRealtime(refresh, busy, !embeddedSection);
   useEffect(() => {
     let current = true;
     const fail = (error: Error) => {
@@ -192,7 +207,14 @@ export function Dashboard({
       drivers: () => Promise.resolve(),
       plans: () =>
         api<Plan[]>("/api/plans").then((data) => {
-          if (current) setPlans(data);
+          if (current) {
+            setPlans(data);
+            setSelected(previous => {
+              if (!previous) return null;
+              const latest = data.find(plan => plan.id === previous.id);
+              return latest && latest.version < previous.version ? previous : latest ?? null;
+            });
+          }
         }),
       users: () =>
         api<User[]>("/api/users").then((data) => {
@@ -207,12 +229,14 @@ export function Dashboard({
       incidents: () => Promise.resolve(),
       live_incidents: () => Promise.resolve(),
       unit_control: () => Promise.resolve(),
+      control_center: () => Promise.resolve(),
+      live_routes: () => Promise.resolve(),
     };
     void requests[section]().catch(fail).finally(done);
     return () => {
       current = false;
     };
-  }, [section]);
+  }, [section, externalRevision]);
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(""), 5000);
@@ -292,9 +316,9 @@ export function Dashboard({
   const title = sections.find((item) => item.id === section)!.label;
   return (
     <div
-      className={`app ${menuClosed ? "menu-closed" : ""} ${section === "plans" ? "planner-app" : ""} ${section === "customers" ? "customer-app" : ""}`}
+      className={`app ${embeddedSection ? "embedded-dashboard" : ""} ${menuClosed ? "menu-closed" : ""} ${section === "plans" ? "planner-app" : ""} ${section === "customers" ? "customer-app" : ""}`}
     >
-      <aside className="sidebar" id="app-navigation" hidden={menuClosed}>
+      {!embeddedSection && <aside className="sidebar" id="app-navigation" hidden={menuClosed}>
         <div className="brand">
           <Route size={30} />
           <div>
@@ -327,9 +351,9 @@ export function Dashboard({
             Sin cambios en ventas o precios.
           </small>
         </div>
-      </aside>
+      </aside>}
       <div className="content">
-        <header className="topbar">
+        {!embeddedSection && <header className="topbar">
           <div className="row">
             <span className={`badge ${liveStatus === "En vivo" ? "green" : "amber"}`} aria-live="polite" aria-label="Estado de sincronización">{liveStatus}</span>
             <button
@@ -364,7 +388,7 @@ export function Dashboard({
               <LogOut size={17} />
             </button>
           </div>
-        </header>
+        </header>}
         <main
           className={`main ${section === "plans" ? "planner-main" : ""} ${section === "customers" ? "customer-main" : ""}`}
         >
@@ -374,7 +398,9 @@ export function Dashboard({
                 <span className="eyebrow">Administración</span>
                 <h1>{title}</h1>
                 <p>
-                  {section === "vehicles"
+                  {section === "control_center" ? "Tu operación en pantallas independientes, con filtros propios y vista completa."
+                    : section === "live_routes" ? "Ubicación real, destino y avance de tus choferes. La antigüedad del GPS siempre visible."
+                    : section === "vehicles"
                     ? "Registra tus unidades y administra la asignación de choferes."
                     : section === "unit_control"
                       ? "Fotografías privadas de cada camioneta, organizadas por fecha y disponibles durante 15 días."
@@ -423,18 +449,21 @@ export function Dashboard({
             <FleetPanel
               key={section}
               section={section}
-              revision={fleetRevision}
+              revision={fleetRevision + externalRevision}
             />
           )}
           {section === "customers" && (
-            <CustomerPanel revision={customerRevision} />
+            <CustomerPanel revision={customerRevision + externalRevision} />
           )}
-          {section === "incidents" && <IncidentsPanel today={today} timezone={timezone} revision={incidentRevision} />}
+          {section === "incidents" && <IncidentsPanel today={today} timezone={timezone} revision={incidentRevision + externalRevision} />}
           {section === "live_incidents" && <LiveIncidentsPanel today={today} timezone={timezone} revision={liveIncidentRevision} />}
-          {section === "unit_control" && <UnitControlPanel today={today} timezone={timezone} revision={unitRevision} />}
+          {section === "live_routes" && <ExpandableScreen title="Ruta en vivo"><LiveRoutesPage revision={controlRevision} /></ExpandableScreen>}
+          {section === "control_center" && <ControlCenter today={today} timezone={timezone} revision={controlRevision}
+            renderSection={value => <Dashboard user={user} displayName={displayName} today={today} timezone={timezone} embeddedSection={value} externalRevision={controlRevision} />} />}
+          {section === "unit_control" && <UnitControlPanel today={today} timezone={timezone} revision={unitRevision + externalRevision} />}
           {section === "consumption" && (
             <GoogleConsumptionPanel
-              revision={consumptionRevision}
+              revision={consumptionRevision + externalRevision}
               timezone={timezone}
             />
           )}
@@ -515,7 +544,7 @@ export function Dashboard({
                         key={selected.id}
                         plan={selected}
                         timezone={timezone}
-                        revision={boardRevision}
+                        revision={boardRevision + externalRevision}
                         onPlan={adoptPlan}
                         onBusy={setBusy}
                         onPendingValidationCount={adoptPendingValidationCount}

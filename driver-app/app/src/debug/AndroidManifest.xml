@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <!-- Instrumentation runs as this app; the empty UI test host is not an external entry point. -->
+        <activity android:name="androidx.activity.ComponentActivity"
+            android:exported="false" tools:replace="android:exported" />
+    </application>
+</manifest>

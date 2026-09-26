@@ -199,7 +199,14 @@ class RouteNavigationActivity : FragmentActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { model.observe() }
                 launch { while (isActive) { model.sync(); delay(30_000) } }
-                launch { while (isActive) { tick = SystemClock.elapsedRealtime(); recoverGps(tick); delay(1000) } }
+                launch { while (isActive) {
+                    tick = SystemClock.elapsedRealtime(); recoverGps(tick)
+                    model.state.execution?.takeIf { model.state.verified && !model.state.retired }?.let { execution ->
+                        LiveTrackingService.ensure(this@RouteNavigationActivity, execution,
+                            execution.stops.find { guidance && destinationKey(it) == NavigationRegistry.destinationKey }?.id)
+                    }
+                    delay(1000)
+                } }
             }
         }
         if (!precisePermission()) permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
@@ -332,6 +339,7 @@ class RouteNavigationActivity : FragmentActivity() {
         navigator?.clearDestinations()
         guidance = false
         NavigationRegistry.destinationKey = null
+        LiveTrackingService.destination(model.state.execution?.id, null)
     }
     private fun guide(stop: ExecutionStop) {
         val nav = navigator ?: return
@@ -361,6 +369,7 @@ class RouteNavigationActivity : FragmentActivity() {
                     nav.startGuidance()
                     applyVoicePreference(nav)
                     guidance = true
+                    LiveTrackingService.destination(model.state.execution?.id, stop.id)
                     navMessage = "Guía activa · el orden de tus pedidos no cambia"
                 } else { guidance = false; navMessage = "No se pudo trazar la guía: $result. Puedes reintentar sin volver a guardar el punto." }
                 renderMap()
@@ -436,6 +445,7 @@ class RouteNavigationActivity : FragmentActivity() {
         resumeGuide = guidance
         navigator?.stopGuidance()
         guidance = false
+        LiveTrackingService.destination(model.state.execution?.id, null)
         editing = true
         panelExpanded = true
         addressDialog = false
@@ -454,6 +464,7 @@ class RouteNavigationActivity : FragmentActivity() {
         street = ""; neighborhood = ""; postalCode = ""; city = ""
         if (resumeGuide && currentStop?.let(::destinationKey) == NavigationRegistry.destinationKey) {
             navigator?.startGuidance(); navigator?.let(::applyVoicePreference); guidance = true
+            LiveTrackingService.destination(model.state.execution?.id, currentStop?.id)
         }
         resumeGuide = false
         renderMap()
@@ -611,6 +622,13 @@ class RouteNavigationActivity : FragmentActivity() {
                     AppIconButton(DriverIcon.CLOSE, "Cerrar mapa", onClick = ::finish)
                 }
                 Text(state.message, style = MaterialTheme.typography.bodySmall, color = if (state.verified) DriverColors.muted else DriverColors.amber)
+                Text(LiveTrackingService.message, style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+                if (execution != null && LiveTrackingService.isPaused(execution.id) && state.verified && !state.retired) {
+                    TextButton(onClick = { LiveTrackingService.ensure(this@RouteNavigationActivity, execution,
+                        execution.stops.find { guidance && destinationKey(it) == NavigationRegistry.destinationKey }?.id, resume = true) }) {
+                        Text("Reanudar seguimiento")
+                    }
+                }
                 if (navMessage.isNotBlank()) Text(navMessage, style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
                 if (state.retired) AppAction("Volver a Inicio", DriverIcon.HOME, onClick = ::finish)
                 else if (execution != null && stop != null) {

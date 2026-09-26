@@ -111,6 +111,7 @@ export function FleetPanel({
     null,
   );
   const [mobilePin, setMobilePin] = useState("");
+  const mobilePinHelpId = useId();
   const refresh = useCallback(async () => {
     const [v, d] = await Promise.all([
       api<Vehicle[]>("/api/vehicles"),
@@ -749,10 +750,10 @@ export function FleetPanel({
                           onChange={(event) => setMobilePin(event.target.value)}
                           maxLength={4}
                           placeholder="4 dígitos"
-                          aria-describedby="mobile-pin-help"
+                          aria-describedby={mobilePinHelpId}
                         />
                       </label>
-                      <span id="mobile-pin-help" className="small">
+                      <span id={mobilePinHelpId} className="small">
                         Configurar otro PIN revoca las sesiones y celulares
                         anteriores. El teléfono se normaliza a 10 dígitos y el
                         PIN no se podrá consultar después.

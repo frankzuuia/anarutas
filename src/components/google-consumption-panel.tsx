@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -157,6 +157,7 @@ function ReadyPanel({
   timezone: string;
 }) {
   const snapshot = state.snapshot!;
+  const skuTitle = useId(), historyTitle = useId();
   const percentage = Math.max(
     0,
     Math.min(100, snapshot.maximumPercentage ?? 0),
@@ -232,11 +233,11 @@ function ReadyPanel({
         </article>
       </div>
 
-      <section className="consumption-section" aria-labelledby="sku-title">
+      <section className="consumption-section" aria-labelledby={skuTitle}>
         <div className="consumption-section-heading">
           <div>
             <span className="eyebrow">Periodo {snapshot.currentPeriod}</span>
-            <h2 id="sku-title">Cuotas y cargos por servicio</h2>
+            <h2 id={skuTitle}>Cuotas y cargos por servicio</h2>
           </div>
           <span className="badge">{snapshot.skus.length} SKU usados</span>
         </div>
@@ -340,11 +341,11 @@ function ReadyPanel({
         )}
       </section>
 
-      <section className="consumption-section" aria-labelledby="history-title">
+      <section className="consumption-section" aria-labelledby={historyTitle}>
         <div className="consumption-section-heading">
           <div>
             <span className="eyebrow">Acumulación real</span>
-            <h2 id="history-title">Historial de costo oficial</h2>
+            <h2 id={historyTitle}>Historial de costo oficial</h2>
           </div>
         </div>
         <div className="consumption-history-grid">

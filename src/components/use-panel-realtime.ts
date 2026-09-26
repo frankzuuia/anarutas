@@ -6,6 +6,7 @@ import { navigateAfterAuth } from "./api";
 export function usePanelRealtime(
   refresh: () => Promise<boolean>,
   busy: boolean,
+  enabled = true,
 ) {
   const [status, setStatus] = useState("Conectando…");
   const pending = useRef(false);
@@ -31,6 +32,7 @@ export function usePanelRealtime(
     }
   });
   useEffect(() => {
+    if (!enabled) return;
     let disposed = false;
     let source: EventSource | null = null;
     let watchdog: ReturnType<typeof setTimeout> | undefined;
@@ -130,6 +132,6 @@ export function usePanelRealtime(
       window.removeEventListener("online", visibility);
       window.removeEventListener("offline", visibility);
     };
-  }, []);
+  }, [enabled]);
   return status;
 }

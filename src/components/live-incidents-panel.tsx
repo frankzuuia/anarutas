@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, Radio, UserRound } from "lucide-react";
 import type { LiveIncident, LiveIncidentReport } from "@/core/driver-live-incidents";
 import { api } from "./api";
@@ -33,10 +33,13 @@ function Evidence({ incident }: { incident: LiveIncident }) {
   </a>;
 }
 
-export function LiveIncidentsPanel({ today, timezone, revision }: { today: string; timezone: string; revision: number }) {
+export function LiveIncidentsPanel({ today, timezone, revision, selectedDriverId, onDriverChange }: { today: string; timezone: string; revision: number; selectedDriverId?: string; onDriverChange?: (id: string) => void }) {
+  const titleId = useId();
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
-  const [driverId, setDriverId] = useState("");
+  const [localDriverId, setLocalDriverId] = useState("");
+  const driverId = selectedDriverId ?? localDriverId;
+  const setDriverId = onDriverChange ?? setLocalDriverId;
   const [refresh, setRefresh] = useState(0);
   const [cursor, setCursor] = useState<{ filter: string; value: string } | null>(null);
   const filter = JSON.stringify([from, to, driverId]);
@@ -135,9 +138,9 @@ export function LiveIncidentsPanel({ today, timezone, revision }: { today: strin
       {cursor?.filter === filter && <button className="quiet" onClick={() => setCursor(null)}>Volver al inicio</button>}
       {report?.nextCursor && <button className="quiet" onClick={() => setCursor({ filter, value: report.nextCursor! })}>Más incidencias</button>}
     </div>
-    {confirm && <dialog ref={dialog} aria-labelledby="resolve-incident-title" className="live-incident-confirm"
+    {confirm && <dialog ref={dialog} aria-labelledby={titleId} className="live-incident-confirm"
       onCancel={event => { event.preventDefault(); if (!busy) setConfirm(null); }}>
-      <h2 id="resolve-incident-title">¿Marcar incidencia resuelta?</h2><p>{confirm.snapshot.customer} · {confirm.orders.join(", ")}</p>
+      <h2 id={titleId}>¿Marcar incidencia resuelta?</h2><p>{confirm.snapshot.customer} · {confirm.orders.join(", ")}</p>
       <p>Esto cierra la gestión de la incidencia. No registra una entrega, no reabre el pedido y no liquida la ruta.</p>
       <div className="toolbar"><button disabled={busy !== null} onClick={async () => {
         setBusy(confirm.id);

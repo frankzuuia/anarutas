@@ -394,6 +394,9 @@ class DriverApi(private val server: String) {
             JSONObject().put("expectedRevision", expectedRevision))
     }
 
+    internal suspend fun tracking(token: String, planId: String, payload: JSONObject): JSONObject =
+        JSONObject(exchange("POST", "/api/mobile/plans/$planId/tracking", token, payload))
+
     internal suspend fun execution(token: String, planId: String): DriverExecution {
         val raw = exchange("GET", "/api/mobile/plans/$planId/execution", token)
         return parseExecution(raw, android.os.SystemClock.elapsedRealtime())

@@ -26,6 +26,7 @@ internal object NavigationRegistry {
     }
 
     fun endSession() {
+        LiveTrackingService.stop()
         destinationKey = null
         val navigator = active ?: return
         active = null
