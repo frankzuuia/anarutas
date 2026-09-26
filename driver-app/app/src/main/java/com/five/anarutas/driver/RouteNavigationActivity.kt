@@ -64,7 +64,7 @@ class RouteNavigationActivity : FragmentActivity() {
     private val locations by lazy { getSystemService(LOCATION_SERVICE) as LocationManager }
     private var gps by mutableStateOf<DriverGps?>(null)
     private var lastReadyGps by mutableStateOf<DriverGps?>(null)
-    private var lastReadyPoint: ExecutionPoint? = null
+    private var lastReadyPoint by mutableStateOf<ExecutionPoint?>(null)
     private var tick by mutableLongStateOf(0L)
     private var selectedId by mutableStateOf("")
     private var panelExpanded by mutableStateOf(true)
@@ -410,9 +410,13 @@ class RouteNavigationActivity : FragmentActivity() {
         val execution = state.execution
         val stop = currentStop
         val target = if (editing) draftPoint else stop?.point
-        val usableGps = execution?.let { actionableGps(gps, lastReadyGps, lastReadyPoint, target, it.policy, tick) }
-        val eligibility = if (usableGps != null) ArrivalEligibility.READY else
-            execution?.let { arrivalEligibility(gps, target, it.policy, tick) }
+        // The timer invalidates the view for expiry, but is not the time of a GPS callback.
+        // New fixes can arrive between ticks; comparing them to tick made them look future-dated.
+        val arrival = remember(gps, lastReadyGps, lastReadyPoint, target, execution?.policy, tick) {
+            execution?.let { evaluateArrivalNow(gps, lastReadyGps, lastReadyPoint, target, it.policy, SystemClock::elapsedRealtime) }
+        }
+        val usableGps = arrival?.gps
+        val eligibility = arrival?.eligibility
         val available = state.verified && !state.busy && !state.pending && !state.retired
         val editConflict = editing && (editRevision != execution?.revision || editCustomerVersion != stop?.customerLocationVersion)
         val confirmedAddress = confirmedAddressFields(street, neighborhood, postalCode, city)

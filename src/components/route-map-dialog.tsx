@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { X, MapPin, RefreshCw } from "lucide-react";
 import type { OrderBoard, Shipment } from "@/core/orders-contract";
 import type { MapConfig } from "@/core/map-config";
@@ -8,6 +8,7 @@ import type {
   RoutingSettings,
 } from "@/core/routing-contract";
 import { groupRouteMapStops, nextOpenMarker } from "@/core/route-map-markers";
+import { selectRouteMapView } from "@/core/route-map-selection";
 import {
   manualPreviewDecision,
   type ManualPreviewStatus,
@@ -55,8 +56,9 @@ export function RouteMapDialog({
     { id: "unassigned", name: "Sin asignar" },
     ...board.vehicles,
   ];
-  const visible = board.shipments.filter(
-    (s) => filter === "all" || (s.vehicle_id || "unassigned") === filter,
+  const { shipments: visible, routes: selectedRoutes } = useMemo(
+    () => selectRouteMapView(board, optimization, filter),
+    [board, optimization, filter],
   );
   const laneIndex = (s: Shipment) =>
     vehicles.findIndex((v) => v.id === (s.vehicle_id || "unassigned"));
@@ -332,30 +334,27 @@ export function RouteMapDialog({
     const closeInfo = info.addListener("closeclick", () => {
       openMarkerKey = null;
     });
-    if (optimization?.current) {
-      for (const optimizedRoute of optimization.routes) {
-        if (filter !== "all" && optimizedRoute.vehicleId !== filter) continue;
-        const polylines =
-          optimizedRoute.segmentPolylines ??
-          (optimizedRoute.encodedPolyline
-            ? [optimizedRoute.encodedPolyline]
-            : []);
-        for (const polyline of polylines) {
-          const path = google.maps.geometry.encoding.decodePath(polyline);
-          path.forEach((point) => bounds.extend(point));
-          const vehicleIndex = vehicles.findIndex(
-            (vehicle) => vehicle.id === optimizedRoute.vehicleId,
-          );
-          routeLines.push(
-            new google.maps.Polyline({
-              map: currentMap,
-              path,
-              strokeColor: color(Math.max(1, vehicleIndex)),
-              strokeOpacity: 0.9,
-              strokeWeight: 5,
-            }),
-          );
-        }
+    for (const optimizedRoute of selectedRoutes) {
+      const polylines =
+        optimizedRoute.segmentPolylines ??
+        (optimizedRoute.encodedPolyline
+          ? [optimizedRoute.encodedPolyline]
+          : []);
+      for (const polyline of polylines) {
+        const path = google.maps.geometry.encoding.decodePath(polyline);
+        path.forEach((point) => bounds.extend(point));
+        const vehicleIndex = vehicles.findIndex(
+          (vehicle) => vehicle.id === optimizedRoute.vehicleId,
+        );
+        routeLines.push(
+          new google.maps.Polyline({
+            map: currentMap,
+            path,
+            strokeColor: color(Math.max(1, vehicleIndex)),
+            strokeOpacity: 0.9,
+            strokeWeight: 5,
+          }),
+        );
       }
     }
     if (!bounds.isEmpty()) currentMap.fitBounds(bounds, 60);
@@ -373,16 +372,13 @@ export function RouteMapDialog({
       routeLines.forEach((line) => line.setMap(null));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locations, filter, board, optimization, origin]);
+  }, [locations, filter, board, selectedRoutes, origin]);
 
   const optimizedStops = new globalThis.Map(
-    (optimization?.current ? optimization.routes : []).flatMap((route) =>
+    selectedRoutes.flatMap((route) =>
       route.stops.map((stop) => [stop.shipmentId, stop] as const),
     ),
   );
-  const selectedRoutes = (
-    optimization?.current ? optimization.routes : []
-  ).filter((route) => filter === "all" || route.vehicleId === filter);
   const minutes = Math.round(
     selectedRoutes.reduce(
       (sum, route) => sum + route.metrics.totalDurationSeconds,
@@ -459,7 +455,17 @@ export function RouteMapDialog({
           {visible.length} pedidos ·{" "}
           {visible.filter((s) => locations[s.id]?.position).length} ubicados
         </span>
-        {optimization?.current ? (
+        {visible.length === 0 ? (
+          <span className="small" role="status">
+            {filter === "unassigned"
+              ? "No hay pedidos sin asignar."
+              : "Sin pedidos asignados en esta vista."}
+          </span>
+        ) : filter === "unassigned" ? (
+          <span className="small">
+            Pedidos sin ruta asignada; no forman un recorrido.
+          </span>
+        ) : selectedRoutes.length > 0 ? (
           <span className="small route-metrics">
             Recorrido vigente · regreso incluido ·{" "}
             {(distance / 1000).toLocaleString("es-MX", {
@@ -563,6 +569,13 @@ export function RouteMapDialog({
             aria-label="Mapa de puntos de entrega"
           />
           <aside className="map-stops" aria-label="Puntos de entrega">
+            {visible.length === 0 && (
+              <p>
+                {filter === "unassigned"
+                  ? "Todos los pedidos están asignados."
+                  : "Asigna pedidos a una camioneta para ver sus paradas. Los pedidos retirados siguen disponibles en Sin asignar."}
+              </p>
+            )}
             {locating && <p role="status">Ubicando direcciones…</p>}
             {selectedRoutes
               .filter((route) => route.stops.length > 0)

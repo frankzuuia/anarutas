@@ -923,6 +923,19 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(page.getByRole("dialog")).toContainText(
     "Mapa pendiente de activar",
   );
+  await expect(page.locator(".map-toolbar")).toContainText("0 pedidos");
+  await expect(page.locator(".map-toolbar")).toContainText(
+    "Sin pedidos asignados",
+  );
+  await page
+    .getByRole("dialog")
+    .getByLabel("Mostrar")
+    .selectOption("unassigned");
+  await expect(page.locator(".map-toolbar")).toContainText("1 pedidos");
+  await expect(page.locator(".map-toolbar")).toContainText(
+    "no forman un recorrido",
+  );
+  await expect(page.locator(".route-metrics")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(openMap).toBeFocused();
   expect(
@@ -936,6 +949,65 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     "Asignación y orden guardados",
   );
   await expect(page.getByText("Fonda Martha", { exact: true })).toBeVisible();
+  // Real PATCH + polling while the map stays open: removing an assignment must
+  // immediately affect the same selection used by markers and the sidebar.
+  await openMap.click();
+  await expect(page.locator(".map-toolbar")).toContainText("1 pedidos");
+  const beforeUnassign = await orderBoard(db.pool, savedPlan.id);
+  const assignedShipment = beforeUnassign.shipments.find(
+    (s) => s.orderName === "S00500",
+  )!;
+  const unassignStarted = Date.now();
+  const unassignedResponse = await first.request.patch(
+    `${origin}/api/plans/${savedPlan.id}/orders`,
+    {
+      headers: { Origin: origin },
+      data: {
+        shipmentId: assignedShipment.id,
+        vehicleId: null,
+        beforeId: null,
+        expectedVersion: beforeUnassign.plan.version,
+      },
+    },
+  );
+  expect(unassignedResponse.status()).toBe(200);
+  await expect(page.locator(".map-toolbar")).toContainText("0 pedidos");
+  const mapRefreshMs = Date.now() - unassignStarted;
+  expect(mapRefreshMs).toBeLessThan(5000);
+  await test.info().attach("map-unassign-refresh", {
+    body: JSON.stringify({ mapRefreshMs, localAcceptanceBudgetMs: 5000 }),
+    contentType: "application/json",
+  });
+  await expect(page.locator(".map-toolbar")).toContainText(
+    "Sin pedidos asignados",
+  );
+  await expect(page.locator(".route-metrics")).toHaveCount(0);
+  await page
+    .getByRole("dialog")
+    .getByLabel("Mostrar")
+    .selectOption("unassigned");
+  await expect(page.locator(".map-toolbar")).toContainText("1 pedidos");
+  const afterUnassign = await orderBoard(db.pool, savedPlan.id);
+  expect(afterUnassign.shipments.map((s) => s.id)).toEqual(
+    beforeUnassign.shipments.map((s) => s.id),
+  );
+  const reassignedResponse = await first.request.patch(
+    `${origin}/api/plans/${savedPlan.id}/orders`,
+    {
+      headers: { Origin: origin },
+      data: {
+        shipmentId: assignedShipment.id,
+        vehicleId: assignedShipment.vehicle_id,
+        beforeId: null,
+        expectedVersion: afterUnassign.plan.version,
+      },
+    },
+  );
+  expect(reassignedResponse.status()).toBe(200);
+  await expect(page.locator(".map-toolbar")).toContainText("0 pedidos");
+  await page.getByRole("dialog").getByLabel("Mostrar").selectOption("all");
+  await expect(page.locator(".map-toolbar")).toContainText("1 pedidos");
+  await page.keyboard.press("Escape");
   await fondaCard
     .getByRole("button", {
       name: "Ocultar detalles de Fonda Martha S00500",

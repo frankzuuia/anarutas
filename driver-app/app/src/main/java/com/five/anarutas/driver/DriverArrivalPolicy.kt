@@ -49,3 +49,14 @@ internal fun sampleCapturedAt(serverTime: Instant, receivedElapsed: Long, sample
 /** Android providers may deliver callbacks out of timestamp order. Never regress to an older fix. */
 internal fun isNewLocationSample(current: DriverGps?, incoming: DriverGps): Boolean =
     current == null || incoming.elapsedMillis >= current.elapsedMillis
+
+internal data class ArrivalEvaluation(val gps: DriverGps?, val eligibility: ArrivalEligibility)
+
+/** Read the live monotonic clock once per evaluation, never the last UI timer timestamp. */
+internal fun evaluateArrivalNow(current: DriverGps?, lastReady: DriverGps?, lastReadyPoint: ExecutionPoint?,
+    target: ExecutionPoint?, policy: ArrivalPolicy, elapsedRealtime: () -> Long): ArrivalEvaluation {
+    val elapsed = elapsedRealtime()
+    val usable = actionableGps(current, lastReady, lastReadyPoint, target, policy, elapsed)
+    return ArrivalEvaluation(usable, if (usable != null) ArrivalEligibility.READY else
+        arrivalEligibility(current, target, policy, elapsed))
+}

@@ -1,5 +1,44 @@
 # Bloque 1 — especificación y auditoría previa
 
+## Corrección 0.5.3 — reloj GPS y asignaciones del mapa
+
+Autopsia: `Chrome` comparaba muestras recién recibidas con `tick`, capturado hasta
+un segundo antes. Una muestra posterior al tick resultaba «futura» y STALE hasta
+el siguiente pulso. No es necesario relajar la política: cada evaluación debe leer
+el reloj monotónico vivo una sola vez; el pulso sólo provoca reevaluación para caducar
+lecturas aunque no lleguen callbacks. Llegada y ambos pasos de repunte comparten
+la evaluación. La validación final del comando/servidor permanece intacta.
+
+El filtro `all` del mapa incluía pedidos sin camioneta. Una selección pura compartida
+por puntos, lista, métricas y trazos incluirá sólo asignaciones a camionetas del plan.
+«Sin asignar» es una vista explícita sin recorrido. Cálculos de otro plan/versión o
+con una secuencia distinta de la asignación vigente no pueden mostrarse como vigentes.
+Una selección vacía muestra «Sin pedidos asignados», sin «Recorrido vigente» ni 0 km.
+No se borran pedidos ni se publican rutas, cambian permisos o añaden llamadas Google.
+
+| ID | Actor / precondición / evento | Resultado y validación |
+| --- | --- | --- |
+| F01 | Chofer, GPS preciso nuevo entre dos pulsos | READY continuo en llegada/repunte; regresión JVM temporal |
+| F02 | Chofer, sin nuevo GPS / muestra futura, simulada o fuera del radio | Caduca o bloquea; no se extiende vigencia ni radio; JVM + mutación |
+| F03 | Administrador, quitar último pedido de camioneta | Desaparece de todas las camionetas; permanece en vista Sin asignar; unidad + E2E PG real |
+| F04 | Administrador, mover a otra camioneta o quitar camioneta | Sólo aparece en asignación nueva; no trazo viejo; unidad |
+| F05 | Administrador, respuestas de plan/cálculo de versiones distintas | Puntos actuales sin recorrido obsoleto; unidad |
+| F06 | Administrador, filtro sin paradas / sin Google configurado | Contador cero y estado vacío correcto; E2E sin simular Google |
+
+Flujo: Location → evaluación monotónica → controles → comando ya validado;
+OrderBoard + PublicOptimization → selección → render/limpieza de marcadores.
+Datos: sólo lecturas/suscripciones ya existentes; sin migraciones, notificaciones
+ni auditoría adicional al abrir una vista. Errores de red mantienen las advertencias
+existentes. Revertir el commit de develop revierte la presentación, no datos.
+Puertas: pruebas unitarias, cobertura de ramas críticas, mutación, E2E HTTP/PG,
+lint/typecheck/build y APK. Objetivo: 100% líneas del selector/evaluación nuevos y
+ningún mutante crítico superviviente; GPS físico sigue a cargo del usuario, sin ADB.
+Referencias: Android [SystemClock](https://developer.android.com/reference/android/os/SystemClock)
+y [Location](https://developer.android.com/reference/android/location/Location#getElapsedRealtimeNanos());
+Next instalado `01-app/01-getting-started/05-server-and-client-components.md`.
+Auditoría local: GREEN LIGHT para implementar; INTEGRITY TOTAL; MATCH PERFECT
+con tareas F01..06 de PROGRESS. No certifica aún ejecución de las pruebas.
+
 ## Ajuste 0.5.1 — visualización y domicilio confirmado
 
 La ficha del mapa puede plegarse sin perder guía, selección ni GPS; tocar un marcador abre su parada sin redirigir Navigation SDK. La voz se silencia mediante el ajuste oficial del navegador y el estado se conserva en la APK. Una muestra GPS reciente y válida de la misma parada amortigua sólo variaciones transitorias de precisión; la API mantiene la autoridad y rechaza muestras viejas, simuladas o fuera del radio.

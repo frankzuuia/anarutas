@@ -1,5 +1,14 @@
 # Ana Rutas — bloque 1 aprobado
 
+Corrección 0.5.3 a BL-106/107: el chofer evalúa llegada y repunte contra el reloj
+monotónico actual, no contra el último pulso de pantalla. No cambia radio, precisión,
+vigencia, autorización ni auditoría de los comandos. Validación: F01..02.
+Mapa administrativo: «Todas las camionetas» representa sólo pedidos asignados a
+camionetas del plan; quitar una asignación no borra el pedido, que puede consultarse
+en «Sin asignar». Sólo se muestran trazos/métricas compatibles con la versión y
+secuencia actuales. Lectura autenticada existente, sin escritura ni auditoría nueva;
+validación F03..06 en MASTER-SPECIFICATION.
+
 ## Propuesta siguiente — BL-105..108 (24/09/2026, aún no implementada)
 
 Diseño y criterios completos en `BLOQUE-MAPA-LLEGADA-REPUNTE.md`:

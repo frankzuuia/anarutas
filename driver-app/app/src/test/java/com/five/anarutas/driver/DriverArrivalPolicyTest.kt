@@ -82,4 +82,51 @@ class DriverArrivalPolicyTest {
         assertTrue(isNewLocationSample(gps, gps.copy(elapsedMillis = 100_001)))
         assertFalse(isNewLocationSample(gps, gps.copy(elapsedMillis = 99_999)))
     }
+    @Test fun freshCallbacksBetweenUiTicksNeverBecomeArtificiallyFutureDated() {
+        // Reproduce the old defect: the last timer timestamp predates the new location.
+        val lastUiTick = 100_000L
+        val firstFix = gps.copy(elapsedMillis = 100_350)
+        assertEquals(ArrivalEligibility.STALE, arrivalEligibility(firstFix, point, policy, lastUiTick))
+        for (sampleTime in listOf(100_350L, 100_850L, 101_350L, 101_850L)) {
+            val fix = gps.copy(elapsedMillis = sampleTime)
+            val result = evaluateArrivalNow(fix, null, null, point, policy) { sampleTime + 10 }
+            assertEquals(fix, result.gps)
+            assertEquals(ArrivalEligibility.READY, result.eligibility)
+        }
+    }
+    @Test fun evaluationReadsClockOnceAndExpiresWithoutAnyNewLocation() {
+        var now = 130_000L
+        var reads = 0
+        val clock = { reads++; now++ }
+        val boundary = evaluateArrivalNow(gps, null, null, point, policy, clock)
+        assertEquals(1, reads)
+        assertEquals(ArrivalEligibility.READY, boundary.eligibility)
+        assertEquals(gps, boundary.gps)
+        val expired = evaluateArrivalNow(gps, gps, point, point, policy, clock)
+        assertEquals(2, reads)
+        assertEquals(ArrivalEligibility.STALE, expired.eligibility)
+        assertNull(expired.gps)
+    }
+    @Test fun liveEvaluationKeepsRepointJitterStableWithoutBypassingSafety() {
+        val worse = gps.copy(accuracy = 70.0, elapsedMillis = 100_500)
+        val stable = evaluateArrivalNow(worse, gps, point, point, policy) { 100_510 }
+        assertEquals(gps, stable.gps)
+        assertEquals(ArrivalEligibility.READY, stable.eligibility)
+        val movedPin = evaluateArrivalNow(worse, gps, point, ExecutionPoint(21.0, -103.4), policy) { 100_510 }
+        assertNull(movedPin.gps)
+        assertEquals(ArrivalEligibility.IMPRECISE, movedPin.eligibility)
+        for ((sample, expected) in listOf(
+            gps.copy(elapsedMillis = 100_511) to ArrivalEligibility.STALE,
+            gps.copy(mock = true) to ArrivalEligibility.UNTRUSTED,
+            gps.copy(point = ExecutionPoint(21.0, -103.4)) to ArrivalEligibility.OUTSIDE,
+            null to ArrivalEligibility.NO_GPS,
+        )) {
+            val rejected = evaluateArrivalNow(sample, gps, point, point, policy) { 100_510 }
+            assertNull(rejected.gps)
+            assertEquals(expected, rejected.eligibility)
+        }
+        val missing = evaluateArrivalNow(gps, gps, point, null, policy) { 100_510 }
+        assertNull(missing.gps)
+        assertEquals(ArrivalEligibility.MISSING_POINT, missing.eligibility)
+    }
 }

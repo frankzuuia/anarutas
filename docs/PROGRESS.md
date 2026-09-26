@@ -1,5 +1,12 @@
 # Progreso — bloque 1
 
+## Corrección 0.5.3 — lista para prueba física
+
+- [x] F01..02: evaluar GPS con reloj monotónico vivo; regresión de lecturas entre pulsos y caducidad sin callbacks.
+- [x] F03..06: selección común del mapa según asignación real; vista explícita Sin asignar y estado vacío sin métricas engañosas.
+- [x] Pruebas, cobertura, mutación, E2E PG/HTTP, build/lint y APK 0.5.3/code14. Evidencia en `QA-REGRESIONES-MAPA-GPS-0.5.3.md`.
+- [ ] Validación física por el usuario sin ADB. Sólo develop; no deploy automático ni main.
+
 ## Ajuste 0.5.2 — vista previa manual y controles de navegación
 
 - [x] Mapa del borrador completo: primera apertura solicita recorrido manual una vez por versión; aperturas siguientes reutilizan resultado/trabajo. Publicar sigue siendo una decisión separada.
