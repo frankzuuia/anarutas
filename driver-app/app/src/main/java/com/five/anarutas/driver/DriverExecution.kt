@@ -4,7 +4,9 @@ import org.json.JSONObject
 import java.time.Instant
 internal data class ExecutionStop(val id: String, val position: Int, val customer: String, val address: String,
     val shipmentIds: List<String>, val point: ExecutionPoint?, val version: Int,
-    val customerLocationVersion: Int, val customerArchived: Boolean, val arrivedAt: String?)
+    val customerLocationVersion: Int, val customerArchived: Boolean, val arrivedAt: String?,
+    val visitSequence: Int, val phone: String? = null, val customerVersion: Int = 0,
+    val orderStates: List<ExecutionOrderState> = emptyList(), val closedReportedVisitSequence: Int = 0)
 internal data class DriverExecution(val id: String, val planId: String, val publicationRevision: Int, val revision: Int,
     val serverTime: Instant, val receivedElapsedMillis: Long, val timezone: String, val policy: ArrivalPolicy,
     val hasCorrections: Boolean, val stops: List<ExecutionStop>)
@@ -33,7 +35,12 @@ internal fun parseExecution(raw: String, receivedElapsed: Long): DriverExecution
                 (0 until ids.length()).map(ids::getString),
                 if (s.isNull("latitude") || s.isNull("longitude")) null else ExecutionPoint(s.getDouble("latitude"), s.getDouble("longitude")),
                 s.getInt("version"), s.getInt("customerLocationVersion"), s.getBoolean("customerArchived"),
-                if (s.isNull("arrivedAt")) null else s.getString("arrivedAt"))
+                if (s.isNull("arrivedAt")) null else s.getString("arrivedAt"), s.getInt("visitSequence"),
+                if (s.isNull("phone")) null else s.getString("phone"), s.getInt("customerVersion"),
+                s.getJSONArray("orderStates").let { list -> (0 until list.length()).map { orderIndex ->
+                    val order = list.getJSONObject(orderIndex)
+                    ExecutionOrderState(order.getString("shipmentId"), OrderServiceStatus.parse(order.getString("status")), order.getInt("version"))
+                } }, s.getInt("closedReportedVisitSequence"))
         })
 }
 internal fun stopCommand(execution: DriverExecution, stop: ExecutionStop, gps: DriverGps, elapsed: Long,
@@ -53,3 +60,9 @@ internal fun stopCommand(execution: DriverExecution, stop: ExecutionStop, gps: D
             }
         }
 }
+
+internal fun visitExitCommand(execution: DriverExecution, stop: ExecutionStop, commandId: String): JSONObject =
+    JSONObject().put("commandId", commandId).put("executionId", execution.id)
+        .put("publicationRevision", execution.publicationRevision)
+        .put("executionRevision", execution.revision)
+        .put("stopVersion", stop.version).put("visitSequence", stop.visitSequence)

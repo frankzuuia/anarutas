@@ -15,7 +15,7 @@ import { startDriverRoute } from "../../src/core/route-start";
 
 // Real isolated PostgreSQL, signatures, image files and start transaction. No HTTP/API mocks.
 // The persisted publication is a fixture for execution, not a claim of a Google calculation.
-export async function executionFixture() {
+export async function executionFixture(options: { groupFourthOrderWithFirst?: boolean } = {}) {
   const db = await startPostgres();
   const photoRoot = await mkdtemp(join(tmpdir(), "rutas-execution-"));
   const oldPepper = process.env.RUTAS_DRIVER_PIN_PEPPER;
@@ -57,11 +57,17 @@ export async function executionFixture() {
     const imported = await orderBoard(db.pool, plan.id);
     for (const shipment of imported.shipments) {
       await db.pool.query("UPDATE route_shipments SET vehicle_id=$2 WHERE id=$1", [shipment.id,
-        members[shipment.orderName === "S4" ? 1 : 0].vehicleId]);
+        members[shipment.orderName === "S4" && !options.groupFourthOrderWithFirst ? 1 : 0].vehicleId]);
     }
     const board = await orderBoard(db.pool, plan.id);
     for (const member of members) {
       const snapshot = routePublicationSnapshot(board, board.vehicles.find(v => v.id === member.vehicleId)!, null, "execution-fixture");
+      if (options.groupFourthOrderWithFirst && member === members[0]) {
+        const fourthIndex = snapshot.orders.findIndex(order => order.orderName === "S4");
+        const firstIndex = snapshot.orders.findIndex(order => order.orderName === "S1");
+        const [fourth] = snapshot.orders.splice(fourthIndex, 1);
+        snapshot.orders.splice(firstIndex + 1, 0, fourth);
+      }
       const serialized = JSON.stringify(snapshot);
       await db.pool.query(`INSERT INTO route_plan_publications(plan_id,vehicle_id,driver_id,source_plan_version,snapshot,snapshot_hash,published_by)
         VALUES($1,$2,$3,$4,$5,$6,$7)`, [plan.id, member.vehicleId, member.driverId, board.plan.version,
@@ -77,6 +83,6 @@ export async function executionFixture() {
       }
       return startDriverRoute(db.pool, member.driverId, plan.id, 1, timezone, now, photoRoot);
     };
-    return { db, actor, members, planId: plan.id, now, timezone, start, close };
+    return { db, actor, members, planId: plan.id, now, timezone, photoRoot, start, close };
   } catch (error) { await close(); throw error; }
 }

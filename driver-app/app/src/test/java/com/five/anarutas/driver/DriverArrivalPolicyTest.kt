@@ -40,6 +40,19 @@ class DriverArrivalPolicyTest {
         assertEquals(20_015_114.44, pointDistance(ExecutionPoint(0.0, 0.0), ExecutionPoint(0.0, 180.0)), .02)
         assertEquals(78_626.296, pointDistance(ExecutionPoint(45.0, 0.0), ExecutionPoint(45.0, 1.0)), .01)
     }
+    @Test fun currentLocationCanReplaceAnOldPinAcrossTownButOnlyWithTrustedGps() {
+        val oldWrongPin = ExecutionPoint(21.0, -103.4)
+        assertEquals(ArrivalEligibility.OUTSIDE, arrivalEligibility(gps, oldWrongPin, policy, 100_000))
+        assertEquals(point, currentLocationRepointCandidate(gps, policy, 100_000))
+        assertEquals(ArrivalEligibility.READY, arrivalEligibility(gps, point, policy, 100_000))
+        assertNull(currentLocationRepointCandidate(null, policy, 100_000))
+        assertNull(currentLocationRepointCandidate(gps.copy(mock = true), policy, 100_000))
+        assertNull(currentLocationRepointCandidate(gps.copy(accuracy = 70.0), policy, 100_000))
+        assertNull(currentLocationRepointCandidate(gps, policy, 130_001))
+        assertNull(currentLocationRepointCandidate(gps.copy(point = ExecutionPoint(91.0, -103.4)), policy, 100_000))
+        val manuallyPlacedFarAway = ExecutionPoint(20.7, -103.4)
+        assertEquals(ArrivalEligibility.OUTSIDE, arrivalEligibility(gps, manuallyPlacedFarAway, policy, 100_000))
+    }
     @Test fun invalidCoordinatesCannotEnableArrival() {
         for (bad in listOf(ExecutionPoint(91.0, 0.0), ExecutionPoint(-91.0, 0.0), ExecutionPoint(0.0, 181.0),
             ExecutionPoint(0.0, -181.0), ExecutionPoint(Double.NaN, 0.0), ExecutionPoint(0.0, Double.NaN),

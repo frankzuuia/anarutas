@@ -400,7 +400,34 @@ class DriverApi(private val server: String) {
     }
 
     internal suspend fun stopCommand(token: String, planId: String, stopId: String, kind: String, payload: JSONObject): JSONObject {
-        require(kind == "arrival" || kind == "location")
+        require(kind == "arrival" || kind == "location" || kind == "visit-exit" || kind == "phone")
         return JSONObject(exchange("POST", "/api/mobile/plans/$planId/stops/$stopId/$kind", token, payload))
+    }
+
+    internal suspend fun serviceCommand(token: String, planId: String, stopId: String, shipmentId: String, payload: JSONObject) =
+        JSONObject(exchange("POST", "/api/mobile/plans/$planId/stops/$stopId/orders/$shipmentId/service", token, payload))
+
+    internal suspend fun commandConfirmed(token: String, planId: String, commandId: String) =
+        JSONObject(exchange("GET", "/api/mobile/plans/$planId/commands/$commandId", token)).getBoolean("confirmed")
+
+    internal suspend fun closedCommand(token: String, planId: String, stopId: String, payload: JSONObject, bytes: ByteArray) = withContext(Dispatchers.IO) {
+        val connection = URL("$server/api/mobile/plans/$planId/stops/$stopId/closed").openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = "POST"
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 10000
+            connection.readTimeout = 30000
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            connection.setRequestProperty("Content-Type", "image/jpeg")
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("X-Ana-Rutas-Command", android.util.Base64.encodeToString(payload.toString().toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP))
+            connection.setFixedLengthStreamingMode(bytes.size)
+            connection.doOutput = true
+            connection.outputStream.use { it.write(bytes) }
+            val status = connection.responseCode
+            val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.readLimited().orEmpty()
+            if (status !in 200..299) throw DriverApiException(status, runCatching { JSONObject(text).optString("error") }.getOrDefault(""))
+            JSONObject(text)
+        } finally { connection.disconnect() }
     }
 }

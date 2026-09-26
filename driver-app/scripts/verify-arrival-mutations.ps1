@@ -37,6 +37,7 @@ $cases = @(
     @{ name = 'evaluate_without_live_clock'; from = 'val elapsed = elapsedRealtime()'; to = 'val elapsed = 0L' },
     @{ name = 'ignore_actionable_evaluation'; from = 'ArrivalEvaluation(usable, if (usable != null)'; to = 'ArrivalEvaluation(null, if (usable != null)' },
     @{ name = 'ready_label_on_invalid_sample'; from = 'arrivalEligibility(current, target, policy, elapsed))'; to = 'ArrivalEligibility.READY)' },
+    @{ name = 'repoint_accept_invalid_current_location'; from = 'arrivalEligibility(gps, it, policy, elapsed) == ArrivalEligibility.READY'; to = 'true' },
     @{ name = 'address_allow_blank'; file = 'DriverExecution.kt'; test = 'CorrectedAddressFieldsTest'; from = 'it.isNotEmpty() && it.length <= maximum'; to = 'true && it.length <= maximum' },
     @{ name = 'address_allow_long'; file = 'DriverExecution.kt'; test = 'CorrectedAddressFieldsTest'; from = 'it.length <= maximum && it.none'; to = 'true && it.none' },
     @{ name = 'address_allow_control'; file = 'DriverExecution.kt'; test = 'CorrectedAddressFieldsTest'; from = 'it.none { character -> character.code < 32 }'; to = 'true' },
@@ -46,6 +47,8 @@ $cases = @(
     @{ name = 'guide_retired_route'; file = 'GuidanceResultPolicy.kt'; test = 'GuidanceResultPolicyTest'; from = 'retired ||'; to = 'false ||' },
     @{ name = 'guide_old_request'; file = 'GuidanceResultPolicy.kt'; test = 'GuidanceResultPolicyTest'; from = 'requestGeneration != currentGeneration'; to = 'false' },
     @{ name = 'guide_old_point'; file = 'GuidanceResultPolicy.kt'; test = 'GuidanceResultPolicyTest'; from = 'requestedDestination != currentDestination'; to = 'false' },
+    @{ name = 'guide_allow_retired_selection'; file = 'GuidanceResultPolicy.kt'; test = 'GuidanceResultPolicyTest'; from = '!state.retired'; to = 'true' },
+    @{ name = 'guide_repeat_same_destination'; file = 'GuidanceResultPolicy.kt'; test = 'GuidanceResultPolicyTest'; from = '!state.alreadyGuidingToDestination'; to = 'true' },
     @{ name = 'notice_old_acknowledgement'; file = 'NavigationNoticePolicy.kt'; test = 'NavigationNoticePolicyTest'; from = 'acknowledgedVersion < NAVIGATION_NOTICE_VERSION'; to = 'false' },
     @{ name = 'notice_current_acknowledgement'; file = 'NavigationNoticePolicy.kt'; test = 'NavigationNoticePolicyTest'; from = 'acknowledgedVersion < NAVIGATION_NOTICE_VERSION'; to = 'acknowledgedVersion <= NAVIGATION_NOTICE_VERSION' },
     @{ name = 'notice_license_truncation'; file = 'NavigationNoticePolicy.kt'; test = 'NavigationNoticePolicyTest'; from = '.map { it.joinToString("\n") }.toList()'; to = '.take(1).map { it.joinToString("\n") }.toList()' }

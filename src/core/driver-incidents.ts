@@ -56,6 +56,7 @@ export async function readDriverIncidents(sql: Sql, params: URLSearchParams, tim
   const drivers = await sql.query(
     `SELECT d.id,d.name,d.active FROM route_drivers d WHERE d.active OR EXISTS (
        SELECT 1 FROM route_driver_stop_events e WHERE e.driver_id=d.id AND e.incident_kind IS NOT NULL)
+       OR EXISTS (SELECT 1 FROM route_driver_service_incidents i WHERE i.driver_id=d.id)
      ORDER BY d.name,d.id`,
   );
   const page = rows.slice(0, 50);

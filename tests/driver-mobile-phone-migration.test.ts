@@ -142,7 +142,7 @@ describe("driver mobile phone migration", () => {
     const version = await db.pool.query(
       "SELECT schema_version FROM rutas_installation WHERE singleton=true",
     );
-    expect(version.rows[0].schema_version).toBe(20);
+    expect(version.rows[0].schema_version).toBe(22);
     await expect(
       db.pool.query(
         "UPDATE route_driver_mobile_access SET login_phone='523311111111' WHERE driver_id=$1",

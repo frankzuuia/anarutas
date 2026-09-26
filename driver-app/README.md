@@ -1,6 +1,14 @@
 # Ana Rutas Chofer — Android, bloques 1, 2A y 2B
 
-## Mapa, llegada y repunte — 0.5.1 (validación local)
+## Mapa, llegada y repunte — 0.5.4 (validación física pendiente)
+
+En 0.5.4, la ficha de cada marcador ofrece «Ir a esta parada»: sólo esa acción
+cambia la guía, sin reordenar pedidos ni registrar llegada. Para corregir un punto
+que estaba incluso al otro lado de la ciudad, «Usar mi ubicación actual» mueve el
+pin y centra el mapa con GPS válido; «Elegir en el mapa» deja arrastrar el pin o
+mantener pulsado el mapa. La confirmación siempre exige GPS reciente, real y
+preciso dentro del radio del **punto nuevo**. El punto antiguo no limita el
+desplazamiento, y el radio de «Llegué» no cambia.
 
 Tras iniciar se abre el mapa de la ejecución propia, con todos sus puntos,
 posición GPS precisa y ficha inferior Five. «Llegué» se valida otra vez en el
@@ -159,3 +167,35 @@ sin conexión en este bloque.
 
 La variable `RUTAS_DRIVER_PIN_PEPPER` debe configurarse en el servidor antes
 de habilitar accesos móviles. Nunca se incluye en la APK ni en Git.
+
+## Atención e incidencias — APK 0.6.0
+
+Desplegar primero el backend con migraciones aditivas v21/v22 y después
+instalar esta APK de pruebas. No requiere nueva clave ni variable de entorno:
+`RUTAS_UNIT_PHOTO_DIR` ya configurado aloja el subdirectorio privado
+`incident-evidence`. No exponerlo como contenido estático.
+
+- Llegué habilita atención e incidencias; ir a otra parada cierra la visita
+  anterior sin entregar sus pedidos. La llegada histórica permanece.
+- Cliente cerrado exige fotografía; los pedidos sin cerrar quedan pendientes
+  de reintento. Nueva llegada GPS permite atender y retira temporalmente el
+  caso del feed; abandonar sin atender lo vuelve a mostrar.
+- Rechazo requiere motivo y texto para «Otro». Puede entregarse más adelante.
+- Reprogramar tiene Aceptar/Cancelar y nota opcional, **sin fecha**. Cierra
+  sólo ese pedido en esta ruta; no agenda ni crea otra ruta. Administración
+  puede resolver reprogramados/rechazados, nunca cliente cerrado.
+- Llamar usa teléfono operativo. Guardar un teléfono ausente actualiza el
+  cliente de Ana Rutas y su lectura móvil; no cambia Odoo ni la publicación.
+- Fotos del servidor inaccesibles a las 24 h o al resolver; eliminación
+  física tras resolver y por trabajador cada minuto, con reintento ante I/O.
+  El backlog/servidor detenido puede retrasar el borrado, **no** el vencimiento
+  de acceso. Metadatos/auditoría se conservan; backups deben respetar la retención.
+- La foto pendiente de enviar vive en almacenamiento privado excluido de
+  backup. Se descarta tras confirmar o fallo definitivo. Copias locales
+  antiguas se purgan al abrir la ejecución; no se afirma limpieza en segundo
+  plano con la app cerrada. Un recibo del servidor recupera envíos confirmados
+  sin duplicarlos aunque ya no exista la copia local.
+
+No se implementan cobros, efectivo recibido, liquidación ni cierre financiero
+en este bloque. Evidencia automatizada y prueba física reproducible en
+`docs/QA-ATENCION-INCIDENCIAS.md`; no usar debug como distribución de producción.

@@ -1,4 +1,5 @@
 export const errors: Record<string, string> = {
+  DRIVER_RETRY_REQUIRED: "Cliente cerrado sólo puede resolverlo el chofer mediante reintento o reprogramación.",
   MOBILE_PHONE_INVALID:
     "Para acceder a la APK, el teléfono del chofer debe ser un número mexicano válido de 10 dígitos.",
   MOBILE_PIN_INVALID: "Escribe exactamente cuatro dígitos para el PIN.",

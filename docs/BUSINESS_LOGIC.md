@@ -1,5 +1,105 @@
 # Ana Rutas — bloque 1 aprobado
 
+## Atención e incidencias operativas — BL-111..116 (25/09/2026)
+
+- BL-111 · Llegada y cambio de destino. Actor: chofer de la ejecución vigente.
+  «Llegué» conserva un evento histórico; sólo habilita atención de esa visita.
+  Si sale hacia otra parada sin registrar atención ni incidencia, la anterior
+  vuelve a **abierta**, sin crear incidencia ni entrega. Regresar exige una nueva
+  llegada validada por GPS. Datos: estado operativo de la visita, no pedidos ni
+  orden de ruta. Permiso: sesión móvil y ejecución propia. Auditoría: eventos de
+  llegada y salida inmutables. Validación: cambio de destino repetido o fallido
+  no duplica eventos ni inventa una entrega.
+- BL-112 · Incidencia «Cliente cerrado». Actor: chofer que llegó al domicilio.
+  Requiere fotografía real antes de enviar. Si la parada contiene dos pedidos,
+  **ambos** quedan pendientes de reintento; el mapa los distingue con
+  admiración y al tocar el punto ofrece «Reintentar pedido». Datos: incidencia,
+  estado de cada pedido y evidencia privada.
+  Permiso: ejecución propia y pedido asignado. Auditoría: creación/reintentos/
+  resolución. Validación: no se registra sin foto, sin llegada vigente, dos
+  envíos no crean dos incidencias. Administración **no** puede marcar este
+  tipo resuelto: el chofer debe reintentar. Al confirmar una nueva llegada
+  válida, sale de «Incidencias en vivo»; si abandona sin atender, vuelve a
+  pendiente. Si sigue cerrado, puede reprogramar; entregar cierra el caso.
+- BL-113 · Incidencia «Pedido rechazado». Actor: chofer que llegó al domicilio.
+  Motivos: mala calidad, llegada tarde u otro con texto obligatorio. Queda
+  **rechazado**, no pendiente de reintento, pero el chofer puede volver y
+  entregarlo si el cliente cambia de opinión. Datos/permiso/auditoría como
+  BL-112, sin exigir foto. Validación: rechazo no se contabiliza como entrega
+  ni bloquea una entrega posterior; el cierre de ruta no debe falsificarla.
+- BL-114 · Panel «Incidencias en vivo». Actor: administrador autenticado.
+  Es una entrada propia del panel lateral y una pantalla independiente, con
+  filtros de fecha y chofer propios. «Incidencias» conserva exclusivamente
+  repuntes, llegadas fuera de horario y reglas de llegada; no contiene este panel.
+  Muestra evidencia autorizada, negocio/causa, chofer, fecha, estado y métricas
+  separadas por chofer; refresca mediante los eventos del panel existentes.
+  «Resolver» sólo se ofrece donde corresponda (reprogramación y rechazo),
+  registra actor/hora y retira la evidencia visual. Un «Cliente cerrado» sólo
+  sale de la vista activa por reintento real del chofer, reprogramación o
+  entrega. Al cerrar una ruta ya liquidada sus incidencias dejan la vista del
+  módulo, pero el rastro auditable permanece. Datos: proyección operativa e
+  historial, no Odoo. Validación: filtros y métricas coherentes ante
+  concurrencia, reintentos y desconexión; ninguna incidencia se mezcla entre
+  choferes.
+- BL-115 · Evidencia. Actor: chofer al fotografiar y servidor al custodiar.
+  Almacenamiento privado separado de las fotos de unidad; caducidad automática
+  a las 24 h desde su aceptación por el servidor o retiro anticipado al
+  resolver, sin borrar el evento histórico. Permiso: sólo chofer dueño y administradores autenticados
+  mientras esté vigente. Auditoría: captura/acceso/resolución/caducidad.
+  Validación: tamaño, tipo real, aislamiento, huérfanos y fallo de almacenamiento.
+- BL-116 · Teléfono operativo. Actor: chofer de ruta vigente. «Llamar al
+  cliente» usa `route_customers.phone`; si falta, muestra ausencia y permite
+  añadirlo o cancelar. Guardar actualiza la ficha de cliente y lectura móvil
+  vigentes, con control de versión y auditoría, sin escribir a Odoo; la siguiente
+  sincronización de Odoo no revierte el cambio. Validación: formato telefónico,
+  autorización, concurrencia y marcación segura sin exponer otro cliente.
+- BL-117 · Reprogramación. Actor: chofer que atiende un pedido pendiente.
+  «Reprogramar» abre confirmación Aceptar/Cancelar con nota opcional; **no**
+  pide ni calcula fecha. Al aceptar **cierra ese pedido en la ruta actual** y
+  crea una incidencia en vivo con la nota. Administración decide después si
+  lo incluye en otra ruta y en qué fecha; «Resolver» marca esta incidencia
+  resuelta, sin reabrir ni entregar el pedido original. Datos: pedido, nota,
+  chofer y ruta origen; permiso: ejecución propia. Auditoría: aceptación y
+  resolución; validación: no duplicación, conflicto con entrega/rechazo y
+  actualización del panel. Este botón no mueve ni crea rutas futuras.
+- BL-118 · Liquidación y cierre (bloque posterior). Actor: chofer entrega su
+  liquidación y un administrador **autorizado para liquidar** registra efectivo
+  recibido y comprueba el cuadre. La ruta sólo podrá cerrarse tras ambos hechos
+  confirmados; terminar navegación o marcar entregas no equivale a cierre.
+  Datos: importes por cobrar/cobrados, diferencias, recibos, actor y tiempos;
+  permiso: rol específico de liquidación, separado del mero acceso al panel.
+  Auditoría: eventos inmutables de entrega, recepción, conciliación y cierre.
+  Validación: importes exactos, diferencias, concurrencia, doble cierre y
+  trazabilidad por pedido. No se implementarán cálculos con importes ausentes
+  ni escrituras Odoo sin un contrato de origen y autorización explícitos.
+- BL-119 · Lectura del mapa. Actor: chofer en ruta. Todas las paradas no
+  seleccionadas conservan un contorno visible sobre el mapa oscuro; sólo el
+  destino seleccionado mantiene el relleno destacado actual. Datos: estado
+  visual derivado de la ejecución propia, sin escritura. Permiso: mapa de su
+  ejecución vigente. Auditoría: no aplica por ser presentación. Validación:
+  estados normal/llegada/selección distinguibles sin cambiar la guía.
+
+La futura asignación de pedidos reprogramados es una decisión administrativa
+fuera de este bloque; no existe calendario automático. El cierre financiero
+pertenece al bloque posterior y no se presume que ya exista.
+
+## Ajuste de navegación y repunte — BL-109..110 (25/09/2026)
+
+- BL-109: el chofer puede consultar pedidos de cualquier parada sin alterar su ruta;
+  sólo al pulsar «Ir a esta parada» se selecciona ese destino y se reemplaza la
+  guía activa. Actor: chofer de la ejecución vigente. Datos: parada y coordenadas
+  de la ejecución propia, sólo lectura; ninguna entrega, orden o asignación cambia.
+  Permiso: sesión móvil y ejecución verificada no retirada. Auditoría: no se crea
+  evento de negocio por cambiar una guía local. Validación: respuesta tardía del
+  SDK no puede reactivar el destino anterior; fallo del SDK deja reintento visible.
+- BL-110: «Mal punteado» permite usar una ubicación GPS actual o escoger el pin
+  manualmente en el mapa aunque el punto anterior esté lejos. Actor: chofer de la
+  ejecución vigente. Datos: punto y domicilio corregidos en la transacción de
+  repunte existente. Permiso: los del comando actual; sin acceso a otro chofer.
+  Auditoría: historial e incidencia de repunte existentes. Validación: GPS real,
+  reciente y preciso debe estar dentro del radio del punto **nuevo** para confirmar;
+  «Llegué» mantiene exactamente la misma política. Nada se escribe al mover el pin.
+
 Corrección 0.5.3 a BL-106/107: el chofer evalúa llegada y repunte contra el reloj
 monotónico actual, no contra el último pulso de pantalla. No cambia radio, precisión,
 vigencia, autorización ni auditoría de los comandos. Validación: F01..02.

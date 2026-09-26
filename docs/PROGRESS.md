@@ -1,5 +1,72 @@
 # Progreso — bloque 1
 
+## Atención e incidencias en vivo — BL-111..117
+
+- [x] AI-T00: autopsia de estado de llegada/guía, almacenamiento privado,
+  teléfono operativo y canal SSE; reglas BL-111..116 registradas.
+- [x] AI-T01: contrato de reprogramación sin fecha ni asignación; GREEN LIGHT
+  documental, INTEGRITY TOTAL y MATCH PERFECT contra AI01..AI17/AI02a.
+- [x] AI-T02a: v21, migración no destructiva de visita y estados por pedido;
+  backfill de llegada 1 y pedidos abiertos, replay seguro, PostgreSQL real.
+- [x] AI-T02b: v22 aditiva crea caso, pedidos vinculados, evidencia con caducidad
+  de 24 h y eventos inmutables; PostgreSQL real verifica FKs, aislamiento,
+  unicidad de caso activo, replay de migración y rollback. Comandos conectados
+  con locks de ejecución/visita/pedido y limpieza física reintentable.
+- [x] AI-T03: salida de visita idempotente, llegada repetible y rescate de APK
+  anterior; comandos de incidente, reintento, entrega, reprogramación y teléfono;
+  contratos HTTP/autorización/regresión y recuperación privada del recibo.
+- [x] AI-T04: custodia privada de fotografías, lectura admin y limpieza automática
+  a 24 h o resolución; pruebas de seguridad, fallo y recuperación.
+- [x] AI-T05a: APK: botones según estado, captura, causas, llamada, reintento,
+  reprogramación sin fecha, selección explícita de pedido y marcadores legibles.
+- [x] AI-T05b: 62 JVM, lint sin errores, build/cobertura y APK 0.6.0/code16
+  con firma debug verificada; reporte en QA-ATENCION-INCIDENCIAS.md.
+- [ ] AI-T05c: QA físico de cámara, GPS, guía, red incierta y rotación por el
+  usuario, sin ADB. Primero requiere backend v22 desplegado en develop.
+- [x] AI-T06: tarjeta «Incidencias en vivo», filtros/métricas por chofer, foto
+  autorizada y «Resolver»; E2E PostgreSQL/HTTP/SSE con reconexión.
+- [x] AI-T06b / AI19: «Incidencias en vivo» separada como entrada lateral y
+  pantalla propia; tipos/lint/build verdes, E2E 3/3 con navegación, filtros,
+  aislamiento visual, foto, SSE/reconexión y ancho móvil verificado.
+- [x] AI-T07a: Gherkin AI01..AI18/AI02a, 582 pruebas servidor, 62 JVM,
+  cobertura 95,42 % líneas servidor, 184/184 mutantes dirigidos, HTTP/SSE/E2E
+  con reconexión, seguridad, QA reproducible y latencias documentadas.
+- [x] AI-T07b: autorización explícita de commit/push sólo a develop recibida
+  el 26/09/2026 («subelo»), con QA físico pendiente ya informado. Main y Odoo
+  fuera de alcance; evidencia automatizada en QA-ATENCION-INCIDENCIAS.md.
+- [ ] AI-T07c: Deploy manual develop por el usuario y QA físico de APK 0.6.0;
+  la subida de código no certifica despliegue ni GPS/cámara en su teléfono.
+- [x] AI-T08a / BL-119 / AI18: contorno de marcadores no activos, paleta por
+  estado probada en JVM (100 % ramas de la política) y compilación/lint Android;
+  sin mezclar visita con entrega. No cierra ni liquida la ruta.
+- [ ] AI-T08b / AI18: validación visual física pendiente del usuario; no se
+  declara validado el render del SDK en teléfono antes de esa prueba.
+
+## Liquidación y cierre real — BL-118 (bloque posterior, sin autorización de implementación)
+
+- [ ] LQ-T00: documentar origen real de importes, formas de cobro, devoluciones,
+  diferencias, roles y flujo de entrega/recepción; matriz de riesgos y permisos.
+- [ ] LQ-T01: diseñar libro auditable de cobros/liquidación y estado de cierre,
+  con reglas exactas de conciliación y conservación de evidencia.
+- [ ] LQ-T02: implementar sólo tras aprobación y pruebas financieras reales;
+  ninguna ruta se marcará cerrada con estimaciones de navegación.
+
+## Ajuste 0.5.4 — destino explícito y repunte desde GPS o mapa
+
+- [x] NV01..02: ficha de pedidos permanece de sólo lectura hasta «Ir a esta parada»;
+  selección local cambia destino y solicita guía sin alterar pedidos ni llegadas.
+- [x] NV03..04: respuesta asíncrona vieja, fallo SDK y estados no autorizados
+  conservan invariantes y reintento seguro.
+- [x] RP01..02: GPS actual válido centra y mueve pin aunque el anterior esté lejos;
+  selección manual mediante arrastre/toque prolongado permanece disponible.
+- [x] RP03..04: GPS inválido no desbloquea confirmación; radio y transacción de
+  repunte/llegada existentes permanecen intactos.
+- [x] QA automatizado: Gherkin NV/RP, 52 JVM, 3 PostgreSQL, cobertura, 35/35
+  mutantes, lint/build Android y APK local 0.5.4/code15. Evidencia en
+  `QA-NAVEGACION-REPUNTE-0.5.4.md`.
+- [ ] QA físico con teléfono del usuario; sin ADB, commit, push ni deploy de este
+  bloque hasta autorización específica.
+
 ## Corrección 0.5.3 — lista para prueba física
 
 - [x] F01..02: evaluar GPS con reloj monotónico vivo; regresión de lecturas entre pulsos y caducidad sin callbacks.

@@ -10,7 +10,7 @@ type TestPool = ReturnType<typeof createPool>;
 
 // Only for reconstructing pre-v20 schemas in isolated migration tests.
 export async function dropExecutionTablesForLegacyFixture(pool: TestPool) {
-  await pool.query("DROP TABLE route_driver_command_receipts,route_driver_stop_events,route_driver_execution_stops,route_driver_executions,route_driver_operation_settings");
+  await pool.query("DROP TABLE route_driver_incident_events,route_driver_incident_orders,route_driver_incident_evidence,route_driver_service_incidents,route_driver_execution_orders,route_driver_command_receipts,route_driver_stop_events,route_driver_execution_stops,route_driver_executions,route_driver_operation_settings CASCADE; DROP FUNCTION seed_driver_execution_orders()");
 }
 
 async function captureCleanupFailure(

@@ -16,6 +16,7 @@ import {
   Building2,
   Gauge,
   AlertTriangle,
+  Radio,
 } from "lucide-react";
 import type { User } from "@/core/auth";
 import type { DeletedPlan, Plan } from "@/core/plans";
@@ -28,6 +29,7 @@ import { DeletePlanDialog } from "./delete-plan-dialog";
 import { CustomerPanel } from "./customer-panel";
 import { GoogleConsumptionPanel } from "./google-consumption-panel";
 import { IncidentsPanel } from "./incidents-panel";
+import { LiveIncidentsPanel } from "./live-incidents-panel";
 import { UnitControlPanel } from "./unit-control-panel";
 import { usePanelRealtime } from "./use-panel-realtime";
 
@@ -39,11 +41,13 @@ type Section =
   | "users"
   | "audit"
   | "incidents"
+  | "live_incidents"
   | "consumption"
   | "unit_control";
 const sections = [
   { id: "plans" as const, label: "Planificar rutas", icon: Route },
   { id: "incidents" as const, label: "Incidencias", icon: AlertTriangle },
+  { id: "live_incidents" as const, label: "Incidencias en vivo", icon: Radio },
   { id: "vehicles" as const, label: "Camionetas", icon: Truck },
   { id: "unit_control" as const, label: "Control de unidades", icon: Truck },
   { id: "drivers" as const, label: "Choferes", icon: Users },
@@ -117,6 +121,7 @@ export function Dashboard({
   const [consumptionRevision, setConsumptionRevision] = useState(0);
   const [unitRevision, setUnitRevision] = useState(0);
   const [incidentRevision, setIncidentRevision] = useState(0);
+  const [liveIncidentRevision, setLiveIncidentRevision] = useState(0);
   const [plans, setPlans] = useState<Plan[]>([]),
     [users, setUsers] = useState<User[]>([]),
     [audit, setAudit] = useState<AuditRow[]>([]);
@@ -164,6 +169,7 @@ export function Dashboard({
         setConsumptionRevision((value) => value + 1);
       if (section === "unit_control") setUnitRevision((value) => value + 1);
       if (section === "incidents") setIncidentRevision((value) => value + 1);
+      if (section === "live_incidents") setLiveIncidentRevision((value) => value + 1);
       return true;
     } catch (e) {
       setError((e as Error).message);
@@ -199,6 +205,7 @@ export function Dashboard({
       customers: () => Promise.resolve(),
       consumption: () => Promise.resolve(),
       incidents: () => Promise.resolve(),
+      live_incidents: () => Promise.resolve(),
       unit_control: () => Promise.resolve(),
     };
     void requests[section]().catch(fail).finally(done);
@@ -380,7 +387,9 @@ export function Dashboard({
                           : section === "audit"
                             ? "Actividad registrada con su autor y fecha."
                             : section === "incidents"
-                              ? "Incidencias reales registradas por la llegada del chofer. Los pronósticos no se contabilizan."
+                              ? "Repuntes y llegadas fuera de horario registrados por fecha y chofer. Los pronósticos no se contabilizan."
+                              : section === "live_incidents"
+                                ? "Seguimiento en tiempo real de negocios cerrados, pedidos rechazados y reprogramaciones, por fecha y chofer."
                               : "Métricas y cargos reales publicados por Google Cloud Billing, sin estimaciones internas."}
                 </p>
               </div>
@@ -421,6 +430,7 @@ export function Dashboard({
             <CustomerPanel revision={customerRevision} />
           )}
           {section === "incidents" && <IncidentsPanel today={today} timezone={timezone} revision={incidentRevision} />}
+          {section === "live_incidents" && <LiveIncidentsPanel today={today} timezone={timezone} revision={liveIncidentRevision} />}
           {section === "unit_control" && <UnitControlPanel today={today} timezone={timezone} revision={unitRevision} />}
           {section === "consumption" && (
             <GoogleConsumptionPanel

@@ -1,5 +1,234 @@
 # Bloque 1 — especificación y auditoría previa
 
+## BL-111..117 / AI01..AI17 — atención, incidencias y teléfono operativo
+
+### Autopsia y límites reales
+
+`RouteNavigationActivity.Chrome` decide «Atender pedido» con `arrivedAt`, pero
+siempre ofrece «Iniciar guía» en la otra mitad de la fila. `navigateToStop`
+cambia sólo destino local; no hay salida de visita persistida. La tabla
+`route_driver_stop_events` permite únicamente llegada/repunte y prohíbe
+modificaciones; `route_driver_execution_stops.arrived_at` es su proyección.
+Las incidencias administrativas existentes son únicamente repunte/retraso.
+`route_customers.phone` es teléfono operativo, mientras que la publicación
+guarda una copia inmutable del teléfono en `snapshot.orders`; guardar el
+teléfono maestro sin superponerlo en la lectura móvil dejaría la APK obsoleta.
+`route_unit_photos` tiene retención de 15 días para inspección de unidad y no
+es almacenamiento de evidencia de negocio. El panel ya usa PostgreSQL NOTIFY
+→ SSE → invalidación de lectura.
+No hay `closed_at` de ejecución ni libro de cobros: `finishedAt` de la ruta es
+una **estimación de navegación**, no entrega de efectivo. El snapshot publicado
+contiene productos/cantidades, no precios ni importe cobrable. `route_users`
+sólo distingue usuarios activos, no un permiso de liquidador. Por ello cierre
+y cuadre monetario requieren un bloque propio y no pueden simularse aquí.
+
+### Estados y propiedad
+
+- La parada posee **visita actual** (`open`/`arrived`), independiente de la
+  secuencia histórica de eventos. Salir de una visita no atendida la devuelve
+  a `open` con evento de salida; no crea incidencia ni pedido entregado. Una
+  llegada posterior crea una nueva visita, sin borrar la primera.
+- Cada pedido (`shipment_id`) posee estado operativo `open`, `closed_pending`,
+  `rejected`, `rescheduled` o `delivered`. Una parada puede contener más de un pedido; la
+  llegada por parada no implica entrega de ninguno. Rechazo y cierre son
+  incidentes distintos de los pronósticos y del repunte.
+- «Cliente cerrado» aplica de forma atómica a **todos** los pedidos de la
+  parada, no sólo al chip seleccionado. Una falla no puede dejar uno pendiente
+  y otro abierto. El reintento posterior puede resolver cada pedido de forma
+  independiente, sin ocultar el estado del otro.
+- «Reprogramar» abre Aceptar/Cancelar con nota opcional; no muestra selector
+  de fecha ni calcula calendario. Al aceptar, cierra **ese pedido** en la
+  ejecución actual con estado `rescheduled` y conserva nota, chofer y ruta de
+  origen. No crea ni mueve pedidos a un plan futuro: administración decide
+  por separado si lo incorpora a otra ruta y en qué fecha.
+- Una incidencia conserva causa, pedidos afectados, chofer, fecha/hora,
+  instantánea mínima de negocio y estado operativo. «Cliente cerrado» no
+  permite resolución administrativa. «Reprogramado» y «Rechazado» sí pueden
+  quedar `resolved_by_admin`; `completed` significa entrega real y no se
+  confunde con resolución administrativa. Reintentar no duplica ni elimina
+  el historial.
+  «Completada» significa entrega real; «resuelta por administración» se
+  muestra aparte para no inventar entregas. Su evidencia fotográfica puede
+  caducar antes que el registro histórico.
+- Los hechos históricos son append-only. Las proyecciones de visita, pedido e
+  incidencia se actualizan en transacciones con bloqueo de ejecución/parada,
+  revisión optimista y recibo de comando por dispositivo para reintentos.
+
+### Contratos y flujo técnico propuesto
+
+Migración aditiva sobre versión 20 en dos subbloques locales: v21 crea la
+proyección de visita y estados por pedido; v22 crea casos, vínculos por pedido,
+metadatos de evidencia y eventos auditables separados de fotos de unidad.
+Captura y comandos están conectados al esquema v22; lectura administrativa
+privada y limpieza física reintentable tienen pruebas con PostgreSQL y archivos
+reales. La puerta física de cámara/GPS permanece separada.
+Backfill de ejecuciones existentes: visita activa si ya tenía `arrived_at`,
+pedidos `open`; las llegadas históricas reciben secuencia 1 sin cambiar su
+hecho ni su hora. La restricción de llegada única por parada se sustituye por
+unicidad por visita. El servidor sigue
+siendo autoridad: autentica dispositivo y ejecución publicada vigente, verifica
+pertenencia del pedido a la parada, estado/versión/orden de locks, GPS al
+llegar y unicidad/idempotencia antes de escribir. Una respuesta de red incierta
+se recupera con el mismo `commandId` y lectura nueva, no con un POST duplicado.
+
+El flujo es: llegada verificada → atención o incidencia. «Cliente cerrado»
+exige evidencia validada y privada antes de confirmar; sólo al confirmar se
+afecta el pedido. «Pedido rechazado» exige motivo permitido y texto si es
+«Otro»; puede transicionar a entregado más tarde mediante nueva visita.
+«Reintentar pedido» selecciona guía, no marca entrega ni quita todavía la
+incidencia: la **nueva llegada** exige GPS y entonces la retira del feed vivo.
+Si el chofer abandona esa visita sin atenderla, el pendiente reaparece;
+no se pierde el caso por tocar un botón. «Entregado completo» requiere visita
+activa y confirmación explícita, cierra los pedidos seleccionados y resuelve
+sólo las incidencias correspondientes. «Resolver» administrativo se rechaza
+para cliente cerrado; en reprogramado/rechazado registra actor/hora y revoca
+acceso a evidencia, sin afirmar que hubo entrega. Aceptar «Reprogramar» y
+actualizar el pedido debe ser atómico; crea la tarjeta de incidencia en vivo.
+No habrá selector de fecha, cálculo de día hábil ni asignación futura automática.
+«Resolver» esa tarjeta no reabre ni entrega el pedido cerrado en la ruta de
+origen.
+
+La evidencia usa un subdirectorio privado en el volumen ya configurado por
+`RUTAS_UNIT_PHOTO_DIR`, claves opacas y metadatos separados; no requiere otro
+paso manual de configuración. Reutiliza validación real de imagen/compresión,
+con límite antes de leer el cuerpo completo. Lectura admin autenticada;
+la APK sólo previsualiza su captura privada local, no tiene endpoint de descarga
+de evidencia histórica. No hay URL pública. Acceso expira exactamente a 24 h desde el guardado por el servidor o en resolución,
+lo primero que ocurra. Un trabajador borra archivos caducados y huérfanos;
+fallos de I/O se reintentan sin reexponer la imagen. Métricas y listado de
+panel se calculan en SQL por fecha/chofer/estado; el cambio confirmado emite
+la señal PostgreSQL existente y el cliente reconsulta. La lectura móvil
+superpone `route_customers.phone` vigente a la copia publicada, sin mutar el
+snapshot. Guardar teléfono bloquea cliente, verifica versión, marca override y
+actor chofer; Odoo sigue siendo sólo lectura.
+
+El recibo `/api/mobile/plans/:id/commands/:commandId` sólo confirma comandos
+del mismo dispositivo/ejecución autorizada. Permite recuperar un envío ya
+confirmado aunque Android haya perdido su archivo; no revela recibos ajenos.
+La outbox vive en `noBackupFilesDir`, la cámara en caché privada y los metadatos
+del comando se cifran con Keystore antes de transmitir. No se borra el recibo
+histórico. El servidor revalida versión y visita activa; una foto de «cerrado»
+impide entregar en esa misma visita sin registrar el reintento. Reprogramar sí
+puede cerrar el pedido desde la visita que registró el negocio cerrado.
+Guardar un teléfono no cambia la selección de pedido ni cierra el formulario
+de incidencia. El pedido seleccionado se propaga al abrir el rechazo.
+
+### Matriz de aceptación y fallos
+
+| ID | Actor / precondición / disparador | Resultado, validación y recuperación |
+| --- | --- | --- |
+| AI01 | Chofer llega con GPS válido a parada propia | Evento y visita `arrived`; atención visible, no «Iniciar guía» de esa parada; POST repetido no duplica. |
+| AI02 | Llegó a 1 sin atención; pulsa «Ir» a 2 | 1 vuelve a `open` sin incidencia; llegada histórica intacta; regreso exige GPS y nueva llegada. |
+| AI02a | APK anterior registra Llegué en 2 sin enviar salida de 1 | El servidor cierra 1 en la misma transacción después de validar GPS de 2; no modifica pedidos ni deja dos visitas activas. |
+| AI03 | Guía SDK falla o responde tarde al cambiar | No reanima destino anterior; estado de visita confirmado se reconsulta; no se registra entrega. |
+| AI04 | Llega y abre pedido de parada con varios pedidos | Cada pedido y sus productos/estado correctos; abrir ficha no altera ruta ni visita. |
+| AI05 | Reporta cliente cerrado con foto válida | Incidencia y todos los pedidos de la parada pendientes; marcador ! y reintento; panel muestra foto/chofer/fecha en vivo, sin «Resolver» administrativo. |
+| AI06 | Cámara cancelada, archivo corrupto/grande, storage caído o red incierta | Sin incidencia parcial; no se publica imagen; reintento seguro con misma clave y limpieza de huérfanos. |
+| AI07 | Reintenta local cerrado | Tocar guía no quita incidencia; nueva llegada válida la retira del feed. Entrega la completa; abandonar sin atender restaura pendiente; si sigue cerrado puede reprogramar. |
+| AI08 | Rechaza por calidad/tarde/otro | Motivo auditable; «Otro» exige texto; estado rechazado, no pendiente de reintento ni entregado. |
+| AI09 | Cliente cambia de opinión después de rechazo | Nueva visita permite entrega; historial de rechazo permanece, panel muestra resolución por entrega. |
+| AI10 | Administrador pulsa Resolver en reprogramado/rechazado o intenta hacerlo en cliente cerrado | Registra actor/hora sólo en los dos primeros; foto deja de ser accesible; cliente cerrado devuelve rechazo de operación y nunca se inventa entrega. |
+| AI11 | Sin teléfono; chofer añade o cancela | Cancelar no escribe; guardar válido se refleja en ficha admin y APK vigente sin republicar; llamada usa `tel:` seguro. |
+| AI12 | Chofer/administrador ajeno, cliente archivado o versión concurrente | 404/409 sin filtrar datos ni sobrescribir otro número; auditoría sin secretos ni foto. |
+| AI13 | Panel desconectado/reconectado; dos choferes crean incidencias | Reconsulta SSE/backup y filtros; tarjetas/métricas por chofer nunca se cruzan. |
+| AI14 | Foto supera 24 h, se resuelve o falla limpieza | Acceso denegado desde vencimiento; eliminación física automática reintentable; historial sin foto se conserva. |
+| AI15 | Parada con dos pedidos y cliente cerrado | Una sola confirmación con foto deja ambos pendientes; rollback de cualquier escritura conserva ambos abiertos; panel y marcador reflejan dos pedidos. |
+| AI16 | Chofer pulsa Reprogramar, cancela/acepta con nota, repite o compite con entrega | Cancelar no escribe; aceptar cierra sólo ese pedido en la ruta actual como `rescheduled` y crea tarjeta en vivo, sin fecha ni duplicados; «Resolver» no reabre el pedido. Administración decide por separado si/cuándo asignarlo a otra ruta. |
+| AI17 | Navegación/entregas finalizan pero no existe liquidación confirmada | Ruta permanece abierta; ningún `finishedAt` estimado sustituye efectivo recibido/cuadre. Al cerrar tras liquidar, el feed/historial visible de incidencias deja de mostrar la ruta, pero auditoría persiste. |
+| AI19 | Administración abre Incidencias o Incidencias en vivo desde el panel lateral | Pantallas independientes: la primera mantiene repuntes/llegadas/reglas; la segunda contiene casos operativos, evidencia, métricas y resolución, con filtros propios y el canal SSE existente. Navegar no modifica ningún caso. |
+
+### Puertas, auditoría y riesgos
+
+Gherkin AI01..AI17; unidad de transición/validación, PostgreSQL real para
+backfill, locks, concurrencia, idempotencia y rollback; contrato HTTP móvil/
+admin, aislamiento, autorización de foto, SSE, Android JVM y E2E del panel.
+Mutation testing de transiciones y permisos; cobertura medida por ramas de
+riesgo y regresiones de llegada/repunte/FCM. QA físico de cámara, GPS, guía y
+marcadores queda a cargo del usuario, sin ADB por su decisión. Objetivos:
+cero entregas o incidencias falsas en fallos, cero acceso a evidencia ajena,
+ninguna foto accesible después de resolución/24 h y ninguna duplicación ante
+reintentos. Medir latencia p95 de comando/SSE, fallos de storage y limpieza.
+
+Auditoría local actual: **GREEN LIGHT documental** para construir atención e
+incidencias por bloques, **INTEGRITY TOTAL** con el snapshot publicado y Odoo
+de sólo lectura, **MATCH PERFECT** entre BL-111..117, AI01..AI17/AI02a y AI-T00..07.
+La asignación de pedidos reprogramados a rutas futuras es una decisión
+administrativa posterior, no una automatización implícita. El cierre/
+liquidación pertenece a otro bloque y no está certificado aquí. Este veredicto
+no certifica implementación, GPS real ni evidencia física en teléfono.
+
+## BL-118 — frontera del futuro bloque de liquidación
+
+El cierre real no existe en el esquema actual. Su implementación futura
+exigirá identificar la fuente autorizada de importes y forma de cobro por
+pedido (hoy ausentes en `SourceShipment` y en el snapshot móvil), el modo de
+registrar efectivo recibido por el chofer, el rol y doble verificación del
+administrador liquidador, diferencias/devoluciones, caja, reversos y destino
+de rechazados/reprogramados. No se usará `route.finishedAt`: es ETA calculada.
+El estado terminal de ejecución, la liberación de chofer/vehículo, el retiro
+del feed vivo y la retención histórica se definirán juntos, con migración y
+pruebas de concurrencia e idempotencia. Hasta ese bloque, no habrá botón
+«Cerrar ruta» ni eliminación de historial por un cierre ficticio.
+
+## BL-119 / AI18 — visibilidad de paradas no activas
+
+El marcador de `RouteNavigationActivity.markerIcon` pinta paradas no activas
+con `#30353C` sin borde; sobre el mapa oscuro desaparecen. La corrección
+extrae una política pura de estilo por estado `selected/arrived/normal` y
+dibuja un contorno claro para normal y llegada, dejando el relleno lima de
+selección como está. La superposición de varios pedidos conserva su etiqueta
+y clic; no cambia `selectedId`, `Navigator`, GPS, datos ni comandos.
+
+| ID | Actor / precondición / disparador | Resultado, validación y recuperación |
+| --- | --- | --- |
+| AI18 | Chofer ve dos o más paradas en mapa oscuro; selecciona otra | Todas las no activas tienen contorno visible; sólo la seleccionada conserva destaque lima; etiquetas/clic/guía intactos. |
+
+Puertas: unitarias JVM de selección de paleta para normal, llegada y activo;
+compilación y lint Android; revisión visual física posterior con teléfono del
+usuario. GREEN LIGHT para este subbloque aislado: no requiere migración,
+decisión financiera ni nuevos permisos. INTEGRITY TOTAL con BL-105 y BL-109.
+MATCH PERFECT con AI-T08 de PROGRESS. No certifica aspecto real hasta prueba
+en dispositivo.
+
+## BL-109..110 — destino elegido y corrección lejana del punto anterior
+
+Autopsia: tocar un marcador llama `openStopInfo`, que sólo abre los pedidos; no
+existe una transición explícita desde esa ficha hacia `Navigator.setDestination`.
+`beginEdit` centra la cámara en el punto antiguo y el botón «Mi ubicación» cambia
+`draftPoint` sin centrarla ni filtrar antes GPS inválido. La app y el servidor ya
+validan la muestra contra `corrected ?: stop.point` / `input.point ?? geoPoint(stop)`:
+el radio no depende del punto antiguo. El cambio es Android local, sin migración,
+endpoint nuevo, Odoo, FCM ni escritura del panel fuera del comando existente.
+
+| ID | Actor / precondición / evento | Resultado / datos / validación / recuperación |
+| --- | --- | --- |
+| NV01 | Chofer, ejecución verificada; toca marcador | Sólo consulta pedidos; selección y guía intactas. |
+| NV02 | Chofer; pulsa «Ir a esta parada» con Navigator listo | Cierra ficha, selecciona parada, cancela guía anterior y solicita destino nuevo; pedidos/orden/llegadas intactos. |
+| NV03 | SDK devuelve éxito antiguo después del cambio, o falla el nuevo destino | Generación/destino bloquean respuesta vieja; fallo conserva parada seleccionada y permite reintentar. |
+| NV04 | Ruta retirada, sesión sin verificar, GPS/SDK sin preparar o comando ocupado | No inicia guía; estado y razón visibles, sin mutación de servidor. |
+| RP01 | Chofer junto al local correcto, pin anterior lejano; usa GPS actual válido | Pin salta al GPS y cámara lo centra; radio se evalúa contra punto nuevo, sin escrituras aún. |
+| RP02 | Chofer mueve pin manualmente o mantiene pulsado el mapa | Puede escoger coordenadas sin límite respecto al pin anterior; confirmación requiere GPS reciente/preciso/no simulado en radio nuevo. |
+| RP03 | GPS ausente, viejo, impreciso o simulado; error de red o conflicto de revisión | No confirma ubicación; modal/datos editados se preservan o se solicita revisión según comportamiento existente. |
+| RP04 | Chofer confirma pin y domicilio, o sólo pulsa «Llegué» | Repunte usa transacción/auditoría existentes; «Llegué» conserva política y no cambia domicilio. |
+
+Flujo NV: marcador → ficha de sólo lectura → intención explícita → selección local
+→ `stopGuidance/clearDestinations` → `setDestination` → validación asíncrona por
+generación y coordenadas → `startGuidance`. Flujo RP: GPS monotónico o interacción
+manual → propuesta local → domicilio confirmado → `RouteExecutionModel.submit` →
+servidor valida contra propuesta y registra transacción/incidencia existente.
+Permisos y aislamiento no cambian; ninguna clave se agrega al APK. Si el SDK no
+calcula, sólo se reintenta la guía. No se genera ruta/ETA falsa en la ficha.
+
+Referencia oficial: [Navigation SDK, destino único](https://developers.google.com/maps/documentation/navigation/android-sdk/route)
+y [Android Location](https://developer.android.com/reference/android/location/Location).
+Puertas: JVM de geofence/selección y respuesta tardía; cobertura y mutación
+dirigidas; build/lint/APK; prueba física del chofer en su teléfono para cámara,
+GPS y cambio real de guía. Objetivo: cero llegadas o correcciones fuera de radio,
+cero reactivaciones de guía vieja y cero escrituras al sólo consultar/mover.
+Auditoría local: GREEN LIGHT; no API ni dato inventado; INTEGRITY TOTAL con
+BL-105..107; MATCH PERFECT con NV/RP de PROGRESS. El QA físico no se certifica
+desde el escritorio.
+
 ## Corrección 0.5.3 — reloj GPS y asignaciones del mapa
 
 Autopsia: `Chrome` comparaba muestras recién recibidas con `tick`, capturado hasta

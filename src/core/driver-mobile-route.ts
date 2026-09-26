@@ -92,15 +92,23 @@ export async function readDriverPlan(
       [id, assigned.vehicle_id, assigned.revision],
     );
     const points = new Map(corrections.rows.flatMap((stop) => stop.shipment_ids.map((shipmentId) => [shipmentId, stop] as const)));
+    const contacts = await sql.query<{ shipment_ids: string[]; phone: string | null }>(
+      `SELECT s.shipment_ids,c.phone FROM route_driver_execution_stops s
+         JOIN route_driver_executions e ON e.id=s.execution_id
+         JOIN route_customers c ON c.id=s.customer_id
+        WHERE e.plan_id=$1 AND e.vehicle_id=$2 AND e.publication_revision=$3`,
+      [id, assigned.vehicle_id, assigned.revision],
+    );
+    const phones = new Map(contacts.rows.flatMap(stop => stop.shipment_ids.map(shipmentId => [shipmentId, stop.phone] as const)));
     return {
       ...assigned.snapshot,
-      ...(points.size ? {
-        routeStatus: "point_corrected",
-        orders: assigned.snapshot.orders.map((order: { id: string }) => {
-          const point = points.get(order.id);
-          return point ? { ...order, address: point.address, latitude: point.latitude, longitude: point.longitude, locationStatus: "driver_confirmed" } : order;
-        }),
-      } : {}),
+      ...(points.size ? { routeStatus: "point_corrected" } : {}),
+      // Current operational contact is an overlay, never a publication rewrite.
+      orders: assigned.snapshot.orders.map((order: { id: string }) => {
+        const point = points.get(order.id);
+        return { ...order, ...(phones.has(order.id) ? { phone: phones.get(order.id) } : {}),
+          ...(point ? { address: point.address, latitude: point.latitude, longitude: point.longitude, locationStatus: "driver_confirmed" } : {}) };
+      }),
       publication: {
         revision: Number(assigned.revision),
         startedAt: assigned.started_at,

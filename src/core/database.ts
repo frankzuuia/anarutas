@@ -21,6 +21,8 @@ import { migrateUnitPhotos } from "./unit-photos-schema";
 import { migratePanelEvents } from "./panel-events-schema";
 import { migrateRoutePush } from "./route-push-schema";
 import { migrateDriverExecution } from "./driver-execution-schema";
+import { migrateDriverService } from "./driver-service-schema";
+import { migrateDriverIncidences } from "./driver-incidence-schema";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
   return new pg.Pool({
@@ -92,7 +94,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       );
       let version = result.rows[0]?.schema_version;
       if (
-        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].includes(
+        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].includes(
           version,
         )
       )
@@ -128,6 +130,8 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (version < 18) await migratePanelEvents(client);
       if (version < 19) await migrateRoutePush(client);
       if (version < 20) await migrateDriverExecution(client);
+      if (version < 21) await migrateDriverService(client);
+      if (version < 22) await migrateDriverIncidences(client);
       return;
     }
     await client.query(`
@@ -162,6 +166,8 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migratePanelEvents(client);
     await migrateRoutePush(client);
     await migrateDriverExecution(client);
+    await migrateDriverService(client);
+    await migrateDriverIncidences(client);
   });
 }
 export async function audit(

@@ -80,6 +80,8 @@ class RouteNavigationActivity : FragmentActivity() {
     private var showStops by mutableStateOf(false)
     private var stopChoices by mutableStateOf<List<String>>(emptyList())
     private var orderStopId by mutableStateOf<String?>(null)
+    private var incidentStopId by mutableStateOf<String?>(null)
+    private var incidentOrderId by mutableStateOf<String?>(null)
     private var guidance by mutableStateOf(false)
     private var navigating by mutableStateOf(false)
     private var navMessage by mutableStateOf("")
@@ -137,10 +139,12 @@ class RouteNavigationActivity : FragmentActivity() {
         voiceMuted = DriverPreferences(applicationContext).muteNavigationVoice
         val planId = intent.getStringExtra(EXTRA_PLAN_ID)
         if (planId.isNullOrBlank()) { finish(); return }
-        model = ViewModelProvider(this, RouteExecutionModel.factory(DeviceCredentials(applicationContext), planId))[RouteExecutionModel::class.java]
+        model = ViewModelProvider(this, RouteExecutionModel.factory(DeviceCredentials(applicationContext), planId, IncidentCaptureStore(applicationContext)))[RouteExecutionModel::class.java]
         selectedId = savedInstanceState?.getString("selected_stop").orEmpty()
         panelExpanded = savedInstanceState?.getBoolean("panel_expanded", true) ?: true
         orderStopId = savedInstanceState?.getString("order_stop")
+        incidentStopId = savedInstanceState?.getString("incident_stop")
+        incidentOrderId = savedInstanceState?.getString("incident_order")
         val containerId = savedInstanceState?.getInt("map_container") ?: View.generateViewId()
         val root = FrameLayout(this).apply { setBackgroundColor(android.graphics.Color.rgb(13, 15, 18)) }
         root.addView(FrameLayout(this).apply { id = containerId }, FrameLayout.LayoutParams(-1, -1))
@@ -198,6 +202,8 @@ class RouteNavigationActivity : FragmentActivity() {
         outState.putString("selected_stop", selectedId)
         outState.putBoolean("panel_expanded", panelExpanded)
         orderStopId?.let { outState.putString("order_stop", it) }
+        incidentStopId?.let { outState.putString("incident_stop", it) }
+        incidentOrderId?.let { outState.putString("incident_order", it) }
         val root = findViewById<FrameLayout>(android.R.id.content).getChildAt(0)
         (root.tag as? Int)?.let { outState.putInt("map_container", it) }
         super.onSaveInstanceState(outState)
@@ -309,19 +315,68 @@ class RouteNavigationActivity : FragmentActivity() {
         }
     }
     private fun selectStop(id: String) {
-        if (navigating || model.state.busy || editing || selectedId == id) return
-        stopGuidance()
-        selectedId = id
+        if (navigating || model.state.busy || editing) return
+        if (selectedId != id) {
+            stopGuidance()
+            selectedId = id
+            renderMap()
+            currentStop?.point?.let { map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(it.latitude, it.longitude), 16f)) }
+        }
         showStops = false
         stopChoices = emptyList()
-        renderMap()
-        currentStop?.point?.let { map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(it.latitude, it.longitude), 16f)) }
     }
     private fun openStopInfo(id: String) {
         if (model.state.retired || model.state.execution?.stops?.none { it.id == id } != false) return
         orderStopId = id
         showStops = false
         stopChoices = emptyList()
+    }
+    private fun navigationActionState(stop: ExecutionStop) = NavigationActionState(
+        verified = model.state.verified,
+        pending = model.state.pending,
+        busy = model.state.busy,
+        retired = model.state.retired,
+        editing = editing,
+        navigating = navigating,
+        noticeRequired = noticeRequired,
+        navigatorReady = navigator != null,
+        destination = stop.point,
+        alreadyGuidingToDestination = guidance && NavigationRegistry.destinationKey == destinationKey(stop),
+    )
+    private fun navigateToStop(id: String, retryVisit: Boolean = false) {
+        val stop = model.state.execution?.stops?.find { it.id == id } ?: return
+        if (!navigationActionAllowed(navigationActionState(stop))) return
+        if (retryVisit && stop.arrivedAt != null) {
+            model.exitVisit(stop.id, stop.id)
+            return
+        }
+        val activeElsewhere = model.state.execution?.stops?.let { activeVisitToExit(it, id) }
+        if (activeElsewhere != null) {
+            model.exitVisit(activeElsewhere.id, id)
+            return
+        }
+        // Invalidate an in-flight/old destination before selecting this stop.
+        stopGuidance()
+        selectedId = id
+        orderStopId = null
+        showStops = false
+        stopChoices = emptyList()
+        panelExpanded = false
+        renderMap()
+        guide(stop)
+    }
+    private fun useCurrentLocationForRepoint() {
+        val state = model.state
+        val policy = state.execution?.policy ?: return
+        if (!editing || !state.verified || state.pending || state.busy || state.retired) return
+        val point = currentLocationRepointCandidate(gps, policy, SystemClock.elapsedRealtime())
+        if (point == null) {
+            navMessage = "Esperando ubicación GPS real, reciente y precisa para usar tu posición actual."
+            return
+        }
+        draftPoint = point
+        map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(point.latitude, point.longitude), 18f))
+        navMessage = "Pin ubicado donde estás. Puedes ajustarlo a mano antes de confirmar el domicilio."
     }
     private fun beginEdit() {
         val stop = currentStop ?: return
@@ -356,13 +411,18 @@ class RouteNavigationActivity : FragmentActivity() {
         radius?.remove(); radius = null
         editorMarker?.remove(); editorMarker = null
     }
-    private fun markerIcon(label: String, active: Boolean, arrived: Boolean): BitmapDescriptor {
+    private fun markerIcon(label: String, active: Boolean, arrived: Boolean, pending: Boolean): BitmapDescriptor {
         val bitmap = Bitmap.createBitmap(96, 72, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        paint.color = android.graphics.Color.parseColor(if (active) "#D0F58A" else if (arrived) "#9BCDF6" else "#30353C")
+        val style = routeMarkerStyle(active, arrived, pending)
+        paint.color = android.graphics.Color.parseColor(style.outline ?: style.fill)
         canvas.drawRoundRect(4f, 4f, 92f, 64f, 23f, 23f, paint)
-        paint.color = android.graphics.Color.parseColor(if (active || arrived) "#1D2B10" else "#F4F5F1")
+        if (style.outline != null) {
+            paint.color = android.graphics.Color.parseColor(style.fill)
+            canvas.drawRoundRect(9f, 9f, 87f, 59f, 18f, 18f, paint)
+        }
+        paint.color = android.graphics.Color.parseColor(style.text)
         paint.textSize = 29f; paint.textAlign = Paint.Align.CENTER; paint.isFakeBoldText = true
         canvas.drawText(label, 48f, 44f, paint)
         return BitmapDescriptorFactory.fromBitmap(bitmap)
@@ -380,10 +440,11 @@ class RouteNavigationActivity : FragmentActivity() {
         val groups = execution.stops.filter { it.point != null }.groupBy { it.point }
         for ((point, group) in groups) {
             val p = point!!
-            val label = if (group.size == 1) group[0].position.toString() else "${group.size}×"
+            val pending = group.any { it.hasPendingRetry() }
+            val label = (if (group.size == 1) group[0].position.toString() else "${group.size}×") + if (pending) " !" else ""
             ready.addMarker(MarkerOptions().position(LatLng(p.latitude, p.longitude)).anchor(.5f, .5f)
                 .title(group.joinToString(" · ") { "${it.position}. ${it.customer}" })
-                .icon(markerIcon(label, group.any { it.id == selectedId }, group.all { it.arrivedAt != null })))?.let {
+                .icon(markerIcon(label, group.any { it.id == selectedId }, group.all { it.arrivedAt != null }, pending)))?.let {
                     it.tag = group.map { stop -> stop.id }; markers.add(it)
                 }
         }
@@ -420,10 +481,11 @@ class RouteNavigationActivity : FragmentActivity() {
         val available = state.verified && !state.busy && !state.pending && !state.retired
         val editConflict = editing && (editRevision != execution?.revision || editCustomerVersion != stop?.customerLocationVersion)
         val confirmedAddress = confirmedAddressFields(street, neighborhood, postalCode, city)
+        val currentRepointPoint = execution?.policy?.let { currentLocationRepointCandidate(gps, it, SystemClock.elapsedRealtime()) }
         val maxHeight = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.height * .56f).toDp() }
         val dialogMaxHeight = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.height * .82f).toDp() }
         LaunchedEffect(execution?.revision, execution?.policy?.version, state.retired) {
-            if (state.retired) { navigating = false; guidance = false; navigator = null; editing = false; orderStopId = null; showStops = false; renderMap() }
+            if (state.retired) { navigating = false; guidance = false; navigator = null; editing = false; orderStopId = null; incidentStopId = null; showStops = false; renderMap() }
             else if (execution != null) {
                 if (execution.stops.none { it.id == selectedId }) selectedId = execution.stops.firstOrNull { it.arrivedAt == null }?.id ?: execution.stops.firstOrNull()?.id.orEmpty()
                 renderMap()
@@ -449,6 +511,12 @@ class RouteNavigationActivity : FragmentActivity() {
                 renderMap()
                 if (restart) currentStop?.let(::guide)
                 model.consumeCorrection()
+            }
+        }
+        LaunchedEffect(state.exitDestination, state.busy, state.verified) {
+            state.exitDestination?.takeIf { !state.busy && state.verified }?.let { destination ->
+                navigateToStop(destination)
+                model.consumeExit()
             }
         }
         Surface(color = DriverColors.surface, shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
@@ -496,12 +564,23 @@ class RouteNavigationActivity : FragmentActivity() {
                     Text(stop.customer, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(stop.address, style = MaterialTheme.typography.bodySmall, color = DriverColors.muted, maxLines = 2)
                     if (editing) {
-                        Text("Arrastra el pin morado o mantén pulsado el mapa. Después confirma el domicilio escrito para actualizarlo en el panel.",
+                        Text("El punto anterior puede estar lejos. Usa tu ubicación actual o elige el lugar manualmente; después confirma el domicilio escrito.",
                             style = MaterialTheme.typography.bodySmall, color = DriverColors.purple)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            AppAction("Mi ubicación", DriverIcon.PIN, Modifier.weight(1f), enabled = gps != null && !state.busy, quiet = true) { draftPoint = gps?.point }
-                            AppAction("Cancelar", DriverIcon.CLOSE, Modifier.weight(1f), enabled = !state.busy, quiet = true, onClick = ::endEdit)
+                        AppAction("Usar mi ubicación actual", DriverIcon.PIN, Modifier.fillMaxWidth(),
+                            enabled = available && !editConflict && currentRepointPoint != null, quiet = true,
+                            onClick = ::useCurrentLocationForRepoint)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            TextButton(enabled = !state.busy, onClick = {
+                                panelExpanded = false
+                                currentRepointPoint?.let { point ->
+                                    map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(point.latitude, point.longitude), 16f))
+                                }
+                                navMessage = "Mantén pulsado el mapa en el domicilio correcto; también puedes arrastrar el pin morado si está visible."
+                            }) { Text("Elegir en el mapa") }
+                            TextButton(enabled = !state.busy, onClick = ::endEdit) { Text("Cancelar") }
                         }
+                        if (currentRepointPoint == null) Text("Para usar tu ubicación, espera GPS real y preciso. Puedes colocar el pin manualmente mientras tanto.",
+                            style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
                         if (editConflict) Text("La ruta o el cliente cambió mientras editabas. Cancela esta edición y revisa el punto actualizado.",
                             style = MaterialTheme.typography.bodySmall, color = DriverColors.amber)
                         AppAction("Confirmar punto", DriverIcon.CHECK, Modifier.fillMaxWidth(),
@@ -510,11 +589,17 @@ class RouteNavigationActivity : FragmentActivity() {
                         }
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (stop.arrivedAt == null) AppAction("Llegué", DriverIcon.CHECK, Modifier.weight(1f), enabled = available && usableGps != null) {
+                            if (stop.isServiceFinished()) AppAction("Ver pedido", DriverIcon.ORDERS, Modifier.weight(1f)) { orderStopId = stop.id }
+                            else if (stop.arrivedAt == null) AppAction("Llegué", DriverIcon.CHECK, Modifier.weight(1f), enabled = available && usableGps != null) {
                                 model.submit(stop.id, usableGps, null)
+                            } else if (stop.hasPendingRetry() && !stop.canAttend()) AppAction("Reintentar pedido", DriverIcon.REFRESH, Modifier.weight(1f),
+                                enabled = available && navigationActionAllowed(navigationActionState(stop))) {
+                                navigateToStop(stop.id, retryVisit = true)
                             } else AppAction("Atender pedido", DriverIcon.ORDERS, Modifier.weight(1f)) { orderStopId = stop.id }
-                            AppAction(if (guidance) "En guía" else "Iniciar guía", DriverIcon.ROUTE, Modifier.weight(1f),
-                                enabled = available && navigator != null && !navigating && !guidance) { guide(stop) }
+                            if (stop.arrivedAt != null) AppAction("Registrar incidencia", DriverIcon.ALERT, Modifier.weight(1f),
+                                enabled = available && stop.canAttend()) { orderStopId = null; incidentOrderId = null; incidentStopId = stop.id }
+                            else if (!stop.isServiceFinished()) AppAction(if (guidance) "En guía" else "Iniciar guía", DriverIcon.ROUTE, Modifier.weight(1f),
+                                enabled = available && navigationActionAllowed(navigationActionState(stop))) { navigateToStop(stop.id) }
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             TextButton(enabled = available && !navigating && !stop.customerArchived, onClick = ::beginEdit) { Text("Mal punteado") }
@@ -545,13 +630,22 @@ class RouteNavigationActivity : FragmentActivity() {
             SectionLabel(if (stopChoices.isEmpty()) "Tus paradas" else "Pedidos en este punto", "${choices.size}")
             Text(if (stopChoices.isEmpty()) "Elige una parada para verla en el mapa. No reordena pedidos ni confirma entregas."
                 else "Elige el pedido que quieres consultar.", color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
-            choices.forEach { item -> ActionRow(if (item.arrivedAt != null) DriverIcon.CHECK else DriverIcon.PIN,
-                "${item.position} · ${item.customer}", if (item.arrivedAt != null) "Llegada registrada" else item.address) {
+            choices.forEach { item -> ActionRow(if (item.hasPendingRetry()) DriverIcon.ALERT else if (item.arrivedAt != null) DriverIcon.CHECK else DriverIcon.PIN,
+                "${item.position} · ${item.customer}", if (item.hasPendingRetry()) "Entrega pendiente · reintentar pedido" else if (item.arrivedAt != null) "Llegada registrada" else item.address) {
                     if (stopChoices.isEmpty()) selectStop(item.id) else openStopInfo(item.id)
                 } }
         }
         val detailStop = execution?.stops?.find { it.id == orderStopId }
-        if (detailStop != null) StopAttentionSheet(detailStop, state.route, execution.timezone) { orderStopId = null }
+        if (detailStop != null) {
+            val navigationState = navigationActionState(detailStop)
+            StopAttentionSheet(detailStop, state.route, execution.timezone,
+                navigationActionAllowed(navigationState), navigationState.alreadyGuidingToDestination, model,
+                onNavigate = { retry -> navigateToStop(detailStop.id, retry) },
+                onIncident = { shipmentId -> orderStopId = null; incidentOrderId = shipmentId; incidentStopId = detailStop.id }, close = { orderStopId = null })
+        }
+        execution?.stops?.find { it.id == incidentStopId }?.let { incidentStop ->
+            ServiceIncidentSheet(incidentStop, incidentOrderId, model) { incidentStopId = null; incidentOrderId = null; orderStopId = incidentStop.id }
+        }
         if (addressDialog && editing && stop != null) Dialog(onDismissRequest = { if (!state.busy) addressDialog = false }) {
             Surface(color = DriverColors.surface, shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, DriverColors.line),
                 modifier = Modifier.fillMaxWidth().imePadding().heightIn(max = dialogMaxHeight)) {
@@ -593,42 +687,4 @@ class RouteNavigationActivity : FragmentActivity() {
         )
     }
     companion object { const val EXTRA_PLAN_ID = "route_plan_id" }
-}
-
-@Composable
-private fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timezone: String, close: () -> Unit) {
-    val orders = route?.orders.orEmpty().filter { it.id in stop.shipmentIds }
-    var selectedOrderId by remember(stop.id) { mutableStateOf<String?>(null) }
-    val selectedOrder = orders.find { it.id == selectedOrderId } ?: orders.firstOrNull()
-    DetailSurface(close) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("PARADA ${stop.position}", style = MaterialTheme.typography.labelSmall, color = DriverColors.lime)
-                Text(stop.customer, style = MaterialTheme.typography.titleLarge)
-            }
-            AppIconButton(DriverIcon.CLOSE, "Cerrar atención", onClick = close)
-        }
-        stop.arrivedAt?.let { StatusBadge("Llegada · ${formatRouteTime(it, timezone)}") }
-        Text(if (stop.arrivedAt != null) "Llegada confirmada. Revisa los productos para comenzar la atención." else "Consulta del pedido. Registra Llegué cuando estés en el domicilio.",
-            color = DriverColors.muted, style = MaterialTheme.typography.bodyMedium)
-        if (orders.size > 1) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            orders.forEach { order -> FilterChip(selected = order.id == selectedOrder?.id,
-                onClick = { selectedOrderId = order.id }, label = { Text(order.name) }) }
-        }
-        if (selectedOrder == null) Text("El detalle del pedido se está sincronizando.",
-            color = DriverColors.muted, style = MaterialTheme.typography.bodyMedium)
-        selectedOrder?.let { order ->
-            HorizontalDivider(color = DriverColors.line)
-            SectionLabel(order.name, "${order.lines.size} partidas")
-            if (order.note.isNotBlank()) Text(order.note, color = DriverColors.amber, style = MaterialTheme.typography.bodyMedium)
-            order.lines.forEach { line ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(line.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                    Text("${line.quantity} ${line.unit}", style = MaterialTheme.typography.labelLarge, color = DriverColors.lime)
-                }
-            }
-        }
-        Text("La entrega aún no se ha marcado como completada.", color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
-    }
 }

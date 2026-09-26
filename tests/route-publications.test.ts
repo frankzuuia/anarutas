@@ -902,7 +902,7 @@ it("route publication lifecycle / real PostgreSQL", async () => {
       driver_id: driverId, expectedVersion: vehicle.version,
     })).rejects.toMatchObject({ code: "ROUTE_ALREADY_STARTED" });
     await migrate(db.pool, db.config.instanceId);
-    expect((await db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(20);
+    expect((await db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(22);
     vehicle = await getVehicle(db.pool, vehicleId);
     await assignDriver(db.pool, actor, vehicleId, {
       driver_id: driverId, expectedVersion: vehicle.version,

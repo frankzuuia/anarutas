@@ -621,15 +621,155 @@ test("admin provisioning, native device login, route isolation and revocation ov
   expect(confirmations.map(response => response.status())).toEqual([200, 200]);
   const confirmed = await Promise.all(confirmations.map(response => response.json()));
   expect(confirmed[0].eventId).toBe(confirmed[1].eventId);
-  expect((await readExecution()).stops[0].arrivedAt).toBeTruthy();
+  const visited = await readExecution();
+  expect(visited.stops[0]).toMatchObject({ visitState: "arrived", visitSequence: 1 });
+  const exitUrl = `${origin}/api/mobile/plans/${planId}/stops/${stop.id}/visit-exit`;
+  const exitCommand = { commandId: randomUUID(), executionId: visited.id,
+    publicationRevision: visited.publicationRevision, executionRevision: visited.revision,
+    stopVersion: visited.stops[0].version, visitSequence: visited.stops[0].visitSequence };
+  expect((await request.post(exitUrl, { data: exitCommand })).status()).toBe(401);
+  const exitResponse = await request.post(exitUrl, { headers: authorization, data: exitCommand });
+  expect(exitResponse.status()).toBe(200);
+  const exitResult = await exitResponse.json();
+  const repeatedExit = await request.post(exitUrl, { headers: authorization, data: exitCommand });
+  expect(repeatedExit.status()).toBe(200);
+  expect(await repeatedExit.json())
+    .toMatchObject({ eventId: exitResult.eventId, duplicate: true });
+  const opened = await readExecution();
+  expect(opened.stops[0]).toMatchObject({ visitState: "open", visitSequence: 1, arrivedAt: null });
+  const revisit = await request.post(arrivalUrl, { headers: authorization, data: {
+    ...arrival, commandId: randomUUID(), executionRevision: opened.revision,
+    stopVersion: opened.stops[0].version,
+    sample: { ...arrival.sample, capturedAt: new Date().toISOString() },
+  } });
+  expect(revisit.status()).toBe(200);
+  expect((await readExecution()).stops[0]).toMatchObject({ visitState: "arrived", visitSequence: 2 });
+  // Real HTTP + SSE: service cases, private photos, retries and manual resolution.
+  const serviceIdentity = async () => {
+    const value = await readExecution(), current = value.stops[0];
+    return { commandId: randomUUID(), executionId: value.id, publicationRevision: value.publicationRevision,
+      executionRevision: value.revision, stopVersion: current.version, visitSequence: current.visitSequence };
+  };
+  const serviceStopUrl = `${origin}/api/mobile/plans/${planId}/stops/${stop.id}`;
+  const phoneBefore = (await readExecution()).stops[0];
+  const phoneCommand = { ...await serviceIdentity(), phone: "+52 33 9000 2851", customerVersion: phoneBefore.customerVersion };
+  expect((await request.post(`${serviceStopUrl}/phone`, { data: phoneCommand })).status()).toBe(401);
+  expect((await request.post(`${serviceStopUrl}/phone`, { headers: authorization, data: phoneCommand })).status()).toBe(200);
+  expect((await readExecution()).stops[0].phone).toBe("+523390002851");
+  const contactPlan = await (await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization })).json();
+  expect(contactPlan.orders.find((order: { id: string }) => order.id === phoneBefore.shipmentIds[0]).phone).toBe("+523390002851");
+  const currentOrder = (await readExecution()).stops[0].orderStates[0];
+  const orderServiceUrl = `${serviceStopUrl}/orders/${currentOrder.shipmentId}/service`;
+  const noSession = await browser.newContext();
+  expect((await noSession.request.get(`${origin}/api/incidents/live`)).status()).toBe(401);
+  expect((await noSession.request.post(orderServiceUrl, { data: {} })).status()).toBe(401);
+  await expect(livePanel.getByRole("region", { name: "Incidencias en vivo", exact: true })).toHaveCount(0);
+  await livePanel.getByRole("button", { name: "Incidencias en vivo", exact: true }).click();
+  await expect(livePanel.getByRole("heading", { name: "Incidencias en vivo", level: 1, exact: true })).toBeVisible();
+  await expect(livePanel.getByRole("button", { name: "Incidencias en vivo", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(livePanel.getByRole("region", { name: "Incidencias reales de rutas", exact: true })).toHaveCount(0);
+  await expect(livePanel.getByText("Reglas de llegada", { exact: true })).toHaveCount(0);
+  await expect(livePanel.getByText("Punto corregido", { exact: true })).toHaveCount(0);
+  const rejected = await request.post(orderServiceUrl, { headers: authorization, data: {
+    ...await serviceIdentity(), orderVersion: currentOrder.version, kind: "reject", reasonCode: "other", note: "Cliente pidió revisar antes de recibir",
+  } });
+  expect(rejected.status()).toBe(200);
+  const rejectedCase = await rejected.json();
+  const liveSection = livePanel.getByRole("region", { name: "Incidencias en vivo", exact: true });
+  await expect(liveSection.getByText("Pedido rechazado", { exact: true })).toBeVisible({ timeout: 2000 });
+  await expect(liveSection.getByText("Cliente pidió revisar antes de recibir", { exact: true })).toBeVisible();
+  await livePanel.getByRole("button", { name: "Incidencias", exact: true }).click();
+  await expect(livePanel.getByText("Punto corregido", { exact: true })).toBeVisible();
+  await expect(livePanel.getByText("Pedido rechazado", { exact: true })).toHaveCount(0);
+  await expect(liveSection).toHaveCount(0);
+  await livePanel.getByRole("button", { name: "Incidencias en vivo", exact: true }).click();
+  await expect(liveSection.getByText("Pedido rechazado", { exact: true })).toBeVisible();
+  expect((await request.post(`${origin}/api/incidents/live/${rejectedCase.incidentId}/resolve`, {
+    headers: { Origin: "https://foreign.example" }, data: { expectedVersion: 1 },
+  })).status()).toBe(403);
+  await liveSection.getByRole("button", { name: "Marcar resuelto", exact: true }).click();
+  await livePanel.getByRole("dialog").getByRole("button", { name: "Cancelar", exact: true }).click();
+  expect((await request.get(`${origin}/api/incidents/live?from=${serviceDate}&to=${serviceDate}`)).ok()).toBe(true);
+  await liveSection.getByRole("button", { name: "Marcar resuelto", exact: true }).click();
+  await livePanel.getByRole("dialog").getByRole("button", { name: "Confirmar resuelto", exact: true }).click();
+  await expect(liveSection.getByText("Incidencia resuelta por administración")).toBeVisible();
+  // A resolved rejection does not block serving or reporting a closed customer.
+  const evidenceBytes = await sharp({ create: { width: 32, height: 32, channels: 3, background: "#abc123" } }).jpeg().toBuffer();
+  const closedInput = { ...await serviceIdentity(), note: "Local cerrado · evidencia QA" };
+  const closedRequest = { headers: { ...authorization, "Content-Type": "image/jpeg",
+    "X-Ana-Rutas-Command": Buffer.from(JSON.stringify(closedInput)).toString("base64") }, data: evidenceBytes };
+  const incidentSubmitted = Date.now();
+  const closedResponse = await request.post(`${serviceStopUrl}/closed`, closedRequest);
+  expect(closedResponse.status()).toBe(200);
+  const closedCase = await closedResponse.json();
+  await expect(liveSection.getByText("Pendiente de reintento por el chofer", { exact: true })).toBeVisible({ timeout: 2000 });
+  console.info(`Realtime closed-customer case visible in ${Date.now() - incidentSubmitted} ms`);
+  expect(await (await request.post(`${serviceStopUrl}/closed`, closedRequest)).json()).toMatchObject({ incidentId: closedCase.incidentId, duplicate: true });
+  const receiptUrl = `${origin}/api/mobile/plans/${planId}/commands/${closedInput.commandId}`;
+  expect((await noSession.request.get(receiptUrl)).status()).toBe(401);
+  expect(await (await request.get(receiptUrl, { headers: authorization })).json()).toMatchObject({ confirmed: true });
+  const evidence = liveSection.getByRole("img", { name: /Evidencia de negocio cerrado/ });
+  await expect(evidence).toBeVisible();
+  const evidencePath = new URL((await evidence.getAttribute("src"))!, origin).href;
+  expect((await noSession.request.get(evidencePath)).status()).toBe(401);
+  const protectedImage = await request.get(evidencePath);
+  expect(protectedImage.status()).toBe(200);
+  expect(protectedImage.headers()["cache-control"]).toContain("no-store");
+  expect((await request.post(`${origin}/api/incidents/live/${closedCase.incidentId}/resolve`, {
+    headers: { Origin: origin }, data: { expectedVersion: 1 },
+  })).status()).toBe(409);
+  await livePanel.getByLabel("Chofer", { exact: true }).selectOption(driverId);
+  await expect(liveSection.getByText("Local cerrado · evidencia QA", { exact: true })).toBeVisible();
+  await mkdir("reports/screenshots", { recursive: true });
+  await livePanel.screenshot({ path: "reports/screenshots/driver-service-closed-live.png", fullPage: true });
+  const desktopViewport = livePanel.viewportSize()!;
+  await livePanel.setViewportSize({ width: 390, height: 844 });
+  expect(await livePanel.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const filterWidth = (await livePanel.locator(".live-incident-filters").boundingBox())!.width;
+  for (const label of ["Desde", "Hasta", "Chofer"]) {
+    expect((await livePanel.getByLabel(label, { exact: true }).boundingBox())!.width).toBeGreaterThanOrEqual(filterWidth - 1);
+  }
+  await expect(liveSection.getByRole("img", { name: /Evidencia de negocio cerrado/ })).toBeVisible();
+  await livePanel.screenshot({ path: "reports/screenshots/driver-service-closed-live-mobile.png", fullPage: true });
+  await livePanel.setViewportSize(desktopViewport);
+  expect((await request.post(exitUrl, { headers: authorization, data: await serviceIdentity() })).status()).toBe(200);
+  const retryExecution = await readExecution();
+  expect((await request.post(arrivalUrl, { headers: authorization, data: {
+    ...await serviceIdentity(), policyVersion: retryExecution.policy.version,
+    sample: { ...arrival.sample, capturedAt: new Date().toISOString() },
+  } })).status()).toBe(200);
+  await expect(liveSection.getByText("Pendiente de reintento por el chofer", { exact: true })).toHaveCount(0, { timeout: 2000 });
+  const retried = await readExecution();
+  const reprogram = await request.post(orderServiceUrl, { headers: authorization, data: {
+    ...await serviceIdentity(), orderVersion: retried.stops[0].orderStates[0].version, kind: "reschedule", note: "Coordinar nueva visita internamente",
+  } });
+  expect(reprogram.status()).toBe(200);
+  await expect(liveSection.getByText("Reprogramado", { exact: true })).toBeVisible({ timeout: 2000 });
+  expect((await request.get(evidencePath)).status()).toBe(404);
+  expect((await readExecution()).stops[0].orderStates[0].status).toBe("rescheduled");
+  // Disconnect the real browser network; mutate through another authenticated
+  // connection and recover through the existing event channel, without reload.
+  const reprogramCase = await reprogram.json();
+  await liveContext.setOffline(true);
+  expect((await request.post(`${origin}/api/incidents/live/${reprogramCase.incidentId}/resolve`, {
+    headers: { Origin: origin }, data: { expectedVersion: 1 },
+  })).status()).toBe(200);
+  const reconnectStarted = Date.now();
+  await liveContext.setOffline(false);
+  await expect(liveSection.getByText("Incidencia resuelta por administración")).toHaveCount(2, { timeout: 20_000 });
+  console.info(`Incidents recovered after browser reconnect in ${Date.now() - reconnectStarted} ms`);
+  await noSession.close();
   await livePanel.getByLabel("Desde", { exact: true }).fill("2000-01-01");
   await livePanel.getByLabel("Hasta", { exact: true }).fill("2000-01-01");
-  await expect(livePanel.getByText("Sin incidencias en este periodo", { exact: true })).toBeVisible();
+  await expect(liveSection.getByText("Sin incidencias operativas en el periodo y chofer seleccionados.", { exact: true })).toBeVisible();
   await livePanel.getByLabel("Hasta", { exact: true }).fill(serviceDate);
   await livePanel.getByLabel("Desde", { exact: true }).fill(serviceDate);
-  await expect(livePanel.getByText("Punto corregido", { exact: true })).toBeVisible();
+  await expect(liveSection.getByText("Reprogramado", { exact: true })).toBeVisible();
   await mkdir("reports/screenshots", { recursive: true });
   await livePanel.screenshot({ path: "reports/screenshots/driver-incidents-live.png", fullPage: true });
+  await livePanel.getByRole("button", { name: "Incidencias", exact: true }).click();
+  await expect(livePanel.getByText("Punto corregido", { exact: true })).toBeVisible();
+  await expect(liveSection).toHaveCount(0);
   await livePanel.getByRole("button", { name: "Planificar rutas", exact: true }).click();
   const cancelled = await request.post(cancelUrl, {
     headers: { Origin: origin },

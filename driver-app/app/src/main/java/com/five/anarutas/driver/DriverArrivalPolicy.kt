@@ -29,6 +29,10 @@ internal fun arrivalEligibility(gps: DriverGps?, point: ExecutionPoint?, policy:
     return if (pointDistance(gps.point, point) + gps.accuracy <= policy.radiusMeters) ArrivalEligibility.READY else ArrivalEligibility.OUTSIDE
 }
 
+/** The old customer pin is irrelevant: a fresh trusted fix can propose the driver's actual position. */
+internal fun currentLocationRepointCandidate(gps: DriverGps?, policy: ArrivalPolicy, elapsed: Long): ExecutionPoint? =
+    gps?.point?.takeIf { arrivalEligibility(gps, it, policy, elapsed) == ArrivalEligibility.READY }
+
 /** Reuses only a still-server-valid sample through a newer imprecise location update. */
 internal fun actionableGps(current: DriverGps?, lastReady: DriverGps?, lastReadyPoint: ExecutionPoint?,
     target: ExecutionPoint?, policy: ArrivalPolicy, elapsed: Long): DriverGps? {

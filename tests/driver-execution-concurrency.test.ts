@@ -4,6 +4,37 @@ import { executionFixture } from "./helpers/driver-execution";
 import { readDriverExecution } from "../src/core/driver-execution-read";
 import { executeStopCommand } from "../src/core/driver-stop-command";
 
+it("repoints directly from a distant wrong pin to the driver's real location, never toward a remote proposal", async () => {
+  const f = await executionFixture();
+  const { pool } = f.db;
+  const [driver] = f.members;
+  try {
+    await f.start(driver);
+    const state = await readDriverExecution(pool, driver.driverId, f.planId, f.timezone);
+    const stop = state.stops[0];
+    const corrected = { latitude: 20.8, longitude: -103.4 };
+    const address = { street: "Av. Local 230", neighborhood: "Centro", postalCode: "44100", city: "Guadalajara" };
+    const base = { executionId: state.id, publicationRevision: state.publicationRevision,
+      executionRevision: state.revision, stopVersion: stop.version, policyVersion: state.policy.version,
+      customerLocationVersion: stop.customerLocationVersion, point: corrected, address };
+    const gps = { ...corrected, accuracyMeters: 5, ageMilliseconds: 0, capturedAt: f.now.toISOString(), mock: false };
+    expect(stop.latitude).toBe(20.64);
+    await expect(executeStopCommand(pool, driver.authorization, f.planId, stop.id, "repoint", {
+      ...base, commandId: randomUUID(), sample: { ...gps, latitude: stop.latitude, longitude: stop.longitude },
+    }, f.timezone, f.now)).rejects.toMatchObject({ code: "OUTSIDE_ARRIVAL_RADIUS" });
+    const result = await executeStopCommand(pool, driver.authorization, f.planId, stop.id, "repoint", {
+      ...base, commandId: randomUUID(), sample: gps,
+    }, f.timezone, f.now);
+    expect(result.unchanged).not.toBe(true);
+    expect((await readDriverExecution(pool, driver.driverId, f.planId, f.timezone)).stops[0])
+      .toMatchObject(corrected);
+    expect((await pool.query("SELECT latitude, longitude FROM route_customers WHERE id=$1", [stop.customerId])).rows[0])
+      .toEqual(corrected);
+    expect((await pool.query("SELECT incident_kind FROM route_driver_stop_events WHERE stop_id=$1", [stop.id])).rows)
+      .toContainEqual({ incident_kind: "location_corrected" });
+  } finally { await f.close(); }
+}, 120_000);
+
 it("corrects either coordinate when customer and execution disagree and retains both previous points", async () => {
   const f = await executionFixture();
   const { pool } = f.db;
