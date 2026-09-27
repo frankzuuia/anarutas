@@ -58,6 +58,68 @@ test("private telemetry and per-user layout contracts over real HTTP", async ({ 
   expect((await request.put(`${origin}/api/control-center`, { headers: { Origin: "https://foreign.invalid" }, data: { expectedVersion: 0, screens: [] } })).status()).toBe(403);
   expect((await request.put(`${origin}/api/control-center`, { headers: { Origin: origin }, data: { expectedVersion: 0, screens: [{ id: randomUUID(), type: "control_center", driverId: "", vehicleId: "" }] } })).status()).toBe(400);
 });
+test("ETA list keeps each driver destination separate and changes only its screen filter", async ({ page }) => {
+  const etaLogin = `eta-${randomUUID()}`;
+  await createUser(f.db.pool, f.actor, { name: "ETA QA", login: etaLogin, password });
+  await page.request.post(`${origin}/api/session`, { headers: { Origin: origin }, data: { login: etaLogin, password } });
+  const sessions = [];
+  for (const [index, member] of f.members.entries()) {
+    const route = await readDriverExecution(f.db.pool, member.driverId, f.planId, f.timezone);
+    const identity = { executionId: route.id, publicationRevision: route.publicationRevision, sessionId: randomUUID() };
+    const tracking = `${origin}/api/mobile/plans/${f.planId}/tracking`;
+    const headers = { Authorization: member.authorization };
+    expect((await page.request.post(tracking, { headers, data: { ...identity, kind: "begin" } })).status()).toBe(200);
+    const target = route.stops[0];
+    const data = { ...identity, kind: "sample", sequence: 1, targetStopId: target.id,
+      sample: { latitude: 20.64, longitude: -103.4, accuracyMeters: 5, ageMilliseconds: 0, mock: false },
+      eta: { targetStopId: target.id, state: "ready", remainingSeconds: (index+1)*600, ageMilliseconds: 0 } };
+    expect((await page.request.post(tracking, { headers, data })).status()).toBe(200);
+    sessions.push({ tracking, headers, data });
+  }
+  const screens = Array.from({ length: 2 }, () => ({ id: randomUUID(), type: "routes", driverId: "", vehicleId: "" }));
+  expect((await page.request.put(`${origin}/api/control-center`, { headers: { Origin: origin }, data: { expectedVersion: 0, screens } })).status()).toBe(200);
+  await page.setViewportSize({ width: 1500, height: 800 });
+  await page.goto(origin);
+  await page.getByRole("button", { name: "Centro de control", exact: true }).click();
+  const cards = page.locator(".control-grid > .control-screen");
+  const card = cards.first();
+  const button = card.getByRole("button", { name: "Tiempos por chofer", exact: true });
+  await expect(button).toBeVisible();
+  const before = await card.locator(".live-map-canvas").boundingBox();
+  await button.focus(); await page.keyboard.press("Enter");
+  const list = card.getByRole("complementary", { name: "Tiempos por chofer", exact: true });
+  await expect(list).toBeVisible();
+  await expect(card.getByRole("button", { name: "Cerrar tiempos" })).toBeFocused();
+  await expect(list.locator(".live-times-row")).toHaveCount(2);
+  await expect(list.locator(".live-times-row").filter({ hasText: "Chofer 0" })).toContainText("≈10 min");
+  await expect(list.locator(".live-times-row").filter({ hasText: "Chofer 1" })).toContainText("≈20 min");
+  expect(await card.locator(".live-map-canvas").boundingBox()).toEqual(before);
+  await page.keyboard.press("Escape"); await expect(button).toBeFocused();
+  await button.click();
+  await list.locator(".live-times-row").filter({ hasText: "Chofer 1" }).click();
+  await expect(card.getByLabel("Chofer", { exact: true })).toHaveValue(f.members[1].driverId);
+  await expect(card.getByLabel("Chofer", { exact: true })).toBeFocused();
+  await expect(cards.nth(1).getByLabel("Chofer", { exact: true })).toHaveValue("");
+  await expect(card.getByLabel("Resumen de avance")).toContainText("Próximo destino: ≈20 min");
+  const session = sessions[1];
+  expect((await page.request.post(session.tracking, { headers: session.headers, data: { ...session.data, sequence: 2,
+    eta: { ...session.data.eta, state: "calculating", remainingSeconds: null } } })).status()).toBe(200);
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(card.getByLabel("Resumen de avance")).toContainText("Calculando…");
+  expect((await page.request.post(session.tracking, { headers: session.headers, data: { ...session.data, sequence: 3,
+    eta: { ...session.data.eta, ageMilliseconds: 31000 } } })).status()).toBe(200);
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(card.getByLabel("Resumen de avance")).toContainText("Tiempo desactualizado");
+  await card.getByLabel("Chofer", { exact: true }).selectOption("");
+  await button.click();
+  await mkdir(".local/qa/control-center", { recursive: true });
+  await page.screenshot({ path: ".local/qa/control-center/eta-drivers.png" });
+  await page.setViewportSize({ width: 375, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const panelBox = await list.boundingBox();
+  expect(panelBox!.width).toBeLessThanOrEqual(375);
+});
+
 test("independent drivers, arbitrary panel screens, persistence, expand and removal", async ({ page }) => {
   test.setTimeout(180000);
   const pageErrors: string[] = [];

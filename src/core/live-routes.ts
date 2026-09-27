@@ -3,6 +3,7 @@ import { assertActiveActor, transaction } from "./database";
 import type { DriverOrderStatus } from "./driver-service-policy";
 import { stopProgress, trackingPolicy } from "./live-tracking-policy";
 import type { PublicOptimizedRoute } from "./routing-contract";
+import type { LiveEta } from "./live-eta";
 
 export type LiveStop = { id: string; position: number; customer: string; address: string;
   latitude: number | null; longitude: number | null; arrivedAt: string | null;
@@ -10,6 +11,7 @@ export type LiveStop = { id: string; position: number; customer: string; address
 export type LiveRoute = { id: string; planId: string; label: string; date: string;
   driverId: string; driver: string; vehicleId: string; vehicle: string; plate: string;
   startedAt: string; targetStopId: string | null; arrivedStopId: string | null;
+  eta?: LiveEta | null;
   location: { latitude: number; longitude: number; accuracy: number; observedAt: string; receivedAt: string; stopped: boolean } | null;
   polylines: string[]; corrected: boolean; stops: LiveStop[];
   progress: { orders: number; delivered: number; rescheduled: number; incidentOrders: number; remainingStops: number; completedStops: number; totalStops: number } };
@@ -20,7 +22,7 @@ export async function readLiveRoutes(pool: Pool, actor: string): Promise<LiveRou
     await sql.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
     await assertActiveActor(sql, actor);
     const executions = (await sql.query(`SELECT e.*,e.service_date::text AS date,
-      pub.snapshot->'route' AS published_route,t.target_stop_id,t.latitude,t.longitude,t.accuracy_meters,t.observed_at,t.received_at,
+      pub.snapshot->'route' AS published_route,t.target_stop_id,t.latitude,t.longitude,t.accuracy_meters,t.observed_at,t.received_at,t.eta,
       (t.stopped OR dev.revoked_at IS NOT NULL OR NOT coalesce(access.enabled,false)
         OR NOT EXISTS(SELECT 1 FROM route_driver_mobile_sessions session WHERE session.device_id=t.device_id
           AND session.revoked_at IS NULL AND session.expires_at>now())) AS tracking_stopped
@@ -50,6 +52,7 @@ export async function readLiveRoutes(pool: Pool, actor: string): Promise<LiveRou
         vehicleId: e.vehicle_id, vehicle: e.vehicle_name, plate: e.vehicle_plate, startedAt: e.started_at.toISOString(),
         targetStopId: mapped.some(s => s.id === e.target_stop_id && s.progress.visible) ? e.target_stop_id : null,
         arrivedStopId: mapped.find(s => s.arrivedAt !== null && s.progress.visible)?.id ?? null,
+        eta: e.eta ?? null,
         location: e.observed_at ? { latitude: e.latitude, longitude: e.longitude, accuracy: e.accuracy_meters,
           observedAt: e.observed_at.toISOString(), receivedAt: e.received_at.toISOString(), stopped: Boolean(e.tracking_stopped) } : null,
         corrected, polylines: corrected ? [] : route?.segmentPolylines?.length ? route.segmentPolylines : route?.encodedPolyline ? [route.encodedPolyline] : [],

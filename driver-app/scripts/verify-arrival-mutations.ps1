@@ -1,4 +1,4 @@
-param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly)
+param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly)
 $ErrorActionPreference = 'Stop'
 # Mechanical mutations occur only in an isolated copy. No ADB, HTTP stubs or credential output.
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -13,7 +13,7 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 }
 $sourceFolder = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver'
 $originals = @{}
-foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt')) {
+foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt')) {
     $originals[$file] = [IO.File]::ReadAllText((Join-Path $sourceFolder $file))
 }
 $cases = @(
@@ -127,6 +127,25 @@ if ($ContinuationOnly) {
         @{ name = 'preview_during_restored_guidance'; from = '!sdkGuiding &&'; to = 'true &&' },
         @{ name = 'preview_after_repoint'; from = '&& !corrected'; to = '&& true' }
     ) | ForEach-Object { $_.file = 'StopContinuationPolicy.kt'; $_.test = 'StopContinuationPolicyTest'; $_ }
+}
+if ($EtaOnly) {
+    $cases = @(
+        @{ name = 'eta_wrong_execution'; from = 'execution != executionId'; to = 'false' },
+        @{ name = 'eta_wrong_stop'; from = 'stop != stopId'; to = 'false' },
+        @{ name = 'eta_old_result'; from = 'key == destinationKey'; to = 'true' },
+        @{ name = 'eta_stale_during_calculation'; from = 'if (calculating)'; to = 'if (false)' },
+        @{ name = 'eta_guidance_stopped'; from = '!guiding ||'; to = 'false ||' },
+        @{ name = 'eta_negative'; from = 'seconds < 0'; to = 'seconds < -1' },
+        @{ name = 'eta_zero_boundary'; from = 'seconds < 0'; to = 'seconds <= 0' },
+        @{ name = 'eta_no_reset'; from = 'key = null; executionId = null; stopId = null; calculating = false'; to = 'calculating = false' },
+        @{ name = 'eta_lost_begin'; from = 'calculating = true'; to = 'calculating = false' },
+        @{ name = 'eta_wrong_value'; from = 'NavigationEta(stop, "ready", seconds)'; to = 'NavigationEta(stop, "ready", 0)' },
+        @{ name = 'eta_ignore_arrival'; from = 'if (arrived)'; to = 'if (false)' },
+        @{ name = 'eta_ignore_stale_gps'; from = 'if (!freshGps)'; to = 'if (false)' },
+        @{ name = 'eta_accept_unavailable'; from = 'eta.state != "ready" ||'; to = 'false ||' },
+        @{ name = 'eta_round_down'; from = '+ 59'; to = '+ 0' },
+        @{ name = 'eta_minute_boundary'; from = 'seconds < 60'; to = 'seconds <= 60' }
+    ) | ForEach-Object { $_.file = 'NavigationEtaPolicy.kt'; $_.test = 'NavigationEtaPolicyTest'; $_ }
 }
 $arguments = @('testDebugUnitTest', '--console=plain')
 if ($ServerUrl) { $arguments += ('-PANA_RUTAS_SERVER_URL=' + $ServerUrl) }

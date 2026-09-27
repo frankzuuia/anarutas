@@ -203,7 +203,7 @@ class RouteNavigationActivity : FragmentActivity() {
                     tick = SystemClock.elapsedRealtime(); recoverGps(tick)
                     model.state.execution?.takeIf { model.state.verified && !model.state.retired }?.let { execution ->
                         LiveTrackingService.ensure(this@RouteNavigationActivity, execution,
-                            execution.stops.find { guidance && destinationKey(it) == NavigationRegistry.destinationKey }?.id)
+                            if (navigating) currentStop?.id else execution.stops.find { guidance && destinationKey(it) == NavigationRegistry.destinationKey }?.id)
                     }
                     delay(1000)
                 } }
@@ -336,6 +336,7 @@ class RouteNavigationActivity : FragmentActivity() {
     private fun stopGuidance() {
         requestGeneration++
         navigating = false
+        NavigationRegistry.clearEta()
         navigator?.stopGuidance()
         navigator?.clearDestinations()
         guidance = false
@@ -350,6 +351,8 @@ class RouteNavigationActivity : FragmentActivity() {
         if (guidance && NavigationRegistry.destinationKey == key) return
         val generation = ++requestGeneration
         navigating = true
+        NavigationRegistry.beginEta(key, model.state.execution!!.id, stop.id)
+        LiveTrackingService.destination(model.state.execution?.id, stop.id)
         navMessage = "Calculando guía a esta parada…"
         renderMap()
         val waypoint = Waypoint.builder().setLatLng(point.latitude, point.longitude).setTitle(stop.customer).build()
@@ -371,9 +374,10 @@ class RouteNavigationActivity : FragmentActivity() {
                     nav.startGuidance()
                     applyVoicePreference(nav)
                     guidance = true
+                    NavigationRegistry.confirmEta(key)
                     LiveTrackingService.destination(model.state.execution?.id, stop.id)
                     navMessage = "Guía activa · el orden de tus pedidos no cambia"
-                } else { guidance = false; navMessage = "No se pudo trazar la guía: $result. Puedes reintentar sin volver a guardar el punto." }
+                } else { stopGuidance(); navMessage = "No se pudo trazar la guía: $result. Puedes reintentar sin volver a guardar el punto." }
                 renderMap()
             }
         }
@@ -445,6 +449,7 @@ class RouteNavigationActivity : FragmentActivity() {
     private fun beginEdit() {
         val stop = currentStop ?: return
         resumeGuide = guidance
+        NavigationRegistry.clearEta()
         navigator?.stopGuidance()
         guidance = false
         LiveTrackingService.destination(model.state.execution?.id, null)
@@ -466,6 +471,10 @@ class RouteNavigationActivity : FragmentActivity() {
         street = ""; neighborhood = ""; postalCode = ""; city = ""
         if (resumeGuide && currentStop?.let(::destinationKey) == NavigationRegistry.destinationKey) {
             navigator?.startGuidance(); navigator?.let(::applyVoicePreference); guidance = true
+            currentStop?.let { restored -> model.state.execution?.let { execution ->
+                NavigationRegistry.beginEta(destinationKey(restored), execution.id, restored.id)
+                NavigationRegistry.confirmEta(destinationKey(restored))
+            } }
             LiveTrackingService.destination(model.state.execution?.id, currentStop?.id)
         }
         resumeGuide = false
@@ -537,6 +546,8 @@ class RouteNavigationActivity : FragmentActivity() {
         val state = model.state
         val execution = state.execution
         val stop = currentStop
+        val etaLabel = navigationEtaLabel(NavigationRegistry.estimate(execution?.id, stop?.id),
+            stop?.arrivedAt != null, gps?.let { !it.mock && SystemClock.elapsedRealtime() - it.elapsedMillis in 0..30_000L } == true)
         val target = if (editing) draftPoint else stop?.point
         // The timer invalidates the view for expiry, but is not the time of a GPS callback.
         // New fixes can arrive between ticks; comparing them to tick made them look future-dated.
@@ -618,6 +629,8 @@ class RouteNavigationActivity : FragmentActivity() {
                         modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleMedium)
                     if (!panelExpanded) {
+                        Text(etaLabel, style = MaterialTheme.typography.labelMedium, color = DriverColors.lime,
+                            modifier = Modifier.widthIn(max = 130.dp), maxLines = 2)
                         AppIconButton(if (voiceMuted) DriverIcon.VOLUME_OFF else DriverIcon.VOLUME,
                             if (voiceMuted) "Activar voz de la guía" else "Silenciar voz de la guía", onClick = ::toggleVoice)
                         AppIconButton(DriverIcon.CLOSE, "Cerrar mapa", onClick = ::finish)
@@ -625,6 +638,7 @@ class RouteNavigationActivity : FragmentActivity() {
                 }
                 if (panelExpanded) Column(Modifier.fillMaxWidth().heightIn(max = maxHeight).verticalScroll(rememberScrollState())
                     .padding(start = 18.dp, end = 18.dp, bottom = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Próximo destino · $etaLabel", style = MaterialTheme.typography.bodyMedium, color = DriverColors.lime)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Wordmark()
                     Spacer(Modifier.weight(1f))

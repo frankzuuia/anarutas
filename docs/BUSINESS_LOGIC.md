@@ -1,5 +1,16 @@
 # Ana Rutas — bloque 1 aprobado
 
+## Tiempo al destino — BL-141
+
+- Chofer/admin: tiempo estimado del Navigator activo, no ETA calculado por el
+  panel ni tiempo total de ruta. Identidad ejecución/parada, edad propia y GPS
+  vigente; invalidar al cambiar destino, parar, llegar o retirar ejecución.
+- Todos los choferes: lista compacta desplegable con nombre/destino/tiempo por
+  ejecución; nunca sumar/promediar ETA. Seleccionar fila cambia sólo ese filtro.
+- Datos: telemetría opcional compatible con APK anteriores; permisos y secuencia
+  existentes, sin cambios en entregas/liquidación. Sin auditoría por cada segundo;
+  continúa auditoría de sesión. Validar parser, estados, PG, JVM, E2E y mutación.
+
 ## Vista individual compacta — BL-140 (26/09/2026)
 
 - Administrador: Ruta en vivo debe dedicar el espacio restante de la ventana

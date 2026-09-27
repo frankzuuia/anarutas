@@ -128,8 +128,15 @@ class LiveTrackingService : Service() {
                         val fix = trackingGps(gps, now, maxAge)
                         val sample = fix?.let { JSONObject().put("latitude", it.point.latitude).put("longitude", it.point.longitude)
                             .put("accuracyMeters", it.accuracy).put("ageMilliseconds", now - it.elapsedMillis).put("mock", false) }
+                        // Read SDK now, on the main thread; never replay a cached ETA after reconnecting.
+                        val target = targetStopId
+                        val eta = NavigationRegistry.estimate(execution, target)?.let {
+                            JSONObject().put("targetStopId", it.targetStopId).put("state", it.state)
+                                .put("remainingSeconds", it.remainingSeconds ?: JSONObject.NULL).put("ageMilliseconds", 0)
+                        }
                         api.tracking(access.token, plan, payload("sample").put("sequence", ++sequence)
-                            .put("targetStopId", targetStopId ?: JSONObject.NULL).put("sample", sample ?: JSONObject.NULL))
+                            .put("targetStopId", target ?: JSONObject.NULL).put("sample", sample ?: JSONObject.NULL)
+                            .put("eta", eta ?: JSONObject.NULL))
                         message = if (fix == null) "Centro de control conectado · esperando GPS" else "Ubicación compartida con centro de control"
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (error: DriverApiException) {

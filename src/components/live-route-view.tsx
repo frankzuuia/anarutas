@@ -9,6 +9,7 @@ import { api } from "./api";
 import { loadGoogleMaps } from "./google-maps";
 import { createLiveMapMarkerNode } from "./live-map-marker";
 import { useLiveRoutes } from "./use-live-routes";
+import { routeEta } from "@/core/live-eta";
 
 const statusNames = { open: "Abierto", closed_pending: "Cliente cerrado · reintento", rejected: "Rechazado", rescheduled: "Reprogramado", delivered: "Entregado" };
 const colors = ["#8dddac", "#c591ee", "#80bffd", "#f5d676", "#f497bc", "#88ded8"];
@@ -22,6 +23,7 @@ function RouteProgress({ route, now, selected, onSelect }: { route: LiveRoute; n
       <div><strong>{route.progress.remainingStops}</strong><span>paradas por atender</span></div></div>
     <progress aria-label={`Entregas de ${route.driver}`} value={route.progress.delivered} max={Math.max(1, route.progress.orders)} />
     <p className="live-route-destination"><Navigation size={16} />{active ? `${route.arrivedStopId ? "Atendiendo" : "Destino"}: ${active.position} · ${active.customer}` : "Sin destino confirmado"}</p>
+    <p className="live-eta" aria-label={`Tiempo de ${route.driver}`}>{routeEta(route, now)}</p>
     <p className="small">{route.progress.completedStops}/{route.progress.totalStops} paradas entregadas · {route.progress.rescheduled} pedidos reprogramados · {route.progress.incidentOrders} con incidencia</p>
     {route.location && <p className="small">Precisión ±{Math.round(route.location.accuracy)} m · {new Date(route.location.observedAt).toLocaleTimeString("es-MX")}</p>}
     {!route.location && <p className="live-gps-help">Aún no se ha recibido GPS de esta ruta. En el teléfono, abre la ruta con la APK 0.7.0 o posterior, permite ubicación precisa y revisa el estado de seguimiento. Si está detenido, pulsa «Reanudar seguimiento».</p>}
@@ -140,6 +142,15 @@ export function LiveRouteView({ feed, filter, onFilter, progressOnly = false }: 
   onFilter: (value: Pick<ControlScreen, "driverId" | "vehicleId">) => void; progressOnly?: boolean }) {
   const [selected, setSelected] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [timesOpen, setTimesOpen] = useState(false);
+  const timesId = useId();
+  const timesButton = useRef<HTMLButtonElement>(null);
+  const timesClose = useRef<HTMLButtonElement>(null);
+  function closeTimes() { setTimesOpen(false); timesButton.current?.focus(); }
+  function chooseDriver(driverId: string) {
+    setSelected(""); setTimesOpen(false); onFilter({ driverId, vehicleId: "" });
+  }
+  useEffect(() => { if (timesOpen) timesClose.current?.focus(); }, [timesOpen]);
   const detailsId = useId();
   const detailsButton = useRef<HTMLButtonElement>(null);
   const detailsClose = useRef<HTMLButtonElement>(null);
@@ -154,21 +165,38 @@ export function LiveRouteView({ feed, filter, onFilter, progressOnly = false }: 
     <span title="Pedidos entregados"><strong>{routes.reduce((n,r) => n+r.progress.delivered,0)}/{routes.reduce((n,r) => n+r.progress.orders,0)}</strong> entregados</span>
     <span title="Paradas pendientes"><strong>{routes.reduce((n,r) => n+r.progress.remainingStops,0)}</strong> pendientes</span>
     {routes.length === 1 && <span className={locationHealth(routes[0], feed.now).live ? "gps-live" : "gps-stale"}>{locationHealth(routes[0], feed.now).label}</span>}
+    {filter.driverId && routes.length === 1
+      ? <span className="live-eta" title="Tiempo estimado al destino activo del chofer">Próximo destino: {routeEta(routes[0], feed.now)}</span>
+      : <button ref={timesButton} className="quiet live-times-toggle" aria-expanded={timesOpen} aria-controls={timesId}
+          disabled={!routes.length} onClick={() => { setDetailsOpen(false); setTimesOpen(v => !v); }}>Tiempos por chofer</button>}
   </div>;
   return <section className={`live-route-view ${progressOnly ? "progress-view" : "map-first"}`} onKeyDown={event => {
+    if (event.key === "Escape" && timesOpen) { event.stopPropagation(); closeTimes(); }
     if (event.key === "Escape" && detailsOpen && !progressOnly) { event.stopPropagation(); closeDetails(); }
   }}>
-    <div className="live-route-filters"><label>Chofer<select aria-label="Chofer" value={filter.driverId} onChange={e => { setSelected(""); onFilter({ driverId: e.target.value, vehicleId: "" }); }}>
+    <div className="live-route-filters"><label>Chofer<select aria-label="Chofer" value={filter.driverId} onChange={e => chooseDriver(e.target.value)}>
       <option value="">Todos los choferes</option>{filter.driverId && !drivers.some(([id]) => id === filter.driverId) && <option value={filter.driverId}>Chofer sin ruta activa</option>}
       {drivers.map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label>
-      {!progressOnly && <button ref={detailsButton} className="quiet live-details-toggle" aria-expanded={detailsOpen} aria-controls={detailsId} disabled={!routes.length} onClick={() => setDetailsOpen(v => !v)}><List size={16} />Ver avance</button>}
+      {!progressOnly && <button ref={detailsButton} className="quiet live-details-toggle" aria-expanded={detailsOpen} aria-controls={detailsId} disabled={!routes.length} onClick={() => { setTimesOpen(false); setDetailsOpen(v => !v); }}><List size={16} />Ver avance</button>}
     </div>
     {!!routes.length && progressOnly && summary}
     {feed.error && <p className="notice error" role="alert">{feed.error} Se conserva el último corte. <button className="quiet" onClick={feed.refresh}>Reintentar</button></p>}
     {feed.report && !routes.length && <div className="live-empty"><MapPin size={30} /><h3>Sin rutas iniciadas para este filtro</h3><p>Aparecerán al iniciar una ruta. La ubicación requiere la APK con seguimiento habilitado.</p></div>}
     {!feed.report && !feed.error && <p role="status">Consultando rutas…</p>}
     {!!routes.length && <div className={`live-route-content ${progressOnly ? "progress-only" : ""}`}>
-      {!progressOnly && <LiveMap routes={routes} now={feed.now} filterKey={filter.driverId} selected={selected} summary={summary} onSelect={selectStop} onDriverSelect={driverId => { setSelected(""); onFilter({ driverId, vehicleId: "" }); }} />}
+      {!progressOnly && <LiveMap routes={routes} now={feed.now} filterKey={filter.driverId} selected={selected} summary={summary} onSelect={selectStop} onDriverSelect={chooseDriver} />}
+      <aside id={timesId} hidden={!timesOpen} className="live-times-panel" aria-label="Tiempos por chofer">
+        <div className="live-details-heading"><strong>Tiempos por chofer</strong><button ref={timesClose} className="quiet" aria-label="Cerrar tiempos" onClick={closeTimes}><X size={17} /></button></div>
+        {routes.map(route => {
+          const target = route.stops.find(stop => stop.id === (route.targetStopId ?? route.arrivedStopId));
+          return <button key={route.id} className="live-times-row" onClick={event => {
+            const section = event.currentTarget.closest("section");
+            chooseDriver(route.driverId);
+            section?.querySelector<HTMLSelectElement>('select[aria-label="Chofer"]')?.focus();
+          }}><span><strong>{route.driver}</strong><small>{target ? `${target.position} · ${target.customer}` : "Sin destino activo"}</small>
+            <small>{route.vehicle} · {route.label}</small></span><span className="live-eta">{routeEta(route, feed.now)}</span></button>;
+        })}
+      </aside>
       <aside id={detailsId} hidden={!progressOnly && !detailsOpen} className="live-route-progress" aria-label="Avance de los choferes">
         {!progressOnly && <div className="live-details-heading"><strong>Avance y paradas</strong><button ref={detailsClose} className="quiet" aria-label="Cerrar avance" onClick={closeDetails}><X size={17} /></button></div>}
         {stop && <div className="live-selected-stop"><strong>{stop.position} · {stop.customer}</strong><p>{stop.address}</p><button className="quiet" onClick={() => setSelected("")}>Cerrar detalle</button></div>}

@@ -25,6 +25,7 @@ import { migrateDriverService } from "./driver-service-schema";
 import { migrateDriverIncidences } from "./driver-incidence-schema";
 import { migrateDriverRetry } from "./driver-retry-schema";
 import { migrateLiveTracking } from "./live-tracking-schema";
+import { migrateLiveEta } from "./live-eta-schema";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
   return new pg.Pool({
@@ -96,7 +97,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       );
       let version = result.rows[0]?.schema_version;
       if (
-        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].includes(
+        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25].includes(
           version,
         )
       )
@@ -136,6 +137,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (version < 22) await migrateDriverIncidences(client);
       if (version < 23) await migrateDriverRetry(client);
       if (version < 24) await migrateLiveTracking(client);
+      if (version < 25) await migrateLiveEta(client);
       return;
     }
     await client.query(`
@@ -174,6 +176,7 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migrateDriverIncidences(client);
     await migrateDriverRetry(client);
     await migrateLiveTracking(client);
+    await migrateLiveEta(client);
   });
 }
 export async function audit(

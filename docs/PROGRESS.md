@@ -1,5 +1,12 @@
 # Progreso — bloque 1
 
+## Tiempo al destino — BL-141
+
+- [x] ETA-T01: contrato opcional, migración v25 repetible/concurrente, validación/persistencia/proyección; PostgreSQL real.
+- [x] ETA-T02: tiempo SDK en Registry, servicio y barra Android; invalidación; 87 JVM, política ETA con 100% líneas/ramas y 15 mutantes eliminados.
+- [x] ETA-T03: resumen individual/lista por ejecución, filtros locales y accesibilidad; E2E de filtros/teclado/geometría.
+- [ ] ETA-T04: QA local y APK 0.7.2/code21 generados; falta prueba física de Navigation SDK y publicación de backend/panel. Evidencia y procedimiento en `QA-TIEMPO-AL-DESTINO.md`. No declarar salida productiva completa.
+
 ## Vista individual compacta — BL-140 / CC20
 
 - [x] CC-T15: encabezado único/ayuda, pie global retirado y mapa flexible al viewport.

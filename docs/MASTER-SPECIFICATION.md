@@ -1,5 +1,40 @@
 # Bloque 1 — especificación y auditoría previa
 
+## Tiempo al destino — BL-141 / ETA01..08
+
+Autopsia: setEtaCardEnabled(false), Chrome sin ETA y tracking sin duración.
+NavigationRegistry retiene Navigator entre pantallas; Activity cambia destinos
+con generaciones. ETA debe vivir con ese Navigator, no con la Activity destruida.
+Se lee getCurrentTimeAndDistance sin nuevas solicitudes de ruta. Recalculo
+invalidado antes de setDestination; SDK rerouting/routeChanged refrescan estado.
+
+| ID | Precondición/acción | Resultado/recuperación | Validación |
+| --- | --- | --- | --- |
+| ETA01 | Chofer inicia guía válida | Tiempo SDK en barra, mismo dato por telemetría | JVM/compilación; QA físico SDK |
+| ETA02 | Cambia destino o recalcula | Calculando, jamás tiempo previo con nuevo destino | Política/contrato/versiones |
+| ETA03 | Llegué, fin/edición/guía detenida | En atención o sin destino; no marcar entrega por ETA cero | JVM/PG/UI |
+| ETA04 | Rotación, mapa cerrado, reconexión | Registry sin referencias a Activity; servicio lee mismo Navigator; sin cola histórica | JVM/revisión lifecycle |
+| ETA05 | GPS/ETA vencido, revocación o fallo SDK | Desactualizado/no disponible; sin cuenta regresiva inventada | Unitarios/PG |
+| ETA06 | APK anterior, sesión nueva/paquete atrasado | ETA opcional/null; begin/stop limpia; secuencia antigua no pisa | PG/HTTP |
+| ETA07 | Todos, varios choferes/rutas | Desplegable estable por ejecución; nombre sólo en lista; selección local | E2E responsive/teclado |
+| ETA08 | Un chofer y cuatro pantallas | ETA compacto, no reduce mapa; controles/fullscreen intactos | E2E geometría |
+
+ETA-T01: contrato/persistencia, migración aditiva v25 bajo lock existente y
+proyección (ETA02,03,05,06). ETA-T02: Registry/servicio/Chrome (ETA01..06).
+ETA-T03: presentación individual/global (ETA03,05,07,08). ETA-T04: QA/artefacto.
+Flujo: SDK → Registry → payload tracking autenticado/versionado → PG → lectura
+privada → UI. Cada sample reemplaza su ETA, nunca rejuvenece una ETA omitida.
+Validar estado/segundos/edad y coincidencia de destino antes de persistir; ownership
+por ejecución existente. Sin claves/IDs de negocio nuevos ni rutas pagadas extras.
+Referencia: Navigator.getCurrentTimeAndDistance y TimeAndDistance.getSeconds:
+https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/libraries/navigation/Navigator
+https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/libraries/navigation/TimeAndDistance
+Next16 use-client local consultado. Riesgo restante: QA SDK real en teléfono, no
+simulado. Rollback requiere app compatible con schema25 (no bajar servidor antiguo
+que rechaza ese número); columna aditiva no elimina datos. Auditoría local:
+arquitectura revisada; cierre de calidad condicionado a evidencia local y QA físico.
+Bloque confirmado por «si dale».
+
 ## Vista individual compacta — BL-140 / CC20
 
 Autopsia: dashboard acumula page-heading y control-screen-header, mientras
