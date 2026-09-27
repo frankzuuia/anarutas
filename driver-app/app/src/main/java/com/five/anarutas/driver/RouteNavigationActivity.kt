@@ -312,6 +312,7 @@ class RouteNavigationActivity : FragmentActivity() {
                     val active = model.state.execution?.stops?.find { destinationKey(it) == NavigationRegistry.destinationKey }
                     if (active == null || !active.isVisibleOnMap()) stopGuidance() else selectedId = active.id
                 }
+                renderMap()
             }
             override fun onError(code: Int) { connecting = false; navMessage = "Google no pudo iniciar el mapa de navegación (código $code). Revisa la conexión y configuración." }
         })
@@ -350,6 +351,7 @@ class RouteNavigationActivity : FragmentActivity() {
         val generation = ++requestGeneration
         navigating = true
         navMessage = "Calculando guía a esta parada…"
+        renderMap()
         val waypoint = Waypoint.builder().setLatLng(point.latitude, point.longitude).setTitle(stop.customer).build()
         nav.setDestination(waypoint, RoutingOptions()).setOnResultListener { result ->
             runOnUiThread {
@@ -496,7 +498,8 @@ class RouteNavigationActivity : FragmentActivity() {
         clearMap()
         val execution = model.state.execution ?: return
         if (model.state.retired) return
-        if (!guidance && !execution.hasCorrections) model.state.route?.previewSegments?.forEach { encoded ->
+        val previewVisible = showPublishedPreview(guidance, navigating, NavigationRegistry.isGuidanceRunning, execution.hasCorrections)
+        if (previewVisible) model.state.route?.previewSegments?.forEach { encoded ->
             val points = decodePreviewPolyline(encoded)
             if (points.size > 1) lines.add(ready.addPolyline(PolylineOptions().addAll(points.map { LatLng(it.latitude, it.longitude) })
                 .color(android.graphics.Color.rgb(147, 190, 90)).width(7f)))
@@ -520,7 +523,7 @@ class RouteNavigationActivity : FragmentActivity() {
             if (editing) editorMarker = ready.addMarker(MarkerOptions().position(LatLng(point.latitude, point.longitude))
                 .draggable(true).title("Arrastra al domicilio correcto").icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_VIOLET)))
         }
-        if (!hasFitted && groups.isNotEmpty() && !guidance) {
+        if (!hasFitted && groups.isNotEmpty() && !guidance && !navigating && !NavigationRegistry.isGuidanceRunning) {
             hasFitted = true
             val bounds = LatLngBounds.builder()
             groups.keys.filterNotNull().forEach { bounds.include(LatLng(it.latitude, it.longitude)) }
@@ -583,6 +586,15 @@ class RouteNavigationActivity : FragmentActivity() {
             state.exitDestination?.takeIf { !state.busy && state.verified }?.let { destination ->
                 navigateToStop(destination)
                 model.consumeExit()
+            }
+        }
+        LaunchedEffect(state.continuation?.commandId) {
+            if (state.continuation != null) {
+                orderStopId = null
+                incidentStopId = null
+                incidentOrderId = null
+                showStops = false
+                stopChoices = emptyList()
             }
         }
         Surface(color = DriverColors.surface, shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
@@ -709,7 +721,7 @@ class RouteNavigationActivity : FragmentActivity() {
                 } }
         }
         val detailStop = execution?.stops?.find { it.id == orderStopId }
-        if (detailStop != null) {
+        if (detailStop != null && state.continuation == null) {
             val navigationState = navigationActionState(detailStop)
             StopAttentionSheet(detailStop, state.route, execution.timezone,
                 navigationActionAllowed(navigationState), navigationState.alreadyGuidingToDestination, model,
@@ -717,7 +729,23 @@ class RouteNavigationActivity : FragmentActivity() {
                 onIncident = { shipmentId -> orderStopId = null; incidentOrderId = shipmentId; incidentStopId = detailStop.id }, close = { orderStopId = null })
         }
         execution?.stops?.find { it.id == incidentStopId }?.let { incidentStop ->
-            ServiceIncidentSheet(incidentStop, incidentOrderId, model) { incidentStopId = null; incidentOrderId = null; orderStopId = incidentStop.id }
+            ServiceIncidentSheet(incidentStop, incidentOrderId, model) {
+                incidentStopId = null; incidentOrderId = null
+                orderStopId = incidentStop.id.takeIf { model.state.continuation == null }
+            }
+        }
+        state.continuation?.takeIf { incidentStopId == null && !state.retired }?.let { continuation ->
+            val next = execution?.stops?.let { nextPendingStop(it, continuation.stopId) }
+            StopContinuationSheet(continuation.completion, next,
+                canNavigate = available && next != null && navigationActionAllowed(navigationActionState(next)),
+                onNext = {
+                    // Use the current execution, not a destination captured before a refresh.
+                    val destination = model.state.execution?.stops?.let { nextPendingStop(it, continuation.stopId) }
+                    if (destination != null && navigationActionAllowed(navigationActionState(destination))) {
+                        model.dismissContinuation()
+                        navigateToStop(destination.id)
+                    }
+                }, onClose = model::dismissContinuation)
         }
         if (addressDialog && editing && stop != null) Dialog(onDismissRequest = { if (!state.busy) addressDialog = false }) {
             Surface(color = DriverColors.surface, shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, DriverColors.line),

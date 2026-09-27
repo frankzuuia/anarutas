@@ -1,5 +1,49 @@
 # Bloque 1 — especificación y auditoría previa
 
+## Destino único y continuación confirmada — BL-139 / NC01..06
+
+Autopsia Android: renderMap dibuja preview antes de conectar Navigator. Al
+recuperar una guía activa onNavigatorReady restaura guidance pero no redibuja;
+también faltaba excluir el periodo setDestination pendiente. Se hace explícita
+la política de preview: sin guía local/SDK, sin cálculo y sin repuntes. Redibujar
+al recibir Navigator y al comenzar cálculo. Los pines pendientes son independientes.
+
+| ID | Acción/precondición | Resultado/efectos | Fallo/recuperación/prueba |
+| --- | --- | --- | --- |
+| NC01 | Ir a 2 o reabrir app con guía activa | Sólo camino SDK al destino; puntos restantes intactos | Política JVM/mutación; QA físico de restauración |
+| NC02 | Entrega confirmada y todos los pedidos terminales en parada | Aviso siguiente/Cerrar; nunca liquidación automática | Unitarios y Compose; parcial no adelanta |
+| NC03 | Cliente cerrado confirmado con recibo | Aviso tras releer estado, punto naranja sigue pendiente | Reutiliza contrato recibo/idempotencia; error no anuncia éxito |
+| NC04 | Aceptar siguiente | Siguiente elegible por posición, saltando terminales/sin punto; al final vuelve a anterior pendiente, nunca misma parada | Destino se revalida al pulsar; usa salida de visita + guía existentes |
+| NC05 | Cerrar/atrás/rotar/refrescar | Cerrar no navega ni cambia atención; no reabrir aviso consumido; rotación conserva evento ViewModel | Política + instrumentación compilada, físico pendiente |
+| NC06 | No siguiente/red perdida/ruta retirada | Sin navegación inventada; mensaje y Cerrar; sólo se habilita con ruta verificada | Unitarios/regresión contratos, autorización sin cambios |
+
+NC-T01 política/aviso cubre NC02..06; NC-T02 mapa cubre NC01; NC-T03 QA/release
+cubre todos. Sin nuevos endpoints, permisos, ubicación sintética o rutas Google
+en background. Entregas parciales permanecen en atención. Rechazo/reprogramación
+no abren el aviso. Siguiente no marca llegada: conserva radio/precisión reales.
+Referencias: Navigator.isGuidanceRunning, setDestination y clearDestinations:
+https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/libraries/navigation/Navigator
+https://developers.google.com/maps/documentation/navigation/android-sdk/route
+Integridad revisada con atención, reintentos, visitas y telemetría. Implementación
+autorizada por solicitud y «continua»; QA físico no sustituido por JVM.
+
+## Créditos y resumen sin colisión — BL-138 / CC19
+
+Autopsia confirmada por captura real: BOTTOM_LEFT coloca el control junto al
+logo, pero no reserva el ancho de los créditos. En 2×2 éstos lo superponen.
+Se retira el portal/control y se reserva una fila compacta en flujo debajo del
+canvas, dentro de la tarjeta. No se oculta, modifica ni consulta DOM de Google.
+Misma fila con Maps disponible o fallido; números, GPS y filtros sin cambios.
+
+| ID | Acción/precondición | Resultado | Verificación |
+| --- | --- | --- | --- |
+| CC19a | Cuatro tarjetas, créditos largos | Canvas y resumen no se intersectan; fila <=22 px; canvas >=190 px en escritorio | Geometría E2E 1500×800 y 1366×768 |
+| CC19b | Filtro, fullscreen, móvil, fallo Maps | Una fila actualizada, sin overflow ni duplicado; controles y avance conservados | E2E con servidor/PG reales |
+
+CC-T14 implementa y verifica CC19a..b. Sin cambio de dominio, API, permisos,
+dependencias o captura GPS. La regresión estructural no depende del SDK.
+Google real se revisa tras Deploy manual; no simular el proveedor.
+
 ## Resumen al pie — BL-137 / CC18 (26/09/2026)
 
 El resumen absoluto está 27 px sobre el borde y ocupa innecesariamente una

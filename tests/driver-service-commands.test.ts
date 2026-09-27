@@ -44,6 +44,27 @@ const filters = () => new URLSearchParams({ from: "2026-09-24", to: "2026-09-24"
 async function report(f: Fixture) { return readLiveIncidents(f.db.pool, f.actor, filters(), f.timezone, f.now); }
 async function photo() { return sharp({ create: { width: 24, height: 24, channels: 3, background: "#abcdef" } }).jpeg().toBuffer(); }
 
+it("continuing after the final grouped delivery ends only the visit and preserves completed orders", async () => {
+  const f = await executionFixture({ groupFourthOrderWithFirst: true });
+  try {
+    await f.start(); await arrive(f);
+    await (await service(f, 0, 0, { kind: "deliver" })).run();
+    expect((await state(f)).stops[0].orderStates.map(order => order.status).sort()).toEqual(["delivered", "open"]);
+    await (await service(f, 0, 1, { kind: "deliver" })).run();
+    const current = await state(f), command = await identity(f);
+    const run = () => exitDriverVisit(f.db.pool, f.members[0].authorization, f.planId, current.stops[0].id, command, f.timezone, f.now);
+    await run();
+    expect((await run()).duplicate).toBe(true);
+    const after = await state(f);
+    expect(after.stops[0].arrivedAt).toBeNull();
+    expect(after.stops[0].orderStates.map(order => order.status)).toEqual(["delivered", "delivered"]);
+    expect(after.stops[1].arrivedAt).toBeNull();
+    expect(after.stops[1].orderStates.every(order => order.status === "open")).toBe(true);
+    expect((await readDriverPlan(f.db.pool, f.members[0].driverId, f.planId, f.timezone)).startedAt).not.toBeNull();
+    expect((await report(f)).rows).toHaveLength(0);
+  } finally { await f.close(); }
+}, 120_000);
+
 it("reopens one rescheduled order atomically, preserves history and requires a new verified arrival", async () => {
   const f = await executionFixture({ groupFourthOrderWithFirst: true });
   try {

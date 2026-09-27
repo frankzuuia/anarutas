@@ -15,7 +15,8 @@ import java.io.File
 internal data class ExecutionUiState(val route: AssignedPlan? = null, val execution: DriverExecution? = null,
     val loading: Boolean = true, val busy: Boolean = false, val verified: Boolean = false, val retired: Boolean = false,
     val pending: Boolean = false, val message: String = "Cargando tu ruta…", val arrivedStop: String? = null,
-    val correctedStop: String? = null, val exitDestination: String? = null, val serviceRevision: Int = 0)
+    val correctedStop: String? = null, val exitDestination: String? = null, val serviceRevision: Int = 0,
+    val continuation: StopContinuation? = null)
 
 /** Owns network/retry state across rotation. Business facts only come from the server. */
 internal class RouteExecutionModel(private val credentials: DeviceCredentials, private val planId: String,
@@ -74,7 +75,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                 state = state.copy(
                     message = when (kind) {
                         "arrival" -> "Llegada registrada. Puedes revisar el pedido."
-                        "visit-exit" -> "Parada anterior abierta. Puedes ir al siguiente pedido."
+                        "visit-exit" -> "Visita anterior finalizada. El estado de sus pedidos se conserva."
                         "service" -> when (command.getJSONObject("payload").getString("kind")) {
                             "deliver" -> "Entrega registrada. La ruta continúa pendiente de liquidación."
                             "reschedule" -> "Pedido reprogramado. Administración verá tus notas sin una fecha impuesta."
@@ -89,6 +90,8 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                     correctedStop = command.getString("stopId").takeIf { kind == "location" },
                     exitDestination = command.optString("destinationStopId").takeIf { (kind == "visit-exit" || kind == "order-retry") && it.isNotBlank() },
                     serviceRevision = state.serviceRevision + if (kind == "service" || kind == "closed" || kind == "order-retry") 1 else 0,
+                    continuation = confirmedStopContinuation(command.getJSONObject("payload").getString("commandId"), kind,
+                        command.getJSONObject("payload").optString("kind"), execution.stops.find { it.id == command.getString("stopId") }),
                 )
                 confirmed = null
             }
@@ -116,6 +119,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
     fun consumeArrival() { state = state.copy(arrivedStop = null) }
     fun consumeCorrection() { state = state.copy(correctedStop = null) }
     fun consumeExit() { state = state.copy(exitDestination = null) }
+    fun dismissContinuation() { state = state.copy(continuation = null) }
 
     fun submit(stopId: String, gps: DriverGps?, corrected: ExecutionPoint?, confirmedAddress: CorrectedAddressFields? = null) {
         val execution = state.execution ?: return

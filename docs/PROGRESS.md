@@ -1,5 +1,22 @@
 # Progreso — bloque 1
 
+## Continuación después de atención — BL-139 / NC01..06
+
+- [x] NC-T01: política y aviso tras confirmación; candidato dinámico, cierre manual.
+- [x] NC-T02: excluir preview durante cálculo/guía restaurada, conservar pines.
+- [x] NC-T03: 85 JVM, política 100% líneas/ramas, 18/18 mutantes Android,
+  16 contratos PG y 2 E2E móvil HTTP verdes; APK 0.7.1/code20 y tests Compose
+  compilados, firma igual a 0.7.0. Lint 0 errores/33 warnings heredados.
+  Evidencia, primer timeout de preparación y repetición en QA-CONTINUACION-0.7.1.md.
+- [ ] NC-T04: QA físico del usuario sin ADB (guía restaurada, entrega, cámara y rotación).
+
+## Resumen separado de créditos — BL-138 / CC19
+
+- [x] CC-T14: eliminar colisión confirmada en Maps real con fila propia de 19 px;
+  3 E2E reales, 12 unitarias/100% política y 42/42 mutantes de regresión verdes.
+  Canvas 215.25/199.25 px, sin intersección con resumen; build/tipos/lint verdes.
+  QA reproducible en QA-CONTINUACION-0.7.1.md; revisión Maps tras Deploy pendiente.
+
 ## Resumen al pie — BL-137 / CC18
 
 - [x] CC-T13 / CC18a..c: resumen compacto mediante control Google BOTTOM_LEFT,

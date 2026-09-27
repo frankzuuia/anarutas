@@ -159,11 +159,21 @@ internal fun ServiceIncidentSheet(stop: ExecutionStop, initialOrderId: String?, 
     val orders = state.route?.orders.orEmpty().filter { order -> stop.orderStates.any { it.shipmentId == order.id && canRejectOrder(it.status) } }
     val selected = orders.find { it.id == selectedId } ?: orders.firstOrNull()
     val available = state.verified && !state.busy && !state.pending && !state.retired && stop.canAttend()
-    fun discardPhoto() {
-        photoPath?.let { path -> val file = File(path)
+    fun discardPhotoFile(path: String?) {
+        path?.let { val file = File(it)
             if (file.canonicalFile.parentFile == File(context.cacheDir, "incident-camera").canonicalFile) file.delete()
         }
+    }
+    fun discardPhoto() {
+        discardPhotoFile(photoPath)
         photoPath = null
+    }
+    DisposableEffect(model, stop.id) {
+        // A saved incident may replace this form with the next-stop dialog.
+        // Rotation alone must keep an unsent camera draft for rememberSaveable.
+        onDispose {
+            if (model.state.continuation?.stopId == stop.id) discardPhotoFile(photoPath)
+        }
     }
     fun dismiss() { if (!state.busy) { discardPhoto(); close() } }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->

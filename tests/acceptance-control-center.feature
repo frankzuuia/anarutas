@@ -1,4 +1,11 @@
 Feature: Centro de control privado con pantallas independientes
+  Scenario: Resumen y créditos no se superponen en cuatro mapas
+    Given cuatro pantallas de rutas con filtro de chofer independiente
+    When el mapa presenta sus créditos en el borde inferior
+    Then el resumen ocupa una fila propia fuera del canvas y no se cruza con los créditos
+    And conserva entregados, pendientes y GPS al filtrar o ampliar
+    And la misma separación se mantiene en móvil y si Maps no está disponible
+
   Scenario: Canal vivo mantiene semántica después de cambios y fallos
     Given el administrador tiene una conexión SSE a PostgreSQL real
     When llega un cambio autorizado seguido de un periodo sin cambios

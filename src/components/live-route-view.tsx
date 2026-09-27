@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { LocateFixed, MapPin, Navigation, Truck, CheckCircle2, AlertTriangle, List, X } from "lucide-react";
 import type { LiveRoute, LiveStop } from "@/core/live-routes";
 import type { ControlScreen } from "@/core/live-tracking-policy";
@@ -32,25 +31,6 @@ function RouteProgress({ route, now, selected, onSelect }: { route: LiveRoute; n
       <span><strong>{stop.position} · {stop.customer}</strong><small>{stop.orders.map(o => `${o.name} · ${statusNames[o.status]}`).join(" / ")}</small></span>
     </button>)}</div>
   </article>;
-}
-
-// Mounted only after the client has created a map. Google owns placement beside
-// its logo/attributions; React owns the live content, not Google's DOM tree.
-function MapSummaryControl({ map, children }: { map: google.maps.Map; children: ReactNode }) {
-  const [host] = useState(() => {
-    const element = document.createElement("div");
-    element.className = "live-map-summary-control";
-    return element;
-  });
-  useEffect(() => {
-    const controls = map.controls[google.maps.ControlPosition.BOTTOM_LEFT];
-    controls.push(host);
-    return () => {
-      const index = controls.getArray().indexOf(host);
-      if (index >= 0) controls.removeAt(index);
-    };
-  }, [host, map]);
-  return createPortal(children, host);
 }
 
 function LiveMap({ routes, now, filterKey, selected, onSelect, onDriverSelect, summary }: { routes: LiveRoute[]; now: number; filterKey: string; selected: string; onSelect: (id: string) => void; onDriverSelect: (id: string) => void; summary: ReactNode }) {
@@ -144,14 +124,15 @@ function LiveMap({ routes, now, filterKey, selected, onSelect, onDriverSelect, s
     const observer = new ResizeObserver(() => { google.maps.event.trigger(map, "resize"); setFit(n => n+1); }); observer.observe(canvas.current);
     return () => observer.disconnect();
   }, [map]);
-  return <div className="live-map-wrap"><div ref={canvas} className="live-map-canvas" aria-label="Mapa de ubicación de choferes" />
+  return <div className="live-map-wrap"><div className="live-map-viewport"><div ref={canvas} className="live-map-canvas" aria-label="Mapa de ubicación de choferes" />
     <Truck ref={truckIcon} className="live-driver-icon-template" size={22} aria-hidden="true" />
     <div className="live-map-tools"><button className="quiet" aria-label="Ver todos los puntos" title="Ver todos los puntos" onClick={() => { setFollow(false); setFit(n => n+1); }} disabled={!map || !routes.length}><LocateFixed size={16} /><span>Centrar</span></button>
       <button className="quiet" aria-label="Seguir chofer" title={routes.length !== 1 ? "Selecciona un chofer para seguirlo" : !routes[0]?.location ? "No se ha recibido ubicación del chofer" : "Seguir la última ubicación del chofer"}
         aria-pressed={follow && !selected} disabled={!map || routes.length !== 1 || !routes[0]?.location}
         onClick={() => { onSelect(""); setFollow(v => !v || !!selected); }}><Navigation size={16} /><span>Seguir</span></button></div>
     {!map && <div className="live-map-fallback">{error || "Conectando mapa…"}{error && <button className="quiet" onClick={() => setRetry(n => n+1)}>Reintentar mapa</button>}</div>}
-    {map ? <MapSummaryControl map={map}>{summary}</MapSummaryControl> : <div className="live-map-summary-fallback">{summary}</div>}
+    </div>
+    <div className="live-map-summary-footer">{summary}</div>
   </div>;
 }
 

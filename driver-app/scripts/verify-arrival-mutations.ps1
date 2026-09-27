@@ -1,4 +1,4 @@
-param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly)
+param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly)
 $ErrorActionPreference = 'Stop'
 # Mechanical mutations occur only in an isolated copy. No ADB, HTTP stubs or credential output.
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -13,7 +13,7 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 }
 $sourceFolder = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver'
 $originals = @{}
-foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt')) {
+foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt')) {
     $originals[$file] = [IO.File]::ReadAllText((Join-Path $sourceFolder $file))
 }
 $cases = @(
@@ -105,6 +105,28 @@ if ($TrackingOnly) {
         @{ name = 'tracking_continue_missing_route'; from = 'status == 404'; to = 'false' },
         @{ name = 'tracking_continue_lost_session'; from = 'status == 409'; to = 'false' }
     ) | ForEach-Object { $_.file = 'LiveTrackingPolicy.kt'; $_.test = 'LiveTrackingPolicyTest'; $_ }
+}
+if ($ContinuationOnly) {
+    $cases = @(
+        @{ name = 'next_closed_without_pending'; from = 'kind == "closed" && stop.hasPendingRetry()'; to = 'kind == "closed"' },
+        @{ name = 'next_wrong_closed_command'; from = 'kind == "closed"'; to = 'kind == "phone"' },
+        @{ name = 'next_wrong_delivery_command'; from = 'kind == "service"'; to = 'kind == "arrival"' },
+        @{ name = 'next_on_rejection'; from = 'serviceKind == "deliver"'; to = 'true' },
+        @{ name = 'next_on_partial_delivery'; from = '&& stop.isServiceFinished()'; to = '&& true' },
+        @{ name = 'next_wrong_completion'; from = '-> StopCompletion.CUSTOMER_CLOSED'; to = '-> StopCompletion.DELIVERED' },
+        @{ name = 'next_lose_receipt_identity'; from = 'StopContinuation(commandId, stop.id, completion)'; to = 'StopContinuation(stop.id, commandId, completion)' },
+        @{ name = 'next_reverse_route'; from = 'stops.sortedBy { it.position }'; to = 'stops.sortedByDescending { it.position }' },
+        @{ name = 'next_allow_missing_origin'; from = 'if (current < 0) return null'; to = 'if (false) return null' },
+        @{ name = 'next_return_same_stop'; from = 'ordered.drop(current + 1)'; to = 'ordered.drop(current)' },
+        @{ name = 'next_drop_earlier_pending'; from = '+ ordered.take(current)'; to = '+ emptyList<ExecutionStop>()' },
+        @{ name = 'next_choose_last'; from = '.firstOrNull {'; to = '.lastOrNull {' },
+        @{ name = 'next_ignore_missing_point'; from = 'it.isVisibleOnMap() &&'; to = 'true &&' },
+        @{ name = 'next_accept_unknown_orders'; from = 'it.orderStates.any { order -> canDeliverOrder(order.status) }'; to = 'true' },
+        @{ name = 'preview_during_guidance'; from = '!guiding &&'; to = 'true &&' },
+        @{ name = 'preview_during_calculation'; from = '!calculating &&'; to = 'true &&' },
+        @{ name = 'preview_during_restored_guidance'; from = '!sdkGuiding &&'; to = 'true &&' },
+        @{ name = 'preview_after_repoint'; from = '&& !corrected'; to = '&& true' }
+    ) | ForEach-Object { $_.file = 'StopContinuationPolicy.kt'; $_.test = 'StopContinuationPolicyTest'; $_ }
 }
 $arguments = @('testDebugUnitTest', '--console=plain')
 if ($ServerUrl) { $arguments += ('-PANA_RUTAS_SERVER_URL=' + $ServerUrl) }

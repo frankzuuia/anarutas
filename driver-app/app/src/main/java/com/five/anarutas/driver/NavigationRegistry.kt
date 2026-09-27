@@ -6,6 +6,7 @@ import com.google.android.libraries.navigation.Navigator
 internal object NavigationRegistry {
     private var active: Navigator? = null
     var destinationKey: String? = null
+    val isGuidanceRunning: Boolean get() = active?.isGuidanceRunning == true
 
     fun attach(navigator: Navigator): Boolean {
         val previous = active

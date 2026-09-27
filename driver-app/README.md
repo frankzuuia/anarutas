@@ -1,5 +1,27 @@
 # Ana Rutas Chofer — Android, acceso, ejecución e incidencias
 
+## Continuación de paradas — 0.7.1
+
+Instalar 0.7.1/code20 encima de 0.7.0, sin borrar datos; mismo paquete y firma
+debug para pruebas develop. No cambia permisos, esquema ni contratos del servidor.
+El panel requiere su Deploy manual por separado para el resumen sin colisiones.
+
+- La guía al destino elegido oculta el trazado publicado completo, también
+  durante el cálculo y al recuperar Navigator. Otros pines pendientes siguen.
+- Tras confirmar con servidor la última entrega de una parada o cliente cerrado
+  con recibo/foto, ofrece **Ir a la siguiente parada** o **Cerrar**. Entregas
+  parciales de paradas agrupadas mantienen atención hasta terminar sus pedidos.
+- Se elige por orden publicado, saltando terminales/sin ubicación; al terminar
+  el orden busca pendientes anteriores sin volver a la misma parada. No altera
+  órdenes ni llega automáticamente. La salida de visita usa el contrato existente.
+- Cerrar/atrás permite operación manual. Sin otra parada disponible no se inventa
+  un destino ni se cierra/liquida ruta. Rechazo y reprogramación conservan su flujo.
+- El aviso vive en ViewModel: rotación/refresco lo conservan hasta cerrarlo. Si
+  Android termina el proceso después del guardado, se consulta el estado guardado
+  y se sigue manualmente; no se repite una escritura para reconstruir un aviso.
+
+QA y límites de dispositivo/Navigation reales: `docs/QA-CONTINUACION-0.7.1.md`.
+
 ## Centro de control y Ruta en vivo — 0.7.0
 
 Primero Deploy manual del backend develop; su arranque aplica automáticamente
