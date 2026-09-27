@@ -99,3 +99,11 @@ Feature: Centro de control privado con pantallas independientes
     Then el encuadre incluye una camioneta sin nombre visible y con identificación accesible
     And las muestras posteriores conservan la cámara salvo seguimiento elegido
     And sin GPS no se coloca una camioneta en la dirección de un pedido
+
+  Scenario: Resumen al pie junto a la atribución de Google
+    Given el administrador observa rutas en vivo
+    When Google Maps está disponible
+    Then el resumen usa el control inferior izquierdo nativo a la derecha del logo
+    And no oculta ni modifica el logo ni los créditos
+    When Maps no está configurado o falla la carga
+    Then las métricas siguen visibles al borde inferior y el avance sigue disponible

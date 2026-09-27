@@ -248,12 +248,16 @@ test("four map-first screens keep their full canvas, driver-only filters and acc
       const map = element.querySelector(".live-map-wrap")!.getBoundingClientRect();
       const canvas = element.querySelector(".live-map-canvas")!.getBoundingClientRect();
       const controls = element.querySelector(".live-map-tools")!.getBoundingClientRect();
+      const summary = element.querySelector(".live-route-summary")!.getBoundingClientRect();
       return { fraction: map.height / card.height, map: map.height, bottom: card.bottom,
         canvas: canvas.height, scroll: body.scrollHeight - body.clientHeight,
+        summaryBottomGap: map.bottom-summary.bottom, summaryHeight: summary.height,
+        summaryInside: summary.left >= map.left && summary.right <= map.right,
         toolsInside: controls.top >= map.top && controls.right <= map.right && controls.bottom <= map.bottom };
     }));
     console.log(`Map geometry ${size.width}x${size.height}: ${JSON.stringify(dimensions)}`);
     expect(dimensions.every(d => d.fraction >= 0.70 && d.map >= 190 && d.bottom <= size.height && d.scroll <= 1 && Math.abs(d.canvas-d.map) < 1 && d.toolsInside)).toBe(true);
+    expect(dimensions.every(d => d.summaryBottomGap >= 0 && d.summaryBottomGap <= 4 && d.summaryHeight <= 22 && d.summaryInside)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
   }
   const card = cards.first();
@@ -309,6 +313,8 @@ test("four map-first screens keep their full canvas, driver-only filters and acc
   await card.getByRole("button", { name: "Expandir 1", exact: false }).click();
   await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(true);
   await expect(card.getByLabel("Chofer", { exact: true })).toHaveValue(f.members[0].driverId);
+  await expect(card.locator(".live-route-summary")).toHaveCount(1);
+  expect(await card.locator(".live-map-wrap").evaluate(element => element.getBoundingClientRect().bottom - element.querySelector(".live-route-summary")!.getBoundingClientRect().bottom)).toBeLessThanOrEqual(4);
   await card.getByRole("button", { name: "Ver avance" }).click();
   await expect(details).toBeVisible();
   await details.locator(".live-stop").last().click();
@@ -320,6 +326,7 @@ test("four map-first screens keep their full canvas, driver-only filters and acc
   await expect(page.getByText("Distribución guardada", { exact: true })).toBeVisible();
   await page.reload(); await page.getByRole("button", { name: "Centro de control", exact: true }).click();
   await expect(cards.first().getByLabel("Chofer", { exact: true })).toHaveValue(f.members[1].driverId);
+  await expect(cards.first().locator(".live-route-summary")).toContainText("0/1");
   const saved = await (await page.request.get(`${origin}/api/control-center`)).json();
   expect(saved.screens[0].vehicleId).toBe("");
   expect(saved.screens[1]).toEqual(screens[1]);
@@ -328,6 +335,11 @@ test("four map-first screens keep their full canvas, driver-only filters and acc
   await page.screenshot({ path: ".local/qa/control-center/map-first-four.png" });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const mobileSummary = await cards.first().locator(".live-map-wrap").evaluate(element => {
+    const map = element.getBoundingClientRect(), summary = element.querySelector(".live-route-summary")!.getBoundingClientRect();
+    return { bottomGap: map.bottom-summary.bottom, inside: summary.left >= map.left && summary.right <= map.right, height: summary.height };
+  });
+  expect(mobileSummary.inside && mobileSummary.bottomGap <= 4 && mobileSummary.height <= 36).toBe(true);
   await cards.first().getByRole("button", { name: "Ver avance" }).click();
   await expect(cards.first().getByRole("button", { name: "Cerrar avance" })).toBeVisible();
 });

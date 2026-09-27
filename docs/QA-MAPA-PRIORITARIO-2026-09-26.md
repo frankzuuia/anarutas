@@ -87,3 +87,35 @@ Después del Deploy manual, con la misma APK 0.7.0:
 
 Rollback: revertir sólo este cambio de UI/política de presentación; no borrar
 preferencias, telemetría, publicaciones ni datos. Main y base desplegada intactos.
+
+## Seguimiento BL-137 / CC18 — resumen junto al logo
+
+Se sustituye la posición absoluta 27 px arriba por un control nativo
+`map.controls[ControlPosition.BOTTOM_LEFT]`, documentado a la derecha del logo.
+Un portal React mantiene las cifras/GPS actualizados dentro de un host estable;
+cleanup retira sólo su índice actual, no otros controles. No se modifica DOM de
+Google, atribuciones, cámara, autorización o captura GPS. Resumen compacto de
+22 px cuando cabe una fila. En instalación sin Maps queda a 3 px del fondo;
+Avance de rutas mantiene su resumen fuera del mapa.
+
+Referencias oficiales:
+https://developers.google.com/maps/documentation/javascript/controls
+https://developers.google.com/maps/documentation/javascript/policies
+Tipos instalados: `ControlPosition.BOTTOM_LEFT` en `@types/google.maps`.
+
+Validación repetida: build con TypeScript, lint, 12 pruebas de política con
+100% cobertura dirigida y 42/42 mutantes detectados. E2E ampliado a posición del
+resumen, fila <=22 px en cuatro tarjetas, sin overflow a 390 px, cifras tras
+cambiar chofer, una instancia del resumen y fullscreen. No hay nueva lógica de
+dominio que mutar; esas 42 mutaciones son regresión de la política existente,
+no cobertura del portal ni del SDK Google. No cambian dependencias ni APIs.
+Pase final: 3 E2E verdes en 23.2 s; escritura/lectura HTTP local 427 ms.
+Mapas conservan 234.25/218.25 px de alto; resumen fallback 22 px de alto,
+separado 3 px del borde a 1500×800 y 1366×768, sin overflow a 390 px.
+El primer lint rechazó asignar className al host guardado en estado; la clase
+se asigna al crear el elemento, antes de entregarlo a React/Google.
+
+Límite: E2E valida el fallback real sin clave. La disposición exacta del control
+Google junto a logo/créditos requiere comprobarse tras Deploy en 2×2 y pantalla
+completa, incluido ancho estrecho. Mantener la excepción de pruebas develop,
+no declararlo certificado en Maps real por un test que no carga ese SDK.

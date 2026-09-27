@@ -1,5 +1,13 @@
 # Progreso — bloque 1
 
+## Resumen al pie — BL-137 / CC18
+
+- [x] CC-T13 / CC18a..c: resumen compacto mediante control Google BOTTOM_LEFT,
+  fallback inferior, portal/limpieza y regresión responsive sin cambiar datos.
+  Build/tipos/lint, 12 unitarias y 3 E2E verdes; 42/42 mutantes de política como
+  regresión. Resumen fallback 22 px a 3 px del borde, sin cambiar canvas. QA
+  documentado en QA-MAPA-PRIORITARIO-2026-09-26.md; Maps real tras Deploy pendiente.
+
 ## Mapa prioritario — BL-136 / CC17
 
 - [x] CC-T11 / CC17a..c,e: controles opacos, sólo chofer, mapa sin recorte,

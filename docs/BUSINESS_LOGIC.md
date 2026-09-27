@@ -1,5 +1,14 @@
 # Ana Rutas — bloque 1 aprobado
 
+## Resumen junto a Google — BL-137 (26/09/2026)
+
+- BL-137: Administrador -> resumen de entregas, pendientes y GPS al pie, junto
+  al logo Google, sin ocultar atribuciones ni modificar cifras. Dirección
+  técnica: control nativo BOTTOM_LEFT con contenido React; fallback local si
+  Maps no carga. Datos/permisos/auditoría: sin cambios. Validación: regresión
+  E2E, geometría responsive, montaje/limpieza del control revisados; posición
+  final del proveedor por QA real de develop, no mocks.
+
 ## Mapa prioritario — BL-136 (26/09/2026)
 
 - BL-136: Administrador -> cada pantalla de ruta prioriza el mapa completo,

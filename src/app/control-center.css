@@ -81,8 +81,10 @@
 .live-route-summary strong { color: var(--ink); font-size: .9rem; font-variant-numeric: tabular-nums; }
 .live-route-summary .gps-live { color: var(--green); }
 .live-route-summary .gps-stale { color: var(--amber); }
-.map-first .live-route-summary { position: absolute; z-index: 1; bottom: 27px; left: 8px; right: 8px; width: fit-content; max-width: calc(100% - 16px); gap: 3px 12px; padding: 5px 8px; border: 1px solid #52655a; border-radius: 7px; background: #101c16; color: #c4d4c9; font-size: 11px; pointer-events: none; }
-.map-first .live-route-summary strong { font-size: 12px; }
+.map-first .live-route-summary { width: fit-content; max-width: 100%; gap: 2px 9px; padding: 3px 6px; border: 1px solid #52655a; border-radius: 5px; background: #101c16; color: #c4d4c9; font-size: 10px; line-height: 14px; pointer-events: none; }
+.map-first .live-route-summary strong { font-size: 11px; }
+.live-map-summary-control { max-width: calc(100cqw - 90px); margin: 0 4px 2px; pointer-events: none; }
+.live-map-summary-fallback { position: absolute; z-index: 1; bottom: 3px; left: 8px; right: 8px; pointer-events: none; }
 .live-route-content { position: relative; display: grid; grid-template-columns: minmax(0,1fr); flex: 1; min-height: 0; }
 .live-route-content.progress-only { grid-template-columns: 1fr; }
 .live-route-progress { padding: 12px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-height: 0; background: var(--bg); }

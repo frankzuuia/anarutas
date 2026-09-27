@@ -1,5 +1,25 @@
 # Bloque 1 — especificación y auditoría previa
 
+## Resumen al pie — BL-137 / CC18 (26/09/2026)
+
+El resumen absoluto está 27 px sobre el borde y ocupa innecesariamente una
+franja del mapa. Google documenta BOTTOM_LEFT a la derecha de su logo. Usar
+map.controls con portal React: Google posiciona el contenedor, React actualiza
+los datos. Al desmontar retirar sólo ese contenedor, sin borrar otros controles.
+Resumen compacto de una fila cuando quepa; ajuste de texto en ancho estrecho.
+Fallback sin Maps anclado abajo; Avance de rutas conserva resumen en flujo.
+
+| ID | Actor/precondición/acción | Resultado/datos/efectos | Validación y recuperación |
+| --- | --- | --- | --- |
+| CC18a | Admin abre mapa cargado | Resumen junto a logo por BOTTOM_LEFT, sin offsets sobre atribuciones | API/typings oficial, QA Maps real tras Deploy |
+| CC18b | Admin filtra, amplía o llega nueva muestra | Mismo control actualiza cifras/GPS, sin remontar mapa ni duplicados | E2E/regresión y revisión de effect/portal |
+| CC18c | Maps falla o ancho se reduce | Resumen abajo, legible y sin desbordamiento; reintento/avance accesibles | E2E fallback real en 2×2, fullscreen y móvil |
+
+Sin API, esquema, autorización, coste Routes ni lógica de progreso nuevos.
+Rollback UI únicamente. Referencias: Next16 CSS local; Google Maps Controls y
+ControlPosition.BOTTOM_LEFT (tipos instalados indican explícitamente a la
+derecha del logo). GREEN LIGHT / INTEGRITY TOTAL; CC-T13 cubre CC18 (MATCH PERFECT).
+
 ## Mapa prioritario — BL-136 / CC17 (26/09/2026)
 
 Autopsia: el contenedor estrecho exige mapa de 320 px y lista debajo dentro de

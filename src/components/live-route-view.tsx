@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { LocateFixed, MapPin, Navigation, Truck, CheckCircle2, AlertTriangle, List, X } from "lucide-react";
 import type { LiveRoute, LiveStop } from "@/core/live-routes";
 import type { ControlScreen } from "@/core/live-tracking-policy";
@@ -33,7 +34,26 @@ function RouteProgress({ route, now, selected, onSelect }: { route: LiveRoute; n
   </article>;
 }
 
-function LiveMap({ routes, now, filterKey, selected, onSelect, onDriverSelect }: { routes: LiveRoute[]; now: number; filterKey: string; selected: string; onSelect: (id: string) => void; onDriverSelect: (id: string) => void }) {
+// Mounted only after the client has created a map. Google owns placement beside
+// its logo/attributions; React owns the live content, not Google's DOM tree.
+function MapSummaryControl({ map, children }: { map: google.maps.Map; children: ReactNode }) {
+  const [host] = useState(() => {
+    const element = document.createElement("div");
+    element.className = "live-map-summary-control";
+    return element;
+  });
+  useEffect(() => {
+    const controls = map.controls[google.maps.ControlPosition.BOTTOM_LEFT];
+    controls.push(host);
+    return () => {
+      const index = controls.getArray().indexOf(host);
+      if (index >= 0) controls.removeAt(index);
+    };
+  }, [host, map]);
+  return createPortal(children, host);
+}
+
+function LiveMap({ routes, now, filterKey, selected, onSelect, onDriverSelect, summary }: { routes: LiveRoute[]; now: number; filterKey: string; selected: string; onSelect: (id: string) => void; onDriverSelect: (id: string) => void; summary: ReactNode }) {
   const canvas = useRef<HTMLDivElement>(null);
   const truckIcon = useRef<SVGSVGElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -131,6 +151,7 @@ function LiveMap({ routes, now, filterKey, selected, onSelect, onDriverSelect }:
         aria-pressed={follow && !selected} disabled={!map || routes.length !== 1 || !routes[0]?.location}
         onClick={() => { onSelect(""); setFollow(v => !v || !!selected); }}><Navigation size={16} /><span>Seguir</span></button></div>
     {!map && <div className="live-map-fallback">{error || "Conectando mapa…"}{error && <button className="quiet" onClick={() => setRetry(n => n+1)}>Reintentar mapa</button>}</div>}
+    {map ? <MapSummaryControl map={map}>{summary}</MapSummaryControl> : <div className="live-map-summary-fallback">{summary}</div>}
   </div>;
 }
 
@@ -148,6 +169,11 @@ export function LiveRouteView({ feed, filter, onFilter, progressOnly = false }: 
   const routes = routesForDriver(all, filter.driverId);
   const drivers = [...new Map(all.map(r => [r.driverId, r.driver])).entries()];
   const stop: LiveStop | undefined = routes.flatMap(r => r.stops).find(s => s.id === selected);
+  const summary = <div className="live-route-summary" aria-label="Resumen de avance">
+    <span title="Pedidos entregados"><strong>{routes.reduce((n,r) => n+r.progress.delivered,0)}/{routes.reduce((n,r) => n+r.progress.orders,0)}</strong> entregados</span>
+    <span title="Paradas pendientes"><strong>{routes.reduce((n,r) => n+r.progress.remainingStops,0)}</strong> pendientes</span>
+    {routes.length === 1 && <span className={locationHealth(routes[0], feed.now).live ? "gps-live" : "gps-stale"}>{locationHealth(routes[0], feed.now).label}</span>}
+  </div>;
   return <section className={`live-route-view ${progressOnly ? "progress-view" : "map-first"}`} onKeyDown={event => {
     if (event.key === "Escape" && detailsOpen && !progressOnly) { event.stopPropagation(); closeDetails(); }
   }}>
@@ -156,16 +182,12 @@ export function LiveRouteView({ feed, filter, onFilter, progressOnly = false }: 
       {drivers.map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label>
       {!progressOnly && <button ref={detailsButton} className="quiet live-details-toggle" aria-expanded={detailsOpen} aria-controls={detailsId} disabled={!routes.length} onClick={() => setDetailsOpen(v => !v)}><List size={16} />Ver avance</button>}
     </div>
-    {!!routes.length && <div className="live-route-summary" aria-label="Resumen de avance">
-      <span title="Pedidos entregados"><strong>{routes.reduce((n,r) => n+r.progress.delivered,0)}/{routes.reduce((n,r) => n+r.progress.orders,0)}</strong> entregados</span>
-      <span title="Paradas pendientes"><strong>{routes.reduce((n,r) => n+r.progress.remainingStops,0)}</strong> pendientes</span>
-      {routes.length === 1 && <span className={locationHealth(routes[0], feed.now).live ? "gps-live" : "gps-stale"}>{locationHealth(routes[0], feed.now).label}</span>}
-    </div>}
+    {!!routes.length && progressOnly && summary}
     {feed.error && <p className="notice error" role="alert">{feed.error} Se conserva el último corte. <button className="quiet" onClick={feed.refresh}>Reintentar</button></p>}
     {feed.report && !routes.length && <div className="live-empty"><MapPin size={30} /><h3>Sin rutas iniciadas para este filtro</h3><p>Aparecerán al iniciar una ruta. La ubicación requiere la APK con seguimiento habilitado.</p></div>}
     {!feed.report && !feed.error && <p role="status">Consultando rutas…</p>}
     {!!routes.length && <div className={`live-route-content ${progressOnly ? "progress-only" : ""}`}>
-      {!progressOnly && <LiveMap routes={routes} now={feed.now} filterKey={filter.driverId} selected={selected} onSelect={selectStop} onDriverSelect={driverId => { setSelected(""); onFilter({ driverId, vehicleId: "" }); }} />}
+      {!progressOnly && <LiveMap routes={routes} now={feed.now} filterKey={filter.driverId} selected={selected} summary={summary} onSelect={selectStop} onDriverSelect={driverId => { setSelected(""); onFilter({ driverId, vehicleId: "" }); }} />}
       <aside id={detailsId} hidden={!progressOnly && !detailsOpen} className="live-route-progress" aria-label="Avance de los choferes">
         {!progressOnly && <div className="live-details-heading"><strong>Avance y paradas</strong><button ref={detailsClose} className="quiet" aria-label="Cerrar avance" onClick={closeDetails}><X size={17} /></button></div>}
         {stop && <div className="live-selected-stop"><strong>{stop.position} · {stop.customer}</strong><p>{stop.address}</p><button className="quiet" onClick={() => setSelected("")}>Cerrar detalle</button></div>}
