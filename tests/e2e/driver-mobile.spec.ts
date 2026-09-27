@@ -748,7 +748,7 @@ test("admin provisioning, native device login, route isolation and revocation ov
   await livePanel.setViewportSize({ width: 390, height: 844 });
   expect(await livePanel.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   const filterWidth = (await livePanel.locator(".live-incident-filters").boundingBox())!.width;
-  for (const label of ["Desde", "Hasta", "Chofer"]) {
+  for (const label of ["Chofer"]) {
     expect((await livePanel.getByLabel(label, { exact: true }).boundingBox())!.width).toBeGreaterThanOrEqual(filterWidth - 1);
   }
   await expect(liveSection.getByRole("img", { name: /Evidencia de negocio cerrado/ })).toBeVisible();
@@ -809,11 +809,11 @@ test("admin provisioning, native device login, route isolation and revocation ov
     ...await serviceIdentity(), orderVersion: (await readExecution()).stops[0].orderStates[0].version,
   } })).status()).toBe(409);
   await noSession.close();
-  await livePanel.getByLabel("Desde", { exact: true }).fill("2000-01-01");
-  await livePanel.getByLabel("Hasta", { exact: true }).fill("2000-01-01");
-  await expect(liveSection.getByText("Sin incidencias operativas en el periodo y chofer seleccionados.", { exact: true })).toBeVisible();
-  await livePanel.getByLabel("Hasta", { exact: true }).fill(serviceDate);
-  await livePanel.getByLabel("Desde", { exact: true }).fill(serviceDate);
+  const legacyDateQuery = await request.get(`${origin}/api/incidents/live?from=2000-01-01&to=2000-01-01`);
+  expect(legacyDateQuery.status()).toBe(200);
+  expect((await legacyDateQuery.json()).rows).toHaveLength(0);
+  await expect(livePanel.locator('input[type="date"]')).toHaveCount(0);
+  await expect(livePanel.getByLabel("Chofer", { exact: true })).toBeVisible();
   await expect(liveSection.getByText("Reprogramado", { exact: true })).toBeVisible();
   await mkdir("reports/screenshots", { recursive: true });
   await livePanel.screenshot({ path: "reports/screenshots/driver-incidents-live.png", fullPage: true });

@@ -1,5 +1,16 @@
 # Progreso — bloque 1
 
+## Densidad del Centro de control — BL-131 / CC13
+
+- [x] CC-T07 / CC13a..c: retirar pie lateral, compactar encabezado, ayuda
+  accesible junto al título y validar navegación, teclado y tarjetas en E2E.
+- [x] CC-T08 / CC14a..d: incidencias vivas sin fechas, filtro por chofer,
+  fichas compactas expandibles y verificación PG/API/E2E/mutación dirigida.
+- [x] CC-T09 / CC15a..d: cuatro tarjetas completas a 1500×800 y 1366×768, scroll interno,
+  pantalla completa y regresión del selector de chofer.
+
+  Evidencia reproducible en `QA-CENTRO-CONTROL-DENSIDAD-2026-09-26.md`.
+
 ## Centro de control — BL-126..130 / CC01..CC12
 
 - [x] CC-T00: inspección real, autorización y contratos; GPS sólo local confirmado.

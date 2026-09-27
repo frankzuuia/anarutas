@@ -172,7 +172,14 @@ it("rejects independently, authenticates, serializes replays and later delivers 
     expect(live.metrics).toEqual({ pending: 1, completed: 0, resolved: 0 });
     expect(live.rows[0]).toMatchObject({ kind: "order_rejected", canResolve: true, note: "Cliente no lo requiere hoy" });
     expect((await readLiveIncidents(f.db.pool, f.actor, new URLSearchParams({ ...Object.fromEntries(filters()), driverId: f.members[1].driverId }), f.timezone, f.now)).rows).toHaveLength(0);
-    await resolveLiveIncident(f.db.pool, f.actor, first.incidentId!, { expectedVersion: 1 }, f.now);
+    await expect(resolveLiveIncident(f.db.pool, f.actor, randomUUID(), { expectedVersion: 1 }, f.now))
+      .rejects.toMatchObject({ status: 404 });
+    await expect(resolveLiveIncident(f.db.pool, f.actor, first.incidentId!, { expectedVersion: 2 }, f.now))
+      .rejects.toMatchObject({ code: "VERSION_CONFLICT" });
+    await expect(resolveLiveIncident(f.db.pool, f.actor, first.incidentId!, { expectedVersion: 1 }, f.now))
+      .resolves.toMatchObject({ resolved: true, duplicate: false });
+    await expect(resolveLiveIncident(f.db.pool, f.actor, first.incidentId!, { expectedVersion: 1 }, f.now))
+      .resolves.toMatchObject({ resolved: true, duplicate: true });
     expect((await report(f)).metrics.resolved).toBe(1);
     current = await state(f);
     await exitDriverVisit(f.db.pool, f.members[0].authorization, f.planId, current.stops[0].id, await identity(f), f.timezone, f.now);
@@ -187,6 +194,27 @@ it("rejects independently, authenticates, serializes replays and later delivers 
       .toEqual(expect.arrayContaining(["opened", "resolved_by_admin", "completed"]));
     expect((await delivery.run()).duplicate).toBe(true);
     await expect((await service(f, 0, 0, { kind: "deliver" })).run()).rejects.toMatchObject({ code: "ORDER_STATE_CONFLICT" });
+  } finally { await f.close(); }
+}, 120_000);
+
+it("shows live cases across dates for started publications and hides revoked routes without deleting audit", async () => {
+  const f = await executionFixture();
+  try {
+    await f.start(); await arrive(f);
+    const rejected = await service(f, 0, 0, { kind: "reject", reasonCode: "other", note: "Revisar entrega" });
+    const saved = await rejected.run();
+    const future = new Date(f.now.getTime() + 48 * 60 * 60 * 1000);
+    const live = await readLiveIncidents(f.db.pool, f.actor, new URLSearchParams(), f.timezone, future);
+    expect(live.rows).toHaveLength(1);
+    expect(live.rows[0]).toMatchObject({ id: saved.incidentId, status: "active" });
+    expect(live.metrics.pending).toBe(1);
+    expect((await readLiveIncidents(f.db.pool, f.actor, new URLSearchParams({ driverId: f.members[1].driverId }), f.timezone, future)).rows).toHaveLength(0);
+    expect((await readLiveIncidents(f.db.pool, f.actor, new URLSearchParams({ from: "2026-09-25", to: "2026-09-25" }), f.timezone, future)).rows).toHaveLength(0);
+    const planVersion = (await f.db.pool.query("SELECT version FROM route_plans WHERE id=$1", [f.planId])).rows[0].version;
+    await cancelPublishedRoute(f.db.pool, f.actor, f.planId, f.members[0].vehicleId,
+      { expectedVersion: planVersion, expectedRevision: rejected.input.publicationRevision });
+    expect((await readLiveIncidents(f.db.pool, f.actor, new URLSearchParams(), f.timezone, future)).rows).toHaveLength(0);
+    expect((await f.db.pool.query("SELECT count(*)::int AS count FROM route_driver_service_incidents WHERE id=$1", [saved.incidentId])).rows[0].count).toBe(1);
   } finally { await f.close(); }
 }, 120_000);
 

@@ -16,6 +16,7 @@ import {
   Building2,
   Gauge,
   AlertTriangle,
+  CircleAlert,
   Radio,
   PanelsTopLeft,
   MapPinned,
@@ -316,7 +317,7 @@ export function Dashboard({
   const title = sections.find((item) => item.id === section)!.label;
   return (
     <div
-      className={`app ${embeddedSection ? "embedded-dashboard" : ""} ${menuClosed ? "menu-closed" : ""} ${section === "plans" ? "planner-app" : ""} ${section === "customers" ? "customer-app" : ""}`}
+      className={`app ${embeddedSection ? "embedded-dashboard" : ""} ${menuClosed ? "menu-closed" : ""} ${section === "plans" ? "planner-app" : ""} ${section === "customers" ? "customer-app" : ""} ${section === "control_center" ? "control-center-app" : ""}`}
     >
       {!embeddedSection && <aside className="sidebar" id="app-navigation" hidden={menuClosed}>
         <div className="brand">
@@ -342,15 +343,6 @@ export function Dashboard({
             </button>
           ))}
         </nav>
-        <div className="sidebar-foot">
-          <ShieldCheck size={20} />
-          <p style={{ marginTop: 12 }}>Administración de rutas</p>
-          <small>
-            Acceso y datos propios.
-            <br />
-            Sin cambios en ventas o precios.
-          </small>
-        </div>
       </aside>}
       <div className="content">
         {!embeddedSection && <header className="topbar">
@@ -390,16 +382,24 @@ export function Dashboard({
           </div>
         </header>}
         <main
-          className={`main ${section === "plans" ? "planner-main" : ""} ${section === "customers" ? "customer-main" : ""}`}
+          className={`main ${section === "plans" ? "planner-main" : ""} ${section === "customers" ? "customer-main" : ""} ${section === "control_center" ? "control-center-main" : ""}`}
         >
           {section !== "plans" && (
             <header className="page-heading">
               <div>
                 <span className="eyebrow">Administración</span>
-                <h1>{title}</h1>
-                <p>
-                  {section === "control_center" ? "Tu operación en pantallas independientes, con filtros propios y vista completa."
-                    : section === "live_routes" ? "Ubicación real, destino y avance de tus choferes. La antigüedad del GPS siempre visible."
+                <div className={section === "control_center" ? "control-heading-line" : undefined}>
+                  <h1>{title}</h1>
+                  {section === "control_center" && <details className="control-help">
+                    <summary aria-label="Información del Centro de control" title="Cómo usar el Centro de control"><CircleAlert size={19} /></summary>
+                    <div className="control-help-popover" role="note">
+                      <strong>Tu operación, en una vista</strong>
+                      <p>Combina pantallas y dedica cada mapa a un chofer distinto. Cada pantalla conserva sus propios filtros y puede ampliarse.</p>
+                    </div>
+                  </details>}
+                </div>
+                {section !== "control_center" && <p>
+                  {section === "live_routes" ? "Ubicación real, destino y avance de tus choferes. La antigüedad del GPS siempre visible."
                     : section === "vehicles"
                     ? "Registra tus unidades y administra la asignación de choferes."
                     : section === "unit_control"
@@ -415,9 +415,9 @@ export function Dashboard({
                             : section === "incidents"
                               ? "Repuntes y llegadas fuera de horario registrados por fecha y chofer. Los pronósticos no se contabilizan."
                               : section === "live_incidents"
-                                ? "Seguimiento en tiempo real de negocios cerrados, pedidos rechazados y reprogramaciones, por fecha y chofer."
+                                ? "Casos de rutas iniciadas vigentes, agrupados por chofer y actualizados automáticamente."
                               : "Métricas y cargos reales publicados por Google Cloud Billing, sin estimaciones internas."}
-                </p>
+                </p>}
               </div>
               <button
                 className="quiet"
@@ -456,9 +456,9 @@ export function Dashboard({
             <CustomerPanel revision={customerRevision + externalRevision} />
           )}
           {section === "incidents" && <IncidentsPanel today={today} timezone={timezone} revision={incidentRevision + externalRevision} />}
-          {section === "live_incidents" && <LiveIncidentsPanel today={today} timezone={timezone} revision={liveIncidentRevision} />}
+          {section === "live_incidents" && <LiveIncidentsPanel revision={liveIncidentRevision} />}
           {section === "live_routes" && <ExpandableScreen title="Ruta en vivo"><LiveRoutesPage revision={controlRevision} /></ExpandableScreen>}
-          {section === "control_center" && <ControlCenter today={today} timezone={timezone} revision={controlRevision}
+          {section === "control_center" && <ControlCenter revision={controlRevision}
             renderSection={value => <Dashboard user={user} displayName={displayName} today={today} timezone={timezone} embeddedSection={value} externalRevision={controlRevision} />} />}
           {section === "unit_control" && <UnitControlPanel today={today} timezone={timezone} revision={unitRevision + externalRevision} />}
           {section === "consumption" && (

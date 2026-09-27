@@ -110,5 +110,18 @@ describe("arrival policy / no providers", () => {
     }
     expect(() => incidentFilters(new URLSearchParams({ from: "2026-09-25", to: "2026-09-24" }), "UTC")).toThrow("INVALID_DATE");
     expect(incidentFilters(new URLSearchParams(), "UTC").driverId).toBeNull();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    expect(incidentFilters(new URLSearchParams(), "UTC")).toMatchObject({ from: today, to: today });
+    const live = incidentFilters(new URLSearchParams(), "UTC", "all");
+    expect(live).toMatchObject({ from: null, to: null, driverId: null });
+    const liveQuery = new URLSearchParams({ cursor: Buffer.from(JSON.stringify({ filterHash: live.filterHash,
+      time: now.toISOString(), id })).toString("base64url") });
+    expect(incidentFilters(liveQuery, "UTC", "all").cursor).toEqual({ time: now.toISOString(), id });
+    liveQuery.set("driverId", randomUUID());
+    expect(() => incidentFilters(liveQuery, "UTC", "all")).toThrow("INVALID_CURSOR");
+    expect(incidentFilters(new URLSearchParams({ from: "2026-09-24" }), "UTC", "all"))
+      .toMatchObject({ from: "2026-09-24", to: "2026-09-24" });
+    expect(incidentFilters(new URLSearchParams({ to: "2026-09-24" }), "UTC", "all"))
+      .toMatchObject({ from: "2026-09-24", to: "2026-09-24" });
   });
 });

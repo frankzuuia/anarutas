@@ -1,5 +1,64 @@
 # Bloque 1 — especificación y auditoría previa
 
+## Ajuste visual BL-131 / CC13 (26/09/2026)
+
+El pie lateral informativo se retira de Dashboard; no contiene acciones ni
+controles de seguridad. La ayuda redundante del Centro de control se mueve a un
+`details/summary` junto al título. Cerrada no consume altura; abierta se
+superpone sin redimensionar el tablero. Sólo cambia la presentación, no la
+configuración persistida, permisos, telemetría o refresco.
+
+| ID | Actor/precondición/acción | Datos/resultado/efecto | Validación y recuperación |
+| --- | --- | --- | --- |
+| CC13a | Admin abre Centro de control | Menú completo sin pie informativo; tarjetas más altas | E2E y captura de escritorio; navegación intacta |
+| CC13b | Admin usa teclado o puntero sobre ayuda | Abre/cierra explicación junto al título sin desplazar tarjetas | E2E teclado, visibilidad y cierre |
+| CC13c | Admin agrega, filtra, amplía o quita pantallas | Contratos y estado previos intactos | E2E existente de flujo completo |
+
+### Incidencias en vivo BL-132 / CC14
+
+El panel vivo no pide fecha: su consulta sin rango toma los casos de ejecuciones
+iniciadas con publicación vigente, incluso si el evento ocurrió otro día. El
+filtro por chofer y el cursor quedan ligados al alcance; se conserva el rango
+opcional en la API para clientes previos, pero no aparece en la interfaz viva.
+La pantalla histórica «Incidencias» mantiene fechas y su endpoint original.
+Las métricas siguen el mismo alcance que la lista. Cancelar una publicación
+quita esos casos de la vista viva y preserva el evento/auditoría en PG. El
+cierre por liquidación aún no existe: cuando se implemente deberá retirar la
+ejecución del alcance vivo sin borrar sus registros.
+
+En Centro de control, filtros de chofer y tres métricas se compactan; la ficha
+resume tipo, negocio, pedido y estado. Dirección, motivo, nota, foto y acción
+administrativa se abren mediante «Detalles y acciones». La vista independiente
+conserva la ficha amplia. No se duplican consultas ni cambia el contrato de
+resolución.
+
+| ID | Actor/precondición/acción | Datos/resultado/efecto | Validación y recuperación |
+| --- | --- | --- | --- |
+| CC14a | Admin ve casos de ruta vigente de día anterior | Caso y métricas visibles sin fecha manual | PG sin rango, E2E HTTP |
+| CC14b | Admin filtra chofer, página o usa API antigua con fechas | Aislamiento y cursor válido; histórico conserva fechas | PG/contrato/E2E |
+| CC14c | Publicación deja de estar vigente | Caso sale del vivo, fila/auditoría permanecen | PG real de cancelación |
+| CC14d | Admin abre ficha compacta | Foto, nota y Resolver disponibles; dos casos visibles sin desplazar primero | E2E pantalla dividida, teclado y vista amplia |
+
+### Cuatro pantallas en el mismo viewport — BL-133 / CC15
+
+Para cuatro instancias en escritorio, el contenedor distribuye la altura
+disponible después del encabezado, comandos y pie en dos filas iguales. Las
+cuatro tarjetas completas permanecen visibles; su contenido extenso tiene
+scroll interno. Más de cuatro pantallas usan el mismo alto de fila con scroll
+del tablero, sin reducir indefinidamente las tarjetas. En anchos de 1000 px o
+menos, o alturas menores de 680 px, se conserva el flujo desplazable anterior.
+No cambia la distribución guardada, las consultas ni los permisos.
+
+| ID | Actor/precondición/acción | Datos/resultado/efecto | Validación y recuperación |
+| --- | --- | --- | --- |
+| CC15a | Admin agrega cuatro pantallas a 1500×800 o 1366×768 | Cuatro marcos 2×2 completos, sin scroll de página | E2E de geometría y captura |
+| CC15b | Una pantalla contiene más información que su marco | Scroll sólo dentro de esa tarjeta; otras quedan a la vista | E2E scroll y acciones posteriores |
+| CC15c | Admin amplía, mueve, quita o reduce pantallas | Estado y orden preservados; una pantalla llena la altura disponible | E2E de flujo existente |
+| CC15d | Admin agrega una quinta pantalla | Scroll dentro del tablero sin comprimir las otras tarjetas | E2E de cinco instancias |
+
+Auditoría local: GREEN LIGHT; INTEGRITY TOTAL con CC01..12 y AI01..17.
+CC-T07 y CC-T08 corresponden a CC13/CC14 (MATCH PERFECT). No hay migraciones.
+
 ## Centro de control — CC01..CC12 / BL-126..130
 
 ### Autopsia y contratos
@@ -23,7 +82,7 @@ sin backlog de GPS. Muestra edad relativa (no reloj de pared del teléfono), moc
 rechazado. Sesión perdida/revocada detiene servicio; fallos red reintentan sólo
 muestra reciente. Permiso denegado deja mapa sin seguimiento y aviso explícito.
 Panel: refresco 5 s, timeout, aborto y pausa oculto; edad avanza localmente aun
-fallando red. Fecha/chofer/vehículo seleccionados por instancia. Polilínea es
+fallando red. Chofer/vehículo seleccionados por instancia. Polilínea es
 recorrido publicado, no traza recorrida; se omite cuando hubo repunte. Sin nuevos
 cálculos Google. Pendientes naranjas, entregadas/reprogramadas fuera del mapa,
 lista íntegra y métricas con estados separados. Destino explícito o visita actual,
@@ -294,7 +353,7 @@ la APK sólo previsualiza su captura privada local, no tiene endpoint de descarg
 de evidencia histórica. No hay URL pública. Acceso expira exactamente a 24 h desde el guardado por el servidor o en resolución,
 lo primero que ocurra. Un trabajador borra archivos caducados y huérfanos;
 fallos de I/O se reintentan sin reexponer la imagen. Métricas y listado de
-panel se calculan en SQL por fecha/chofer/estado; el cambio confirmado emite
+panel vivo se calculan en SQL por ruta vigente/chofer/estado; el cambio confirmado emite
 la señal PostgreSQL existente y el cliente reconsulta. La lectura móvil
 superpone `route_customers.phone` vigente a la copia publicada, sin mutar el
 snapshot. Guardar teléfono bloquea cliente, verifica versión, marca override y

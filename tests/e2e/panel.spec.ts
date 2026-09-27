@@ -232,11 +232,10 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await expect(page.getByRole("region", { name: "Incidencias en vivo", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Incidencias en vivo", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Incidencias en vivo", exact: true, level: 1 })).toBeVisible();
-  await expect(page.getByText("Sin incidencias operativas en el periodo y chofer seleccionados.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sin incidencias operativas en las rutas vigentes para el chofer seleccionado.", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Incidencias reales de rutas", exact: true })).toHaveCount(0);
   await expect(page.getByText("Reglas de llegada", { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel("Desde", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Hasta", { exact: true })).toBeVisible();
+  await expect(page.locator('input[type="date"]')).toHaveCount(0);
   await expect(page.getByLabel("Chofer", { exact: true })).toBeVisible();
   expect(
     incidentRequests.filter((url) =>

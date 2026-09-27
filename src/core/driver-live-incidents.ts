@@ -19,15 +19,25 @@ export type LiveIncidentReport = { rows: LiveIncident[]; nextCursor: string | nu
 
 // A retry disappears from the live feed only after a new verified arrival. If
 // the driver leaves without service the same case becomes visible again.
-const visibleCases = `FROM route_driver_service_incidents i
+function visibleCases() {
+  return `FROM route_driver_service_incidents i
   JOIN route_driver_execution_stops s ON s.execution_id=i.execution_id AND s.id=i.stop_id
-  WHERE i.event_date BETWEEN $1::date AND $2::date AND ($3::uuid IS NULL OR i.driver_id=$3)
+  JOIN route_driver_executions execution ON execution.id=i.execution_id
+  JOIN route_plan_publications publication ON publication.plan_id=execution.plan_id
+    AND publication.vehicle_id=execution.vehicle_id
+    AND publication.revision=execution.publication_revision
+    AND publication.started_driver_id=execution.driver_id
+    AND publication.revoked_at IS NULL
+  WHERE ($1::date IS NULL OR i.event_date >= $1::date)
+    AND ($2::date IS NULL OR i.event_date <= $2::date)
+    AND ($3::uuid IS NULL OR i.driver_id=$3)
     AND i.status<>'handled'
     AND NOT(i.kind='customer_closed' AND i.status='active' AND s.visit_state='arrived' AND s.visit_sequence>i.visit_sequence)`;
+}
 
 export async function readLiveIncidents(pool: Pool, actorId: string, params: URLSearchParams,
   timezone: string, now = new Date()): Promise<LiveIncidentReport> {
-  const filters = incidentFilters(params, timezone);
+  const filters = incidentFilters(params, timezone, "all");
   return transaction(pool, async sql => {
     await sql.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
     await assertActiveActor(sql, actorId);
@@ -40,12 +50,12 @@ export async function readLiveIncidents(pool: Pool, actorId: string, params: URL
       (SELECT e.id FROM route_driver_incident_evidence e WHERE e.id=i.evidence_id AND e.expires_at>$6
         AND e.revoked_at IS NULL AND e.removed_at IS NULL) AS available_evidence_id,
       (SELECT e.expires_at FROM route_driver_incident_evidence e WHERE e.id=i.evidence_id) AS evidence_expires_at
-      ${visibleCases} AND ($4::timestamptz IS NULL OR (i.occurred_at,i.id)<($4::timestamptz,$5::uuid))
+      ${visibleCases()} AND ($4::timestamptz IS NULL OR (i.occurred_at,i.id)<($4::timestamptz,$5::uuid))
       ORDER BY i.occurred_at DESC,i.id DESC LIMIT 51`,
     [...values, filters.cursor?.time ?? null, filters.cursor?.id ?? null, now]);
     const metrics = (await sql.query(`SELECT count(*) FILTER(WHERE i.status='active')::int AS pending,
       count(*) FILTER(WHERE i.status='completed')::int AS completed,
-      count(*) FILTER(WHERE i.status='resolved_by_admin')::int AS resolved ${visibleCases}`, values)).rows[0];
+      count(*) FILTER(WHERE i.status='resolved_by_admin')::int AS resolved ${visibleCases()}`, values)).rows[0];
     const drivers = (await sql.query(`SELECT d.id,d.name FROM route_drivers d WHERE d.active OR EXISTS
       (SELECT 1 FROM route_driver_service_incidents i WHERE i.driver_id=d.id) ORDER BY d.name,d.id`)).rows;
     const page = rows.slice(0, 50), last = page.at(-1);

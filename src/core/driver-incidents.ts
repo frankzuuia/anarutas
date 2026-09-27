@@ -21,10 +21,17 @@ export type DriverIncidentReport = {
   from: string; to: string; driverId: string | null; timezone: string;
 };
 
-export function incidentFilters(params: URLSearchParams, timezone: string) {
-  const from = serviceDate(params.get("from") ?? todayInTimezone(timezone));
-  const to = serviceDate(params.get("to") ?? from);
-  if (from > to) throw new AppError("INVALID_DATE");
+type IncidentFilterResult<T extends string | null> = { from: T; to: T; driverId: string | null;
+  filterHash: string; cursor: { time: string; id: string } | null };
+export function incidentFilters(params: URLSearchParams, timezone: string): IncidentFilterResult<string>;
+export function incidentFilters(params: URLSearchParams, timezone: string, mode: "all"): IncidentFilterResult<string | null>;
+export function incidentFilters(params: URLSearchParams, timezone: string, mode: "today" | "all" = "today"): IncidentFilterResult<string | null> {
+  const requestedFrom = params.get("from"), requestedTo = params.get("to");
+  const from = mode === "all"
+    ? requestedFrom !== null ? serviceDate(requestedFrom) : requestedTo !== null ? serviceDate(requestedTo) : null
+    : serviceDate(requestedFrom ?? todayInTimezone(timezone));
+  const to = requestedTo !== null ? serviceDate(requestedTo) : from;
+  if (from !== null && to !== null && from > to) throw new AppError("INVALID_DATE");
   const driverId = params.get("driverId") ? uuid(params.get("driverId")) : null;
   const filterHash = createHash("sha256").update(JSON.stringify([from, to, driverId])).digest("hex");
   let cursor: { time: string; id: string } | null = null;

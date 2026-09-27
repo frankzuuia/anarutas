@@ -11,6 +11,30 @@ Feature: Centro de control privado con pantallas independientes
     And expandir o reducir no reinicia el formulario ni cambia filtros
     And quitar una pantalla no elimina pedidos, clientes o incidencias
 
+  Scenario: Dos incidencias visibles en una pantalla dividida
+    Given hay dos incidencias reales de rutas iniciadas vigentes
+    When el administrador abre Incidencias en vivo en Centro de control
+    Then el filtro por chofer permanece y no aparece un selector de fechas
+    And las dos fichas se ven como resúmenes dentro de la pantalla
+    When abre Detalles y acciones de un caso
+    Then puede consultar la evidencia y resolver cuando el caso lo permita
+
+  Scenario: Cuatro pantallas completas en un monitor de escritorio
+    Given el administrador tiene cuatro pantallas en el Centro de control
+    When abre el tablero a 1500 por 800 o 1366 por 768 píxeles
+    Then ve las cuatro tarjetas completas en una cuadrícula de dos por dos sin desplazar la página
+    And el contenido extenso se desplaza dentro de su tarjeta sin ocultar las demás
+    When agrega una quinta pantalla
+    Then el tablero se desplaza internamente sin reducir más las cuatro primeras
+
+  Scenario: Incidencia de ayer sigue en vivo mientras la ruta está vigente
+    Given un chofer registró una incidencia ayer en una ruta iniciada vigente
+    When el administrador consulta Incidencias en vivo sin fechas
+    Then el caso y las métricas lo incluyen
+    When se cancela la publicación de esa ruta
+    Then el caso deja la vista viva y permanece en la auditoría
+    And la pantalla histórica Incidencias conserva sus filtros de fecha
+
   Scenario: Pérdida de GPS o red
     Given existe una ubicación real recibida
     When dejan de llegar muestras recientes o la app detiene el servicio

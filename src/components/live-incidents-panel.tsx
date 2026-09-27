@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useId, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Radio, UserRound } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock3, Radio, UserRound } from "lucide-react";
 import type { LiveIncident, LiveIncidentReport } from "@/core/driver-live-incidents";
 import { api } from "./api";
 
@@ -33,17 +33,15 @@ function Evidence({ incident }: { incident: LiveIncident }) {
   </a>;
 }
 
-export function LiveIncidentsPanel({ today, timezone, revision, selectedDriverId, onDriverChange }: { today: string; timezone: string; revision: number; selectedDriverId?: string; onDriverChange?: (id: string) => void }) {
+export function LiveIncidentsPanel({ revision, selectedDriverId, onDriverChange, compact = false }: { revision: number; selectedDriverId?: string; onDriverChange?: (id: string) => void; compact?: boolean }) {
   const titleId = useId();
-  const [from, setFrom] = useState(today);
-  const [to, setTo] = useState(today);
   const [localDriverId, setLocalDriverId] = useState("");
   const driverId = selectedDriverId ?? localDriverId;
   const setDriverId = onDriverChange ?? setLocalDriverId;
   const [refresh, setRefresh] = useState(0);
   const [cursor, setCursor] = useState<{ filter: string; value: string } | null>(null);
-  const filter = JSON.stringify([from, to, driverId]);
-  const params = new URLSearchParams({ from, to });
+  const filter = JSON.stringify([driverId]);
+  const params = new URLSearchParams();
   if (driverId) params.set("driverId", driverId);
   if (cursor?.filter === filter) params.set("cursor", cursor.value);
   const query = params.toString();
@@ -91,48 +89,58 @@ export function LiveIncidentsPanel({ today, timezone, revision, selectedDriverId
   const report = data?.query === query ? data.report : null;
   const error = failure?.query === query ? failure.message : "";
   const groups = Map.groupBy(report?.rows ?? [], row => row.driverId);
-  return <section className="panel incidents-panel" aria-label="Seguimiento operativo de rutas">
+  return <section className={`panel incidents-panel ${compact ? "embedded-live-incidents" : ""}`} aria-label="Seguimiento operativo de rutas">
     <div className="panel-body stack">
       <div className="incident-filters live-incident-filters">
-        <label>Desde<input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} /></label>
-        <label>Hasta<input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} /></label>
         <label>Chofer<select aria-label="Chofer" value={driverId} onChange={e => setDriverId(e.target.value)}>
           <option value="">Todos los choferes</option>
           {(data?.report.drivers ?? []).map(driver => <option value={driver.id} key={driver.id}>{driver.name}</option>)}
         </select></label>
       </div>
-      <div className="incident-summary"><span>Fecha del evento · {timezone}</span><span>Actualización automática</span></div>
       <section className="live-incidents" aria-label="Incidencias en vivo">
-    <div className="live-incident-heading"><div><h2><Radio size={20} aria-hidden="true" /> Incidencias en vivo</h2>
+    {!compact && <div className="live-incident-heading"><div><h2><Radio size={20} aria-hidden="true" /> Incidencias en vivo</h2>
       <p>Negocios cerrados, pedidos rechazados y reprogramaciones, agrupados por chofer.</p></div>
-      <span className={`badge ${error ? "amber" : "green"}`}>{error ? "Reconectando" : "En vivo"}</span></div>
+      <span className={`badge ${error ? "amber" : "green"}`}>{error ? "Reconectando" : "En vivo"}</span></div>}
     <div className="live-incident-metrics" aria-label="Métricas del filtro seleccionado">
       <div><Clock3 size={18} /><strong>{report?.metrics.pending ?? "—"}</strong><span>Pendientes</span></div>
-      <div><CheckCircle2 size={18} /><strong>{report?.metrics.completed ?? "—"}</strong><span>Completadas por entrega</span></div>
-      <div><CheckCircle2 size={18} /><strong>{report?.metrics.resolved ?? "—"}</strong><span>Resueltas por administración</span></div>
+      <div aria-label="Completadas por entrega"><CheckCircle2 size={18} /><strong>{report?.metrics.completed ?? "—"}</strong><span>{compact ? "Completadas" : "Completadas por entrega"}</span></div>
+      <div aria-label="Resueltas por administración"><CheckCircle2 size={18} /><strong>{report?.metrics.resolved ?? "—"}</strong><span>{compact ? "Resueltas" : "Resueltas por administración"}</span></div>
     </div>
     {error && <p className="notice error" role="alert">{error}</p>}
     {commandFailure?.query === query && <p className="notice error" role="alert">{commandFailure.message}</p>}
     {!report && !error && <p role="status">Consultando incidencias en vivo…</p>}
-    {report?.rows.length === 0 && <p className="notice">Sin incidencias operativas en el periodo y chofer seleccionados.</p>}
+    {report?.rows.length === 0 && <p className="notice">Sin incidencias operativas en las rutas vigentes para el chofer seleccionado.</p>}
     {Array.from(groups, ([id, incidents]) => <section key={id} className="live-incident-driver" aria-label={`Incidencias de ${incidents[0].snapshot.driver}`}>
       <h3><UserRound size={17} aria-hidden="true" />{incidents[0].snapshot.driver}</h3>
-      {incidents.map(incident => <article key={incident.id} className="incident-card live-incident-card">
+      {incidents.map(incident => {
+        const state = incident.status === "completed" ? "Completada · entrega registrada" : incident.status === "resolved_by_admin" ? "Incidencia resuelta por administración"
+          : incident.kind === "customer_closed" ? "Pendiente de reintento por el chofer" : incident.kind === "rescheduled" ? "Cerrado en esta ruta · pendiente de gestión interna" : "Rechazado · todavía puede entregarse si el cliente lo solicita";
+        const extra = <>
+          {incident.reasonCode && <p>{reasonNames[incident.reasonCode]}</p>}
+          {incident.note && <p className="live-incident-note">{incident.note}</p>}
+          <Evidence incident={incident} />
+          {incident.canResolve && <button type="button" className="quiet" disabled={busy !== null} onClick={() => setConfirm(incident)}><CheckCircle2 size={16} />Marcar resuelto</button>}
+        </>;
+        return <article key={incident.id} className="incident-card live-incident-card">
         <div className={`incident-symbol ${incident.status === "active" ? "late" : ""}`}>
           {incident.status === "active" ? <AlertTriangle size={20} /> : <CheckCircle2 size={20} />}</div>
         <div className="incident-content"><div className="incident-card-heading">
           <span className={`badge ${incident.status === "active" ? "amber" : "green"}`}>{kindNames[incident.kind]}</span>
           <time dateTime={incident.occurredAt}>{new Date(incident.occurredAt).toLocaleString("es-MX", { timeZone: incident.timezone, dateStyle: "medium", timeStyle: "short" })}</time></div>
-          <h3>{incident.snapshot.customer}</h3><p>{incident.snapshot.address}</p>
-          <p className="incident-orders">{incident.orders.join(" · ")} · {incident.snapshot.vehicle} · {incident.snapshot.planLabel}</p>
-          <p>{incident.status === "completed" ? "Completada · entrega registrada" : incident.status === "resolved_by_admin" ? "Incidencia resuelta por administración"
-            : incident.kind === "customer_closed" ? "Pendiente de reintento por el chofer" : incident.kind === "rescheduled" ? "Cerrado en esta ruta · pendiente de gestión interna" : "Rechazado · todavía puede entregarse si el cliente lo solicita"}</p>
-          {incident.reasonCode && <p>{reasonNames[incident.reasonCode]}</p>}
-          {incident.note && <p className="live-incident-note">{incident.note}</p>}
-          <Evidence incident={incident} />
-          {incident.canResolve && <button type="button" className="quiet" disabled={busy !== null} onClick={() => setConfirm(incident)}><CheckCircle2 size={16} />Marcar resuelto</button>}
+          <h3>{incident.snapshot.customer}</h3>
+          {compact ? <>
+            <p className="incident-orders">{incident.orders.join(" · ")}</p>
+            <p className="live-incident-state">{state}</p>
+            <details className="live-incident-extra"><summary><ChevronDown size={14} />Detalles y acciones</summary>
+              <div><p>{incident.snapshot.address}</p><p>{incident.snapshot.vehicle} · {incident.snapshot.planLabel}</p>{extra}</div>
+            </details>
+          </> : <>
+            <p>{incident.snapshot.address}</p>
+            <p className="incident-orders">{incident.orders.join(" · ")} · {incident.snapshot.vehicle} · {incident.snapshot.planLabel}</p>
+            <p>{state}</p>{extra}
+          </>}
         </div>
-      </article>)}
+      </article>})}
     </section>)}
     <div className="incident-pagination">
       {cursor?.filter === filter && <button className="quiet" onClick={() => setCursor(null)}>Volver al inicio</button>}

@@ -30,7 +30,7 @@ export function ExpandableScreen({ title, children, actions }: { title: string; 
     <div className="control-screen-body">{children}</div>
   </article>;
 }
-export function ControlCenter({ today, timezone, revision, renderSection }: { today: string; timezone: string; revision: number; renderSection: (section: EmbeddedSection) => ReactNode }) {
+export function ControlCenter({ revision, renderSection }: { revision: number; renderSection: (section: EmbeddedSection) => ReactNode }) {
   const [screens, setScreens] = useState<ControlScreen[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
@@ -79,7 +79,7 @@ export function ControlCenter({ today, timezone, revision, renderSection }: { to
   function closePicker() { setAdding(false); addButton.current?.focus(); }
   function move(index: number, direction: number) { if (!screens) return; const next = [...screens]; [next[index], next[index+direction]] = [next[index+direction], next[index]]; change(next); }
   return <section className="control-center">
-    <div className="control-command"><div><span className="eyebrow">TU OPERACIÓN, EN UNA VISTA</span><p>Combina pantallas y dedica cada mapa a un chofer distinto.</p></div>
+    <div className="control-command">
       <div className="row"><span className={`badge ${saveError ? "amber" : "green"}`}>{saving ? "Guardando distribución…" : saveError ? "Cambios sin guardar" : savedVersion ? "Distribución guardada" : "Distribución inicial"}</span>
         <button ref={addButton} onClick={() => setAdding(true)} disabled={!screens || screens.length >= maxControlScreens}><Plus size={17} />Agregar pantalla</button></div></div>
     {loadError && <p className="notice error" role="alert">{loadError}<button className="quiet" onClick={() => setReload(n => n+1)}>Reintentar</button></p>}
@@ -99,7 +99,7 @@ export function ControlCenter({ today, timezone, revision, renderSection }: { to
         </>}>
           {screen.type === "routes" || screen.type === "progress" ? <LiveRouteView feed={feed} filter={screen} progressOnly={screen.type === "progress"}
             onFilter={filter => change(screens.map(s => s.id === screen.id ? { ...s, ...filter } : s))} />
-            : screen.type === "incidents" ? <LiveIncidentsPanel today={today} timezone={timezone} revision={revision}
+            : screen.type === "incidents" ? <LiveIncidentsPanel compact revision={revision}
               selectedDriverId={screen.driverId} onDriverChange={driverId => change(screens.map(s => s.id === screen.id ? { ...s, driverId } : s))} />
             : renderSection(screen.type.slice(6) as EmbeddedSection)}
         </ExpandableScreen>;

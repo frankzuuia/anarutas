@@ -1,5 +1,31 @@
 # Ana Rutas — bloque 1 aprobado
 
+## Ajuste de densidad del Centro de control — BL-131 (26/09/2026)
+
+- BL-131: Administrador -> la barra lateral presenta sólo navegación, y el
+  Centro de control prioriza las pantallas operativas. La explicación de uso se
+  consulta mediante un icono de información accesible junto al título, sin
+  ocupar una fila permanente. Datos: ninguno. Permisos: sesión de panel
+  existente. Auditoría: ninguna acción de negocio. Validación: E2E con teclado,
+  visibilidad de ayuda y regresión de navegación y pantallas.
+
+- BL-132: Administrador -> Incidencias en vivo muestra los casos de rutas
+  iniciadas vigentes sin selector de fecha, conserva el filtro independiente
+  por chofer y presenta resúmenes compactos en pantallas divididas. Detalles,
+  evidencia y resolver siguen accesibles al expandir un caso. Datos: casos y
+  publicaciones existentes, sin nueva tabla. Permisos: lectura y acciones de
+  admin vigentes. Auditoría: la resolución existente; quitar una pantalla no
+  altera casos. Validación: PG real entre días/revocación, API, E2E en pantalla
+  dividida y vista independiente, además de regresión del histórico con fechas.
+
+- BL-133: Administrador -> con cuatro pantallas en un monitor de escritorio, las
+  cuatro tarjetas caben completas en una cuadrícula 2×2 sin desplazar la página.
+  Los paneles extensos se desplazan dentro de su tarjeta y conservan filtros,
+  acciones, estado y expansión. En ventanas estrechas o demasiado bajas se
+  prioriza legibilidad y desplazamiento normal; no se comprimen controles hasta
+  volverlos inutilizables. Datos, permisos y auditoría: sin cambios. Validación:
+  geometría E2E a 1500×800, scroll interno, pantalla completa y regresión móvil.
+
 ## Centro de control y ruta en vivo — BL-126..130
 
 - BL-126: Chofer con ruta iniciada -> transmite ubicación real y destino elegido,
@@ -22,7 +48,8 @@
 - BL-130: Administrador -> un mismo componente sirve Ruta en vivo y Centro de
   control. Una consulta compartida de rutas cada 5 s por vista visible; pantallas
   no multiplican lectura GPS. Incidencias mantienen sus acciones/autorización,
-  fotos privadas y filtros fecha/chofer. No modifica llegada, cobros o cierre.
+  fotos privadas y filtro por chofer en la vista en vivo; el histórico conserva
+  sus fechas. No modifica llegada, cobros o cierre.
 
 ## Formulario de incidencias 0.6.2 — BL-124..125 (26/09/2026)
 
@@ -94,7 +121,7 @@
   ni bloquea una entrega posterior; el cierre de ruta no debe falsificarla.
 - BL-114 · Panel «Incidencias en vivo». Actor: administrador autenticado.
   Es una entrada propia del panel lateral y una pantalla independiente, con
-  filtros de fecha y chofer propios. «Incidencias» conserva exclusivamente
+  filtro de chofer propio, sin selector de fecha. «Incidencias» conserva exclusivamente
   repuntes, llegadas fuera de horario y reglas de llegada; no contiene este panel.
   Muestra evidencia autorizada, negocio/causa, chofer, fecha, estado y métricas
   separadas por chofer; refresca mediante los eventos del panel existentes.
