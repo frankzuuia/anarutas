@@ -3,8 +3,9 @@ import baseConfig from "./stryker.base.config.mjs";
 const panelEventsConfig = {
   ...baseConfig,
   mutate: [
-    "src/core/panel-event-stream.ts:45-59",
-    "src/core/panel-event-stream.ts:83-94",
+    "src/core/panel-event-stream.ts:7-9",
+    "src/core/panel-event-stream.ts:49-63",
+    "src/core/panel-event-stream.ts:87-97",
     "src/core/panel-events.ts:22-30",
   ],
   testFiles: ["tests/panel-events.test.ts"],
@@ -14,6 +15,6 @@ const panelEventsConfig = {
   jsonReporter: { fileName: "reports/mutation/panel-events.json" },
   concurrency: 1,
   coverageAnalysis: "perTest",
-  thresholds: { high: 90, low: 80, break: 80 },
+  thresholds: { high: 100, low: 100, break: 100 },
 };
 export default panelEventsConfig;

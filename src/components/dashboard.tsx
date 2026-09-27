@@ -16,7 +16,6 @@ import {
   Building2,
   Gauge,
   AlertTriangle,
-  CircleAlert,
   Radio,
   PanelsTopLeft,
   MapPinned,
@@ -384,21 +383,12 @@ export function Dashboard({
         <main
           className={`main ${section === "plans" ? "planner-main" : ""} ${section === "customers" ? "customer-main" : ""} ${section === "control_center" ? "control-center-main" : ""}`}
         >
-          {section !== "plans" && (
+          {section !== "plans" && section !== "control_center" && (
             <header className="page-heading">
               <div>
                 <span className="eyebrow">Administración</span>
-                <div className={section === "control_center" ? "control-heading-line" : undefined}>
-                  <h1>{title}</h1>
-                  {section === "control_center" && <details className="control-help">
-                    <summary aria-label="Información del Centro de control" title="Cómo usar el Centro de control"><CircleAlert size={19} /></summary>
-                    <div className="control-help-popover" role="note">
-                      <strong>Tu operación, en una vista</strong>
-                      <p>Combina pantallas y dedica cada mapa a un chofer distinto. Cada pantalla conserva sus propios filtros y puede ampliarse.</p>
-                    </div>
-                  </details>}
-                </div>
-                {section !== "control_center" && <p>
+                <h1>{title}</h1>
+                <p>
                   {section === "live_routes" ? "Ubicación real, destino y avance de tus choferes. La antigüedad del GPS siempre visible."
                     : section === "vehicles"
                     ? "Registra tus unidades y administra la asignación de choferes."
@@ -417,7 +407,7 @@ export function Dashboard({
                               : section === "live_incidents"
                                 ? "Casos de rutas iniciadas vigentes, agrupados por chofer y actualizados automáticamente."
                               : "Métricas y cargos reales publicados por Google Cloud Billing, sin estimaciones internas."}
-                </p>}
+                </p>
               </div>
               <button
                 className="quiet"
@@ -459,6 +449,7 @@ export function Dashboard({
           {section === "live_incidents" && <LiveIncidentsPanel revision={liveIncidentRevision} />}
           {section === "live_routes" && <ExpandableScreen title="Ruta en vivo"><LiveRoutesPage revision={controlRevision} /></ExpandableScreen>}
           {section === "control_center" && <ControlCenter revision={controlRevision}
+            onRefresh={() => void refresh()} refreshDisabled={loading || busy}
             renderSection={value => <Dashboard user={user} displayName={displayName} today={today} timezone={timezone} embeddedSection={value} externalRevision={controlRevision} />} />}
           {section === "unit_control" && <UnitControlPanel today={today} timezone={timezone} revision={unitRevision + externalRevision} />}
           {section === "consumption" && (

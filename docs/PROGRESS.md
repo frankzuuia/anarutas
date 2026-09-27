@@ -1,5 +1,22 @@
 # Progreso — bloque 1
 
+## Mutación del panel en vivo — BL-135 / RT09
+
+- [x] RT-T07 / RT09a..c: pruebas PG/SSE para latido posterior a cambio, canal
+  heredado, fallo real de LISTEN, errores 401/no 401 y abort concurrente;
+  cierre de timer instrumentado sin mocks; 43/43 mutantes detectados, umbral
+  elevado a 100%, 20 pruebas dirigidas, 3 E2E, build/tipos/lint verdes.
+  Evidencia en `QA-CENTRO-CONTROL-BARRA-2026-09-26.md`.
+
+## Barra única del Centro de control — BL-134 / CC16
+
+- [x] CC-T10 / CC16a..c: unir título, ayuda, estado, agregar y actualizar en
+  una barra compacta; medir altura ganada y validar refresco, persistencia,
+  teclado, cuatro pantallas y ventana estrecha mediante E2E real.
+
+  Evidencia en `QA-CENTRO-CONTROL-BARRA-2026-09-26.md`. Commit/push a develop
+  autorizados por el usuario; publicar tras completar RT-T07. Sin Deploy.
+
 ## Densidad del Centro de control — BL-131 / CC13
 
 - [x] CC-T07 / CC13a..c: retirar pie lateral, compactar encabezado, ayuda

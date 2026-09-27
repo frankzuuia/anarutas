@@ -1,5 +1,45 @@
 # Bloque 1 — especificación y auditoría previa
 
+## Endurecimiento de eventos del panel — BL-135 / RT09 (26/09/2026)
+
+El reporte de mutación del bloque CC16 reveló rutas no observadas, no un fallo
+confirmado de datos: latido tras `change`, canal ajeno sobre una sesión PG con
+`LISTEN` heredado, `LISTEN` en transacción fallida y clasificación de error.
+PostgreSQL registra canales por sesión y entrega sólo tras commit; las pruebas
+usan conexiones reales del PG aislado. La autenticación actual sólo produce
+`AppError(401)`; se conserva la distinción para una futura variante no 401
+mediante una función pura comprobable. No cambian endpoints ni payload SSE.
+
+| ID | Actor/precondición/acción | Datos/resultado/efecto | Validación y recuperación |
+| --- | --- | --- | --- |
+| RT09a | Admin recibe `change` y espera | Próximo intervalo emite `heartbeat`, no repite `change` | PG real/SSE y mutación |
+| RT09b | Sesión PG heredó otro `LISTEN` o falla el nuevo `LISTEN` | Ignora canal ajeno; destruye conexión fallida y permite reconectar | PG real con pool de una conexión |
+| RT09c | Sesión 401, otro `AppError`, error ajeno o abort durante autenticación | Sólo 401 emite `session-expired`; fallos ajenos cierran para reconexión; sin timer huérfano | contrato puro, PG bloqueado, mutación |
+
+Auditoría: GREEN LIGHT para pruebas y cierre SSE acotado; INTEGRITY TOTAL con
+RT01..08 y CC16. RT-T07 mapea RT09a..c (MATCH PERFECT). Sin mocks ni migración.
+Referencia: PostgreSQL `LISTEN`/`NOTIFY` oficial y código local de `pg`.
+
+## Barra única del Centro de control — BL-134 / CC16 (26/09/2026)
+
+El encabezado genérico y la fila de comandos generan dos niveles verticales.
+Sólo el Centro de control integra su título y ayuda con el estado de guardado,
+«Agregar pantalla» y «Actualizar» en una barra compacta. El padre mantiene la
+función de refresco y su condición de bloqueo; el centro mantiene estado,
+persistencia, selector y referencia de foco. No cambia ninguna API, consulta,
+tabla, permiso o auditoría. La barra se adapta al ancho disponible; en escritorio
+prioriza el alto de las tarjetas sin recortar la cuadrícula de cuatro.
+
+| ID | Actor/precondición/acción | Datos/resultado/efecto | Validación y recuperación |
+| --- | --- | --- | --- |
+| CC16a | Admin abre Centro de control en escritorio | Los cinco elementos comparten la barra; las tarjetas comienzan más arriba | E2E de geometría a 1500×800 y captura |
+| CC16b | Admin actualiza, agrega y guarda pantallas | Consultas reales se repiten; selector, foco y estado CAS se conservan | E2E HTTP, guardado y recarga |
+| CC16c | Admin cambia a ventana estrecha o usa ayuda con teclado | Barra ajustada sin desbordamiento; ayuda superpuesta no desplaza tarjetas | E2E responsive y teclado |
+
+Auditoría local: GREEN LIGHT; INTEGRITY TOTAL con CC01..15; CC-T10 corresponde
+a CC16a..c (MATCH PERFECT). El único riesgo de regresión es la conexión del
+refresco entre padre y tablero; la prueba HTTP lo verifica. No hay migraciones.
+
 ## Ajuste visual BL-131 / CC13 (26/09/2026)
 
 El pie lateral informativo se retira de Dashboard; no contiene acciones ni

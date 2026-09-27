@@ -1,4 +1,25 @@
 Feature: Centro de control privado con pantallas independientes
+  Scenario: Canal vivo mantiene semántica después de cambios y fallos
+    Given el administrador tiene una conexión SSE a PostgreSQL real
+    When llega un cambio autorizado seguido de un periodo sin cambios
+    Then recibe un cambio y después un latido, sin repetir el cambio
+    When la conexión PG hereda un canal ajeno o LISTEN falla
+    Then ignora el canal ajeno y puede reconectar tras el fallo
+    And sólo una sesión vencida recibe el evento de expiración
+    When se cierra la conexión mientras la autenticación espera un bloqueo de base de datos
+    Then se liberan la suscripción y los temporizadores sin dejar latidos huérfanos
+    And una conexión posterior puede enviar latidos normalmente
+
+  Scenario: Barra compacta conserva controles y gana altura operativa
+    Given el administrador abrió Centro de control en un monitor de escritorio
+    When el título, estado de guardado, Agregar pantalla y Actualizar son visibles
+    Then comparten una sola barra y las tarjetas comienzan más arriba
+    When pulsa Actualizar
+    Then se vuelven a consultar la ruta y las incidencias vivas sin perder filtros
+    When agrega una pantalla y recarga la página
+    Then la distribución guardada y el foco del selector siguen funcionando
+    And en una ventana estrecha todos los controles son accesibles sin desbordar
+
   Scenario: Dos mapas del mismo tipo para choferes distintos
     Given dos choferes tienen rutas iniciadas y el administrador tiene sesión válida
     When agrega dos pantallas Ruta en vivo y elige un chofer diferente en cada una

@@ -1,5 +1,26 @@
 # Ana Rutas — bloque 1 aprobado
 
+## Endurecimiento del canal en vivo — BL-135 (26/09/2026)
+
+- BL-135: Administrador -> la conexión SSE informa cambios una vez y vuelve a
+  latidos, ignora canales/payloads ajenos incluso si hereda una suscripción de
+  una conexión PostgreSQL reutilizada, distingue sesión 401 de fallo transitorio,
+  y libera la conexión ante un fallo real de `LISTEN` o cierre concurrente.
+  Datos: eventos de panel existentes; no nuevas tablas. Permisos: sesión admin
+  vigente. Auditoría: sin evento nuevo. Validación: PostgreSQL aislado real,
+  pruebas de clasificación de errores, cobertura y mutación dirigida sin mocks.
+
+## Barra única del Centro de control — BL-134 (26/09/2026)
+
+- BL-134: Administrador -> el título compacto, la ayuda, el estado de guardado,
+  «Agregar pantalla» y «Actualizar» comparten una sola barra para maximizar el
+  alto de las pantallas operativas. El estado sigue reflejando el guardado real;
+  agregar conserva el límite, foco y persistencia; actualizar vuelve a consultar
+  rutas e incidencias. En un ancho estrecho la barra puede ajustarse sin tapar
+  controles. Datos: distribución y consultas existentes, sin esquema nuevo.
+  Permisos: sesión de panel existente. Auditoría: ninguna acción de negocio nueva.
+  Validación: geometría y acciones E2E sobre servidor y PostgreSQL reales.
+
 ## Ajuste de densidad del Centro de control — BL-131 (26/09/2026)
 
 - BL-131: Administrador -> la barra lateral presenta sólo navegación, y el

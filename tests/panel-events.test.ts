@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
+import { createHook } from "node:async_hooks";
+import { Pool } from "pg";
 import { startPostgres } from "./helpers/postgres";
 import { subscribePanelChanges } from "../src/core/panel-events";
-import { panelEventStream } from "../src/core/panel-event-stream";
+import { isExpiredPanelSession, panelEventStream } from "../src/core/panel-event-stream";
 import { audit, migrate, transaction } from "../src/core/database";
 import { bootstrap, login, logout } from "../src/core/auth";
 import { tokenHash } from "../src/core/crypto";
+import { AppError } from "../src/core/errors";
 
 let db: Awaited<ReturnType<typeof startPostgres>>;
 let actor: string;
@@ -109,27 +112,57 @@ describe("panel events with real PostgreSQL", () => {
   });
 
   it("ignores foreign channels/payloads and releases listeners idempotently", async () => {
+    const pool = new Pool({ connectionString: db.config.databaseUrl, max: 1 });
     const received: string[] = [];
-    const stop = await subscribePanelChanges(db.pool, (value) =>
-      received.push(value),
-    );
-    await db.pool.query(
-      "SELECT pg_notify('ana_rutas_other','changed'),pg_notify('ana_rutas_panel','private')",
-    );
-    await delay(100);
-    expect(received).toEqual([]);
-    stop();
-    stop();
-    await expect
-      .poll(
-        async () =>
-          (
-            await db.pool.query(
-              "SELECT count(*)::int AS n FROM pg_stat_activity WHERE query='LISTEN ana_rutas_panel'",
-            )
-          ).rows[0].n,
-      )
-      .toBe(0);
+    let stop: (() => void) | undefined;
+    try {
+      const borrowed = await pool.connect();
+      try {
+        await borrowed.query("LISTEN ana_rutas_other");
+      } finally {
+        borrowed.release();
+      }
+      stop = await subscribePanelChanges(pool, (value) => received.push(value));
+      await db.pool.query(
+        "SELECT pg_notify('ana_rutas_other','changed'),pg_notify('ana_rutas_panel','private')",
+      );
+      await delay(100);
+      expect(received).toEqual([]);
+      await db.pool.query("SELECT pg_notify('ana_rutas_panel','changed')");
+      await expect.poll(() => received).toEqual(["change"]);
+    } finally {
+      stop?.();
+      stop?.();
+      await pool.end();
+    }
+    await expect.poll(async () => (
+      await db.pool.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE query='LISTEN ana_rutas_panel'")
+    ).rows[0].n).toBe(0);
+  });
+
+  it("discards a failed LISTEN connection and reconnects on a fresh PostgreSQL session", async () => {
+    const pool = new Pool({ connectionString: db.config.databaseUrl, max: 1 });
+    let stop: (() => void) | undefined;
+    try {
+      const borrowed = await pool.connect();
+      await borrowed.query("BEGIN");
+      await expect(borrowed.query("SELECT 1/0")).rejects.toMatchObject({ code: "22012" });
+      borrowed.release();
+      await expect(subscribePanelChanges(pool, () => {})).rejects.toMatchObject({ code: "25P02" });
+      const received: string[] = [];
+      stop = await subscribePanelChanges(pool, value => received.push(value));
+      await db.pool.query("SELECT pg_notify('ana_rutas_panel','changed')");
+      await expect.poll(() => received).toEqual(["change"]);
+    } finally {
+      stop?.();
+      await pool.end();
+    }
+  });
+
+  it("classifies only an AppError 401 as an expired panel session", () => {
+    expect(isExpiredPanelSession(new AppError("UNAUTHENTICATED", 401))).toBe(true);
+    expect(isExpiredPanelSession(new AppError("NOT_ALLOWED", 403))).toBe(false);
+    expect(isExpiredPanelSession(Object.assign(new Error("database"), { status: 401 }))).toBe(false);
   });
 
   it("disconnects subscribers on backend termination and permits a clean reconnect", async () => {
@@ -195,6 +228,7 @@ describe("panel events with real PostgreSQL", () => {
         token: "must not leak",
       });
       expect(await event(reader)).toBe("event: change\ndata: {}\n\n");
+      expect(await event(reader)).toBe("event: heartbeat\ndata: {}\n\n");
       await logout(db.pool, actor, token);
       expect(await event(reader)).toBe("event: session-expired\ndata: {}\n\n");
       expect(await event(reader)).toBe("closed");
@@ -267,6 +301,70 @@ describe("panel events with real PostgreSQL", () => {
     await delay(1300);
     expect(await event(slow)).toContain("reset");
     expect(await event(slow)).toBe("closed");
+  });
+
+  it("closes while initial authentication waits on a real PostgreSQL lock", async () => {
+    const { token } = await login(db.pool, db.config, {
+      login: "live-qa",
+      password,
+    });
+    const lock = await db.pool.connect();
+    const signal = new AbortController();
+    const healthySignal = new AbortController();
+    const timers = new Map<number, NodeJS.Timeout>();
+    // Observe real Node timers, including an interval created after abort.
+    const resources = createHook({
+      init(id, type, _trigger, resource) {
+        if (type === "Timeout" && new Error().stack?.includes("panel-event-stream.ts"))
+          timers.set(id, resource as NodeJS.Timeout);
+      },
+      destroy(id) { timers.delete(id); },
+    }).enable();
+    try {
+      await lock.query("BEGIN");
+      await lock.query(
+        "UPDATE route_sessions SET idle_expires_at=idle_expires_at WHERE token_hash=$1",
+        [tokenHash(token)],
+      );
+      const reader = panelEventStream(
+        db.pool,
+        { ...db.config, panelHeartbeatSeconds: 1 },
+        token,
+        signal.signal,
+      ).getReader();
+      await expect.poll(async () => (
+        await db.pool.query(
+          "SELECT count(*)::int AS n FROM pg_stat_activity WHERE query LIKE 'UPDATE route_sessions SET idle_expires_at=LEAST%' AND wait_event_type='Lock'",
+        )
+      ).rows[0].n).toBe(1);
+      signal.abort();
+      expect(await event(reader)).toBe("closed");
+      await lock.query("ROLLBACK");
+      await expect.poll(async () => (
+        await db.pool.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE query='LISTEN ana_rutas_panel'")
+      ).rows[0].n).toBe(0);
+      await delay(150);
+      expect(timers.size).toBe(0);
+      // Prove the observer detects a live heartbeat and its cleanup as well.
+      const healthy = panelEventStream(
+        db.pool,
+        { ...db.config, panelHeartbeatSeconds: 1 },
+        token,
+        healthySignal.signal,
+      ).getReader();
+      expect(await event(healthy)).toContain("reset");
+      expect(timers.size).toBeGreaterThan(0);
+      healthySignal.abort();
+      expect(await event(healthy)).toBe("closed");
+      await expect.poll(() => timers.size).toBe(0);
+    } finally {
+      signal.abort();
+      healthySignal.abort();
+      await lock.query("ROLLBACK");
+      lock.release();
+      resources.disable();
+      for (const timer of timers.values()) clearInterval(timer);
+    }
   });
 
   it("does not accumulate concurrent authentication queries behind a database lock", async () => {

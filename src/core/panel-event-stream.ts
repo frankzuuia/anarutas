@@ -4,6 +4,10 @@ import type { readConfig } from "./config";
 import { AppError } from "./errors";
 import { subscribePanelChanges } from "./panel-events";
 
+export function isExpiredPanelSession(error: unknown): error is AppError {
+  return error instanceof AppError && error.status === 401;
+}
+
 export function panelEventStream(
   pool: Pool,
   config: ReturnType<typeof readConfig>,
@@ -51,7 +55,7 @@ export function panelEventStream(
           emit(changed ? "change" : "heartbeat");
           changed = false;
         } catch (error) {
-          if (error instanceof AppError && error.status === 401)
+          if (isExpiredPanelSession(error))
             emit("session-expired");
           finish();
         } finally {
@@ -82,13 +86,13 @@ export function panelEventStream(
         }
         await authenticate(pool, config, token);
         emit("reset");
-        if (!closed)
-          heartbeat = setInterval(
-            () => void check(),
-            config.panelHeartbeatSeconds * 1000,
-          );
+        if (closed) return;
+        heartbeat = setInterval(
+          () => void check(),
+          config.panelHeartbeatSeconds * 1000,
+        );
       } catch (error) {
-        if (error instanceof AppError && error.status === 401)
+        if (isExpiredPanelSession(error))
           emit("session-expired");
         finish();
       }

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Plus, Maximize2, Minimize2, X, ArrowLeft, ArrowRight, PanelsTopLeft, MapPinned, Radio, ChartNoAxesCombined } from "lucide-react";
+import { Plus, Maximize2, Minimize2, X, ArrowLeft, ArrowRight, PanelsTopLeft, MapPinned, Radio, ChartNoAxesCombined, CircleAlert, RefreshCw } from "lucide-react";
 import { controlScreenTypes, type ControlScreenType, type EmbeddedSection } from "@/core/control-screens";
 import { maxControlScreens, type ControlScreen } from "@/core/live-tracking-contract";
 import { api } from "./api";
@@ -30,7 +30,12 @@ export function ExpandableScreen({ title, children, actions }: { title: string; 
     <div className="control-screen-body">{children}</div>
   </article>;
 }
-export function ControlCenter({ revision, renderSection }: { revision: number; renderSection: (section: EmbeddedSection) => ReactNode }) {
+export function ControlCenter({ revision, onRefresh, refreshDisabled, renderSection }: {
+  revision: number;
+  onRefresh: () => void;
+  refreshDisabled: boolean;
+  renderSection: (section: EmbeddedSection) => ReactNode;
+}) {
   const [screens, setScreens] = useState<ControlScreen[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
@@ -79,9 +84,23 @@ export function ControlCenter({ revision, renderSection }: { revision: number; r
   function closePicker() { setAdding(false); addButton.current?.focus(); }
   function move(index: number, direction: number) { if (!screens) return; const next = [...screens]; [next[index], next[index+direction]] = [next[index+direction], next[index]]; change(next); }
   return <section className="control-center">
-    <div className="control-command">
-      <div className="row"><span className={`badge ${saveError ? "amber" : "green"}`}>{saving ? "Guardando distribución…" : saveError ? "Cambios sin guardar" : savedVersion ? "Distribución guardada" : "Distribución inicial"}</span>
-        <button ref={addButton} onClick={() => setAdding(true)} disabled={!screens || screens.length >= maxControlScreens}><Plus size={17} />Agregar pantalla</button></div></div>
+    <header className="control-command">
+      <div className="control-heading-line">
+        <h1>Centro de control</h1>
+        <details className="control-help">
+          <summary aria-label="Información del Centro de control" title="Cómo usar el Centro de control"><CircleAlert size={17} /></summary>
+          <div className="control-help-popover" role="note">
+            <strong>Tu operación, en una vista</strong>
+            <p>Combina pantallas y dedica cada mapa a un chofer distinto. Cada pantalla conserva sus propios filtros y puede ampliarse.</p>
+          </div>
+        </details>
+      </div>
+      <div className="control-command-actions">
+        <span role="status" className={`badge ${saveError ? "amber" : "green"}`}>{saving ? "Guardando distribución…" : saveError ? "Cambios sin guardar" : savedVersion ? "Distribución guardada" : "Distribución inicial"}</span>
+        <button ref={addButton} onClick={() => setAdding(true)} disabled={!screens || screens.length >= maxControlScreens}><Plus size={16} />Agregar pantalla</button>
+        <button className="quiet" onClick={onRefresh} disabled={refreshDisabled}><RefreshCw size={16} />Actualizar</button>
+      </div>
+    </header>
     {loadError && <p className="notice error" role="alert">{loadError}<button className="quiet" onClick={() => setReload(n => n+1)}>Reintentar</button></p>}
     {saveError && <div className="notice error" role="alert"><p>{saveError}</p><button className="quiet" disabled={saving} onClick={() => void drain()}>Reintentar guardado</button>
       <button className="quiet" disabled={saving} onClick={() => setReload(n => n+1)}>Descartar cambios y cargar distribución guardada</button></div>}

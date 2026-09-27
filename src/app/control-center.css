@@ -1,10 +1,13 @@
 .control-center { display: grid; gap: 12px; min-width: 0; }
-.control-command { display: flex; align-items: center; justify-content: flex-end; }
-.control-command .row { flex-wrap: wrap; }
+.control-command { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; min-width: 0; }
+.control-command-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.app .control-command-actions button { min-height: 32px; padding: 5px 9px; font-size: 12px; }
+.control-command-actions .badge { padding: 3px 8px; font-size: 11px; }
 .control-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: minmax(450px,calc(100dvh - 215px)); gap: 18px; align-items: stretch; }
 .control-heading-line { display: flex; align-items: center; gap: 9px; }
+.app .control-heading-line h1 { font-size: 18px; white-space: nowrap; }
 .control-help { position: relative; flex: none; }
-.control-help summary { list-style: none; display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); cursor: pointer; }
+.control-help summary { list-style: none; display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); cursor: pointer; }
 .control-help summary::-webkit-details-marker { display: none; }
 .control-help summary:hover, .control-help[open] summary { border-color: var(--green); color: var(--green); background: var(--green-dark); }
 .control-help summary:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
@@ -125,13 +128,14 @@
 .control-screen .embedded-dashboard .planner-workspace { min-height: 500px; }
 .control-screen .embedded-dashboard .planner-command-bar { flex-wrap: wrap; }
 .control-screen .embedded-dashboard .customer-layout { min-height: 500px; }
+.app .control-center-main { padding-block: 10px 12px; }
 @media (min-width: 1001px) and (min-height: 680px) {
   .control-center-app { height: 100dvh; min-height: 0; overflow: hidden; }
   .control-center-app > .sidebar { min-height: 0; overflow-y: auto; }
   .control-center-app > .content { display: flex; flex-direction: column; min-height: 0; }
   .control-center-app > .content > .topbar { flex: none; }
   .control-center-main { display: flex; flex: 1; flex-direction: column; width: 100%; min-height: 0; margin: 0 auto; }
-  .control-center-main > .page-heading, .control-center-main > .bottom-note { flex: none; }
+  .control-center-main > .bottom-note { flex: none; }
   .control-center-main > .control-center { display: flex; flex: 1; flex-direction: column; min-height: 0; }
   .control-center-main .control-command { flex: none; }
   .control-center-main .control-grid { flex: 1; min-height: 0; overflow-y: auto; grid-auto-rows: minmax(0,1fr); }
