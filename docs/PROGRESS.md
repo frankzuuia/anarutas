@@ -1,5 +1,16 @@
 # Progreso — bloque 1
 
+## Mapa prioritario — BL-136 / CC17
+
+- [x] CC-T11 / CC17a..c,e: controles opacos, sólo chofer, mapa sin recorte,
+  detalle desplegable y regresión de persistencia/teclado/fullscreen.
+- [x] CC-T12 / CC17d: encuadre al primer GPS, política probada/cobertura/mutación,
+  contratos de telemetría reales y diagnóstico sin fingir prueba física.
+  Usuario confirmó GPS al actualizar de APK anterior a 0.7.0. Marcador cambiado
+  a camioneta sin nombre visible. 20 unit/PG, 3 E2E, 42/42 mutantes detectados,
+  política 100% cobertura; mapa 75.02%/73.67% de tarjeta sin recorte. Evidencia
+  y límite Maps real en `QA-MAPA-PRIORITARIO-2026-09-26.md`. Sin nueva APK/Deploy.
+
 ## Mutación del panel en vivo — BL-135 / RT09
 
 - [x] RT-T07 / RT09a..c: pruebas PG/SSE para latido posterior a cambio, canal

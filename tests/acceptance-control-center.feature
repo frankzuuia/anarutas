@@ -82,3 +82,20 @@ Feature: Centro de control privado con pantallas independientes
     Then la notificación identifica el seguimiento activo
     And detener seguimiento o cerrar sesión termina la captura
     And sin permiso o proceso terminado se informa la falta de ubicación
+
+  Scenario: Cuatro mapas completos con un único filtro por chofer
+    Given hay cuatro pantallas de Ruta en vivo y una preferencia antigua de camioneta
+    When el administrador abre el centro en 1500x800 o 1366x768
+    Then el mapa ocupa al menos el 70 por ciento de cada tarjeta sin recortarse por scroll
+    And sólo aparece el selector de chofer y la camioneta antigua no oculta rutas
+    And los controles tienen fondo sólido incluso deshabilitados
+    When abre Ver avance con teclado y cierra con Escape
+    Then consulta las paradas sin cambiar el tamaño del mapa y recupera el foco
+    And ampliar y reducir preserva el chofer seleccionado
+
+  Scenario: Primera ubicación remota posterior a la apertura
+    Given el mapa está abierto sin GPS recibido
+    When llega la primera ubicación válida de la APK con seguimiento
+    Then el encuadre incluye una camioneta sin nombre visible y con identificación accesible
+    And las muestras posteriores conservan la cámara salvo seguimiento elegido
+    And sin GPS no se coloca una camioneta en la dirección de un pedido

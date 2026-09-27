@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
+import { build } from "esbuild";
 import { executionFixture } from "../helpers/driver-execution";
 import { freePort } from "../helpers/postgres";
 import { createUser } from "../../src/core/auth";
@@ -139,7 +140,9 @@ test("independent drivers, arbitrary panel screens, persistence, expand and remo
   await expect(cards).toHaveCount(3);
   await cards.nth(2).getByLabel("Chofer", { exact: true }).selectOption(f.members[1].driverId);
   await expect(cards.nth(0).getByLabel("Chofer", { exact: true })).toHaveValue(f.members[0].driverId);
+  await cards.nth(2).getByRole("button", { name: "Ver avance" }).click();
   await expect(cards.nth(2).getByRole("heading", { name: "Chofer 1", exact: true })).toBeVisible();
+  await cards.nth(2).getByRole("button", { name: "Cerrar avance" }).click();
   await expect(page.getByText("Distribución guardada", { exact: true })).toBeVisible();
   await page.reload(); await page.getByRole("button", { name: "Centro de control", exact: true }).click();
   await expect(cards).toHaveCount(3);
@@ -218,5 +221,113 @@ test("independent drivers, arbitrary panel screens, persistence, expand and remo
   await expect(page.getByLabel("Chofer", { exact: true })).toBeVisible();
   await expect(page.locator(".live-incident-card")).toHaveCount(2);
   await page.getByRole("button", { name: "Ruta en vivo", exact: true }).click();
+  await page.getByRole("button", { name: "Ver avance" }).click();
   await expect(page.getByRole("heading", { name: "Chofer 0", exact: true })).toBeVisible();
+});
+
+test("four map-first screens keep their full canvas, driver-only filters and accessible details", async ({ page }) => {
+  test.setTimeout(120000);
+  const ownLogin = `map-${randomUUID()}`;
+  await createUser(f.db.pool, f.actor, { name: "Map QA", login: ownLogin, password });
+  await page.request.post(`${origin}/api/session`, { headers: { Origin: origin }, data: { login: ownLogin, password } });
+  const screens = Array.from({ length: 4 }, (_,index) => ({ id: randomUUID(), type: "routes", driverId: f.members[index%2].driverId, vehicleId: randomUUID() }));
+  expect((await page.request.put(`${origin}/api/control-center`, { headers: { Origin: origin }, data: { expectedVersion: 0, screens } })).status()).toBe(200);
+  await page.setViewportSize({ width: 1500, height: 800 });
+  await page.goto(origin);
+  await page.getByRole("button", { name: "Centro de control", exact: true }).click();
+  const cards = page.locator(".control-grid > .control-screen");
+  await expect(cards).toHaveCount(4);
+  await expect(page.getByLabel("Camioneta", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".live-map-wrap")).toHaveCount(4);
+  await expect(page.getByText("El mapa no está configurado", { exact: false })).toHaveCount(4);
+  for (const size of [{ width: 1500, height: 800 }, { width: 1366, height: 768 }]) {
+    await page.setViewportSize(size);
+    const dimensions = await cards.evaluateAll(elements => elements.map(element => {
+      const card = element.getBoundingClientRect();
+      const body = element.querySelector(".control-screen-body")!;
+      const map = element.querySelector(".live-map-wrap")!.getBoundingClientRect();
+      const canvas = element.querySelector(".live-map-canvas")!.getBoundingClientRect();
+      const controls = element.querySelector(".live-map-tools")!.getBoundingClientRect();
+      return { fraction: map.height / card.height, map: map.height, bottom: card.bottom,
+        canvas: canvas.height, scroll: body.scrollHeight - body.clientHeight,
+        toolsInside: controls.top >= map.top && controls.right <= map.right && controls.bottom <= map.bottom };
+    }));
+    console.log(`Map geometry ${size.width}x${size.height}: ${JSON.stringify(dimensions)}`);
+    expect(dimensions.every(d => d.fraction >= 0.70 && d.map >= 190 && d.bottom <= size.height && d.scroll <= 1 && Math.abs(d.canvas-d.map) < 1 && d.toolsInside)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
+  }
+  const card = cards.first();
+  const details = card.getByRole("complementary", { name: "Avance de los choferes" });
+  await expect(details).toBeHidden();
+  const canvasBefore = await card.locator(".live-map-canvas").boundingBox();
+  await card.getByRole("button", { name: "Ver avance" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(details).toBeVisible();
+  await expect(details.getByRole("heading", { name: "Chofer 0", exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Cerrar avance" })).toBeFocused();
+  expect((await card.locator(".live-map-canvas").boundingBox())!.height).toBe(canvasBefore!.height);
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
+  await expect(card.getByRole("button", { name: "Ver avance" })).toBeFocused();
+  const buttonStyles = await card.locator(".live-map-tools button").evaluateAll(elements => elements.map(element => {
+    const style = getComputedStyle(element); return { background: style.backgroundColor, opacity: style.opacity, color: style.color };
+  }));
+  expect(buttonStyles.every(style => style.background === "rgb(38, 60, 48)" && style.opacity === "1" && style.color === "rgb(185, 201, 191)")).toBe(true);
+  // Exercise the production marker DOM builder and final CSS in a real browser.
+  // This does not replace Google Maps or fabricate a GPS/API response.
+  const markerBundle = await build({ entryPoints: ["src/components/live-map-marker.ts"], bundle: true, write: false, format: "iife", globalName: "LiveMapMarkerTest" });
+  await page.addScriptTag({ content: markerBundle.outputFiles[0].text });
+  const markerAppearance = await page.evaluate(async () => {
+    const builder = (window as unknown as { LiveMapMarkerTest: typeof import("../../src/components/live-map-marker") }).LiveMapMarkerTest;
+    const icon = document.querySelector<SVGSVGElement>(".live-driver-icon-template")!;
+    const { node, label } = builder.createLiveMapMarkerNode(icon);
+    node.className = "live-map-driver live"; node.style.setProperty("--route-color", "#8dddac");
+    node.setAttribute("aria-label", "Chofer QA"); label.textContent = "Nombre <img src=x> no visible";
+    document.querySelector(".live-map-canvas")!.append(node);
+    const svg = node.querySelector("svg")!;
+    const appearance = { width: node.offsetWidth, height: node.offsetHeight,
+      radius: getComputedStyle(node).borderRadius, textHidden: getComputedStyle(label).display === "none",
+      svgVisible: getComputedStyle(svg).display !== "none", vector: svg.querySelectorAll("path,circle,rect").length,
+      executableMarkup: node.querySelectorAll("img").length, color: getComputedStyle(node).backgroundColor,
+      templateHidden: getComputedStyle(icon).display === "none" };
+    node.className = "live-map-driver stale";
+    // Wait for the real shared button color transition, not an arbitrary sleep.
+    void getComputedStyle(node).backgroundColor;
+    await Promise.all(node.getAnimations().map(animation => animation.finished));
+    const staleColor = getComputedStyle(node).backgroundColor; node.remove();
+    const stop = builder.createLiveMapMarkerNode(null);
+    stop.label.textContent = "2"; stop.node.className = "live-map-stop";
+    document.querySelector(".live-map-canvas")!.append(stop.node);
+    const stopVisible = getComputedStyle(stop.label).display !== "none" && stop.node.textContent === "2";
+    stop.node.remove();
+    return { ...appearance, staleColor, stopVisible };
+  });
+  expect(markerAppearance).toMatchObject({ width: 38, height: 38, radius: "50%", textHidden: true, svgVisible: true,
+    executableMarkup: 0, color: "rgb(141, 221, 172)", staleColor: "rgb(145, 162, 154)", templateHidden: true, stopVisible: true });
+  expect(markerAppearance.vector).toBeGreaterThan(2);
+  await card.getByRole("button", { name: "Ver todos los puntos" }).isDisabled().then(disabled => expect(disabled).toBe(true));
+  await card.getByRole("button", { name: "Expandir 1", exact: false }).click();
+  await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(true);
+  await expect(card.getByLabel("Chofer", { exact: true })).toHaveValue(f.members[0].driverId);
+  await card.getByRole("button", { name: "Ver avance" }).click();
+  await expect(details).toBeVisible();
+  await details.locator(".live-stop").last().click();
+  await expect(details.locator(".live-selected-stop")).toBeVisible();
+  await card.getByRole("button", { name: "Cerrar avance" }).click();
+  await card.getByRole("button", { name: "Reducir 1", exact: false }).click();
+  await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(false);
+  await card.getByLabel("Chofer", { exact: true }).selectOption(f.members[1].driverId);
+  await expect(page.getByText("Distribución guardada", { exact: true })).toBeVisible();
+  await page.reload(); await page.getByRole("button", { name: "Centro de control", exact: true }).click();
+  await expect(cards.first().getByLabel("Chofer", { exact: true })).toHaveValue(f.members[1].driverId);
+  const saved = await (await page.request.get(`${origin}/api/control-center`)).json();
+  expect(saved.screens[0].vehicleId).toBe("");
+  expect(saved.screens[1]).toEqual(screens[1]);
+  await expect(page.locator(".live-map-wrap")).toHaveCount(4);
+  await mkdir(".local/qa/control-center", { recursive: true });
+  await page.screenshot({ path: ".local/qa/control-center/map-first-four.png" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await cards.first().getByRole("button", { name: "Ver avance" }).click();
+  await expect(cards.first().getByRole("button", { name: "Cerrar avance" })).toBeVisible();
 });

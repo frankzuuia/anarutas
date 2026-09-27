@@ -1,5 +1,37 @@
 # Bloque 1 — especificación y auditoría previa
 
+## Mapa prioritario — BL-136 / CC17 (26/09/2026)
+
+Autopsia: el contenedor estrecho exige mapa de 320 px y lista debajo dentro de
+una tarjeta que sólo deja ~130 px; genera scroll y recorte. `button.quiet`
+posterior gana por igual especificidad y elimina el fondo de controles.
+La clave de encuadre no cambia al aparecer el primer GPS: puede quedar fuera.
+El usuario confirmó que tenía una APK anterior y que al instalar 0.7.0 apareció
+el GPS. No se modifica servicio/autorización. Pide además camioneta en lugar de
+flecha: se reutiliza el SVG Truck del panel en un marcador circular compacto,
+sin nombre visible (sólo identificación accesible), ubicación real y gris cuando
+la señal envejece. Corrección expresa del usuario: el filtro identifica al chofer.
+
+| ID | Actor/precondición/acción | Datos/resultado/efecto | Validación y recuperación |
+| --- | --- | --- | --- |
+| CC17a | Admin abre cuatro tarjetas de escritorio | Mapa >=70% del alto de tarjeta, sin scroll que lo recorte; controles opacos; lista desplegable | E2E 1500×800/1366×768, geometría y captura |
+| CC17b | Preferencias antiguas con camioneta, cambia chofer | Sólo chofer afecta rutas; filtros independientes y persistencia intacta | E2E HTTP + unit/mutación |
+| CC17c | Abre/cierra avance con teclado, expande o consulta parada | Detalles accesibles, Escape cierra/restaura foco; mapa no se remonta | E2E de dimensiones, foco y fullscreen |
+| CC17d | Primera muestra GPS aparece después del mapa | Se encuadra una vez; siguientes muestras no resetean cámara; falta GPS nunca genera pin | Política unit/mutación, API PG real; Maps físico pendiente |
+| CC17e | Maps/red no disponible, ventana móvil o vista de avance | Reintento y lista disponibles; sin overflow horizontal; no perder datos | E2E fallback real sin clave, contratos GPS existentes |
+
+Flujo/API/permisos: mismos GET privados y PUT de distribución CAS. No nuevas
+tablas, polling ni solicitudes Routes. GPS procede exclusivamente de tracking.
+Compatibilidad: se conserva vehicleId en contrato almacenado, se ignora en vista
+y se limpia al seleccionar chofer. Rollback sólo UI, sin pérdida de auditoría.
+Referencia: Next16 docs locales use-client/CSS (cascada en build), Google Maps
+https://developers.google.com/maps/documentation/javascript/reference/map
+y https://developers.google.com/maps/documentation/javascript/controls.
+Riesgos abiertos: validación de Maps real del nuevo aspecto después de Deploy;
+no certificar sensado por una prueba de servidor ni simular Maps.
+Auditoría local GREEN LIGHT; INTEGRITY TOTAL con CC01..16; CC-T11/12 cubren
+CC17a..e (MATCH PERFECT). Se precisa CC15: listas desplazan; mapa no se recorta.
+
 ## Endurecimiento de eventos del panel — BL-135 / RT09 (26/09/2026)
 
 El reporte de mutación del bloque CC16 reveló rutas no observadas, no un fallo

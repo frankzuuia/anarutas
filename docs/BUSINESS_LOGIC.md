@@ -1,5 +1,18 @@
 # Ana Rutas — bloque 1 aprobado
 
+## Mapa prioritario — BL-136 (26/09/2026)
+
+- BL-136: Administrador -> cada pantalla de ruta prioriza el mapa completo,
+  incluso en cuadrícula 2×2. Sólo filtra por chofer; una preferencia antigua de
+  camioneta no debe ocultar rutas. Avance/lista se consultan en un panel
+  desplegable sin recortar el mapa. Controles con fondo opaco, estado y nombre
+  accesibles. La primera ubicación recibida entra al encuadre; las posteriores
+  conservan cámara salvo seguimiento elegido. Nunca inventar GPS faltante.
+  Datos: snapshot y preferencias existentes, sin nuevas escrituras de negocio.
+  Permiso: admin autenticado. Auditoría: la del guardado de distribución.
+  Validación: geometría/teclado/HTTP reales, política de encuadre con cobertura
+  y mutación, investigación Android separada de QA físico no demostrado.
+
 ## Endurecimiento del canal en vivo — BL-135 (26/09/2026)
 
 - BL-135: Administrador -> la conexión SSE informa cambios una vez y vuelve a
