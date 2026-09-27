@@ -9,7 +9,7 @@ import { LiveRouteView } from "./live-route-view";
 import { LiveIncidentsPanel } from "./live-incidents-panel";
 
 type Layout = { screens: ControlScreen[] | null; version: number };
-export function ExpandableScreen({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) {
+export function ExpandableScreen({ title, children, actions, heading }: { title: string; children: ReactNode; actions?: ReactNode; heading?: ReactNode }) {
   const root = useRef<HTMLElement>(null);
   const expand = useRef<HTMLButtonElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -24,7 +24,7 @@ export function ExpandableScreen({ title, children, actions }: { title: string; 
     catch { setError("El navegador no permitió pantalla completa. Habilita esa función e inténtalo de nuevo."); }
   }
   return <article ref={root} className="control-screen" aria-label={title}>
-    <header className="control-screen-header"><button className="control-screen-title" onClick={() => void toggle()} title={`Expandir ${title}`}><PanelsTopLeft size={17} /><strong>{title}</strong></button>
+    <header className="control-screen-header">{heading ?? <button className="control-screen-title" onClick={() => void toggle()} title={`Expandir ${title}`}><PanelsTopLeft size={17} /><strong>{title}</strong></button>}
       <div className="row">{actions}<button ref={expand} className="quiet" aria-label={expanded ? `Reducir ${title}` : `Expandir ${title}`} onClick={() => void toggle()}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button></div></header>
     {error && <p className="notice error" role="alert">{error}</p>}
     <div className="control-screen-body">{children}</div>

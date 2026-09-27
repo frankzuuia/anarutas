@@ -1,5 +1,27 @@
 # Bloque 1 — especificación y auditoría previa
 
+## Vista individual compacta — BL-140 / CC20
+
+Autopsia: dashboard acumula page-heading y control-screen-header, mientras
+control-screen-body limita a 60vh/750px y standalone-live exige 68vh. El pie
+global añade otra fila. Solución: encabezado único configurable de la tarjeta,
+ayuda desplegable y acciones existentes; layout flex del viewport. Eliminar
+pie global solicitado, sin tocar avisos operativos de cada sección.
+
+| Escenario | Actor/precondición/acción | Resultado y fallo/recuperación | Validación |
+| --- | --- | --- | --- |
+| CC20a | Admin autenticado abre Ruta en vivo | Un título; mapa desde arriba, sin pie ni scroll interno; ayuda oculta inicialmente | Geometría desktop/teclado |
+| CC20b | Cambia chofer, actualiza o expande/reduce | Mismo feed/filtro; mapa aprovecha altura; foco recuperado | HTTP PG real + E2E |
+| CC20c | Móvil, ventana baja o menú cerrado | Controles accesibles, sin overflow horizontal; mapa flexible | Responsive E2E |
+| CC20d | Sin clave Maps o error externo | Fallback y avance existentes; ninguna ubicación ficticia | E2E sin Maps configurado |
+| CC20e | Centro con cuatro pantallas y otras secciones | Sin regresión de tarjeta, selección, edición ni permisos | Regresión E2E |
+
+CC-T15 implementa CC20a..e. Datos/APIs/permisos/eventos/auditoría sin cambios;
+sin nuevas dependencias, cargos o secretos. Referencias locales Next16: guía
+CSS (orden de estilos y validación de build), use-client (composición React).
+Rollback: revertir este bloque de presentación. Auditoría local: GREEN LIGHT,
+INTEGRITY TOTAL y MATCH PERFECT; no cambia reglas de ruta o liquidación.
+
 ## Destino único y continuación confirmada — BL-139 / NC01..06
 
 Autopsia Android: renderMap dibuja preview antes de conectar Navigator. Al

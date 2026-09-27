@@ -1,5 +1,13 @@
 # Ana Rutas — bloque 1 aprobado
 
+## Vista individual compacta — BL-140 (26/09/2026)
+
+- Administrador: Ruta en vivo debe dedicar el espacio restante de la ventana
+  al mapa sin expandir. Un encabezado con ayuda/actualizar/expandir y filtro
+  de chofer; retirar la leyenda global inferior. Dirección: composición React
+  y flex CSS, sin cambiar feed, GPS, datos, permisos ni auditoría. Validar
+  geometría, teclado, responsive, actualización y fullscreen con E2E real.
+
 ## Resumen junto a Google — BL-137 (26/09/2026)
 
 - BL-137: Administrador -> resumen de entregas, pendientes y GPS al pie, junto

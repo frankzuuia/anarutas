@@ -1,5 +1,14 @@
 # Progreso — bloque 1
 
+## Vista individual compacta — BL-140 / CC20
+
+- [x] CC-T15: encabezado único/ayuda, pie global retirado y mapa flexible al viewport.
+  5 E2E verdes: escritorio/móvil, actualización, fullscreen, cuatro pantallas
+  y regresión general del panel (sesiones/CSRF/cuentas/reinicio);
+  12 unitarias, política 100% líneas/ramas, 42/42 mutantes de regresión.
+  Build/tipos/lint verdes; causa móvil detectada por E2E y corregida antes de
+  entrega. Geometría y procedimiento en QA-RUTA-VIVO-COMPACTA-2026-09-26.md.
+
 ## Continuación después de atención — BL-139 / NC01..06
 
 - [x] NC-T01: política y aviso tras confirmación; candidato dinámico, cierre manual.

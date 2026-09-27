@@ -146,6 +146,23 @@
 .control-screen .embedded-dashboard .planner-command-bar { flex-wrap: wrap; }
 .control-screen .embedded-dashboard .customer-layout { min-height: 500px; }
 .app .control-center-main { padding-block: 10px 12px; }
+.app.live-routes-app { height: 100dvh; min-height: 0; overflow: hidden; }
+.live-routes-app > .sidebar { min-height: 0; overflow-y: auto; }
+.live-routes-app > .content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.live-routes-app > .content > .topbar { flex: none; }
+.app .live-routes-main { display: flex; flex: 1; flex-direction: column; width: 100%; max-width: none; min-height: 0; margin: 0; padding: 8px 12px; }
+.live-routes-main > .control-screen { flex: 1; min-height: 0; }
+.live-routes-main .control-screen-header { position: relative; flex: none; }
+.live-routes-main .control-help { position: static; }
+.live-routes-main .control-help-popover { left: 8px; width: min(330px,calc(100% - 16px)); }
+.app .live-routes-main .control-heading-line h1 { font-size: 16px; }
+.live-routes-main .control-screen-body { height: auto; min-height: 0; max-height: none; overflow: hidden; }
+.live-routes-main .standalone-live { height: 100%; min-height: 0; }
+@media (max-width: 720px) {
+  .app.live-routes-app { display: flex; flex-direction: column; }
+  .live-routes-app > .sidebar { flex: none; max-height: 40dvh; }
+  .app .live-routes-main { padding: 6px; }
+}
 @media (min-width: 1001px) and (min-height: 680px) {
   .control-center-app { height: 100dvh; min-height: 0; overflow: hidden; }
   .control-center-app > .sidebar { min-height: 0; overflow-y: auto; }

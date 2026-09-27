@@ -107,10 +107,22 @@ Feature: Centro de control privado con pantallas independientes
     And las muestras posteriores conservan la cámara salvo seguimiento elegido
     And sin GPS no se coloca una camioneta en la dirección de un pedido
 
-  Scenario: Resumen al pie junto a la atribución de Google
+  Scenario: Resumen al pie sin colisión con la atribución de Google
     Given el administrador observa rutas en vivo
     When Google Maps está disponible
-    Then el resumen usa el control inferior izquierdo nativo a la derecha del logo
+    Then el resumen ocupa una fila propia debajo del canvas
     And no oculta ni modifica el logo ni los créditos
     When Maps no está configurado o falla la carga
     Then las métricas siguen visibles al borde inferior y el avance sigue disponible
+
+  Scenario: Ruta en vivo individual dedica el viewport al mapa
+    Given un administrador autenticado abre Ruta en vivo sin expandir
+    Then hay un solo título compacto con ayuda, Actualizar y expandir
+    And el selector de chofer y Ver avance permanecen visibles
+    And no aparece la leyenda global inferior ni el encabezado Administración
+    And el mapa comienza antes de 155 píxeles en escritorio y llega al pie sin scroll interno
+    When abre la ayuda con teclado
+    Then la explicación aparece sin desplazar el mapa
+    When selecciona un chofer, actualiza y expande o reduce
+    Then conserva la selección y recupera el foco al reducir
+    And en móvil con menú cerrado no hay desbordamiento horizontal

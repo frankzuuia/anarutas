@@ -225,6 +225,80 @@ test("independent drivers, arbitrary panel screens, persistence, expand and remo
   await expect(page.getByRole("heading", { name: "Chofer 0", exact: true })).toBeVisible();
 });
 
+test("standalone live routes dedicate the viewport to the map without duplicate headings", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.request.post(`${origin}/api/session`, { headers: { Origin: origin }, data: { login, password } });
+  await page.setViewportSize({ width: 1500, height: 800 });
+  await page.goto(origin);
+  await page.getByRole("button", { name: "Ruta en vivo", exact: true }).click();
+  const card = page.getByRole("article", { name: "Ruta en vivo", exact: true });
+  await expect(card.locator(".live-map-canvas")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ruta en vivo", exact: true })).toHaveCount(1);
+  await expect(page.locator(".page-heading, .bottom-note")).toHaveCount(0);
+  await expect(page.getByLabel("Camioneta", { exact: true })).toHaveCount(0);
+  for (const size of [{ width: 1500, height: 800 }, { width: 1366, height: 768 }, { width: 1024, height: 600 }, { width: 768, height: 844 }]) {
+    await page.setViewportSize(size);
+    const geometry = await card.evaluate(element => {
+      const map = element.querySelector(".live-map-canvas")!.getBoundingClientRect();
+      const body = element.querySelector(".control-screen-body")!;
+      const summary = element.querySelector(".live-route-summary")!.getBoundingClientRect();
+      return { top: map.top, height: map.height, bottom: element.getBoundingClientRect().bottom,
+        scroll: body.scrollHeight - body.clientHeight, separated: summary.top >= map.bottom };
+    });
+    console.log(`Standalone geometry ${size.width}x${size.height}: ${JSON.stringify(geometry)}`);
+    expect(geometry.top).toBeLessThan(155);
+    expect(geometry.height / size.height).toBeGreaterThan(0.70);
+    expect(geometry.bottom).toBeLessThanOrEqual(size.height);
+    expect(size.height - geometry.bottom).toBeLessThanOrEqual(12);
+    expect(geometry.scroll).toBeLessThanOrEqual(1);
+    expect(geometry.separated).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+  }
+  const help = card.getByLabel("Información de Ruta en vivo");
+  const note = card.getByRole("note");
+  await expect(note).toBeHidden();
+  const beforeHelp = await card.locator(".live-map-canvas").boundingBox();
+  await help.focus(); await page.keyboard.press("Enter");
+  await expect(note).toBeVisible();
+  expect(await card.locator(".live-map-canvas").boundingBox()).toEqual(beforeHelp);
+  await help.click();
+  await card.getByLabel("Chofer", { exact: true }).selectOption(f.members[0].driverId);
+  const refreshed = page.waitForResponse(response => response.url().endsWith("/api/live-routes") && response.request().method() === "GET");
+  await card.getByRole("button", { name: "Actualizar", exact: true }).click();
+  expect((await refreshed).status()).toBe(200);
+  await expect(card.getByLabel("Chofer", { exact: true })).toHaveValue(f.members[0].driverId);
+  await card.getByRole("button", { name: "Expandir Ruta en vivo", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(true);
+  expect((await card.locator(".live-map-canvas").boundingBox())!.height).toBeGreaterThan(700);
+  await expect(card.getByLabel("Chofer", { exact: true })).toHaveValue(f.members[0].driverId);
+  await card.getByRole("button", { name: "Reducir Ruta en vivo", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(false);
+  await expect(card.getByRole("button", { name: "Expandir Ruta en vivo", exact: true })).toBeFocused();
+  await page.setViewportSize({ width: 1500, height: 800 });
+  await mkdir(".local/qa/control-center", { recursive: true });
+  await page.screenshot({ path: ".local/qa/control-center/standalone-compact.png" });
+  await page.getByRole("button", { name: "Cerrar menú", exact: true }).click();
+  for (const width of [390, 375]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect((await card.locator(".live-map-canvas").boundingBox())!.height).toBeGreaterThan(600);
+    await expect(card.getByRole("button", { name: "Actualizar", exact: true })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Ver avance" })).toBeVisible();
+  }
+  await card.getByRole("button", { name: "Ver avance" }).click();
+  await expect(card.getByRole("heading", { name: "Chofer 0", exact: true })).toBeVisible();
+  await card.getByRole("button", { name: "Cerrar avance" }).click();
+  await expect(card.getByRole("button", { name: "Ver avance" })).toBeFocused();
+  await help.click();
+  const mobileHelp = await note.boundingBox();
+  expect(mobileHelp!.x).toBeGreaterThanOrEqual(0);
+  expect(mobileHelp!.x + mobileHelp!.width).toBeLessThanOrEqual(375);
+  await help.click();
+  await page.screenshot({ path: ".local/qa/control-center/standalone-mobile.png" });
+  expect(errors).toEqual([]);
+});
+
 test("four map-first screens keep their full canvas, driver-only filters and accessible details", async ({ page }) => {
   test.setTimeout(120000);
   const ownLogin = `map-${randomUUID()}`;

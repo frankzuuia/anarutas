@@ -8,7 +8,6 @@ import {
   LogOut,
   Plus,
   RefreshCw,
-  ShieldCheck,
   Truck,
   Info,
   Menu,
@@ -316,7 +315,7 @@ export function Dashboard({
   const title = sections.find((item) => item.id === section)!.label;
   return (
     <div
-      className={`app ${embeddedSection ? "embedded-dashboard" : ""} ${menuClosed ? "menu-closed" : ""} ${section === "plans" ? "planner-app" : ""} ${section === "customers" ? "customer-app" : ""} ${section === "control_center" ? "control-center-app" : ""}`}
+      className={`app ${embeddedSection ? "embedded-dashboard" : ""} ${menuClosed ? "menu-closed" : ""} ${section === "plans" ? "planner-app" : ""} ${section === "customers" ? "customer-app" : ""} ${section === "control_center" ? "control-center-app" : ""} ${section === "live_routes" ? "live-routes-app" : ""}`}
     >
       {!embeddedSection && <aside className="sidebar" id="app-navigation" hidden={menuClosed}>
         <div className="brand">
@@ -381,16 +380,15 @@ export function Dashboard({
           </div>
         </header>}
         <main
-          className={`main ${section === "plans" ? "planner-main" : ""} ${section === "customers" ? "customer-main" : ""} ${section === "control_center" ? "control-center-main" : ""}`}
+          className={`main ${section === "plans" ? "planner-main" : ""} ${section === "customers" ? "customer-main" : ""} ${section === "control_center" ? "control-center-main" : ""} ${section === "live_routes" ? "live-routes-main" : ""}`}
         >
-          {section !== "plans" && section !== "control_center" && (
+          {section !== "plans" && section !== "control_center" && section !== "live_routes" && (
             <header className="page-heading">
               <div>
                 <span className="eyebrow">Administración</span>
                 <h1>{title}</h1>
                 <p>
-                  {section === "live_routes" ? "Ubicación real, destino y avance de tus choferes. La antigüedad del GPS siempre visible."
-                    : section === "vehicles"
+                  {section === "vehicles"
                     ? "Registra tus unidades y administra la asignación de choferes."
                     : section === "unit_control"
                       ? "Fotografías privadas de cada camioneta, organizadas por fecha y disponibles durante 15 días."
@@ -447,7 +445,20 @@ export function Dashboard({
           )}
           {section === "incidents" && <IncidentsPanel today={today} timezone={timezone} revision={incidentRevision + externalRevision} />}
           {section === "live_incidents" && <LiveIncidentsPanel revision={liveIncidentRevision} />}
-          {section === "live_routes" && <ExpandableScreen title="Ruta en vivo"><LiveRoutesPage revision={controlRevision} /></ExpandableScreen>}
+          {section === "live_routes" && <ExpandableScreen title="Ruta en vivo"
+            heading={<div className="control-heading-line">
+              <h1>Ruta en vivo</h1>
+              <details className="control-help">
+                <summary aria-label="Información de Ruta en vivo" title="Cómo usar Ruta en vivo"><Info size={17} /></summary>
+                <div className="control-help-popover" role="note">
+                  <strong>Ubicación y avance en tiempo real</strong>
+                  <p>Selecciona un chofer, sigue su ubicación o consulta sus paradas con Ver avance. La antigüedad del GPS permanece visible al pie del mapa.</p>
+                </div>
+              </details>
+            </div>}
+            actions={<button className="quiet" onClick={() => void refresh()} disabled={loading || busy}><RefreshCw size={16} />Actualizar</button>}>
+            <LiveRoutesPage revision={controlRevision} />
+          </ExpandableScreen>}
           {section === "control_center" && <ControlCenter revision={controlRevision}
             onRefresh={() => void refresh()} refreshDisabled={loading || busy}
             renderSection={value => <Dashboard user={user} displayName={displayName} today={today} timezone={timezone} embeddedSection={value} externalRevision={controlRevision} />} />}
@@ -726,10 +737,6 @@ export function Dashboard({
               </div>
             </section>
           )}
-          <div className="bottom-note">
-            <ShieldCheck size={16} />
-            Los cambios de este panel pertenecen únicamente a Ana Rutas.
-          </div>
         </main>
       </div>
     </div>
