@@ -410,6 +410,11 @@ class DriverApi(private val server: String) {
     internal suspend fun serviceCommand(token: String, planId: String, stopId: String, shipmentId: String, payload: JSONObject) =
         JSONObject(exchange("POST", "/api/mobile/plans/$planId/stops/$stopId/orders/$shipmentId/service", token, payload))
 
+    internal suspend fun productIncidentCommand(token: String, planId: String, stopId: String, shipmentId: String, payload: JSONObject, bytes: ByteArray?): JSONObject {
+        val path = "/api/mobile/plans/$planId/stops/$stopId/orders/$shipmentId/product-incidents"
+        return if (bytes == null) JSONObject(exchange("POST", path, token, payload)) else evidenceCommand(token, path, payload, bytes)
+    }
+
     internal suspend fun retryOrderCommand(token: String, planId: String, stopId: String, shipmentId: String, payload: JSONObject) =
         JSONObject(exchange("POST", "/api/mobile/plans/$planId/stops/$stopId/orders/$shipmentId/retry", token, payload))
 
@@ -419,8 +424,11 @@ class DriverApi(private val server: String) {
             receipt.optJSONObject("result")?.optString("incidentId"))
     }
 
-    internal suspend fun closedCommand(token: String, planId: String, stopId: String, payload: JSONObject, bytes: ByteArray) = withContext(Dispatchers.IO) {
-        val connection = URL("$server/api/mobile/plans/$planId/stops/$stopId/closed").openConnection() as HttpURLConnection
+    internal suspend fun closedCommand(token: String, planId: String, stopId: String, payload: JSONObject, bytes: ByteArray) =
+        evidenceCommand(token, "/api/mobile/plans/$planId/stops/$stopId/closed", payload, bytes)
+
+    private suspend fun evidenceCommand(token: String, path: String, payload: JSONObject, bytes: ByteArray) = withContext(Dispatchers.IO) {
+        val connection = URL("$server$path").openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "POST"
             connection.instanceFollowRedirects = false

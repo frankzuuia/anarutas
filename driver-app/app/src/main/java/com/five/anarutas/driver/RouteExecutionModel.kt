@@ -16,7 +16,7 @@ internal data class ExecutionUiState(val route: AssignedPlan? = null, val execut
     val loading: Boolean = true, val busy: Boolean = false, val verified: Boolean = false, val retired: Boolean = false,
     val pending: Boolean = false, val message: String = "Cargando tu ruta…", val arrivedStop: String? = null,
     val correctedStop: String? = null, val exitDestination: String? = null, val serviceRevision: Int = 0,
-    val continuation: StopContinuation? = null)
+    val continuation: StopContinuation? = null, val productRevision: Int = 0)
 
 /** Owns network/retry state across rotation. Business facts only come from the server. */
 internal class RouteExecutionModel(private val credentials: DeviceCredentials, private val planId: String,
@@ -83,6 +83,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                         }
                         "closed" -> "Cliente cerrado registrado con evidencia · folio ${command.getString("incidentId").takeLast(8)}. Pedidos pendientes de reintento."
                         "order-retry" -> "Pedido reabierto. Confirma una nueva llegada para atenderlo."
+                        "product-incident" -> "Incidencia de producto registrada. Administración ya puede consultarla."
                         "phone" -> "Teléfono operativo guardado también en la ficha del cliente."
                         else -> "Punto corregido en tu ruta y en la ficha del cliente."
                     },
@@ -90,6 +91,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                     correctedStop = command.getString("stopId").takeIf { kind == "location" },
                     exitDestination = command.optString("destinationStopId").takeIf { (kind == "visit-exit" || kind == "order-retry") && it.isNotBlank() },
                     serviceRevision = state.serviceRevision + if (kind == "service" || kind == "closed" || kind == "order-retry") 1 else 0,
+                    productRevision = state.productRevision + if (kind == "product-incident") 1 else 0,
                     continuation = confirmedStopContinuation(command.getJSONObject("payload").getString("commandId"), kind,
                         command.getJSONObject("payload").optString("kind"), execution.stops.find { it.id == command.getString("stopId") }),
                 )
@@ -152,7 +154,21 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
         if (!allowed || (note?.length ?: 0) > 2000) return
         val payload = visitExitCommand(execution, stop, UUID.randomUUID().toString()).put("orderVersion", order.version)
             .put("kind", kind).put("reasonCode", reason).put("note", note)
+        if (kind == "deliver" && stop.productIncidents.any { it.shipmentId == shipmentId }) payload.put("productIncidentsAcknowledged", true)
         queueCommand(stopId, "service", payload, shipmentId = shipmentId)
+    }
+    fun reportProduct(stopId: String, shipmentId: String, lineIndex: Int?, kind: ProductIncidentKind,
+        quantity: String, product: String, unit: String, note: String, warehouseReason: String?, department: String, photo: File?) {
+        val execution = state.execution ?: return
+        val stop = execution.stops.find { it.id == stopId } ?: return
+        val order = stop.orderStates.find { it.shipmentId == shipmentId } ?: return
+        if (!serviceAvailable(stop) || !stop.canAttend() || !canDeliverOrder(order.status)) return
+        if (productEvidenceRequired(kind) && photo == null) return
+        val payload = visitExitCommand(execution, stop, UUID.randomUUID().toString()).put("orderVersion", order.version)
+            .put("kind", kind.wire).put("quantity", quantity).put("note", note).put("department", department)
+        if (warehouseReason != null) payload.put("warehouseReason", warehouseReason)
+        if (lineIndex == null) payload.put("product", product).put("unit", unit) else payload.put("lineIndex", lineIndex)
+        queueCommand(stopId, "product-incident", payload, shipmentId = shipmentId, capture = photo)
     }
     fun reportClosed(stopId: String, note: String, photo: File) {
         val execution = state.execution ?: return
@@ -220,6 +236,15 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
             val payload = command.getJSONObject("payload")
             when (command.getString("kind")) {
                 "service" -> api.serviceCommand(saved.token, planId, command.getString("stopId"), command.getString("shipmentId"), payload)
+                "product-incident" -> {
+                    // Check the durable receipt first, including after an app restart or a lost response.
+                    if (api.confirmedClosedIncident(saved.token, planId, payload.getString("commandId")) == null) {
+                        val bytes = command.optString("evidenceKey").takeIf(String::isNotBlank)?.let { key ->
+                            withContext(Dispatchers.IO) { captures.read(key) }
+                        }
+                        api.productIncidentCommand(saved.token, planId, command.getString("stopId"), command.getString("shipmentId"), payload, bytes)
+                    }
+                }
                 "order-retry" -> api.retryOrderCommand(saved.token, planId, command.getString("stopId"), command.getString("shipmentId"), payload)
                 "closed" -> {
                     var incidentId = api.confirmedClosedIncident(saved.token, planId, payload.getString("commandId"))

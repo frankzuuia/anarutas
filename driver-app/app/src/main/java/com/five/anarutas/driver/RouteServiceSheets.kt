@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -74,6 +75,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
     var selectedId by rememberSaveable(stop.id) { mutableStateOf<String?>(null) }
     var confirmation by rememberSaveable(stop.id) { mutableStateOf<String?>(null) }
     var note by rememberSaveable(stop.id) { mutableStateOf("") }
+    var productLine by rememberSaveable(stop.id) { mutableStateOf<Int?>(null) }
     val order = orders.find { it.id == selectedId } ?: orders.firstOrNull()
     val status = stop.orderStates.find { it.shipmentId == order?.id }
     val state = model.state
@@ -81,6 +83,10 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
     var confirmedRevision by remember { mutableIntStateOf(state.serviceRevision) }
     LaunchedEffect(state.serviceRevision) {
         if (confirmedRevision != state.serviceRevision) { confirmation = null; note = ""; confirmedRevision = state.serviceRevision }
+    }
+    if (productLine != null && order != null) {
+        ProductIncidentSheet(stop, order, productLine, ProductIncidentKind.REPLACEMENT_QUALITY, model) { productLine = null }
+        return
     }
     ServiceFormSurface({ if (!state.busy) close() }, header = {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -108,25 +114,36 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
         if (order != null && status != null) {
             HorizontalDivider(color = DriverColors.line)
             SectionLabel(order.name, "${order.lines.size} partidas")
-            StatusBadge(status.status.label, if (status.status == OrderServiceStatus.DELIVERED) DriverColors.lime else DriverColors.amber)
+            val productCases = stop.productIncidents.filter { it.shipmentId == order.id }
+            val hasIncidents = productCases.isNotEmpty()
+            StatusBadge(if (hasIncidents && status.status == OrderServiceStatus.DELIVERED) "Atendido con incidencias" else status.status.label,
+                if (status.status == OrderServiceStatus.DELIVERED) DriverColors.lime else DriverColors.amber)
             if (confirmation == null && canRetryRescheduledOrder(status.status)) {
                 AppAction("Reintentar pedido", DriverIcon.REFRESH, Modifier.fillMaxWidth(), enabled = available) { confirmation = "retry" }
             }
             if (order.note.isNotBlank()) Text(order.note, color = DriverColors.amber)
-            order.lines.forEach { line -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (hasIncidents) Text("${productCases.size} incidencias registradas · la reposición se gestiona por separado", color = DriverColors.amber,
+                style = MaterialTheme.typography.bodySmall)
+            order.lines.forEachIndexed { index, line -> Row(Modifier.fillMaxWidth()
+                .clickable(enabled = available && stop.canAttend() && canDeliverOrder(status.status),
+                    onClickLabel = "Registrar incidencia de ${line.name}") { productLine = index }.padding(vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(line.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                 Text("${line.quantity} ${line.unit}", color = DriverColors.lime, style = MaterialTheme.typography.labelLarge)
             } }
+            productCases.forEach { incident -> Text("${ProductIncidentKind.entries.firstOrNull { it.wire == incident.kind }?.label ?: incident.kind}: ${incident.product} · ${incident.quantity} ${incident.unit}",
+                style = MaterialTheme.typography.bodySmall, color = DriverColors.amber) }
             if (confirmation == null) {
-                if (canDeliverOrder(status.status) && stop.canAttend()) AppAction("Entregado completo", DriverIcon.CHECK,
+                if (canDeliverOrder(status.status) && stop.canAttend()) AppAction(if (hasIncidents) "Confirmar atención con incidencias" else "Entregado completo", DriverIcon.CHECK,
                     Modifier.fillMaxWidth(), enabled = available) { confirmation = "deliver" }
                 if (canRescheduleOrder(status.status) && stop.arrivedAt != null) AppAction("Reprogramar", DriverIcon.CLOCK,
                     Modifier.fillMaxWidth(), enabled = available, quiet = true) { confirmation = "reschedule" }
                 if (stop.canAttend() && canRejectOrder(status.status)) AppAction("Registrar incidencia", DriverIcon.ALERT,
                     Modifier.fillMaxWidth(), enabled = available, quiet = true, onClick = { onIncident(order.id) })
             } else {
-                Text(when (confirmation) { "deliver" -> "¿Confirmas la entrega completa de ${order.name}?"; "retry" -> "Reintentar ${order.name}"; else -> "Reprogramar ${order.name}" }, style = MaterialTheme.typography.titleMedium)
-                Text(if (confirmation == "deliver") "Confirma sólo cuando entregaste todos los productos. Esto no liquida ni cierra la ruta."
+                Text(when (confirmation) { "deliver" -> if (hasIncidents) "¿Confirmas la atención de ${order.name} con sus incidencias?" else "¿Confirmas la entrega completa de ${order.name}?"; "retry" -> "Reintentar ${order.name}"; else -> "Reprogramar ${order.name}" }, style = MaterialTheme.typography.titleMedium)
+                Text(if (confirmation == "deliver" && hasIncidents) "Se conserva el detalle de faltantes, reposiciones y devoluciones. Las reposiciones siguen pendientes hasta que administración las atienda. No liquida la ruta ni modifica Odoo."
+                    else if (confirmation == "deliver") "Confirma sólo cuando entregaste todos los productos. Esto no liquida ni cierra la ruta."
                     else if (confirmation == "retry") "Este pedido volverá a abierto y aparecerá en el mapa. Confirma una nueva llegada antes de entregarlo; la reprogramación queda en el historial."
                     else "Se cerrará este pedido en la ruta actual. Administración decidirá cuándo volver a asignarlo. No se fija ninguna fecha.",
                     style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
@@ -150,6 +167,7 @@ internal fun ServiceIncidentSheet(stop: ExecutionStop, initialOrderId: String?, 
     val context = LocalContext.current
     val state = model.state
     var mode by rememberSaveable(stop.id) { mutableStateOf("customer_closed") }
+    var missingKind by rememberSaveable(stop.id) { mutableStateOf<String?>(null) }
     var reason by rememberSaveable(stop.id) { mutableStateOf("") }
     var note by rememberSaveable(stop.id) { mutableStateOf("") }
     var selectedId by rememberSaveable(stop.id) { mutableStateOf(initialOrderId) }
@@ -196,6 +214,10 @@ internal fun ServiceIncidentSheet(stop: ExecutionStop, initialOrderId: String?, 
     LaunchedEffect(state.serviceRevision) {
         if (confirmedRevision != state.serviceRevision) { confirmedRevision = state.serviceRevision; discardPhoto(); close() }
     }
+    if (missingKind != null && selected != null) {
+        ProductIncidentSheet(stop, selected, null, ProductIncidentKind.entries.first { it.wire == missingKind }, model) { missingKind = null }
+        return
+    }
     ServiceFormSurface(::dismiss, header = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -206,6 +228,10 @@ internal fun ServiceIncidentSheet(stop: ExecutionStop, initialOrderId: String?, 
         }
     }) {
         Text("Selecciona lo que ocurrió. Se enviará a administración con tu nombre y la hora del registro.", color = DriverColors.muted)
+        ProductIncidentKind.entries.filter { it.manual }.forEach { option ->
+            AppAction(option.label, DriverIcon.ALERT, Modifier.fillMaxWidth(), quiet = true,
+                enabled = available && selected != null) { missingKind = option.wire }
+        }
         Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             IncidentChoice.entries.forEach { choice ->
                 IncidentChoiceCard(choice, mode == choice.code, incidentChoiceEnabled(choice, available, orders.isNotEmpty())) { mode = choice.code }

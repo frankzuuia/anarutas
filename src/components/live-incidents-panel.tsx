@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Clock3, Radio, UserRound } from "lucide-react";
 import type { LiveIncident, LiveIncidentReport } from "@/core/driver-live-incidents";
 import { api } from "./api";
+import { ProductIncidentsPanel } from "./product-incidents-panel";
 
 const kindNames = { customer_closed: "Negocio cerrado", order_rejected: "Pedido rechazado", rescheduled: "Reprogramado" };
 const reasonNames = { poor_quality: "Mala calidad de producto", late_arrival: "Llegada tarde", other: "Otro motivo" };
@@ -98,6 +99,7 @@ export function LiveIncidentsPanel({ revision, selectedDriverId, onDriverChange,
         </select></label>
       </div>
       <section className="live-incidents" aria-label="Incidencias en vivo">
+    <ProductIncidentsPanel driverId={driverId} revision={revision} live />
     {!compact && <div className="live-incident-heading"><div><h2><Radio size={20} aria-hidden="true" /> Incidencias en vivo</h2>
       <p>Negocios cerrados, pedidos rechazados y reprogramaciones, agrupados por chofer.</p></div>
       <span className={`badge ${error ? "amber" : "green"}`}>{error ? "Reconectando" : "En vivo"}</span></div>}
@@ -109,7 +111,7 @@ export function LiveIncidentsPanel({ revision, selectedDriverId, onDriverChange,
     {error && <p className="notice error" role="alert">{error}</p>}
     {commandFailure?.query === query && <p className="notice error" role="alert">{commandFailure.message}</p>}
     {!report && !error && <p role="status">Consultando incidencias en vivo…</p>}
-    {report?.rows.length === 0 && <p className="notice">Sin incidencias operativas en las rutas vigentes para el chofer seleccionado.</p>}
+    {report?.rows.length === 0 && <p className="notice">Sin clientes cerrados, rechazos ni reprogramaciones en las rutas vigentes para este chofer.</p>}
     {Array.from(groups, ([id, incidents]) => <section key={id} className="live-incident-driver" aria-label={`Incidencias de ${incidents[0].snapshot.driver}`}>
       <h3><UserRound size={17} aria-hidden="true" />{incidents[0].snapshot.driver}</h3>
       {incidents.map(incident => {

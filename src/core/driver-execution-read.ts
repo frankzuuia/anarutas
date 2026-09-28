@@ -49,6 +49,8 @@ export async function readDriverExecution(pool: Pool, driverId: string, planId: 
     const policy = await readOperationPolicy(sql, true);
     const orders = await sql.query<{ stop_id: string; shipment_id: string; status: DriverOrderStatus; version: number }>(
       "SELECT stop_id,shipment_id,status,version FROM route_driver_execution_orders WHERE execution_id=$1", [route.id]);
+    const productIncidents = (await sql.query(`SELECT id,shipment_id,line_index,kind,product,quantity::text,unit,note,status
+      FROM route_product_incidents WHERE execution_id=$1 ORDER BY occurred_at,id`, [route.id])).rows;
     const { rows } = await sql.query<ExecutionStopRow & { customer_location_version: number; archived: boolean; phone: string | null; customer_version: number; closed_visit: number }>(
       `SELECT s.*,c.location_version AS customer_location_version,(c.archived_at IS NOT NULL) AS archived,
               c.phone,c.version AS customer_version,
@@ -72,6 +74,10 @@ export async function readDriverExecution(pool: Pool, driverId: string, planId: 
         visitState: stop.visit_state, visitSequence: stop.visit_sequence,
         phone: stop.phone, customerVersion: stop.customer_version,
         closedReportedVisitSequence: stop.closed_visit,
+        productIncidents: productIncidents.filter(i => stop.shipment_ids.includes(i.shipment_id)).map(i => ({
+          id: i.id, shipmentId: i.shipment_id, lineIndex: i.line_index, kind: i.kind, product: i.product,
+          quantity: i.quantity, unit: i.unit, note: i.note, status: i.status,
+        })),
         orderStates: orders.rows.filter(order => order.stop_id === stop.id)
           .sort((a, b) => stop.shipment_ids.indexOf(a.shipment_id) - stop.shipment_ids.indexOf(b.shipment_id)).map(order => ({
           shipmentId: order.shipment_id, status: order.status, version: order.version,

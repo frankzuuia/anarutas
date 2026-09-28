@@ -1,5 +1,23 @@
 # Progreso — bloque 1
 
+## Archivo y productos — BL-143..146
+
+- [x] PI-T01: esquema aditivo v27 y archivo dominical 20:00 auditable sin borrar datos.
+- [x] PI-T02: contrato, comando móvil, cantidades exactas, permisos y recibos.
+- [x] PI-T03: captura por partida/faltante, Departamento y confirmación de atención APK.
+- [x] PI-T04: historial, reposiciones en vivo, corrección administrativa y Excel privado de nueve columnas.
+- [x] PI-T05: QA automatizado documentado en `QA-INCIDENCIAS-PRODUCTOS.md`:
+  633 pruebas, 91 JVM, 9 E2E + repetición final; 217 mutantes TS y 17 Android
+  detectados. Cobertura dirigida 100% líneas/97.5% ramas; build/tipos/lint verdes.
+- [x] PI-T06: foto obligatoria en reposiciones/devoluciones, opcional en faltantes;
+  miniatura y apertura privada en panel. Chofer, Concepto y foto excluidos del Excel.
+- Publicación de prueba a develop autorizada por el usuario; main queda fuera
+  del alcance. Preflight confirma rama develop, PostgreSQL privado y volumen
+  persistente de fotos en el servicio exclusivo de Ana Rutas.
+- Deploy manual a cargo del usuario; no activar ni reiniciar servicios desde
+  este bloque. Pendientes externos: comprobar respaldo, prueba física APK/cámara
+  y reintentos. No declarar salida productiva completa.
+
 ## Ventanas diarias de clientes — BL-142 / VH01..VH08
 
 - [x] VH-T01: contrato y validación de intervalos diarios con control de versión existente.

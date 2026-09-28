@@ -191,13 +191,10 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     page.getByRole("heading", { name: "Incidencias", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", {
-      name: "Sin incidencias en este periodo",
-      exact: true,
-    }),
+    page.getByText("Sin repuntes ni llegadas fuera de horario en este periodo.", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Los pronósticos de Google no generan incidencias.", {
+    page.getByText("Incidencias por producto, devoluciones, repuntes y llegadas fuera de horario.", {
       exact: false,
     }),
   ).toBeVisible();
@@ -222,17 +219,14 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   }
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(
-    page.getByRole("heading", {
-      name: "Sin incidencias en este periodo",
-      exact: true,
-    }),
+    page.getByText("Sin repuntes ni llegadas fuera de horario en este periodo.", { exact: true }),
   ).toBeVisible();
   page.off("request", captureIncidentRequest);
   expect(incidentRequests.filter((url) => url.includes("/api/incidents/live"))).toEqual([]);
   await expect(page.getByRole("region", { name: "Incidencias en vivo", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Incidencias en vivo", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Incidencias en vivo", exact: true, level: 1 })).toBeVisible();
-  await expect(page.getByText("Sin incidencias operativas en las rutas vigentes para el chofer seleccionado.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sin clientes cerrados, rechazos ni reprogramaciones en las rutas vigentes para este chofer.", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Incidencias reales de rutas", exact: true })).toHaveCount(0);
   await expect(page.getByText("Reglas de llegada", { exact: true })).toHaveCount(0);
   await expect(page.locator('input[type="date"]')).toHaveCount(0);
@@ -337,10 +331,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   ).toBeVisible();
   await page.getByRole("button", { name: "Incidencias", exact: true }).click();
   await expect(
-    page.getByRole("heading", {
-      name: "Sin incidencias en este periodo",
-      exact: true,
-    }),
+    page.getByText("Sin repuntes ni llegadas fuera de horario en este periodo.", { exact: true }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Planificar rutas", exact: true })

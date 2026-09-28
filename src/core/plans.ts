@@ -29,7 +29,7 @@ export function serviceDate(value: unknown) {
 }
 export async function listPlans(pool: Pool): Promise<Plan[]> {
   const { rows } = await pool.query(
-    "SELECT id,service_date::text,label,version,updated_at,departure_minute FROM route_plans ORDER BY service_date DESC LIMIT 100",
+    "SELECT id,service_date::text,label,version,updated_at,departure_minute FROM route_plans WHERE archived_at IS NULL ORDER BY service_date DESC LIMIT 100",
   );
   return rows;
 }

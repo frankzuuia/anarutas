@@ -25,6 +25,14 @@ export async function storeIncidentEvidence(data: Buffer, contentType: string, c
     discard: () => unlink(path).catch(() => undefined) };
 }
 
+// Call only after checking the owning incident and authenticated administrative actor.
+export async function readStoredIncidentEvidence(evidenceId: string, configuredRoot?: string) {
+  const path = join(await evidenceRoot(configuredRoot), `${uuid(evidenceId)}.webp`);
+  const info = await lstat(path).catch(() => null);
+  if (!info?.isFile() || info.isSymbolicLink()) throw new AppError("NOT_FOUND", 404);
+  return readFile(path);
+}
+
 export async function readIncidentEvidence(pool: Pool, actorId: string, evidenceId: string,
   configuredRoot?: string, now = new Date()) {
   const id = uuid(evidenceId);
@@ -33,10 +41,7 @@ export async function readIncidentEvidence(pool: Pool, actorId: string, evidence
     const row = (await sql.query(`SELECT id FROM route_driver_incident_evidence
       WHERE id=$1 AND expires_at>$2 AND revoked_at IS NULL AND removed_at IS NULL FOR SHARE`, [id, now])).rows[0];
     if (!row) throw new AppError("NOT_FOUND", 404);
-    const path = join(await evidenceRoot(configuredRoot), `${id}.webp`);
-    const info = await lstat(path).catch(() => null);
-    if (!info?.isFile() || info.isSymbolicLink()) throw new AppError("NOT_FOUND", 404);
-    return readFile(path);
+    return readStoredIncidentEvidence(id, configuredRoot);
   });
 }
 
@@ -64,9 +69,12 @@ export async function cleanIncidentEvidence(pool: Pool, configuredRoot?: string,
   // file. Only old generated files in this dedicated, validated directory qualify.
   for (const file of await readdir(root, { withFileTypes: true })) {
     if (!file.isFile() || !/^[0-9a-f-]{36}\.webp$/.test(file.name)) continue;
+    let fileId: string;
+    try { fileId = uuid(file.name.slice(0, -5)); } catch { continue; }
     const path = join(root, file.name), info = await lstat(path).catch(() => null);
     if (!info?.isFile() || info.mtimeMs > now.getTime() - 24 * 60 * 60 * 1000) continue;
-    const referenced = await pool.query("SELECT 1 FROM route_driver_incident_evidence WHERE storage_key=$1", [file.name]);
+    const referenced = await pool.query(`SELECT 1 FROM route_driver_incident_evidence WHERE storage_key=$1
+      UNION ALL SELECT 1 FROM route_product_incidents WHERE evidence_id=$2`, [file.name, fileId]);
     if (!referenced.rowCount) await unlink(path).catch(() => undefined);
   }
   return removed;

@@ -595,7 +595,7 @@ test("admin provisioning, native device login, route isolation and revocation ov
   };
   const locationUrl = `${origin}/api/mobile/plans/${planId}/stops/${stop.id}/location`;
   await livePanel.getByRole("button", { name: "Incidencias", exact: true }).click();
-  await expect(livePanel.getByText("Sin incidencias en este periodo", { exact: true })).toBeVisible();
+  await expect(livePanel.getByText("Sin repuntes ni llegadas fuera de horario en este periodo.", { exact: true })).toBeVisible();
   await livePanel.getByLabel("Chofer", { exact: true }).selectOption(driverId);
   const repointSubmitted = Date.now();
   const repoint = await request.post(locationUrl, { headers: authorization, data: command });

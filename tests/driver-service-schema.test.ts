@@ -21,9 +21,10 @@ it("upgrades a started v20 execution without losing arrival history or its per-o
       policyVersion: before.policy.version, sample,
     }, fixture.timezone, fixture.now);
 
-    // Restore only the v21 additions inside this isolated database. The real
+    // Restore the v21+ additions inside this isolated database. The real
     // arrival and publication remain in place as a v20 upgrade fixture.
     await pool.query(`
+      DROP TABLE route_product_incidents;
       DROP TABLE route_live_tracking,route_tracking_sessions,route_control_layouts;
       DROP TABLE route_driver_incident_events,route_driver_incident_orders,
         route_driver_incident_evidence,route_driver_service_incidents CASCADE;

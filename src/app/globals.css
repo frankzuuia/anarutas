@@ -1,4 +1,5 @@
 @import "./control-center.css";
+@import "./product-incidents.css";
 :root {
   --bg: #090e0c;
   --panel: #101813;

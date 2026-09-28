@@ -401,7 +401,7 @@ export function Dashboard({
                           : section === "audit"
                             ? "Actividad registrada con su autor y fecha."
                             : section === "incidents"
-                              ? "Repuntes y llegadas fuera de horario registrados por fecha y chofer. Los pronósticos no se contabilizan."
+                              ? "Incidencias por producto, devoluciones, repuntes y llegadas fuera de horario. Consulta por fecha y chofer."
                               : section === "live_incidents"
                                 ? "Casos de rutas iniciadas vigentes, agrupados por chofer y actualizados automáticamente."
                               : "Métricas y cargos reales publicados por Google Cloud Billing, sin estimaciones internas."}

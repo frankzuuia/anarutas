@@ -1,4 +1,4 @@
-param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly)
+param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly)
 $ErrorActionPreference = 'Stop'
 # Mechanical mutations occur only in an isolated copy. No ADB, HTTP stubs or credential output.
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -13,7 +13,7 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 }
 $sourceFolder = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver'
 $originals = @{}
-foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt')) {
+foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt', 'ProductIncidentPolicy.kt')) {
     $originals[$file] = [IO.File]::ReadAllText((Join-Path $sourceFolder $file))
 }
 $cases = @(
@@ -146,6 +146,27 @@ if ($EtaOnly) {
         @{ name = 'eta_round_down'; from = '+ 59'; to = '+ 0' },
         @{ name = 'eta_minute_boundary'; from = 'seconds < 60'; to = 'seconds <= 60' }
     ) | ForEach-Object { $_.file = 'NavigationEtaPolicy.kt'; $_.test = 'NavigationEtaPolicyTest'; $_ }
+}
+if ($ProductOnly) {
+    $cases = @(
+        @{ name = 'product_ignore_required_evidence'; from = '= !kind.manual'; to = '= false' },
+        @{ name = 'product_force_shortage_evidence'; from = '= !kind.manual'; to = '= true' },
+        @{ name = 'product_allow_zero'; from = 'it > BigDecimal.ZERO'; to = 'it >= BigDecimal.ZERO' },
+        @{ name = 'product_ignore_order'; from = 'it.shipmentId == shipmentId'; to = 'true' },
+        @{ name = 'product_ignore_line'; from = 'it.lineIndex == lineIndex'; to = 'true' },
+        @{ name = 'product_add_instead_subtract'; from = '.subtract(incidents.filter'; to = '.add(incidents.filter' },
+        @{ name = 'product_allow_negative_remaining'; from = '.max(BigDecimal.ZERO)'; to = '' },
+        @{ name = 'product_drop_accumulation'; from = 'total.add(BigDecimal(incident.quantity))'; to = 'BigDecimal(incident.quantity)' },
+        @{ name = 'product_allow_long_note'; from = 'note.length > 2000'; to = 'note.length > 2001' },
+        @{ name = 'product_reject_note_boundary'; from = 'note.length > 2000'; to = 'note.length >= 2000' },
+        @{ name = 'product_allow_excess_quantity'; from = 'amount <= remaining'; to = 'true' },
+        @{ name = 'product_reject_exact_remaining'; from = 'amount <= remaining'; to = 'amount < remaining' },
+        @{ name = 'product_allow_long_name'; from = 'product.trim().length <= 300'; to = 'true' },
+        @{ name = 'product_allow_long_unit'; from = 'unit.trim().length <= 40'; to = 'true' },
+        @{ name = 'product_allow_blank_name'; from = 'product.trim().isNotEmpty()'; to = 'true' },
+        @{ name = 'product_allow_blank_unit'; from = 'unit.trim().isNotEmpty()'; to = 'true' },
+        @{ name = 'product_allow_controls'; from = '(product + unit).none { it.code < 32 }'; to = 'true' }
+    ) | ForEach-Object { $_.file = 'ProductIncidentPolicy.kt'; $_.test = 'ProductIncidentPolicyTest'; $_ }
 }
 $arguments = @('testDebugUnitTest', '--console=plain')
 if ($ServerUrl) { $arguments += ('-PANA_RUTAS_SERVER_URL=' + $ServerUrl) }

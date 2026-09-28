@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Clock3, MapPin, SlidersHorizontal, Truck, UserRound, ChevronRight } from "lucide-react";
 import { api } from "./api";
+import { ProductIncidentsPanel } from "./product-incidents-panel";
 import type { DriverIncident, DriverIncidentReport } from "@/core/driver-incidents";
 import type { OperationPolicy } from "@/core/driver-execution-policy";
 
@@ -111,11 +112,11 @@ export function IncidentsPanel({ today, timezone, revision }: { today: string; t
       </div>
       <div className="incident-summary"><span>Fecha del evento · {timezone}</span><span>Actualización automática</span></div>
       <ArrivalSettings revision={revision} />
+      <ProductIncidentsPanel from={from} to={to} driverId={driverId} revision={revision} />
       {error && <p className="notice error" role="alert">{error}</p>}
       {loading && <p role="status">Consultando incidencias…</p>}
       {report && (report.rows.length ? <div className="incident-feed">{report.rows.map(incident => <IncidentCard key={incident.id} incident={incident} />)}</div>
-        : <div className="empty"><Clock3 size={28} aria-hidden="true" /><h2>Sin incidencias en este periodo</h2>
-          <p>Los repuntes y las llegadas fuera de horario aparecerán aquí al registrarse. Los pronósticos de Google no generan incidencias.</p></div>)}
+        : <p className="notice">Sin repuntes ni llegadas fuera de horario en este periodo.</p>)}
       <div className="incident-pagination">
         {cursors.length > 0 && <button type="button" className="quiet" onClick={() => setPage({ key: filterKey, cursors: cursors.slice(0, -1) })}>Anteriores</button>}
         {report?.nextCursor && <button type="button" className="quiet" onClick={() => setPage({ key: filterKey, cursors: [...cursors, report.nextCursor!] })}>Más incidencias<ChevronRight size={14} aria-hidden="true" /></button>}

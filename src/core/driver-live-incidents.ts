@@ -57,7 +57,8 @@ export async function readLiveIncidents(pool: Pool, actorId: string, params: URL
       count(*) FILTER(WHERE i.status='completed')::int AS completed,
       count(*) FILTER(WHERE i.status='resolved_by_admin')::int AS resolved ${visibleCases()}`, values)).rows[0];
     const drivers = (await sql.query(`SELECT d.id,d.name FROM route_drivers d WHERE d.active OR EXISTS
-      (SELECT 1 FROM route_driver_service_incidents i WHERE i.driver_id=d.id) ORDER BY d.name,d.id`)).rows;
+      (SELECT 1 FROM route_driver_service_incidents i WHERE i.driver_id=d.id)
+      OR EXISTS(SELECT 1 FROM route_product_incidents i WHERE i.driver_id=d.id) ORDER BY d.name,d.id`)).rows;
     const page = rows.slice(0, 50), last = page.at(-1);
     return { metrics, drivers, rows: page.map(row => ({
       id: row.id, kind: row.kind, status: row.status, reasonCode: row.reason_code, note: row.note,

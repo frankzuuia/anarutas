@@ -1,5 +1,52 @@
 # Bloque 1 — especificación y auditoría previa
 
+## BL-143..146 — archivo e incidencias de producto
+
+Autopsia: `deletePlan` elimina envíos/asignaciones; no reutilizable para archivo.
+`listPlans` no distingue históricos. Las partidas del snapshot carecen de ID
+propio pero su índice queda fijo por publicación; usar identidad compuesta,
+no nombre de producto (puede repetirse). Atención actual sólo cierra pedidos
+enteros. Los casos actuales se resuelven al entregar y no deben absorber las
+reposiciones, que requieren seguimiento independiente.
+
+| ID | Actor/acción | Resultado y recuperación | Validación |
+| --- | --- | --- | --- |
+| PI01 | Sistema cruza domingo/reinicia | Archiva planes pasados una vez; próximos intactos; auditoría | PG, zona, concurrencia |
+| PI02 | Chofer sigue ruta archivada | Mismos permisos, pedidos, eventos y métricas | PG/regresión |
+| PI03 | Chofer llegado toca partida | Formulario en estilo actual, motivo y cantidad/unidad real | JVM/E2E físico |
+| PI04 | Faltante fuera de orden | Nombre/unidad/cantidad requeridos; sin inventar ID Odoo | Unit/PG |
+| PI05 | Cantidad inválida/acumulado excesivo | Rechazo atómico; nada parcial | Unit/PG/mutación |
+| PI06 | Red incierta/reintento/concurrencia | Recibo por comando; una incidencia; revisión vieja rechazada | PG/HTTP |
+| PI07 | Sesión ajena/revocada o sin llegada | Rechazo, no fuga de partidas | PG/HTTP |
+| PI08 | Entrega posterior al reporte | Confirma atención con incidencias, no entrega íntegra ficticia; reposición sigue pendiente | PG/JVM |
+| PI09 | Admin consulta historial/exporta | Filtros coherentes, columnas/cantidades seguras, sin límite silencioso de página | PG/XLSX |
+| PI10 | Admin consulta vivo/resuelve | Reposiciones pendientes aun de planes archivados; CAS/auditoría, sin Odoo | PG/UI |
+| PI11 | Reinicio/rotación APK | Reutiliza cola durable existente; no perder comando enviado | Revisión/JVM/QA físico |
+| PI12 | Foto en reposición/devolución | Obligatoria APK/API/BD; archivo privado saneado, hash en recibo, no duplicado por replay | PG/HTTP/JVM |
+| PI13 | Admin ve foto / usuario sin sesión | Miniatura y apertura del WebP; 401/404 sin acceso público; ninguna URL en Excel | HTTP/UI/XLSX |
+| PI14 | Pérdida de respuesta de commit | No borrar foto si BD no confirma ausencia; worker depura sólo huérfanos antiguos | Revisión/PG, fallo de red física pendiente |
+
+Flujo: APK → endpoint móvil autenticado → lockServiceContext → incidencia propia
+con snapshot/recibo → notificación panel → historial/vivo/Excel. Schema aditivo
+v27; ningún DROP de datos. Archivo no filtra ejecución ni métricas. Fotos de
+cliente cerrado permanecen como están. Foto obligatoria en reposiciones/devoluciones,
+opcional en faltantes; volumen privado, sin EXIF, archivo preservado con historial.
+Chofer selecciona Operaciones/Compras; admin corrige Departamento/Concepto con CAS.
+Exportación de nueve columnas conforme a última confirmación: Fecha, Cliente,
+Producto, Cantidad, Unidad, Departamento, Detalle de la incidencia, Comentarios, Orden.
+Concepto, foto y chofer sólo se consultan en panel. Conceptos no confirmados quedan vacíos.
+Odoo sigue de sólo lectura. Referencias: contratos locales de publicación,
+driver-service-context/receipts, ExcelJS existente y Next16 local route-handlers,
+use-client e instrumentation. API export privada con defensa de fórmulas.
+
+Auditoría: GREEN LIGHT para archivo no destructivo y registro operacional.
+INTEGRITY TOTAL: no sustituye liquidación BL-118 ni casos cliente cerrado.
+Correspondencia PI-T01..06. Corte confirmado: domingo 20:00, zona de instalación;
+worker cada minuto y recuperación al arrancar (no garantiza puntualidad si el proceso
+está apagado). Conserva lunes/futuro, métricas, publicaciones y acceso de rutas iniciadas.
+Pendientes de salida: prueba física de APK/cámara/reintento, preflight del volumen y
+BD destino. Libro fuente no adjunto: no afirmar igualdad visual exacta con él.
+
 ## Ventanas diarias de clientes — BL-142 / VH01..VH08
 
 Autopsia: los botones de días no eran sólo presentación. `CustomerWindow.days`

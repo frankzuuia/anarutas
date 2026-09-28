@@ -15,13 +15,17 @@ export async function executeDriverOrderCommand(pool: Pool, authorization: strin
   const shipment = uuid(shipmentId), version = integer(raw.orderVersion, 1);
   return transaction(pool, async sql => {
     const { previous, driver, route, hash, stop } = await lockServiceContext(sql, authorization, planId, stopId,
-      input, { shipment, version, ...action });
+      input, { shipment, version, ...action, ...(raw.productIncidentsAcknowledged === undefined ? {} :
+        { productIncidentsAcknowledged: raw.productIncidentsAcknowledged === true }) });
     if (previous) return previous;
     const order = (await sql.query<{ status: DriverOrderStatus; version: number }>(
       "SELECT status,version FROM route_driver_execution_orders WHERE execution_id=$1 AND stop_id=$2 AND shipment_id=$3 FOR UPDATE",
       [route.id, stop!.id, shipment])).rows[0];
     if (!order) throw new AppError("NOT_FOUND", 404);
     if (order.version !== version) throw new AppError("VERSION_CONFLICT", 409);
+    const productIncidents = (await sql.query("SELECT id FROM route_product_incidents WHERE execution_id=$1 AND shipment_id=$2", [route.id, shipment])).rows;
+    if (action.kind === "deliver" && productIncidents.length && raw.productIncidentsAcknowledged !== true)
+      throw new AppError("PRODUCT_INCIDENTS_ACK_REQUIRED", 409);
     if (action.kind !== "reschedule" && order.status === "closed_pending") {
       const closedHere = await sql.query(`SELECT 1 FROM route_driver_service_incidents i
         JOIN route_driver_incident_orders io ON io.incident_id=i.id
@@ -45,7 +49,8 @@ export async function executeDriverOrderCommand(pool: Pool, authorization: strin
     [eventId, route.id, stop!.id, driver.driver_id, driver.device_id,
       { deliver: "delivery", reject: "rejection", reschedule: "reschedule" }[action.kind], now,
       todayInTimezone(timezone, now), timezone, JSON.stringify({ ...serviceSnapshot(route, stop!),
-        shipmentId: shipment, before: order.status, status, incidentId }), stop!.visit_sequence]);
+        shipmentId: shipment, before: order.status, status, incidentId,
+        productIncidentIds: productIncidents.map(i => i.id) }), stop!.visit_sequence]);
     await sql.query("UPDATE route_driver_execution_stops SET version=version+1 WHERE id=$1", [stop!.id]);
     await sql.query("UPDATE route_driver_executions SET revision=revision+1 WHERE id=$1", [route.id]);
     await sql.query("INSERT INTO route_driver_mobile_audit(driver_id,action,details) VALUES($1,$2,$3)",

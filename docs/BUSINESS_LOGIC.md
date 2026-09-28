@@ -1,5 +1,45 @@
 # Ana Rutas — bloque 1 aprobado
 
+## Planes semanales e incidencias por producto — BL-143..145
+
+- BL-143 (sistema): archivar del selector planes de semanas terminadas el domingo
+  a las 20:00 locales (confirmado por el usuario), incluyendo ese domingo,
+  en la zona de la instalación. Conservar planes futuros, pedidos, publicaciones,
+  ejecuciones, incidencias y métricas; nunca revocar una ruta ni liquidarla.
+  Trabajo periódico transaccional, recuperable tras reinicio e idempotente;
+  auditoría de sistema por plan. Archivo reduce carga del panel, no elimina disco histórico.
+- BL-144 (chofer autorizado): tras llegada vigente registrar faltante por
+  validación o bodega con producto/unidad manuales; desde una partida registrar
+  reposición por calidad, producto erróneo o devolución total/parcial. Referencia
+  inmutable ejecución/publicación/pedido/índice de partida. Cantidad positiva,
+  decimal exacta y acumulado no superior a la partida. No convierte unidades,
+  liquida, altera ventas ni escribe Odoo. Evento y recibo atómicos, versiones y
+  reintentos persistidos; entrega posterior conserva incidencias abiertas.
+- BL-145 (administrador): historial filtrado por fecha/chofer y Excel tabular:
+  Fecha, Cliente, Producto, Cantidad, Unidad, Departamento,
+  Detalle de la incidencia, Comentarios, Orden (nueve columnas exactas). Reposiciones pendientes en vivo con
+  fecha/pedido/cliente/cantidad/producto/notas, independientes de cierre del plan.
+  Resolución administrativa versionada y auditada, sin fingir entrega/Odoo.
+  El chofer elige Departamento entre Operaciones y Compras. Validación con
+  Operaciones propone Concepto Reparto; los demás conceptos quedan sin asignar.
+  Bodega requiere motivo Especiales, Calidad o Llegada tardía. Admin puede editar
+  Departamento/Concepto con versión y auditoría, conservando la clasificación original.
+  Concepto es interno; nombre del chofer sólo se muestra en panel, nunca en Excel.
+  Historial no ofrece Resolver: esa acción sólo aparece para reposiciones en
+  Incidencias en vivo; la edición de clasificación permanece en historial.
+  La captura permite verificar estructura, no igualdad binaria con un libro no adjunto.
+- BL-146 (evidencia, confirmado): reposiciones de ambos tipos y devoluciones
+  requieren una fotografía capturada por la APK; faltantes pueden enviarse sin foto.
+  JPEG/PNG/WebP de hasta 8 MB se normaliza a WebP sin EXIF en volumen privado.
+  Foto vinculada al hash del comando y a incidencia inmutable; miniatura y apertura
+  completa sólo para administradores autenticados. No se exporta foto/URL en Excel.
+  La evidencia de producto se conserva con el historial; no hereda el vencimiento
+  de 24 horas de cliente cerrado. El archivo dominical nunca la borra. Sólo huérfanos
+  sin referencia confirmada se limpian mediante el worker existente.
+- Puertas: PostgreSQL real, permisos, versiones, replay, concurrencia, migración,
+  límites de cantidad, filtros/paginación, XLSX y fórmula maliciosa, pruebas JVM,
+  E2E y QA físico de APK; cobertura/mutación de políticas. Sin release hasta QA.
+
 ## Ventanas diarias de clientes — BL-142 (28/09/2026)
 
 - Actor: administrador de Ana Rutas. Cada ventana de un cliente/sucursal se

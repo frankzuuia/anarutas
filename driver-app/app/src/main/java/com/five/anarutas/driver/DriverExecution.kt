@@ -6,7 +6,8 @@ internal data class ExecutionStop(val id: String, val position: Int, val custome
     val shipmentIds: List<String>, val point: ExecutionPoint?, val version: Int,
     val customerLocationVersion: Int, val customerArchived: Boolean, val arrivedAt: String?,
     val visitSequence: Int, val phone: String? = null, val customerVersion: Int = 0,
-    val orderStates: List<ExecutionOrderState> = emptyList(), val closedReportedVisitSequence: Int = 0)
+    val orderStates: List<ExecutionOrderState> = emptyList(), val closedReportedVisitSequence: Int = 0,
+    val productIncidents: List<ProductIncidentRecord> = emptyList())
 internal data class DriverExecution(val id: String, val planId: String, val publicationRevision: Int, val revision: Int,
     val serverTime: Instant, val receivedElapsedMillis: Long, val timezone: String, val policy: ArrivalPolicy,
     val hasCorrections: Boolean, val stops: List<ExecutionStop>)
@@ -40,7 +41,12 @@ internal fun parseExecution(raw: String, receivedElapsed: Long): DriverExecution
                 s.getJSONArray("orderStates").let { list -> (0 until list.length()).map { orderIndex ->
                     val order = list.getJSONObject(orderIndex)
                     ExecutionOrderState(order.getString("shipmentId"), OrderServiceStatus.parse(order.getString("status")), order.getInt("version"))
-                } }, s.getInt("closedReportedVisitSequence"))
+                } }, s.getInt("closedReportedVisitSequence"), s.optJSONArray("productIncidents")?.let { list ->
+                    (0 until list.length()).map { i -> val record = list.getJSONObject(i)
+                        ProductIncidentRecord(record.getString("id"), record.getString("shipmentId"),
+                            if (record.isNull("lineIndex")) null else record.getInt("lineIndex"), record.getString("kind"),
+                            record.getString("product"), record.getString("quantity"), record.getString("unit"), record.getString("status")) }
+                }.orEmpty())
         })
 }
 internal fun stopCommand(execution: DriverExecution, stop: ExecutionStop, gps: DriverGps, elapsed: Long,

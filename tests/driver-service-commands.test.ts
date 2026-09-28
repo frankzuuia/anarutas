@@ -85,7 +85,7 @@ it("reopens one rescheduled order atomically, preserves history and requires a n
     await f.db.pool.query("UPDATE rutas_installation SET schema_version=22");
     await migrate(f.db.pool, f.db.config.instanceId);
     await migrate(f.db.pool, f.db.config.instanceId);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(26);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(27);
     expect((await f.db.pool.query("SELECT id,kind FROM route_driver_stop_events ORDER BY id")).rows).toEqual(beforeUpgrade);
     stop = (await state(f)).stops[0];
     const order = stop.orderStates[0];

@@ -5,9 +5,11 @@ export async function register() {
       await import("./server/google-consumption-worker");
     const { startUnitPhotoWorker } = await import("./server/unit-photo-worker");
     const { startRoutePushWorker } = await import("./server/route-push-worker");
+    const { startPlanArchiveWorker } = await import("./server/plan-archive-worker");
     startRoutingWorker();
     startGoogleConsumptionWorker();
     startUnitPhotoWorker();
     startRoutePushWorker();
+    startPlanArchiveWorker();
   }
 }
