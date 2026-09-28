@@ -79,15 +79,13 @@ export async function readOrderBoard(
   const customerIds = rows
     .map((row) => row.customer_id)
     .filter((value): value is string => typeof value === "string");
-  const jsDay = new Date(`${plan.service_date}T12:00:00Z`).getUTCDay();
-  const day = (jsDay + 6) % 7;
   const { rows: effectiveWindows } = customerIds.length
     ? await sql.query(
         `SELECT customer_id,start_minute,end_minute
            FROM route_customer_windows
-           WHERE customer_id=ANY($1::uuid[]) AND (days_mask & $2)<>0
+           WHERE customer_id=ANY($1::uuid[])
            ORDER BY customer_id,start_minute,end_minute`,
-        [customerIds, 1 << day],
+        [customerIds],
       )
     : { rows: [] };
   const windows = new Map<

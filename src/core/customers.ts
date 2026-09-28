@@ -14,9 +14,7 @@ import type {
 import {
   archiveInput,
   customerInput,
-  daysMask,
   mapsUrl,
-  maskDays,
   normalizeSearch,
 } from "./customers-validation";
 import type { SourceShipment } from "./orders-contract";
@@ -76,7 +74,6 @@ function toCustomer(row: Row, windows: Row[] = []): Customer {
     version: Number(row.version),
     windows: windows.map((window) => ({
       id: String(window.id),
-      days: maskDays(Number(window.days_mask)),
       startMinute: Number(window.start_minute),
       endMinute: Number(window.end_minute),
       position: Number(window.position),
@@ -96,7 +93,7 @@ const selectCustomer = `
 async function customerWindows(sql: Sql, ids: string[]) {
   if (!ids.length) return new Map<string, Row[]>();
   const { rows } = await sql.query(
-    `SELECT id,customer_id,days_mask,start_minute,end_minute,position
+    `SELECT id,customer_id,start_minute,end_minute,position
      FROM route_customer_windows WHERE customer_id=ANY($1::uuid[])
      ORDER BY customer_id,position`,
     [ids],
@@ -436,12 +433,11 @@ export async function updateCustomer(
     for (const window of input.windows)
       await sql.query(
         `INSERT INTO route_customer_windows(
-          id,customer_id,days_mask,start_minute,end_minute,position
-        ) VALUES($1,$2,$3,$4,$5,$6)`,
+          id,customer_id,start_minute,end_minute,position
+        ) VALUES($1,$2,$3,$4,$5)`,
         [
           randomUUID(),
           id,
-          daysMask(window.days),
           window.startMinute,
           window.endMinute,
           window.position,

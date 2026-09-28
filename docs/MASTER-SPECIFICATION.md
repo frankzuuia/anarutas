@@ -1,5 +1,42 @@
 # Bloque 1 — especificación y auditoría previa
 
+## Ventanas diarias de clientes — BL-142 / VH01..VH08
+
+Autopsia: los botones de días no eran sólo presentación. `CustomerWindow.days`
+viajaba por PATCH hasta `route_customer_windows.days_mask`; `readOrderBoard`
+filtraba por el día del plan, y Excel exportaba la columna «Días». Quitar sólo
+los botones habría dejado horarios invisibles en ciertos días y un contrato
+incoherente. Se reemplaza esa semántica de extremo a extremo por intervalos
+diarios, sin cambiar ventanas explícitas de pedidos de Odoo.
+
+| ID | Actor, precondición y acción | Resultado, datos/auditoría y recuperación | Validación |
+| --- | --- | --- | --- |
+| VH01 | Admin abre un cliente existente | Sólo Desde/Hasta; lista y Excel sin días | E2E/XLSX |
+| VH02 | Admin guarda una o varias ventanas válidas | Intervalos diarios; versión/auditoría existentes | PG/contrato |
+| VH03 | Admin envía hora inválida, fin anterior, solape o campo `days` antiguo | 422 sin escritura parcial; interfaz informa error | Unitarias/HTTP |
+| VH04 | Plan de cualquier día consulta un cliente | Mismos intervalos efectivos en pedidos/ruteo | PG domingo/jueves |
+| VH05 | Migración de ventanas de días distintos con horarios duplicados, contiguos o traslapados | Unión ordenada por cliente, no se pierde disponibilidad; original en archivo | PG migración |
+| VH06 | Dos procesos migran a la vez o se repite migración | Una versión 26 consistente, sin duplicar archivo | PG concurrencia |
+| VH07 | Admin no autorizado o versión obsoleta edita | Rechazo por sesión/versión; sin modificar cliente | Regresión API |
+| VH08 | Versión previa con columna de días ausente | Si el esquema diario ya tiene su restricción, reanuda sin duplicar; de lo contrario revierte y falla cerrado | PG/regresión |
+
+Flujo: formulario → API autenticada/versionada → validación de intervalos →
+`route_customer_windows` sin `days_mask` → directorio/Excel y
+`readOrderBoard` → planificación. La migración v26 usa el candado transaccional
+del instalador; guarda el estado semanal original en
+`route_customer_windows_legacy` antes de sustituirlo. No añade secretos,
+servicios externos ni procesos manuales. La reversión a un binario que sólo
+conoce v25 no es compatible sin restauración controlada de datos y esquema;
+no promover hasta revisar una copia de la base de destino.
+
+Tareas VH-T01 contrato/validación y persistencia; VH-T02 migración/auditoría;
+VH-T03 consumidores (pedidos, Excel, UI); VH-T04 pruebas/QA. Referencias reales:
+esquema local `customers-schema.ts`, guía local Next 16 `use-client.md` y
+contrato PostgreSQL ejecutado en pruebas. Auditoría: GREEN LIGHT para el
+cambio de desarrollo; INTEGRITY TOTAL con BL-020/023 al sustituir días por
+intervalos diarios; MATCH PERFECT con VH-T01..04. Producción condicionada a
+puertas de calidad y revisión de la base real previa al despliegue.
+
 ## Tiempo al destino — BL-141 / ETA01..08
 
 Autopsia: setEtaCardEnabled(false), Chrome sin ETA y tracking sin duración.

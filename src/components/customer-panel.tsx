@@ -25,13 +25,10 @@ import {
 } from "./customer-location-editor";
 import { CustomerArchiveDialog } from "./customer-archive-dialog";
 
-const dayLabels = ["L", "M", "X", "J", "V", "S", "D"];
-const dayNames = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const clockPattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
 
 type FormWindow = {
   key: string;
-  days: number[];
   start: string;
   end: string;
 };
@@ -69,7 +66,6 @@ function formState(customer: Customer): FormState {
         : null,
     windows: customer.windows.map((window) => ({
       key: window.id,
-      days: window.days,
       start: minuteText(window.startMinute),
       end: minuteText(window.endMinute),
     })),
@@ -84,10 +80,7 @@ function compactWindows(windows: CustomerWindow[]) {
   return (
     windows
       .slice(0, 2)
-      .map(
-        (window) =>
-          `${window.days.map((day) => dayNames[day]).join("/")} ${minuteText(window.startMinute)}–${minuteText(window.endMinute)}`,
-      )
+      .map((window) => `${minuteText(window.startMinute)}–${minuteText(window.endMinute)}`)
       .join(" · ") + (windows.length > 2 ? ` · +${windows.length - 2}` : "")
   );
 }
@@ -236,7 +229,6 @@ export function CustomerPanel({ revision }: { revision: number }) {
           mapUrl: form.mapUrl || null,
           location: form.location,
           windows: form.windows.map((window) => ({
-            days: window.days,
             start: clock(window.start),
             end: clock(window.end),
           })),
@@ -620,40 +612,6 @@ export function CustomerPanel({ revision }: { revision: number }) {
                   <legend>Ventanas de horario · 24 horas</legend>
                   {form.windows.map((window, index) => (
                     <div className="window-row" key={window.key}>
-                      <div
-                        className="day-picker"
-                        aria-label={`Días de la ventana ${index + 1}`}
-                      >
-                        {dayLabels.map((label, day) => (
-                          <button
-                            key={label}
-                            type="button"
-                            className={
-                              window.days.includes(day) ? "active" : ""
-                            }
-                            aria-pressed={window.days.includes(day)}
-                            onClick={() =>
-                              setForm({
-                                ...form,
-                                windows: form.windows.map((item, itemIndex) =>
-                                  itemIndex === index
-                                    ? {
-                                        ...item,
-                                        days: item.days.includes(day)
-                                          ? item.days.filter(
-                                              (value) => value !== day,
-                                            )
-                                          : [...item.days, day].sort(),
-                                      }
-                                    : item,
-                                ),
-                              })
-                            }
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
                       <label>
                         Desde
                         <input
@@ -728,7 +686,6 @@ export function CustomerPanel({ revision }: { revision: number }) {
                           ...form.windows,
                           {
                             key: crypto.randomUUID(),
-                            days: [0, 1, 2, 3, 4],
                             start: "09:00",
                             end: "13:00",
                           },

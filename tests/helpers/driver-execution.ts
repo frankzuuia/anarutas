@@ -53,7 +53,7 @@ export async function executionFixture(options: { groupFourthOrderWithFirst?: bo
       nextCursor: 4, ceiling: 4, hasMore: false, inspected: 4, excluded: 0,
     });
     await db.pool.query("UPDATE route_customers SET latitude=20.64,longitude=-103.4,location_status='confirmed'");
-    await db.pool.query("INSERT INTO route_customer_windows(id,customer_id,position,days_mask,start_minute,end_minute) SELECT gen_random_uuid(),id,1,127,480,600 FROM route_customers");
+    await db.pool.query("INSERT INTO route_customer_windows(id,customer_id,position,start_minute,end_minute) SELECT gen_random_uuid(),id,1,480,600 FROM route_customers");
     const imported = await orderBoard(db.pool, plan.id);
     for (const shipment of imported.shipments) {
       await db.pool.query("UPDATE route_shipments SET vehicle_id=$2 WHERE id=$1", [shipment.id,

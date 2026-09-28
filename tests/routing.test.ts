@@ -212,7 +212,6 @@ describe("routing settings and atomic optimization / real PostgreSQL", () => {
         },
         windows: [
           {
-            days: [0, 1, 2, 3, 4, 5, 6],
             start: { hour: 9 + index, minute: 0 },
             end: { hour: 13 + index, minute: 0 },
           },

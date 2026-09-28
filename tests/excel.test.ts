@@ -41,7 +41,6 @@ const customer: Customer = {
   windows: [
     {
       id: "00000000-0000-4000-8000-000000000002",
-      days: [0, 1, 2, 3, 4],
       startMinute: 660,
       endMinute: 780,
       position: 1,
@@ -68,8 +67,9 @@ describe("Excel exports", () => {
     expect(workbook.getWorksheet("Clientes")!.getCell("B2").text).toBe(
       '\'=HYPERLINK("bad")',
     );
-    expect(workbook.getWorksheet("Ventanas")!.getCell("D2").text).toBe("11:00");
-    expect(workbook.getWorksheet("Ventanas")!.getCell("E2").text).toBe("13:00");
+    expect(workbook.getWorksheet("Ventanas")!.getRow(1).values).not.toContain("Días");
+    expect(workbook.getWorksheet("Ventanas")!.getCell("C2").text).toBe("11:00");
+    expect(workbook.getWorksheet("Ventanas")!.getCell("D2").text).toBe("13:00");
   });
 
   it("exports one consistent plan with Ruta and Partidas", async () => {

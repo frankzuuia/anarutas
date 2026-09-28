@@ -6,7 +6,7 @@ Estado: autorizado para `develop` el 2026-09-09. Amplía BL-018..024 sin reempla
 
 - **BL-018 — Identidad y alcance.** El directorio recupera todos los `res.partner` visibles para la compañía configurada, incluidos compartidos, matrices, contactos, sucursales y direcciones; no filtra por `customer_rank`, ventas, teléfono ni tipo. La identidad única es `fingerprint Odoo + partner_id`. IDs distintos nunca se fusionan por nombre, teléfono o Excel.
 - **BL-019 — Propiedad local protegida.** Nombre visible, teléfono operativo, ventanas, nota, prioridad, domicilio y punto pertenecen a Ana Rutas. Una sincronización actualiza solamente la copia de los campos fuente Odoo y añade identidades nuevas; no sobrescribe configuración local, aunque esté vacía, ni reactiva archivados.
-- **BL-020 — Horarios y prioridad.** Cada cliente/sucursal admite varias ventanas semanales. La interfaz captura y muestra horario de 24 horas (`00:00–23:59`); el servidor guarda minutos inequívocos, rechaza duplicados, traslapes y fin anterior al inicio. Una ventana de once de la mañana a una de la tarde se registra `11:00–13:00`. Prioridades: Alta, Media y Por horario. Alta/Media sólo ordenan entre destinos factibles; nunca autorizan entregar fuera de una ventana.
+- **BL-020 — Horarios y prioridad.** Cada cliente/sucursal admite varias ventanas. Desde BL-142 son intervalos diarios sin selector de días. La interfaz captura y muestra horario de 24 horas (`00:00–23:59`); el servidor guarda minutos inequívocos, rechaza duplicados, traslapes y fin anterior al inicio. Una ventana de once de la mañana a una de la tarde se registra `11:00–13:00`. Prioridades: Alta, Media y Por horario. Alta/Media sólo ordenan entre destinos factibles; nunca autorizan entregar fuera de una ventana.
 - **BL-021 — Domicilio y ubicación.** El domicilio Odoo es semilla inicial. Al editarlo se invalida el punto anterior. Google puede proponer coordenadas, pero sólo un punto confirmado se vuelve canónico. Se guardan latitud, longitud, `place_id`, liga regenerada, estado, versión, actor y fecha. Un enlace nunca se trata como coordenada verificada.
 - **BL-022 — Archivo reversible.** Archivar requiere confirmación y sólo afecta el registro local seleccionado; conserva identidad y configuración. No archiva hijos, no elimina pedidos y no escribe Odoo. Restaurar recupera el mismo registro. Los estados activo/inactivo Odoo y archivado local son independientes.
 - **BL-023 — Planificador y exportaciones.** Cada surtido resuelve alias, teléfono, nota, prioridad, domicilio, ventanas efectivas y punto por `source + partner_id`, usando la fecha del plan. No modifica snapshot, posición ni camioneta. Las tarjetas del plan reutilizan los distintivos semánticos del directorio: Alta en amarillo, Media en azul y Por horario neutra, siempre acompañados por texto. Excel de clientes incluye hojas Clientes/Ventanas; Excel del plan incluye Ruta/Partidas. Ambos son snapshots consistentes, neutralizan fórmulas y no inventan ETA, distancia ni totales de unidades incompatibles.
@@ -17,7 +17,7 @@ Estado: autorizado para `develop` el 2026-09-09. Amplía BL-018..024 sin reempla
 
 - `GET /api/customers`: búsqueda normalizada y paginada, con pestaña activa o archivada. Busca alias, nombre Odoo, matriz, teléfonos, domicilio y referencia.
 - `POST /api/customers/sync`: página estable por ID y techo fijado en la primera llamada; reintentos idempotentes. El cliente continúa hasta `hasMore=false`.
-- `PATCH /api/customers/:id`: lista cerrada de campos, `expectedVersion`, máximo 32 ventanas, 7 días por ventana, textos acotados y transacción única.
+- `PATCH /api/customers/:id`: lista cerrada de campos, `expectedVersion`, máximo 32 ventanas diarias con sólo Desde/Hasta, textos acotados y transacción única.
 - `POST|DELETE /api/customers/:id/archive`: archivar/restaurar con versión.
 - `GET /api/customers/export` y `GET /api/plans/:id/export`: sesión obligatoria, `no-store`, XLSX real y nombre seguro.
 - La búsqueda normaliza Unicode, mayúsculas y espacios para comparar, pero conserva el texto original. La paginación no limita el total sincronizado.
@@ -40,7 +40,7 @@ Estado: autorizado para `develop` el 2026-09-09. Amplía BL-018..024 sin reempla
 5. Guardado concurrente: un éxito y un conflicto sin pérdida.
 6. Archivar, sincronizar y restaurar la misma identidad/configuración.
 7. Buscar ignorando acentos, mayúsculas y espacios sobre todo el directorio.
-8. Validar horario de 24 horas, múltiples días, duplicados, traslapes y sábado/domingo.
+8. Validar horario de 24 horas, ventanas diarias, duplicados, traslapes y la misma aplicación en sábado/domingo.
 9. Cambiar domicilio, invalidar pin; confirmar/arrastrar punto y versionarlo.
 10. Resolver en tablero/mapa/exportación exactamente la misma preferencia.
 11. Generar y volver a abrir ambos XLSX; neutralizar celdas `=`, `+`, `-`, `@`.

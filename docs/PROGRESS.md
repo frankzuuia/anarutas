@@ -1,5 +1,18 @@
 # Progreso — bloque 1
 
+## Ventanas diarias de clientes — BL-142 / VH01..VH08
+
+- [x] VH-T01: contrato y validación de intervalos diarios con control de versión existente.
+- [x] VH-T02: migración v26 transaccional, consolidación y archivo auditable; PostgreSQL real y concurrencia.
+- [x] VH-T03: directorio, Excel y pedidos sin selector/filtro de días.
+- [x] VH-T04: 625 unitarias/integración, 1 omitida, E2E 1/1, cobertura global
+  95.72% líneas/89.59% ramas en corrida anterior y cobertura dirigida final
+  90.9% líneas/90.47% ramas, migración 100%, 125/125 mutantes detectados,
+  build/tipos/lint y auditoría de dependencias verdes. Evidencia y procedimiento
+  en `QA-VENTANAS-DIARIAS.md`.
+- [ ] Preflight de la base del entorno de destino antes de promover; sin commit,
+  push ni despliegue hasta autorización explícita.
+
 ## Tiempo al destino — BL-141
 
 - [x] ETA-T01: contrato opcional, migración v25 repetible/concurrente, validación/persistencia/proyección; PostgreSQL real.

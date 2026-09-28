@@ -65,9 +65,9 @@ export const errors: Record<string, string> = {
   ROUTING_DEPARTURE_REQUIRED:
     "Configura la hora de salida de este plan antes de calcular sus rutas.",
   CUSTOMER_WINDOWS_INVALID:
-    "Revisa los días y el horario de 24 horas. Cada ventana debe terminar después de comenzar.",
+    "Revisa el horario de 24 horas. Cada ventana debe terminar después de comenzar.",
   CUSTOMER_WINDOWS_OVERLAP:
-    "Dos ventanas se traslapan el mismo día. Corrige los horarios antes de guardar.",
+    "Dos ventanas se traslapan. Corrige los horarios antes de guardar.",
   CUSTOMER_MAP_URL_INVALID:
     "La liga debe ser HTTPS y pertenecer a Google Maps.",
   MANUAL_ORDERS_INVALID:

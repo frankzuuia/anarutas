@@ -6,7 +6,6 @@ export type FulfillmentMode = (typeof fulfillmentModes)[number];
 
 export type CustomerWindow = {
   id: string;
-  days: number[];
   startMinute: number;
   endMinute: number;
   position: number;

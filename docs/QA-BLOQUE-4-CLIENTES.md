@@ -1,5 +1,9 @@
 # QA — Bloque 4 Clientes, horarios y puntos
 
+Nota histórica: los escenarios semanales de esta evidencia de septiembre
+quedaron sustituidos por BL-142. La evidencia vigente de ventanas diarias está
+en `QA-VENTANAS-DIARIAS.md`; este documento conserva el resultado original.
+
 Fecha de cierre: 2026-09-10. Rama evaluada: `develop`. Alcance: BL-018..024.
 
 ## Resultado

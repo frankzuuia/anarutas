@@ -1387,6 +1387,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await page
     .getByRole("button", { name: "Añadir ventana", exact: true })
     .click();
+  await expect(page.getByLabel("Días de la ventana 1")).toHaveCount(0);
   await page.getByLabel("Desde", { exact: true }).fill("11:00");
   await page.getByLabel("Hasta", { exact: true }).fill("13:00");
   await expect(page.getByLabel("Desde", { exact: true })).toHaveAttribute(
@@ -1415,7 +1416,7 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     "Cambios del cliente guardados",
   );
   await expect(
-    page.getByText("Lun/Mar/Mié/Jue/Vie 11:00–13:00", { exact: true }),
+    page.getByText("11:00–13:00", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Exportar Excel", exact: true }),

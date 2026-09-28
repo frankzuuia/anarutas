@@ -1,5 +1,10 @@
 # Propuesta — Clientes y horarios
 
+Nota histórica: BL-142 sustituyó las reglas propuestas de días semanales y
+excepciones de fin de semana por ventanas diarias «Desde–Hasta». Esos pasajes
+se conservan aquí sólo como registro del diseño original; el contrato vigente
+está en `MASTER-SPECIFICATION.md` y `QA-VENTANAS-DIARIAS.md`.
+
 Estado: diseño visual aprobado y trasladado al contrato ejecutable BL-018..024 de `BLOQUE-4-CLIENTES.md` el 2026-09-09. Este documento conserva la autopsia, evidencia del Excel y decisiones de diseño; no acredita sincronización o despliegue.
 
 ## Evidencia revisada

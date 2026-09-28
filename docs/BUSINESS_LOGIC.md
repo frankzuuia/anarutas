@@ -1,5 +1,21 @@
 # Ana Rutas — bloque 1 aprobado
 
+## Ventanas diarias de clientes — BL-142 (28/09/2026)
+
+- Actor: administrador de Ana Rutas. Cada ventana de un cliente/sucursal se
+  define únicamente con «Desde» y «Hasta» en formato de 24 horas y aplica todos
+  los días, sin calendario semanal. Varias ventanas no pueden traslaparse.
+- Dirección técnica: contrato, validación, directorio, Excel y lectura de
+  pedidos/ruteo comparten los mismos intervalos en minutos, sin filtro por día.
+  Odoo permanece en sólo lectura y no se cambian los horarios del pedido fuente.
+- Datos: migración transaccional de ventanas anteriores; intervalos repetidos,
+  contiguos o traslapados entre días se unen para no recortar disponibilidad.
+  Los registros anteriores con días se conservan en una tabla de auditoría.
+- Permiso: sólo el administrador autenticado modifica horarios. Se conservan
+  control de versión, auditoría de cambios, límites y validación de entrada.
+  Verificar migración concurrente, edición inválida, domingo, exportación,
+  aislamiento por cliente y ausencia del selector de días en el panel.
+
 ## Tiempo al destino — BL-141
 
 - Chofer/admin: tiempo estimado del Navigator activo, no ETA calculado por el

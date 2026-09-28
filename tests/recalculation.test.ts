@@ -489,7 +489,6 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
         location: { latitude: 20, longitude: -103, placeId: `same-${index}` },
         windows: [
           {
-            days: [0, 1, 2, 3, 4, 5, 6],
             start: { hour: 8, minute: 0 },
             end: { hour: 17, minute: 0 },
           },
@@ -884,7 +883,7 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
           "SELECT schema_version FROM rutas_installation WHERE singleton=true",
         )
       ).rows[0].schema_version,
-    ).toBe(25);
+    ).toBe(26);
     expect(
       (
         await db.pool.query(

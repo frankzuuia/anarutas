@@ -1665,8 +1665,7 @@ tr:last-child td {
   gap: 5px;
 }
 .app .customer-tabs button.active,
-.segmented button.active,
-.day-picker button.active {
+.segmented button.active {
   background: #15452b;
   color: #8dffbf;
 }
@@ -1891,8 +1890,7 @@ tr:last-child td {
   gap: 5px;
   flex-wrap: wrap;
 }
-.app .segmented button,
-.app .day-picker button {
+.app .segmented button {
   min-height: 29px;
   padding: 3px 8px;
   background: transparent;
@@ -1903,19 +1901,11 @@ tr:last-child td {
 }
 .window-row {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) 90px 90px 28px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px;
   align-items: end;
   gap: 6px;
   padding-bottom: 8px;
   border-bottom: 1px solid #203027;
-}
-.day-picker {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
-}
-.app .day-picker button {
-  padding: 2px;
 }
 .app button.icon-only {
   width: 32px;
@@ -2070,12 +2060,11 @@ tr:last-child td {
   .customer-row > :nth-child(4) {
     grid-column: 1 / -1;
   }
-  .form-grid.two,
-  .window-row {
+  .form-grid.two {
     grid-template-columns: 1fr 1fr;
   }
-  .window-row .day-picker {
-    grid-column: 1 / -1;
+  .window-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px;
   }
   .customer-command-bar > button,
   .customer-command-bar > .button-link {

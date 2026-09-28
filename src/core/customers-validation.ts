@@ -49,25 +49,18 @@ function windows(value: unknown) {
     if (!raw || Array.isArray(raw))
       throw new AppError("CUSTOMER_WINDOWS_INVALID", 422);
     const item = raw as Record<string, unknown>;
-    if (!Array.isArray(item.days) || !item.days.length)
-      throw new AppError("CUSTOMER_WINDOWS_INVALID", 422);
-    const days = [...new Set(item.days.map((day) => integer(day)))].sort();
-    if (days.length !== item.days.length || days.some((day) => day > 6))
+    if (Object.keys(item).some((key) => key !== "start" && key !== "end"))
       throw new AppError("CUSTOMER_WINDOWS_INVALID", 422);
     const startMinute = clockMinute(item.start);
     const endMinute = clockMinute(item.end);
     if (startMinute >= endMinute)
       throw new AppError("CUSTOMER_WINDOWS_INVALID", 422);
-    return { days, startMinute, endMinute, position: position + 1 };
+    return { startMinute, endMinute, position: position + 1 };
   });
-  for (let day = 0; day <= 6; day++) {
-    const ranges = parsed
-      .filter((window) => window.days.includes(day))
-      .sort((a, b) => a.startMinute - b.startMinute);
-    for (let index = 1; index < ranges.length; index++)
-      if (ranges[index].startMinute < ranges[index - 1].endMinute)
-        throw new AppError("CUSTOMER_WINDOWS_OVERLAP", 422);
-  }
+  const ranges = [...parsed].sort((a, b) => a.startMinute - b.startMinute);
+  for (let index = 1; index < ranges.length; index++)
+    if (ranges[index].startMinute < ranges[index - 1].endMinute)
+      throw new AppError("CUSTOMER_WINDOWS_OVERLAP", 422);
   return parsed;
 }
 
@@ -158,16 +151,6 @@ export function archiveInput(input: Record<string, unknown>) {
   if (Object.keys(input).some((key) => key !== "expectedVersion"))
     throw new AppError("INVALID_INPUT");
   return { expectedVersion: integer(input.expectedVersion, 1) };
-}
-
-export function daysMask(days: number[]) {
-  return days.reduce((mask, day) => mask | (1 << day), 0);
-}
-
-export function maskDays(mask: number) {
-  return Array.from({ length: 7 }, (_, day) => day).filter(
-    (day) => (mask & (1 << day)) !== 0,
-  );
 }
 
 export function mapsUrl(latitude: number, longitude: number) {

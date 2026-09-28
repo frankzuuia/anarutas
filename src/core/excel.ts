@@ -6,7 +6,6 @@ import type { PublicOptimization } from "./routing-contract";
 const green = "FF16D98A";
 const dark = "FF0B1711";
 const pale = "FFE6FFF3";
-const days = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
 export function excelText(value: unknown) {
   if (value === null || value === undefined) return "";
@@ -129,7 +128,6 @@ export async function customerWorkbook(customers: Customer[]) {
   windows.columns = [
     { header: "ID Odoo", key: "odooId", width: 12 },
     { header: "Cliente", key: "client", width: 32 },
-    { header: "Días", key: "days", width: 28 },
     { header: "Desde (24 h)", key: "start", width: 16 },
     { header: "Hasta (24 h)", key: "end", width: 16 },
     { header: "Orden", key: "position", width: 10 },
@@ -139,7 +137,6 @@ export async function customerWorkbook(customers: Customer[]) {
       windows.addRow({
         odooId: customer.odooPartnerId,
         client: excelText(customer.displayName),
-        days: window.days.map((day) => days[day]).join(", "),
         start: minuteText(window.startMinute),
         end: minuteText(window.endMinute),
         position: window.position,

@@ -103,7 +103,6 @@ describe("customer directory / real PostgreSQL", () => {
       },
       windows: [
         {
-          days: [0, 1, 2, 3, 4],
           start: { hour: 11, minute: 0 },
           end: { hour: 13, minute: 0 },
         },
