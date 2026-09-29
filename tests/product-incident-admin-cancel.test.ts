@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { expect, it } from "vitest";
 import { executionFixture } from "./helpers/driver-execution";
@@ -12,6 +12,8 @@ import { cancelProductIncidentByAdmin } from "../src/core/product-incident-admin
 import { migrate } from "../src/core/database";
 import { migrateProductIncidentAmendments } from "../src/core/product-incident-amendments-schema";
 import { createUser } from "../src/core/auth";
+import { cancelPublishedRoute } from "../src/core/route-publications";
+import { deletePlan } from "../src/core/plans";
 
 async function prepare() {
   const f = await executionFixture();
@@ -74,7 +76,7 @@ it("administration cancels open pending or resolved incidents with authorization
     expect(audit.actor_id).toBe(f.actor);
     expect(audit.before_record).toMatchObject({ status: "resolved", resolution_note: "Reposición atendida" });
     expect((await f.db.pool.query("SELECT details FROM route_audit WHERE entity_id=$1 AND action='product_incident.canceled'", [incident])).rows)
-      .toEqual([{ details: { previousStatus: "pending", executionId: before.id, shipmentId: before.stops[0].shipmentIds[0], reportOnly: false, orderStatus: "open" } }]);
+      .toEqual([{ details: { previousStatus: "pending", executionId: before.id, shipmentId: before.stops[0].shipmentIds[0], reportOnly: false, routeRetired: false, orderStatus: "open" } }]);
   } finally { await f.close(); }
 }, 120_000);
 
@@ -148,4 +150,103 @@ it("admin and driver cancellation serialize, and v29 migration retains the origi
       expect(final).toMatchObject({ order_status: "open", status: "canceled" });
     }
   } finally { await f.close(); }
+}, 120_000);
+
+it.each(["canceled route", "deleted plan"])("administration removes reports from a %s without rewriting operational history", async retired => {
+  const { f, report, remove, day, state } = await prepare();
+  try {
+    const pending = (await report()).incidentId!, resolved = (await report()).incidentId!;
+    await resolveProductIncident(f.db.pool, f.actor, resolved, { expectedVersion: 1, note: "Atendido antes de cancelar ruta" });
+    const before = await state();
+    const planVersion = (await f.db.pool.query("SELECT version FROM route_plans WHERE id=$1", [f.planId])).rows[0].version;
+    await cancelPublishedRoute(f.db.pool, f.actor, f.planId, f.members[0].vehicleId,
+      { expectedVersion: planVersion, expectedRevision: before.publicationRevision });
+    if (retired === "deleted plan") await deletePlan(f.db.pool, f.actor, f.planId, { expectedVersion: planVersion });
+    const snapshot = async () => ({
+      route: (await f.db.pool.query("SELECT * FROM route_driver_executions WHERE id=$1", [before.id])).rows,
+      stops: (await f.db.pool.query("SELECT * FROM route_driver_execution_stops WHERE execution_id=$1 ORDER BY id", [before.id])).rows,
+      orders: (await f.db.pool.query("SELECT * FROM route_driver_execution_orders WHERE execution_id=$1 ORDER BY shipment_id", [before.id])).rows,
+    });
+    const operational = await snapshot();
+    for (const [id, version] of [[pending, 1], [resolved, 2]] as const) {
+      const original = (await f.db.pool.query("SELECT * FROM route_product_incidents WHERE id=$1", [id])).rows[0];
+      expect(await remove(id, version)).toMatchObject({ duplicate: false, version: version + 1 });
+      expect(await remove(id, version)).toMatchObject({ duplicate: true, version: version + 1 });
+      const stored = (await f.db.pool.query("SELECT * FROM route_product_incidents WHERE id=$1", [id])).rows[0];
+      for (const key of ["quantity", "status", "source_quantity", "resolved_at", "resolved_by", "resolution_note", "evidence_id", "snapshot"])
+        expect(stored[key]).toEqual(original[key]);
+      expect(stored.report_removed_at).toBeTruthy();
+      expect((await f.db.pool.query("SELECT details FROM route_audit WHERE entity_id=$1 AND action='product_incident.canceled'", [id])).rows[0].details)
+        .toMatchObject({ reportOnly: true, routeRetired: true, orderStatus: "open" });
+    }
+    expect(await snapshot()).toEqual(operational);
+    for (const mode of ["history", "live", "export"] as const)
+      expect(await readProductIncidents(f.db.pool, f.actor, day, f.timezone, mode)).toEqual({ rows: [], pending: 0, nextCursor: null });
+  } finally { await f.close(); }
+}, 120_000);
+
+it("administrative report removal serializes with route cancellation without stale publication validation", async () => {
+  const { f, report, remove, state } = await prepare();
+  try {
+    const incident = (await report()).incidentId!, before = await state();
+    const planVersion = (await f.db.pool.query("SELECT version FROM route_plans WHERE id=$1", [f.planId])).rows[0].version;
+    await Promise.all([
+      cancelPublishedRoute(f.db.pool, f.actor, f.planId, f.members[0].vehicleId,
+        { expectedVersion: planVersion, expectedRevision: before.publicationRevision }),
+      remove(incident),
+    ]);
+    expect(await remove(incident)).toMatchObject({ duplicate: true, version: 2 });
+    const audit = (await f.db.pool.query("SELECT details FROM route_audit WHERE entity_id=$1 AND action='product_incident.canceled'", [incident])).rows;
+    expect(audit).toHaveLength(1);
+    const row = (await f.db.pool.query("SELECT status,report_removed_at,quantity::text FROM route_product_incidents WHERE id=$1", [incident])).rows[0];
+    expect(row.report_removed_at).toBeTruthy(); expect(row.quantity).toBe("1.000000");
+    expect(row.status).toBe(audit[0].details.routeRetired ? "pending" : "canceled");
+    expect(audit[0].details.reportOnly).toBe(audit[0].details.routeRetired);
+  } finally { await f.close(); }
+}, 120_000);
+
+it("holds execution and stop locks until administrative report removal commits", async () => {
+  const { f, report, remove, auth, identity, stop, shipment, state } = await prepare();
+  const { pool } = f.db;
+  const barrier = await pool.connect(), barrierKey = randomInt(1, 2_147_483_647);
+  let pending: Promise<{ result?: Awaited<ReturnType<typeof remove>>; error?: unknown }> | undefined;
+  try {
+    const incident = (await report()).incidentId!;
+    await executeDriverOrderCommand(pool, auth, f.planId, stop.id, shipment,
+      { ...await identity(), kind: "deliver", productIncidentsAcknowledged: true }, f.timezone, f.now);
+    const before = await state();
+    const barrierPid = (await barrier.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    await barrier.query("SELECT pg_advisory_lock($1::bigint)", [barrierKey]);
+    // Pause the real transaction at its incident write. A closed order must not
+    // obtain these locks incidentally through later execution/stop UPDATEs.
+    await pool.query(`CREATE FUNCTION admin_removal_qa_barrier() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN PERFORM pg_advisory_xact_lock(${barrierKey}::bigint); RETURN NEW; END $$;
+      CREATE TRIGGER admin_removal_qa_barrier BEFORE UPDATE ON route_product_incidents
+        FOR EACH ROW EXECUTE FUNCTION admin_removal_qa_barrier()`);
+    pending = remove(incident).then(result => ({ result }), error => ({ error }));
+    await expect.poll(async () => (await pool.query(
+      "SELECT count(*)::int n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))", [barrierPid],
+    )).rows[0].n, { timeout: 5000 }).toBe(1);
+    const protectedRows = [
+      { query: "SELECT id FROM route_plans WHERE id=$1 FOR UPDATE NOWAIT", values: [f.planId] },
+      { query: "SELECT plan_id FROM route_plan_publications WHERE plan_id=$1 AND vehicle_id=$2 FOR UPDATE NOWAIT", values: [f.planId, f.members[0].vehicleId] },
+      { query: "SELECT id FROM route_driver_executions WHERE id=$1 FOR SHARE NOWAIT", values: [before.id] },
+      { query: "SELECT id FROM route_driver_execution_stops WHERE id=$1 FOR SHARE NOWAIT", values: [stop.id] },
+    ];
+    for (const row of protectedRows)
+      await expect(pool.query(row.query, row.values), row.query).rejects.toMatchObject({ code: "55P03" });
+    await barrier.query("SELECT pg_advisory_unlock($1::bigint)", [barrierKey]);
+    const outcome = await pending;
+    expect(outcome.error).toBeUndefined();
+    expect(outcome.result).toEqual({ canceled: true, duplicate: false, version: 2 });
+    const after = await state();
+    expect(after.revision).toBe(before.revision);
+    expect(after.stops[0].version).toBe(before.stops[0].version);
+    expect(after.stops[0].orderStates).toEqual(before.stops[0].orderStates);
+  } finally {
+    await barrier.query("SELECT pg_advisory_unlock_all()");
+    if (pending) await pending;
+    barrier.release();
+    await f.close();
+  }
 }, 120_000);

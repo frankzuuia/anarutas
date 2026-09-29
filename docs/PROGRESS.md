@@ -674,3 +674,7 @@ se prepara primero en `develop`; producción requiere su propia aprobación.
 - [x] PI-T18: regresiones JVM/PG/HTTP/E2E, cobertura/mutación aplicable, build/lint y APK 0.8.3; evidencia en `QA-INCIDENCIAS-0.8.3.md`. QA físico/instrumentación pendiente por ADB offline; entrega develop para prueba, no certificación de producción.
 - [x] PI-T19 (BL-150 / PI33..38): migración30 y eliminación administrativa autenticada, idempotente, con CAS, auditoría; pedidos cerrados conservan cantidades y revisiones.
 - [x] PI-T20 (BL-150 / PI33..38): bote rojo/confirmación y validaciones PG, concurrencia, seguridad, contrato/E2E y mutación crítica (39/39 administrativa, 7/7 filtros).
+
+- [x] PI-T21 (BL-150A / PI39..41): fallo INVALID_PRODUCT_LINE reproducido en PG y corregido con exclusión de reporte bajo bloqueos de publicación/ejecución, sin modificar datos históricos; regresión concurrente aprobada.
+- [x] PI-T22 (BL-150A / PI42): modal del tema existente, explicación de rutas canceladas, accesibilidad y regresión visual desktop/mobile, 2 E2E aprobados.
+- [x] PI-T23 (BL-150A / PI39..42): regresión general 649 aprobadas/1 FCM omitida, dirigida ampliada 8/8 y 100 % de cobertura, E2E 2/2, mutación amplia 96.30 % y repetición focalizada 9/9 tras reforzar bloqueos; lint/build aprobados. Evidencia en `QA-RETIRO-INCIDENCIAS-RUTA-CANCELADA.md`; commit/push develop autorizado, deploy manual por el propietario.

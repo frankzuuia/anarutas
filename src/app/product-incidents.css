@@ -20,3 +20,13 @@
 .product-evidence-gallery { display: flex; flex-wrap: wrap; gap: 8px; }
 .product-incident-note { white-space: pre-wrap; }
 .product-incidents .product-incident-resolve svg { color: var(--green); }
+dialog.product-incident-dialog { width: min(520px, calc(100vw - 32px)); max-width: 520px; padding: 24px; }
+.product-incident-dialog h2 { margin: 0 0 8px; font-size: 1.1rem; }
+.product-incident-dialog p { margin: 0 0 18px; color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
+.product-incident-dialog h2 + p { color: var(--ink); font-weight: 600; }
+.product-incident-dialog form { display: grid; gap: 16px; }
+.product-incident-dialog .toolbar { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+@media (max-width: 520px) {
+  dialog.product-incident-dialog { padding: 20px; }
+  .product-incident-dialog .toolbar > button { width: 100%; }
+}

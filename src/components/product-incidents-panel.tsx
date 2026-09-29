@@ -48,7 +48,13 @@ export function ProductIncidentsPanel({ from, to, driverId, revision, live = fal
   const [busy, setBusy] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useId();
-  useEffect(() => { if (selected) dialog.current?.showModal(); }, [selected]);
+  useEffect(() => {
+    if (!selected) return;
+    const trigger = document.activeElement;
+    dialog.current?.showModal();
+    dialog.current?.querySelector<HTMLButtonElement>('button[type="button"]')?.focus();
+    return () => { if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus(); };
+  }, [selected]);
   useEffect(() => {
     let active = true;
     let controller: AbortController | null = null;
@@ -102,11 +108,11 @@ export function ProductIncidentsPanel({ from, to, driverId, revision, live = fal
       {page?.filter === filter && <button className="quiet" onClick={() => setPage(null)}>Volver al inicio</button>}
       {report?.nextCursor && <button className="quiet" onClick={() => setPage({ filter, cursor: report.nextCursor! })}>Más productos</button>}
     </div>
-    {selected && <dialog ref={dialog} className="live-incident-confirm" aria-labelledby={title}
+    {selected && <dialog ref={dialog} className="fleet-dialog live-incident-confirm product-incident-dialog" aria-labelledby={title} aria-describedby={`${title}-description`}
       onCancel={event => { event.preventDefault(); if (!busy) setSelected(null); }}>
       <h2 id={title}>{removing ? "Eliminar incidencia de producto" : editing ? "Editar clasificación" : "Resolver incidencia de producto"}</h2>
       <p>{selected.orderName} · {selected.product} · {Number(selected.quantity)} {selected.unit}</p>
-      <p>{removing ? "Se retirará del panel y del Excel. Si el pedido sigue abierto, se restablecerá la cantidad correspondiente. Si ya está cerrado, sus cantidades y su entrega se conservarán tal como quedaron."
+      <p id={`${title}-description`}>{removing ? "Se retirará del panel y del Excel. Si el pedido sigue abierto en una ruta activa, se restablecerá la cantidad correspondiente. Si ya está cerrado o la ruta fue cancelada, sus cantidades y su historial se conservarán tal como quedaron."
         : editing ? "Departamento se usará en el Excel; Concepto es interno. La corrección quedará auditada y conservará el reporte original del chofer."
         : "Registra cómo se atendió. No cambia el pedido, inventario ni contabilidad de Odoo."}</p>
       <form onSubmit={async event => {

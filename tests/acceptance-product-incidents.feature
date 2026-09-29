@@ -136,3 +136,30 @@ Feature: Product incidents and weekly plan archive
     Then ambas acciones se serializan y el estado cerrado se decide dentro del bloqueo
     And una entrega ya confirmada nunca cambia sus cantidades por eliminar del reporte
     And sesiones ajenas, origen ajeno o versión obsoleta no pueden eliminar
+
+  Scenario: Administración retira un reporte de una ruta que ya no está vigente
+    Given una incidencia pendiente o resuelta y un pedido histórico abierto
+    And la ruta fue cancelada o el plan fue eliminado
+    When administración confirma eliminar la incidencia
+    Then la respuesta es exitosa y no exige encontrar la antigua publicación
+    And desaparece de Incidencias, Incidencias en vivo y Excel
+    And su cantidad, estado, evidencia y resolución histórica permanecen intactos
+    And repetir la petición no duplica la auditoría ni modifica revisiones operativas
+
+  Scenario: Cancelar ruta y retirar reporte al mismo tiempo
+    When una sesión cancela la ruta y otra elimina su incidencia simultáneamente
+    Then se serializan por plan y publicación antes de bloquear la ejecución
+    And no se valida contra una revisión de producto que ya fue retirada
+
+  Scenario: El retiro administrativo conserva sus bloqueos hasta confirmar
+    Given una incidencia de un pedido entregado
+    When el retiro administrativo está pendiente de confirmar su transacción
+    Then otra sesión no puede modificar plan ni publicación
+    And tampoco puede adquirir un bloqueo compartido de su ejecución ni parada
+    And al confirmar no cambian la entrega ni las revisiones operativas
+
+  Scenario: Confirmación accesible de eliminación
+    When administración abre el bote rojo en escritorio o móvil
+    Then ve un modal del tema existente sin borde blanco nativo
+    And Conservar incidencia recibe el foco inicial
+    And Escape no escribe cambios y devuelve el foco al bote

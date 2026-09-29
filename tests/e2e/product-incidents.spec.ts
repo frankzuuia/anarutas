@@ -10,12 +10,15 @@ import { createUser } from "../../src/core/auth";
 import { readDriverExecution } from "../../src/core/driver-execution-read";
 import { executeStopCommand } from "../../src/core/driver-stop-command";
 import { executeDriverOrderCommand } from "../../src/core/driver-order-command";
+import { reportProductIncidentWithEvidence } from "../../src/core/product-incidents-evidence";
+import { resolveProductIncident } from "../../src/core/product-incidents";
+import { cancelPublishedRoute } from "../../src/core/route-publications";
 
 let f: Awaited<ReturnType<typeof executionFixture>>;
 let server: ChildProcess;
 let origin: string;
 const login = `product-${randomUUID()}`, password = randomUUID();
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   test.setTimeout(120_000);
   f = await executionFixture(); await f.start();
   await createUser(f.db.pool, f.actor, { name: "Product QA", login, password });
@@ -39,7 +42,7 @@ test.beforeAll(async () => {
   }
   throw new Error("PRODUCT_SERVER_NOT_READY");
 });
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (server && server.exitCode === null) await new Promise<void>(resolve => { server.once("exit", () => resolve()); server.kill(); });
   await f?.close();
 });
@@ -202,6 +205,22 @@ test("mobile report → live visibility → admin classification → exact priva
   await trash.click();
   const removal = page.getByRole("dialog", { name: "Eliminar incidencia de producto", exact: true });
   await expect(removal).toContainText("Si ya está cerrado");
+  await expect(removal.getByRole("button", { name: "Conservar incidencia" })).toBeFocused();
+  await expect(removal).toHaveCSS("border-radius", "12px");
+  await expect(removal).toHaveCSS("background-color", "rgb(16, 24, 19)");
+  await expect(removal).toHaveCSS("border-top-color", "rgb(59, 75, 64)");
+  await expect(removal.locator(".toolbar")).toHaveCSS("display", "flex");
+  await expect(removal.locator(".toolbar")).toHaveCSS("gap", "10px");
+  await page.screenshot({ path: ".local/qa/product-incidents/delete-dialog-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const bounds = await removal.boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0); expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: ".local/qa/product-incidents/delete-dialog-mobile.png", fullPage: true });
+  await page.setViewportSize({ width: 1500, height: 800 });
+  await page.keyboard.press("Escape");
+  await expect(removal).toHaveCount(0);
+  await expect(trash).toBeFocused();
+  await trash.click();
   await removal.getByRole("button", { name: "Conservar incidencia" }).click();
   await expect(history).toContainText("Producto 1");
   await trash.click();
@@ -220,4 +239,48 @@ test("mobile report → live visibility → admin classification → exact priva
   expect((await page.request.get(evidenceUrl)).status()).toBe(200);
   await page.screenshot({ path: ".local/qa/product-incidents/admin-removed.png", fullPage: true });
   expect(pageErrors).toEqual([]);
+});
+
+test("admin removes pending and resolved product reports after route cancellation without changing historical orders", async ({ page }) => {
+  test.setTimeout(90_000);
+  const ids: string[] = [];
+  const photo = await sharp({ create: { width: 24, height: 24, channels: 3, background: "#779f32" } }).jpeg().toBuffer();
+  for (let index = 0; index < 2; index++) {
+    const route = await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone), stop = route.stops[0];
+    const receipt = await reportProductIncidentWithEvidence(f.db.pool, f.members[0].authorization, f.planId, stop.id, stop.shipmentIds[0], {
+      commandId: randomUUID(), executionId: route.id, publicationRevision: route.publicationRevision,
+      executionRevision: route.revision, stopVersion: stop.version, visitSequence: stop.visitSequence,
+      orderVersion: stop.orderStates[0].version, kind: "replacement_quality", department: "Operaciones", lineIndex: 0, quantity: "0.5",
+    }, f.timezone, photo, "image/jpeg", f.photoRoot);
+    ids.push(receipt.incidentId!);
+  }
+  await resolveProductIncident(f.db.pool, f.actor, ids[1], { expectedVersion: 1, note: "Reposición atendida" });
+  const route = await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
+  const plan = (await f.db.pool.query("SELECT version FROM route_plans WHERE id=$1", [f.planId])).rows[0];
+  await cancelPublishedRoute(f.db.pool, f.actor, f.planId, f.members[0].vehicleId,
+    { expectedVersion: plan.version, expectedRevision: route.publicationRevision });
+  const before = (await f.db.pool.query("SELECT * FROM route_driver_execution_orders WHERE execution_id=$1 ORDER BY shipment_id", [route.id])).rows;
+  expect((await page.request.post(`${origin}/api/session`, { headers: { Origin: origin }, data: { login, password } })).status()).toBe(200);
+  await page.goto(origin);
+  await page.getByRole("button", { name: "Incidencias", exact: true }).click();
+  const history = page.getByRole("region", { name: "Incidencias por producto", exact: true });
+  await expect(history.getByRole("button", { name: /Eliminar incidencia de Producto 1/ })).toHaveCount(2);
+  for (let index = 0; index < 2; index++) {
+    await history.getByRole("button", { name: /Eliminar incidencia de Producto 1/ }).first().click();
+    const removal = page.getByRole("dialog", { name: "Eliminar incidencia de producto", exact: true });
+    await expect(removal).toContainText("la ruta fue cancelada");
+    const responsePromise = page.waitForResponse(r => r.request().method() === "DELETE" && r.url().includes("/api/incidents/products/"));
+    await removal.getByRole("button", { name: "Eliminar incidencia", exact: true }).click();
+    expect((await responsePromise).status()).toBe(200);
+    await expect(history.getByRole("button", { name: /Eliminar incidencia de Producto 1/ })).toHaveCount(1 - index);
+  }
+  await expect(history).toContainText("Sin incidencias de producto");
+  const book = new ExcelJS.Workbook(); await book.xlsx.load(await (await page.request.get(`${origin}/api/incidents/products/export`)).body() as never);
+  expect(book.getWorksheet("Incidencias")!.rowCount).toBe(1);
+  expect((await f.db.pool.query("SELECT * FROM route_driver_execution_orders WHERE execution_id=$1 ORDER BY shipment_id", [route.id])).rows).toEqual(before);
+  for (const [index, id] of ids.entries()) {
+    expect((await f.db.pool.query("SELECT status,quantity::text,report_removed_at IS NOT NULL AS removed FROM route_product_incidents WHERE id=$1", [id])).rows[0])
+      .toEqual({ status: index === 0 ? "pending" : "resolved", quantity: "0.500000", removed: true });
+    expect((await page.request.get(`${origin}/api/incidents/products/${id}/evidence`)).status()).toBe(200);
+  }
 });

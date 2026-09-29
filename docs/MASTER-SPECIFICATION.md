@@ -1530,3 +1530,16 @@ Flujo: formateador decimal sólo al leer → controles Android según tipo manua
 | PI38 | Pedido delivered/rescheduled, admin elimina | report_removed_at/by excluyen el reporte, sin cambiar estado de incidencia, cantidad, resolución ni revisiones operativas; PG/E2E y concurrencia con entrega. |
 
 Migración aditiva v30: canceled_by_admin y report_removed_by → route_users, report_removed_at; exactamente un tipo de cancelador por cancelación y autor/fecha de exclusión juntos. Servicio bloquea ejecución/parada/pedido antes de incidencia, valida CAS y lee el estado de pedido bajo el mismo bloqueo. Si cerrado, sólo retira del reporte; si abierto, cancela y limpia campos de resolución vigentes (conservados en bitácora). Consultas filtran exclusión antes de contar/paginar. Proyección móvil conserva cantidad/estado de excluidas de pedidos cerrados y las deja de sólo lectura, también tras reintento de reprogramado. UI agrega confirmación con ambos efectos, retorno ante error/conflicto y refresh. API DELETE /api/incidents/products/[id] usa principal/body existentes (sesión, mismo origen, límite de JSON). No modifica Odoo, publicación ni estado de entrega. Riesgo de despliegue: el binario anterior no reconoce schema30, rollback requiere binario compatible. GREEN LIGHT / INTEGRITY TOTAL / MATCH PERFECT con PI-T19..20 (PI33..38).
+
+### BL-150A — regresión de eliminación después de cancelar ruta
+
+Diagnóstico de código: `cancelPublishedRoute` incrementa la revisión y revoca la publicación; las órdenes históricas conservan su estado. La eliminación de una incidencia de orden abierta ejecuta UPDATE de status, cuyo trigger vuelve a buscar la revisión publicada anterior y rechaza con INVALID_PRODUCT_LINE. La capa HTTP oculta ese error como 503. El flujo debe elegir sólo exclusión de reporte si la publicación de la ejecución dejó de estar vigente. No se relajan triggers ni se reconstruyen snapshots.
+
+| Caso | Precondición / evento | Resultado y validación |
+| --- | --- | --- |
+| PI39 | Admin retira incidencia pendiente/resuelta tras cancelar ruta | Sólo report_removed, registro privado/fotos y cantidades intactos; PostgreSQL, HTTP, Excel y auditoría con routeRetired. |
+| PI40 | Plan eliminado o publicación de revisión distinta | Misma exclusión, sin exigir presencia del plan ni de la publicación histórica; PostgreSQL. |
+| PI41 | Retiro compite con cancelar ruta o cerrar pedido | Plan FOR SHARE → publicación FOR SHARE → ejecución → parada → pedido → incidencia; una lectura estable de vigencia, sin deadlock ni alteración retroactiva; concurrencia real. |
+| PI42 | Confirmar, conservar, Esc y viewport estrecho | Modal con fondo/borde/radio del tema existente, foco seguro, texto de rutas canceladas y botones accesibles; E2E sobre build. |
+
+Sin nueva migración, claves ni llamadas a Odoo/Google. Riesgo/recuperación: errores de versión mantienen el registro y permiten refrescar; replay no duplica auditoría. Referencias locales: route-publications.ts, product-incident-amendments-schema.ts, globals.css/fleet-dialog y documentación instalada Next Route Handlers/CSS. Auditoría local: GREEN LIGHT / INTEGRITY TOTAL / MATCH PERFECT con PI-T21..23; corrige la omisión del estado de ruta en BL-150, preserva BL-149 y el saldo cerrado. No se acciona borrado remoto para QA.
