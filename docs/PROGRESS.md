@@ -678,3 +678,9 @@ se prepara primero en `develop`; producción requiere su propia aprobación.
 - [x] PI-T21 (BL-150A / PI39..41): fallo INVALID_PRODUCT_LINE reproducido en PG y corregido con exclusión de reporte bajo bloqueos de publicación/ejecución, sin modificar datos históricos; regresión concurrente aprobada.
 - [x] PI-T22 (BL-150A / PI42): modal del tema existente, explicación de rutas canceladas, accesibilidad y regresión visual desktop/mobile, 2 E2E aprobados.
 - [x] PI-T23 (BL-150A / PI39..42): regresión general 649 aprobadas/1 FCM omitida, dirigida ampliada 8/8 y 100 % de cobertura, E2E 2/2, mutación amplia 96.30 % y repetición focalizada 9/9 tras reforzar bloqueos; lint/build aprobados. Evidencia en `QA-RETIRO-INCIDENCIAS-RUTA-CANCELADA.md`; commit/push develop autorizado, deploy manual por el propietario.
+## BL-151 — miniaturas de producto
+
+- [x] PT-T01 (PT01..07): endpoint privado, resolución de identidad sin cambiar snapshot, lector Odoo fijo y caché acotada/deduplicada.
+- [x] PT-T02 (PT02..03, PT07..08): campo opcional Android, miniatura y logo Five atenuado, caché privada; mantener clicks/alertas/cantidades.
+- [x] PT-T03A (PT01..08): PG/Odoo real 6/6, regresión 29/29, HTTP E2E 1/1 y regresión de incidencias 2/2, 100% líneas dirigidas; mutación crítica TS 37/37 y Android 4/4; JVM 103/103, build/lint y APK 0.8.4. Evidencia en `QA-MINIATURAS-PRODUCTO-0.8.4.md`.
+- [ ] PT-T03B: validación visual Compose/QA físico. APK de instrumentación compilada; ejecución bloqueada por ADB (`closed`), sin contarla como aprobada. El propietario autorizó expresamente commit/push a develop con esta prueba pendiente a su cargo el 2026-09-29. Deploy manual del propietario; no certificación de producción.

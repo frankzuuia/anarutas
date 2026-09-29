@@ -1,4 +1,4 @@
-param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly, [switch]$ProductCaptureOnly, [switch]$ProductPresentationOnly)
+param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly, [switch]$ProductCaptureOnly, [switch]$ProductPresentationOnly, [switch]$ProductThumbnailOnly)
 $ErrorActionPreference = 'Stop'
 # Mechanical mutations occur only in an isolated copy. No ADB, HTTP stubs or credential output.
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -13,7 +13,7 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 }
 $sourceFolder = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver'
 $originals = @{}
-foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt', 'ProductIncidentPolicy.kt', 'IncidentCaptureStore.kt', 'ProductPhotoUpload.kt')) {
+foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt', 'ProductIncidentPolicy.kt', 'IncidentCaptureStore.kt', 'ProductPhotoUpload.kt', 'ProductThumbnailStore.kt')) {
     $originals[$file] = [IO.File]::ReadAllText((Join-Path $sourceFolder $file))
 }
 $cases = @(
@@ -203,6 +203,14 @@ if ($ProductPresentationOnly) {
         @{ name = 'quantity_round_fraction'; from = 'value.toBigDecimalOrNull()?.stripTrailingZeros()?.toPlainString() ?: value'; to = 'value.toBigDecimalOrNull()?.setScale(0, java.math.RoundingMode.DOWN)?.toPlainString() ?: value' },
         @{ name = 'shortage_offer_wrong_comments'; from = 'if (kind.manual) listOf(ProductComment.MISSING)'; to = 'if (!kind.manual) listOf(ProductComment.MISSING)' }
     ) | ForEach-Object { $_.file = 'ProductIncidentPolicy.kt'; $_.test = 'ProductIncidentPolicyTest'; $_ }
+}
+if ($ProductThumbnailOnly) {
+    $cases = @(
+        @{ name = 'thumbnail_allow_external_url'; from = '.matchEntire(path) ?: return false'; to = '.matchEntire(path) ?: return true' },
+        @{ name = 'thumbnail_share_between_devices'; from = '"$server\n$device\n$path"'; to = '"$server\n$path"' },
+        @{ name = 'thumbnail_unbounded_stream'; from = 'output.size() + count > 65_536'; to = 'false' },
+        @{ name = 'thumbnail_never_refresh'; from = 'age < 15 * 60_000L'; to = 'true' }
+    ) | ForEach-Object { $_.file = 'ProductThumbnailStore.kt'; $_.test = 'ProductThumbnailStoreTest'; $_ }
 }
 $arguments = @('testDebugUnitTest', '--console=plain')
 if ($ServerUrl) { $arguments += ('-PANA_RUTAS_SERVER_URL=' + $ServerUrl) }

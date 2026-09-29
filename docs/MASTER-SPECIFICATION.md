@@ -1543,3 +1543,23 @@ Diagnóstico de código: `cancelPublishedRoute` incrementa la revisión y revoca
 | PI42 | Confirmar, conservar, Esc y viewport estrecho | Modal con fondo/borde/radio del tema existente, foco seguro, texto de rutas canceladas y botones accesibles; E2E sobre build. |
 
 Sin nueva migración, claves ni llamadas a Odoo/Google. Riesgo/recuperación: errores de versión mantienen el registro y permiten refrescar; replay no duplica auditoría. Referencias locales: route-publications.ts, product-incident-amendments-schema.ts, globals.css/fleet-dialog y documentación instalada Next Route Handlers/CSS. Auditoría local: GREEN LIGHT / INTEGRITY TOTAL / MATCH PERFECT con PI-T21..23; corrige la omisión del estado de ruta en BL-150, preserva BL-149 y el saldo cerrado. No se acciona borrado remoto para QA.
+## BL-151 — foto de Odoo junto al nombre
+
+Flujo: readDriverPlan agrega thumbnailPath opcional por línea → APK carga recurso privado en segundo plano → endpoint autentica sesión y vuelve a validar plan/pedido/revisión → coteja las líneas originales importadas con las publicadas → product.product/image_128 en Odoo con empresa configurada → conversión WebP 128 px → caché acotada → miniatura 40 dp. Ausencia, error o desconexión muestran Five con baja opacidad; caché privada conserva imágenes descargadas al perder señal.
+
+| Caso | Evento / resultado | Validación |
+| --- | --- | --- |
+| PT01 | Foto de variante o plantilla en Odoo → foto del producto correcto | Lectura real Odoo, normalización, HTTP y APK |
+| PT02 | Sin foto, archivado sin imagen o imagen inválida → logo Five atenuado | Dominio, imagen y Compose |
+| PT03 | Odoo falla o no hay red → pedido utilizable; caché descargada o logo | Cache/reintento y regresión de atención |
+| PT04 | Otro chofer, sesión inválida, ruta cancelada, revisión obsoleta o pedido ajeno → acceso denegado antes de caché/Odoo | PostgreSQL y HTTP reales |
+| PT05 | Fuente Odoo distinta o líneas importadas ya no corresponden → nunca mostrar otra foto | Fingerprint y cotejo por índice/contenido |
+| PT06 | Varias miniaturas simultáneas → consulta de lote compartida, memoria acotada y expiración automática | Concurrencia/caché/mutación |
+| PT07 | APK anterior o publicación existente → compatibilidad; hashes, revisiones y acciones intactas | Comparación de snapshots y pruebas existentes |
+| PT08 | Renglón con incidencia → conserva alerta, cantidad neta y acción al tocar | JVM/Compose y build APK |
+
+Datos: sólo lecturas de publicación y route_shipments.snapshot/source; ninguna migración. Cachés auxiliares no alteran métricas ni auditoría operativa. No se exponen IDs/credenciales de Odoo ni URLs arbitrarias. Respuesta de imagen privada y sin caché compartida. Lecturas Odoo fijas, contexto de empresa y acceso de usuario existente. Imágenes normalizadas sin metadata, límites de bytes/píxeles. Caché del teléfono en cacheDir por origen/dispositivo/recurso; borrado limitado a su directorio y recuperación automática por expiración.
+
+Referencias: documentación instalada Next Route Handlers; https://github.com/odoo/odoo/blob/19.0/addons/product/models/product_product.py (image_128 hereda plantilla); https://developer.android.com/develop/ui/compose/graphics/images/customize. Verificar capacidades reales de la instalación antes de entregar. Revertir este bloque retira recursos opcionales sin migración inversa; APK nueva tolera endpoint ausente.
+
+Auditoría de diseño: GREEN LIGHT para implementación; se conserva BL-148..150 y el snapshot publicado (INTEGRITY TOTAL). PT-T01..03 corresponden a PT01..08 (MATCH PERFECT). Evidencia automatizada y limitaciones de validación visual en `QA-MINIATURAS-PRODUCTO-0.8.4.md`; no se certifica producción por diseño ni por compilar la APK.

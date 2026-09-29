@@ -104,9 +104,12 @@ export async function readDriverPlan(
       ...assigned.snapshot,
       ...(points.size ? { routeStatus: "point_corrected" } : {}),
       // Current operational contact is an overlay, never a publication rewrite.
-      orders: assigned.snapshot.orders.map((order: { id: string }) => {
+      orders: assigned.snapshot.orders.map((order: { id: string; lines: Record<string, unknown>[] }) => {
         const point = points.get(order.id);
-        return { ...order, ...(phones.has(order.id) ? { phone: phones.get(order.id) } : {}),
+        return { ...order,
+          lines: order.lines.map((line, index) => ({ ...line,
+            thumbnailPath: `/api/mobile/plans/${id}/orders/${order.id}/lines/${index}/thumbnail?revision=${Number(assigned.revision)}` })),
+          ...(phones.has(order.id) ? { phone: phones.get(order.id) } : {}),
           ...(point ? { address: point.address, latitude: point.latitude, longitude: point.longitude, locationStatus: "driver_confirmed" } : {}) };
       }),
       publication: {

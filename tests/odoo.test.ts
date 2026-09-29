@@ -48,6 +48,7 @@ it("Odoo exposes no generic executor and permits only fixed read operations", as
   expect(exported).toEqual([
     "odooPublicStatus",
     "diagnoseOdoo",
+    "readProductThumbnails",
     "readFulfilledPage",
     "readFulfilledByOrderNames",
     "readRoutingCandidates",

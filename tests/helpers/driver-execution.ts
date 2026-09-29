@@ -15,7 +15,7 @@ import { startDriverRoute } from "../../src/core/route-start";
 
 // Real isolated PostgreSQL, signatures, image files and start transaction. No HTTP/API mocks.
 // The persisted publication is a fixture for execution, not a claim of a Google calculation.
-export async function executionFixture(options: { groupFourthOrderWithFirst?: boolean } = {}) {
+export async function executionFixture(options: { groupFourthOrderWithFirst?: boolean; sourceFingerprint?: string; secondLinePerOrder?: boolean } = {}) {
   const db = await startPostgres();
   const photoRoot = await mkdtemp(join(tmpdir(), "rutas-execution-"));
   const oldPepper = process.env.RUTAS_DRIVER_PIN_PEPPER;
@@ -45,11 +45,12 @@ export async function executionFixture(options: { groupFourthOrderWithFirst?: bo
     const plan = await createPlan(db.pool, actor, { date: "2026-09-24", label: "Ejecución QA" });
     await selectPlanVehicles(db.pool, actor, plan.id, { vehicleIds: members.map(m => m.vehicleId), expectedVersion: plan.version });
     await persistImportPage(db.pool, actor, plan.id, {
-      fingerprint: createHash("sha256").update("execution-qa").digest("hex"),
+      fingerprint: options.sourceFingerprint ?? createHash("sha256").update("execution-qa").digest("hex"),
       shipments: [1, 2, 3, 4].map(index => ({ pickingId: index, pickingName: `OUT/${index}`, orderId: index,
         orderName: `S${index}`, partnerId: index === 4 ? 1 : index, customerName: `Cliente ${index === 4 ? 1 : index}`,
         address: `Calle ${index === 4 ? 1 : index}`, validatedAt: "2026-09-24T12:00:00.000Z", promisedAt: null,
-        backorderId: null, lines: [{ moveId: index, productId: index, name: `Producto ${index}`, quantity: 2, unit: "kg" }] })),
+        backorderId: null, lines: [{ moveId: index, productId: index, name: `Producto ${index}`, quantity: 2, unit: "kg" },
+          ...(options.secondLinePerOrder ? [{ moveId: index + 10, productId: index + 10, name: `Producto ${index + 10}`, quantity: 3, unit: "kg" }] : [])] })),
       nextCursor: 4, ceiling: 4, hasMore: false, inspected: 4, excluded: 0,
     });
     await db.pool.query("UPDATE route_customers SET latitude=20.64,longitude=-103.4,location_status='confirmed'");

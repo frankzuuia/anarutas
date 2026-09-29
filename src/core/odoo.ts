@@ -120,6 +120,7 @@ type ReadModel =
   | "stock.move"
   | "sale.order.line"
   | "sale.order"
+  | "product.product"
   | "res.partner";
 function records(value: unknown): Row[] {
   if (
@@ -324,6 +325,28 @@ async function openReadSession(config: OdooConfig): Promise<ReadSession> {
     unitField,
     noteField,
   };
+}
+
+/** Fixed, read-only image query. Variant image falls back to its template in Odoo. */
+export async function readProductThumbnails(ids: number[], config = readOdooConfig()) {
+  const unique = [...new Set(ids.map(id => integer(id, 1)))];
+  const result = new Map<number, unknown>();
+  if (!unique.length) return result;
+  const session = await openBasicReadSession(config, false);
+  const fields = await session.fields("product.product") as Record<string, { type?: string }>;
+  if (fields.image_128?.type !== "binary") throw new AppError("ODOO_IMAGE_UNAVAILABLE", 502);
+  for (let offset = 0; offset < unique.length; offset += 32) {
+    const batch = unique.slice(offset, offset + 32);
+    const rows = await session.search("product.product", [
+      ["id", "in", batch], ["company_id", "in", [false, config.companyId]],
+    ], ["id", "image_128"], batch.length);
+    for (const row of rows) {
+      const id = Number(row.id);
+      if (!batch.includes(id)) throw new AppError("ODOO_INVALID_RESPONSE", 502);
+      result.set(id, row.image_128);
+    }
+  }
+  return result;
 }
 
 const pickingFields = [

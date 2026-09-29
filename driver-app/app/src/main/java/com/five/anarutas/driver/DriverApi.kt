@@ -23,7 +23,7 @@ data class PlanSummary(
     val orderCount: Int,
     val publicationRevision: Int = 0,
 )
-data class DeliveryLine(val name: String, val quantity: Double, val unit: String)
+data class DeliveryLine(val name: String, val quantity: Double, val unit: String, val thumbnailPath: String? = null)
 data class DeliveryOrder(
     val id: String,
     val name: String,
@@ -111,7 +111,8 @@ internal fun parseAssignedPlan(response: JSONObject): AssignedPlan {
             note = if (item.isNull("deliveryNote")) "" else item.optString("deliveryNote"),
             lines = (0 until lines.length()).map { lineIndex ->
                 val line = lines.getJSONObject(lineIndex)
-                DeliveryLine(line.getString("name"), line.getDouble("quantity"), line.getString("unit"))
+                DeliveryLine(line.getString("name"), line.getDouble("quantity"), line.getString("unit"),
+                    line.optString("thumbnailPath").takeIf(::isProductThumbnailPath))
             },
             latitude = if (item.isNull("latitude")) null else item.getDouble("latitude"),
             longitude = if (item.isNull("longitude")) null else item.getDouble("longitude"),
@@ -385,6 +386,27 @@ class DriverApi(private val server: String) {
                     output.write(chunk, 0, read)
                 }
                 output.toByteArray()
+            }
+        } finally { connection.disconnect() }
+    }
+
+    internal suspend fun productThumbnailBytes(token: String, path: String): ByteArray? = withContext(Dispatchers.IO) {
+        require(isProductThumbnailPath(path))
+        val connection = URL("$server$path").openConnection() as HttpURLConnection
+        try {
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 8000
+            connection.readTimeout = 15000
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            connection.setRequestProperty("Accept", "image/webp")
+            val status = connection.responseCode
+            if (status == 204) return@withContext null
+            if (status != 200) throw DriverApiException(status, "PRODUCT_IMAGE_UNAVAILABLE")
+            if (connection.contentType?.substringBefore(';') != "image/webp") throw IOException("INVALID_PRODUCT_IMAGE")
+            connection.inputStream.use { stream ->
+                val bytes = readProductThumbnailStream(stream)
+                if (bytes.isEmpty()) throw IOException("INVALID_PRODUCT_IMAGE")
+                bytes
             }
         } finally { connection.disconnect() }
     }

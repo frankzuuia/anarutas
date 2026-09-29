@@ -134,6 +134,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
                 .clickable(enabled = available && stop.canAttend() && canDeliverOrder(status.status),
                     onClickLabel = "Registrar incidencia de ${line.name}") { productLine = index }.heightIn(min = 44.dp).padding(vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                ProductThumbnail(line)
                 if (productCases.any { it.lineIndex == index }) AppIcon(DriverIcon.ALERT, Modifier.size(18.dp), tint = DriverColors.amber)
                 Text(line.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                 Text("${remainingProductQuantity(line.quantity, productCases, order.id, index).stripTrailingZeros().toPlainString()} ${line.unit}",
