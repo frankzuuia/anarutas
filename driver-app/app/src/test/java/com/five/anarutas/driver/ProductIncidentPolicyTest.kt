@@ -5,6 +5,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProductIncidentPolicyTest {
+    @Test fun formatsSavedQuantitiesWithoutRoundingOrTrailingZeros() {
+        val examples = mapOf("2.000000" to "2", "5.0" to "5", "0.125000" to "0.125",
+            "0.000001" to "0.000001", "1000.000000" to "1000", "999999999999.999999" to "999999999999.999999",
+            "" to "", "sin cantidad" to "sin cantidad")
+        for ((stored, visible) in examples) assertEquals(visible, productQuantityText(stored))
+    }
+    @Test fun shortageCommentsOnlyOfferMissingProductWhileKeepingLegacyText() {
+        for (kind in ProductIncidentKind.entries) {
+            assertEquals(if (kind.manual) listOf(ProductComment.MISSING) else ProductComment.entries, productCommentOptions(kind))
+        }
+        assertEquals("Especiales\nNo venía el producto en el pedido\nNota original",
+            productCommentsText(listOf("special", "product_not_ordered"), "Nota original"))
+    }
     @Test fun photosAndClassificationUseExactSelectableOptions() {
         assertEquals(listOf("Operaciones", "Compras", "Ventas"), productDepartments)
         assertEquals(listOf("Especiales", "Reparto", "Picking"), productConcepts)
@@ -48,6 +61,11 @@ class ProductIncidentPolicyTest {
         assertEquals(0, BigDecimal("1.8").compareTo(remainingProductQuantity(2.0, records, "order", 0, "1")))
         assertEquals(BigDecimal.ZERO, remainingProductQuantity(0.1, records, "order", 0))
         assertEquals(0, BigDecimal("2.0").compareTo(remainingProductQuantity(2.0, emptyList(), "order", 0)))
+    }
+    @Test fun removingAClosedOrdersReportDoesNotRestoreDeliveredQuantities() {
+        val closed = ProductIncidentRecord("closed", "order", 0, "return", "Queso", "1.000000", "kg", "resolved", reportRemoved = true)
+        assertEquals(0, BigDecimal.ONE.compareTo(remainingProductQuantity(2.0, listOf(closed), "order", 0)))
+        assertEquals(0, BigDecimal("2").compareTo(remainingProductQuantity(2.0, listOf(closed.copy(status = "canceled")), "order", 0)))
     }
     @Test fun manualProductsAndLineBasedReturnsHaveDifferentContracts() {
         for (kind in ProductIncidentKind.entries) {

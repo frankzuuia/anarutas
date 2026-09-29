@@ -82,7 +82,7 @@ Feature: Product incidents and weekly plan archive
     When the driver selects a shortage card
     Then it has the same radio-card presentation as closed and rejected incidents
     And selecting alone does not submit a report
-    When the driver selects Ventas, Picking, two quick comments and additional notes
+    When the driver reports a return with Ventas, Picking, two quick comments and additional notes
     Then the panel preserves the classification and all comments
     And Excel still has nine columns without concept, driver or photos
   Scenario: El chofer corrige una incidencia enviada y luego el cliente la cancela
@@ -92,7 +92,47 @@ Feature: Product incidents and weekly plan archive
     Then el formulario ofrece guardar y la edición conserva el mismo identificador con una versión nueva
     When el cliente acepta el producto y el chofer confirma eliminar la incidencia
     Then la incidencia queda cancelada y auditada, el detalle vuelve a dos unidades y el Excel no la incluye
+    And desaparece automáticamente del panel de Incidencias sin borrar su auditoría ni evidencia
 
   Scenario: Faltantes manuales múltiples sin alterar partidas publicadas
     Given un pedido con partidas publicadas y varios faltantes que no figuran en ellas
     Then cada faltante aparece por separado con alerta y las cantidades publicadas permanecen intactas
+
+  Scenario Outline: Faltante con una captura clara de cantidad
+    Given el chofer registra un <tipo>
+    When escribe producto, cantidad faltante y unidad en el bloque superior
+    Then no se repite Cantidad afectada ni se solicita evidencia fotográfica
+    And sólo se ofrece No venía el producto en el pedido como comentario rápido y notas libres
+    Examples:
+      | tipo |
+      | faltante por validación |
+      | faltante desde bodega |
+
+  Scenario: Cantidades guardadas sin ceros sobrantes
+    Given una incidencia guardada con cantidad 2.000000
+    When el chofer la abre
+    Then ve 2 y el botón sigue diciendo Incidencia enviada
+    And una fracción 0.125000 se muestra como 0.125 sin redondear
+
+  Scenario: Administración elimina una incidencia de un pedido abierto
+    Given una incidencia pendiente o resuelta y un pedido abierto
+    When administración pulsa el bote rojo y confirma
+    Then desaparece del panel y Excel y se restablece sólo su cantidad afectada
+    And el borrado queda auditado y un reintento no lo duplica
+
+  Scenario Outline: Administración sólo retira del reporte una incidencia de un pedido cerrado
+    Given el chofer ya dejó el pedido <estado>
+    When administración elimina la incidencia con su versión vigente
+    Then el panel y el Excel dejan de incluirla
+    And las cantidades, el estado del pedido y sus revisiones operativas permanecen intactas
+    And la evidencia y resolución original siguen resguardadas
+    Examples:
+      | estado |
+      | entregado |
+      | reprogramado y cerrado en esta ruta |
+
+  Scenario: Eliminación administrativa compite con cierre del pedido
+    When administración elimina una incidencia mientras el chofer confirma entrega
+    Then ambas acciones se serializan y el estado cerrado se decide dentro del bloqueo
+    And una entrega ya confirmada nunca cambia sus cantidades por eliminar del reporte
+    And sesiones ajenas, origen ajeno o versión obsoleta no pueden eliminar

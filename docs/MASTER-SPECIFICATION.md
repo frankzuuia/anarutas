@@ -1505,3 +1505,28 @@ con BL-148 en develop; sin Deploy. UI conserva DriverColors y controles accesibl
 | PI27 Carrera, sesión ajena, pedido cerrado, reintento | Rechazo atómico o mismo recibo; cero cambio parcial y ninguna incidencia ajena editable. |
 
 Migración aditiva v29: estado cancelado, bitácora inmutable, campos de formulario vigentes y validación de cantidad para INSERT/UPDATE. API móvil autenticada de enmienda y cancelación; misma outbox durable y bloqueo de visita/pedido. Los cambios de fotografía posteriores al envío quedan fuera de este bloque: fotos ya enviadas permanecen privadas y auditables. Publicación sólo en develop; el despliegue lo hace el propietario.
+
+## BL-149 — correcciones de campo, APK 0.8.3
+
+| Caso | Actor / disparador | Resultado y validación |
+| --- | --- | --- |
+| PI28 | Chofer abre/envía una cantidad 2.000000 o 0.125000 | Presenta 2 o 0.125, conserva precisión y estado enviado; JVM y Compose. |
+| PI29 | Chofer captura cualquiera de los dos faltantes | Producto + cantidad faltante/unidad, sin segunda cantidad ni evidencia; sólo comentario de producto ausente y notas; JVM/Compose/HTTP. |
+| PI30 | Chofer reabre un faltante anterior | Conserva comentarios anteriores y evidencia en servidor; no exige foto ni cambia recibos pendientes; regresión PG. |
+| PI31 | Chofer cancela; administrador consulta panel | Filtro SQL excluye canceladas antes de contar/paginar, conserva registro/auditoría/fotos; PG, API y E2E de actualización automática. |
+| PI32 | Administrador atiende una reposición | Icono Resolver verde del tema; acción y permisos existentes; E2E CSS y resolución real. |
+
+Flujo: formateador decimal sólo al leer → controles Android según tipo manual/publicado → contrato v2 existente; consulta autenticada PostgreSQL excluye canceled en cada modo → panel/Excel. Sin nueva migración ni servicios externos. Permisos, CAS, recibos y auditoría mantienen BL-148. No eliminar históricos; reversión de binario posible sin downgrade. Referencias locales: ProductIncidentPolicy/Sheet, readProductIncidents y guía CSS de Next instalada. GREEN LIGHT / INTEGRITY TOTAL / MATCH PERFECT con PI-T16..18; BL-149 sustituye la visibilidad de canceladas y la captura opcional de fotos de faltantes de los bloques anteriores.
+
+## BL-150 — bote administrativo en Incidencias
+
+| Caso | Actor / disparador | Resultado, auditoría, validación |
+| --- | --- | --- |
+| PI33 | Administrador confirma eliminar pendiente/resuelta | DELETE autenticado con versión; estado canceled, revisiones +1, registro before/after y route_audit; PG/E2E. |
+| PI34 | Chofer edita/cancela mientras admin elimina | Bloqueos ejecución → parada → pedido → incidencia; una operación gana, otra recibe conflicto; PG concurrente. |
+| PI35 | Reintento de eliminación confirmada | Mismo admin y versión original obtienen duplicate=true; no segundo evento ni revisión; PG/HTTP. |
+| PI36 | Sin sesión, chofer, admin inactivo u origen ajeno | 401/403; sin datos ni mutación; PG/HTTP. |
+| PI37 | Registro cancelado legado o resuelto | Migración 29→30 conserva cancelador chofer y auditoría; admin queda en canceled_by_admin; resolución previa preservada en before_record; PG. |
+| PI38 | Pedido delivered/rescheduled, admin elimina | report_removed_at/by excluyen el reporte, sin cambiar estado de incidencia, cantidad, resolución ni revisiones operativas; PG/E2E y concurrencia con entrega. |
+
+Migración aditiva v30: canceled_by_admin y report_removed_by → route_users, report_removed_at; exactamente un tipo de cancelador por cancelación y autor/fecha de exclusión juntos. Servicio bloquea ejecución/parada/pedido antes de incidencia, valida CAS y lee el estado de pedido bajo el mismo bloqueo. Si cerrado, sólo retira del reporte; si abierto, cancela y limpia campos de resolución vigentes (conservados en bitácora). Consultas filtran exclusión antes de contar/paginar. Proyección móvil conserva cantidad/estado de excluidas de pedidos cerrados y las deja de sólo lectura, también tras reintento de reprogramado. UI agrega confirmación con ambos efectos, retorno ante error/conflicto y refresh. API DELETE /api/incidents/products/[id] usa principal/body existentes (sesión, mismo origen, límite de JSON). No modifica Odoo, publicación ni estado de entrega. Riesgo de despliegue: el binario anterior no reconoce schema30, rollback requiere binario compatible. GREEN LIGHT / INTEGRITY TOTAL / MATCH PERFECT con PI-T19..20 (PI33..38).

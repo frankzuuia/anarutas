@@ -666,3 +666,11 @@ se prepara primero en `develop`; producción requiere su propia aprobación.
 - [x] PI-T13: formulario enviado/editado/cancelable, X de foto discreta y outbox recuperable.
 - [x] PI-T14: unitarias, PostgreSQL, contrato HTTP, Android, E2E, Gherkin, cobertura/mutación, build APK y evidencia QA automatizada. Instrumentación física pendiente por ADB offline; ver `QA-EDICION-INCIDENCIAS-0.8.2.md`.
 - [x] PI-T15: commit/push a develop autorizado; despliegue manual por el propietario.
+
+## BL-149 — revisión de uso real de incidencias
+
+- [x] PI-T16 (PI28..30): cantidades limpias y formulario específico de faltantes con una cantidad/unidad, sin cámara y comentario rápido pertinente.
+- [x] PI-T17 (PI31..32): excluir canceladas en consulta/paginación/conteos y destacar Resolver en verde.
+- [x] PI-T18: regresiones JVM/PG/HTTP/E2E, cobertura/mutación aplicable, build/lint y APK 0.8.3; evidencia en `QA-INCIDENCIAS-0.8.3.md`. QA físico/instrumentación pendiente por ADB offline; entrega develop para prueba, no certificación de producción.
+- [x] PI-T19 (BL-150 / PI33..38): migración30 y eliminación administrativa autenticada, idempotente, con CAS, auditoría; pedidos cerrados conservan cantidades y revisiones.
+- [x] PI-T20 (BL-150 / PI33..38): bote rojo/confirmación y validaciones PG, concurrencia, seguridad, contrato/E2E y mutación crítica (39/39 administrativa, 7/7 filtros).

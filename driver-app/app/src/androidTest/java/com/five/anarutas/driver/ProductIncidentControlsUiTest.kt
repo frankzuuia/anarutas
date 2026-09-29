@@ -23,6 +23,30 @@ import java.io.File
 class ProductIncidentControlsUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
+    @Test fun shortagesCaptureQuantityAndUnitOnceWithOnlyTheRelevantQuickComment() {
+        var product by mutableStateOf("")
+        var quantity by mutableStateOf("")
+        var unit by mutableStateOf("")
+        var comments by mutableStateOf(emptyList<String>())
+        compose.setContent { DriverTheme {
+            ServiceFormSurface({}, compact = true, header = { Text("FALTANTE DESDE BODEGA") }, footer = {}) {
+                ShortageProductFields(product, quantity, unit, true, { product = it }, { quantity = it }, { unit = it })
+                ProductCommentChoices(comments, true, productCommentOptions(ProductIncidentKind.SHORTAGE_WAREHOUSE)) { comments = it }
+            }
+        } }
+        compose.onNodeWithText("Producto faltante").performTextInput("Chile serrano")
+        compose.onNodeWithText("Cantidad faltante").performTextInput("1")
+        compose.onNodeWithText("Unidad", substring = false).performTextInput("kg")
+        compose.onAllNodes(hasSetTextAction()).assertCountEquals(3)
+        compose.onNodeWithText("No venía el producto en el pedido").performScrollTo().performClick().assertIsSelected()
+        for (label in listOf("Especiales", "No cumple con las especificaciones del cliente", "Se modificó la cantidad en la orden"))
+            compose.onNodeWithText(label).assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals("Chile serrano", product); assertEquals("1", quantity); assertEquals("kg", unit)
+            assertEquals(listOf("product_not_ordered"), comments)
+        }
+    }
+
     @Test fun multipleCommentsAndClassificationAreSelectableAndFooterStaysVisible() {
         var comments by mutableStateOf(emptyList<String>())
         var department by mutableStateOf("")

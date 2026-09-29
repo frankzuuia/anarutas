@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,6 +16,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -41,11 +43,27 @@ internal fun ProductSelectField(label: String, value: String, options: List<Pair
 }
 
 @Composable
-internal fun ProductCommentChoices(selected: List<String>, enabled: Boolean, onChange: (List<String>) -> Unit) {
+internal fun ShortageProductFields(product: String, quantity: String, unit: String, enabled: Boolean,
+    onProduct: (String) -> Unit, onQuantity: (String) -> Unit, onUnit: (String) -> Unit) {
+    OutlinedTextField(product, { onProduct(it.take(300)) }, modifier = Modifier.fillMaxWidth(),
+        label = { Text("Producto faltante") }, enabled = enabled, singleLine = true)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(quantity, { onQuantity(it.take(20)) }, modifier = Modifier.weight(1f),
+            label = { Text("Cantidad faltante") }, placeholder = { Text("Ej. 1") }, enabled = enabled,
+            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+        OutlinedTextField(unit, { onUnit(it.take(40)) }, modifier = Modifier.weight(1f),
+            label = { Text("Unidad") }, placeholder = { Text("kg, piezas, cajas…") }, enabled = enabled, singleLine = true)
+    }
+}
+
+@Composable
+internal fun ProductCommentChoices(selected: List<String>, enabled: Boolean,
+    options: List<ProductComment> = ProductComment.entries, onChange: (List<String>) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text("Comentarios rápidos", style = MaterialTheme.typography.labelLarge)
-        Text("Puedes elegir varios y agregar tus notas abajo.", style = MaterialTheme.typography.labelSmall, color = DriverColors.muted)
-        ProductComment.entries.forEach { option ->
+        Text(if (options.size == 1) "Selecciona si aplica y agrega tus notas abajo." else "Puedes elegir varios y agregar tus notas abajo.",
+            style = MaterialTheme.typography.labelSmall, color = DriverColors.muted)
+        options.forEach { option ->
             FilterChip(selected = option.code in selected, onClick = {
                 onChange(if (option.code in selected) selected - option.code else selected + option.code)
             }, enabled = enabled, modifier = Modifier.fillMaxWidth(),
@@ -53,6 +71,9 @@ internal fun ProductCommentChoices(selected: List<String>, enabled: Boolean, onC
                 leadingIcon = if (option.code in selected) ({ AppIcon(DriverIcon.CHECK, Modifier.size(16.dp), tint = DriverColors.lime) }) else null,
                 colors = FilterChipDefaults.filterChipColors(selectedContainerColor = DriverColors.lime.copy(alpha = .12f), selectedLabelColor = DriverColors.lime))
         }
+        val previous = ProductComment.entries.filter { it.code in selected && it !in options }
+        if (previous.isNotEmpty()) Text("Comentarios registrados: ${previous.joinToString(" · ") { it.label }}",
+            style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
     }
 }
 

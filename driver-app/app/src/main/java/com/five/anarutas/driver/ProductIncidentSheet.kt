@@ -29,7 +29,7 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
     val kind = ProductIncidentKind.entries.first { it.wire == kindCode }
     var product by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(editingIncident?.product ?: line?.name.orEmpty()) }
     var unit by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(editingIncident?.unit ?: line?.unit.orEmpty()) }
-    var quantity by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(editingIncident?.quantity ?: "") }
+    var quantity by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(productQuantityText(editingIncident?.quantity ?: "")) }
     var note by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(editingIncident?.additionalNote ?: "") }
     var warehouseReason by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(editingIncident?.warehouseReason ?: "") }
     var department by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(editingIncident?.department ?: "") }
@@ -38,14 +38,14 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
     val remaining = if (line != null) remainingProductQuantity(line.quantity, stop.productIncidents, order.id, lineIndex, savedId) else null
     val status = stop.orderStates.find { it.shipmentId == order.id }?.status
     val available = state.verified && !state.busy && !state.pending && !state.retired && stop.canAttend() &&
-        (saved == null || saved.status == "pending") &&
+        (saved == null || saved.status == "pending" && !saved.reportRemoved) &&
         status in listOf(OrderServiceStatus.OPEN, OrderServiceStatus.REJECTED, OrderServiceStatus.CLOSED_PENDING)
     var revision by remember { mutableIntStateOf(state.productRevision) }
     var cameraPath by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf<String?>(null) }
     var photos by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf<List<String>>(emptyList()) }
     var readyPhotos by remember { mutableStateOf(setOf<String>()) }
     var photoError by remember { mutableStateOf("") }
-    val editable = !state.busy && !state.pending && cameraPath == null && (saved == null || saved.status == "pending")
+    val editable = !state.busy && !state.pending && cameraPath == null && (saved == null || saved.status == "pending" && !saved.reportRemoved)
     val changed = productIncidentDraftChanged(saved, kindCode, product, unit, quantity, note,
         warehouseReason, department, concept, comments)
     var confirmCancel by rememberSaveable(savedId) { mutableStateOf(false) }
@@ -74,7 +74,7 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
                     kindCode = confirmed.kind
                     product = confirmed.product
                     unit = confirmed.unit
-                    quantity = confirmed.quantity
+                    quantity = productQuantityText(confirmed.quantity)
                     note = confirmed.additionalNote
                     warehouseReason = confirmed.warehouseReason
                     department = confirmed.department
@@ -125,18 +125,16 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
     }) {
         if (line == null) {
             Text("Escribe el producto que hizo falta, aunque no venga en el pedido.", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
-            OutlinedTextField(product, { product = it.take(300) }, modifier = Modifier.fillMaxWidth(),
-                label = { Text("Producto faltante") }, enabled = editable, singleLine = true)
-            OutlinedTextField(unit, { unit = it.take(40) }, modifier = Modifier.fillMaxWidth(),
-                label = { Text("Unidad · kg, piezas, cajas…") }, enabled = editable, singleLine = true)
+            ShortageProductFields(product, quantity, unit, editable,
+                onProduct = { product = it }, onQuantity = { quantity = it }, onUnit = { unit = it })
         } else {
             Text(line.name, style = MaterialTheme.typography.titleMedium)
-            Text("En pedido: ${line.quantity} ${line.unit} · Disponible para reportar: ${remaining?.stripTrailingZeros()?.toPlainString()} ${line.unit}",
+            Text("En pedido: ${productQuantityText(line.quantity.toString())} ${line.unit} · Disponible para reportar: ${remaining?.stripTrailingZeros()?.toPlainString()} ${line.unit}",
                 style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
         }
         ProductSelectField("Tipo de incidencia", kindCode,
             ProductIncidentKind.entries.filter { it.manual == (line == null) }.map { it.wire to it.label }, editable) { kindCode = it }
-        OutlinedTextField(quantity, { quantity = it.take(20) }, modifier = Modifier.fillMaxWidth(),
+        if (!kind.manual) OutlinedTextField(quantity, { quantity = it.take(20) }, modifier = Modifier.fillMaxWidth(),
             label = { Text(if (kind == ProductIncidentKind.RETURN) "Cantidad devuelta · $unit" else "Cantidad afectada · $unit") },
             enabled = editable, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
         if (remaining != null) TextButton(enabled = editable && remaining.signum() > 0,
@@ -147,31 +145,33 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
         }
         if (kind == ProductIncidentKind.SHORTAGE_WAREHOUSE) ProductSelectField("Motivo desde bodega", warehouseReason,
             WarehouseReason.entries.map { it.wire to it.label }, editable) { warehouseReason = it }
-        Text(if (saved != null) "Evidencia enviada · ${saved.evidenceCount} foto(s) resguardadas"
-            else "Evidencia · ${photos.size}/3${if (productEvidenceRequired(kind)) " · mínimo 1" else " · opcional"}",
-            style = MaterialTheme.typography.labelLarge, color = DriverColors.lime)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            photos.forEachIndexed { index, path -> key(path) {
-                CapturedProductPhoto(path, index + 1, editable, { ok -> readyPhotos = if (ok) readyPhotos + path else readyPhotos - path }) {
-                    photos = photos.filterNot { it == path }; readyPhotos = readyPhotos - path; discardPhoto(path)
-                }
-            } }
-            if (saved == null && photos.size < 3) OutlinedButton(enabled = editable, modifier = Modifier.size(88.dp),
-                shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(4.dp), onClick = {
-            val directory = File(context.cacheDir, "incident-camera").also { it.mkdirs() }
-            val file = File(directory, "incident-product-${UUID.randomUUID()}.jpg")
-            cameraPath = file.absolutePath
-            try { camera.launch(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)) }
-            catch (_: RuntimeException) { cameraPath = null; discardPhoto(file.absolutePath); photoError = "No se pudo abrir la cámara. Revisa que esté disponible." }
-            }) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    AppIcon(DriverIcon.CAMERA, Modifier.size(24.dp))
-                    Text("Agregar foto", style = MaterialTheme.typography.labelSmall)
+        if (!kind.manual) {
+            Text(if (saved != null) "Evidencia enviada · ${saved.evidenceCount} foto(s) resguardadas"
+                else "Evidencia · ${photos.size}/3 · mínimo 1",
+                style = MaterialTheme.typography.labelLarge, color = DriverColors.lime)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                photos.forEachIndexed { index, path -> key(path) {
+                    CapturedProductPhoto(path, index + 1, editable, { ok -> readyPhotos = if (ok) readyPhotos + path else readyPhotos - path }) {
+                        photos = photos.filterNot { it == path }; readyPhotos = readyPhotos - path; discardPhoto(path)
+                    }
+                } }
+                if (saved == null && photos.size < 3) OutlinedButton(enabled = editable, modifier = Modifier.size(88.dp),
+                    shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(4.dp), onClick = {
+                        val directory = File(context.cacheDir, "incident-camera").also { it.mkdirs() }
+                        val file = File(directory, "incident-product-${UUID.randomUUID()}.jpg")
+                        cameraPath = file.absolutePath
+                        try { camera.launch(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)) }
+                        catch (_: RuntimeException) { cameraPath = null; discardPhoto(file.absolutePath); photoError = "No se pudo abrir la cámara. Revisa que esté disponible." }
+                    }) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        AppIcon(DriverIcon.CAMERA, Modifier.size(24.dp))
+                        Text("Agregar foto", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
+            if (photoError.isNotBlank()) Text(photoError, color = DriverColors.amber)
         }
-        if (photoError.isNotBlank()) Text(photoError, color = DriverColors.amber)
-        ProductCommentChoices(comments, editable) { comments = it }
+        ProductCommentChoices(comments, editable, productCommentOptions(kind)) { comments = it }
         ServiceNoteField(note, { note = it }, "Notas adicionales · opcional", editable)
         Text("${completeNote.length}/2000 caracteres · comentarios y notas", style = MaterialTheme.typography.labelSmall, color = DriverColors.muted)
         Text(if (kind == ProductIncidentKind.RETURN) "Se registra para administración. No genera todavía una devolución ni ajuste en Odoo."
@@ -180,14 +180,17 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
         Text(state.message, style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
         if (saved?.status == "resolved") Text("Incidencia resuelta por administración; ya no se puede modificar.",
             style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
-        if (saved != null && saved.status == "pending") TextButton(enabled = editable, onClick = { confirmCancel = true }) {
+        if (saved?.reportRemoved == true) Text("Retirada del reporte por administración. La entrega cerrada conserva sus cantidades.",
+            style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+        if (saved != null && saved.status == "pending" && !saved.reportRemoved) TextButton(enabled = editable, onClick = { confirmCancel = true }) {
             Text("Eliminar incidencia", color = DriverColors.amber)
         }
         TextButton(enabled = !state.busy && cameraPath == null, onClick = ::dismiss) { Text("Volver al pedido") }
     }
     if (confirmCancel && saved != null) AlertDialog(onDismissRequest = { confirmCancel = false },
         title = { Text("¿Eliminar esta incidencia?") },
-        text = { Text("El producto volverá a su cantidad original si no tiene otras incidencias. El registro y sus fotos se conservan en el historial.") },
+        text = { Text(if (kind.manual) "El faltante dejará de aparecer en el pedido y en el panel de Incidencias."
+            else "Se restablecerá la cantidad correspondiente en el pedido y la incidencia dejará de aparecer en el panel.") },
         confirmButton = { TextButton(onClick = { confirmCancel = false; model.cancelProduct(stop.id, order.id, saved) }) { Text("Eliminar incidencia") } },
         dismissButton = { TextButton(onClick = { confirmCancel = false }) { Text("Conservar") } })
 }

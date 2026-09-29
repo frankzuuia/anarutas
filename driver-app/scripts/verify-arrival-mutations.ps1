@@ -1,4 +1,4 @@
-param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly, [switch]$ProductCaptureOnly)
+param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly, [switch]$ProductCaptureOnly, [switch]$ProductPresentationOnly)
 $ErrorActionPreference = 'Stop'
 # Mechanical mutations occur only in an isolated copy. No ADB, HTTP stubs or credential output.
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -196,6 +196,13 @@ if ($ProductCaptureOnly) {
         @{ name = 'upload_lose_metadata'; from = 'chunks.add(metadata)'; to = '' },
         @{ name = 'upload_wrong_length'; from = 'parts.sumOf { it.size.toLong() }'; to = 'parts.size.toLong()' }
     ) | ForEach-Object { $_.file = 'ProductPhotoUpload.kt'; $_.test = 'ProductPhotoUploadTest'; $_ }
+}
+if ($ProductPresentationOnly) {
+    $cases = @(
+        @{ name = 'quantity_keep_trailing_zeros'; from = 'value.toBigDecimalOrNull()?.stripTrailingZeros()?.toPlainString() ?: value'; to = 'value' },
+        @{ name = 'quantity_round_fraction'; from = 'value.toBigDecimalOrNull()?.stripTrailingZeros()?.toPlainString() ?: value'; to = 'value.toBigDecimalOrNull()?.setScale(0, java.math.RoundingMode.DOWN)?.toPlainString() ?: value' },
+        @{ name = 'shortage_offer_wrong_comments'; from = 'if (kind.manual) listOf(ProductComment.MISSING)'; to = 'if (!kind.manual) listOf(ProductComment.MISSING)' }
+    ) | ForEach-Object { $_.file = 'ProductIncidentPolicy.kt'; $_.test = 'ProductIncidentPolicyTest'; $_ }
 }
 $arguments = @('testDebugUnitTest', '--console=plain')
 if ($ServerUrl) { $arguments += ('-PANA_RUTAS_SERVER_URL=' + $ServerUrl) }

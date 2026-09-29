@@ -52,7 +52,7 @@ internal fun parseExecution(raw: String, receivedElapsed: Long): DriverExecution
                             record.optJSONArray("comments")?.let { comments ->
                                 (0 until comments.length()).map(comments::getString)
                             }.orEmpty(), record.optString("additionalNote").takeUnless { record.isNull("additionalNote") }.orEmpty(),
-                            record.optInt("evidenceCount")) }
+                            record.optInt("evidenceCount"), record.optBoolean("reportRemoved")) }
                 }.orEmpty())
         })
 }

@@ -9,6 +9,7 @@ import { freePort } from "../helpers/postgres";
 import { createUser } from "../../src/core/auth";
 import { readDriverExecution } from "../../src/core/driver-execution-read";
 import { executeStopCommand } from "../../src/core/driver-stop-command";
+import { executeDriverOrderCommand } from "../../src/core/driver-order-command";
 
 let f: Awaited<ReturnType<typeof executionFixture>>;
 let server: ChildProcess;
@@ -87,6 +88,7 @@ test("mobile report → live visibility → admin classification → exact priva
   const live = page.getByRole("region", { name: "Reposiciones pendientes", exact: true });
   await expect(live).toContainText("Producto 1");
   await expect(live).toContainText("Reportó: Chofer 0");
+  await expect(live.getByRole("button", { name: "Resolver", exact: true }).locator("svg")).toHaveCSS("color", "rgb(39, 219, 133)");
   await expect(live.getByRole("img", { name: /Evidencia: Producto 1/ })).toHaveCount(3);
   for (let index = 1; index <= 3; index++) {
     await expect(live.getByRole("img", { name: `Evidencia: Producto 1 · ${index} de 3` })).toBeVisible();
@@ -161,6 +163,8 @@ test("mobile report → live visibility → admin classification → exact priva
   const missing = await request.post(path, { headers, data: shortage });
   expect(missing.status()).toBe(201);
   const missingId = (await missing.json()).incidentId;
+  await page.getByRole("button", { name: "Incidencias", exact: true }).click();
+  await expect(history).toContainText("Limón sin semilla");
   const changePath = `${path}/${missingId}`;
   const next = await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
   const amend = { ...shortage, ...identity(next), expectedVersion: 1, quantity: "2", note: "Cliente confirmó dos" };
@@ -176,8 +180,44 @@ test("mobile report → live visibility → admin classification → exact priva
   expect((await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone)).stops[0]
     .productIncidents.find(incident => incident.id === missingId)?.status).toBe("canceled");
   expect((await f.db.pool.query("SELECT count(*) FROM route_product_incident_changes WHERE incident_id=$1", [missingId])).rows[0].count).toBe("2");
+  await expect(history).not.toContainText("Limón sin semilla", { timeout: 20_000 });
+  await expect(history).toContainText("Producto 1");
+  const visibleReport = await page.request.get(`${origin}/api/incidents/products`);
+  expect((await visibleReport.json()).rows.map((row: { id: string }) => row.id)).toEqual([receipt.incidentId]);
+  await page.screenshot({ path: ".local/qa/product-incidents/canceled-hidden.png", fullPage: true });
   const afterCancel = await page.request.get(origin + url!);
   const afterCancelBook = new ExcelJS.Workbook(); await afterCancelBook.xlsx.load(await afterCancel.body() as never);
   expect(afterCancelBook.getWorksheet("Incidencias")!.rowCount).toBe(2);
+  const beforeClose = await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
+  await executeDriverOrderCommand(f.db.pool, headers.Authorization, f.planId, beforeClose.stops[0].id,
+    beforeClose.stops[0].shipmentIds[0], { ...identity(beforeClose), kind: "deliver", productIncidentsAcknowledged: true }, f.timezone);
+  const closed = await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
+  const incidentVersion = closed.stops[0].productIncidents.find(incident => incident.id === receipt.incidentId)!.version;
+  const removalUrl = `${origin}/api/incidents/products/${receipt.incidentId}`;
+  expect((await request.delete(removalUrl, { data: { expectedVersion: incidentVersion } })).status()).toBe(401);
+  expect((await page.request.delete(removalUrl, { headers: { Origin: "https://foreign.invalid" }, data: { expectedVersion: incidentVersion } })).status()).toBe(403);
+  expect((await page.request.delete(removalUrl, { headers: { Origin: origin }, data: { expectedVersion: incidentVersion - 1 } })).status()).toBe(409);
+  const trash = history.getByRole("button", { name: /Eliminar incidencia de Producto 1/ });
+  await expect(trash).toHaveCSS("background-color", "rgb(180, 35, 46)");
+  await trash.click();
+  const removal = page.getByRole("dialog", { name: "Eliminar incidencia de producto", exact: true });
+  await expect(removal).toContainText("Si ya está cerrado");
+  await removal.getByRole("button", { name: "Conservar incidencia" }).click();
+  await expect(history).toContainText("Producto 1");
+  await trash.click();
+  await removal.getByRole("button", { name: "Eliminar incidencia", exact: true }).click();
+  await expect(removal).toHaveCount(0);
+  await expect(history).toContainText("Sin incidencias de producto");
+  const adminReplay = await page.request.delete(removalUrl, { headers: { Origin: origin }, data: { expectedVersion: incidentVersion } });
+  expect(adminReplay.status()).toBe(200); expect((await adminReplay.json()).duplicate).toBe(true);
+  const afterRemoval = await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
+  expect(afterRemoval.revision).toBe(closed.revision);
+  expect(afterRemoval.stops[0].orderStates).toEqual(closed.stops[0].orderStates);
+  expect(afterRemoval.stops[0].productIncidents.find(incident => incident.id === receipt.incidentId))
+    .toMatchObject({ status: "resolved", quantity: "0.250000", reportRemoved: true });
+  const removedBook = new ExcelJS.Workbook(); await removedBook.xlsx.load(await (await page.request.get(origin + url!)).body() as never);
+  expect(removedBook.getWorksheet("Incidencias")!.rowCount).toBe(1);
+  expect((await page.request.get(evidenceUrl)).status()).toBe(200);
+  await page.screenshot({ path: ".local/qa/product-incidents/admin-removed.png", fullPage: true });
   expect(pageErrors).toEqual([]);
 });

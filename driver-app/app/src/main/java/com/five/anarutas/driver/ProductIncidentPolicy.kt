@@ -12,7 +12,8 @@ internal enum class ProductIncidentKind(val wire: String, val label: String, val
 internal data class ProductIncidentRecord(val id: String, val shipmentId: String, val lineIndex: Int?,
     val kind: String, val product: String, val quantity: String, val unit: String, val status: String,
     val version: Int = 1, val department: String = "", val concept: String = "", val warehouseReason: String = "",
-    val comments: List<String> = emptyList(), val additionalNote: String = "", val evidenceCount: Int = 0)
+    val comments: List<String> = emptyList(), val additionalNote: String = "", val evidenceCount: Int = 0,
+    val reportRemoved: Boolean = false)
 internal enum class WarehouseReason(val wire: String, val label: String) {
     SPECIAL("special", "Especiales"), QUALITY("quality", "Calidad"), LATE("late_arrival", "Llegada tardía")
 }
@@ -25,6 +26,10 @@ internal enum class ProductComment(val code: String, val label: String) {
     QUANTITY("order_quantity_changed", "Se modificó la cantidad en la orden"),
     MISSING("product_not_ordered", "No venía el producto en el pedido"),
 }
+internal fun productCommentOptions(kind: ProductIncidentKind): List<ProductComment> =
+    if (kind.manual) listOf(ProductComment.MISSING) else ProductComment.entries
+internal fun productQuantityText(value: String): String =
+    value.toBigDecimalOrNull()?.stripTrailingZeros()?.toPlainString() ?: value
 internal fun productPhotosValid(kind: ProductIncidentKind, count: Int) = count in (if (productEvidenceRequired(kind)) 1 else 0)..3
 internal fun productCommentsText(selected: List<String>, note: String) =
     (ProductComment.entries.filter { it.code in selected }.map { it.label } + note.trim()).filter { it.isNotBlank() }.joinToString("\n")

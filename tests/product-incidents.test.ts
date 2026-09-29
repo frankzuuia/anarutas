@@ -136,7 +136,9 @@ it("amends and cancels real incidents without losing evidence, oversubscribing l
     const day = new URLSearchParams({ from: "2026-09-24", to: "2026-09-24" });
     const exported = await readProductIncidents(f.db.pool, f.actor, day, f.timezone, "export");
     expect(exported.rows.map(i => i.id)).toEqual([b.incidentId]);
-    expect((await readProductIncidents(f.db.pool, f.actor, day, f.timezone, "history")).rows).toHaveLength(2);
+    const visible = await readProductIncidents(f.db.pool, f.actor, day, f.timezone, "history");
+    expect(visible.rows.map(i => i.id)).toEqual([b.incidentId]);
+    expect(visible.pending).toBe(1);
     await expect(classifyProductIncident(f.db.pool, f.actor, a.incidentId!, { expectedVersion: 3,
       department: "Operaciones", concept: "Reparto" })).rejects.toMatchObject({ code: "INCIDENT_CANCELED" });
     const simultaneous = { ...await identity(), expectedVersion: 1 };
@@ -156,6 +158,8 @@ it("amends and cancels real incidents without losing evidence, oversubscribing l
     await changeProductIncident(f.db.pool, auth, f.planId, stop.id, shipment, manual.incidentId!,
       { ...await identity(), expectedVersion: 2 }, "cancel");
     expect((await readProductIncidents(f.db.pool, f.actor, day, f.timezone, "export")).rows).toHaveLength(0);
+    for (const mode of ["history", "live"] as const)
+      expect(await readProductIncidents(f.db.pool, f.actor, day, f.timezone, mode)).toEqual({ rows: [], pending: 0, nextCursor: null });
     const previousVisit = await reportProductIncident(f.db.pool, auth, f.planId, stop.id, shipment,
       { ...await identity(), ...shortage }, f.timezone, f.now);
     await exitDriverVisit(f.db.pool, auth, f.planId, stop.id, await identity(), f.timezone, f.now);
@@ -262,7 +266,7 @@ it("upgrades v26, protects concurrent quantities and closed visits, and exports 
       ALTER TABLE route_plans DROP COLUMN archived_at;
       UPDATE rutas_installation SET schema_version=26`);
     await Promise.all([migrate(f.db.pool, f.db.config.instanceId), migrate(f.db.pool, f.db.config.instanceId)]);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(29);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(30);
     await f.start();
     const state = () => readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
     const identity = async () => {

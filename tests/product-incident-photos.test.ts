@@ -117,7 +117,7 @@ it("upgrades v27 non-destructively and serializes repeated v28 installation", as
     const original = (await f.db.pool.query("SELECT * FROM route_product_incidents WHERE id=$1", [saved.incidentId])).rows[0];
     await f.db.pool.query("DROP TABLE route_product_incident_photos; UPDATE rutas_installation SET schema_version=27");
     await Promise.all([migrate(f.db.pool, f.db.config.instanceId), migrate(f.db.pool, f.db.config.instanceId)]);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(29);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(30);
     expect((await f.db.pool.query("SELECT count(*) FROM route_shipments")).rows[0].count).toBe("4");
     expect((await f.db.pool.query("SELECT * FROM route_product_incidents WHERE id=$1", [saved.incidentId])).rows[0]).toEqual(original);
     const replay = await report(); expect(replay.duplicate).toBe(true); expect(replay.incidentId).toBe(saved.incidentId);

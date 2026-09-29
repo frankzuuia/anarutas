@@ -19,3 +19,4 @@
 .embedded-live-incidents .product-incidents .muted { margin: 4px 0; font-size: .7rem; }
 .product-evidence-gallery { display: flex; flex-wrap: wrap; gap: 8px; }
 .product-incident-note { white-space: pre-wrap; }
+.product-incidents .product-incident-resolve svg { color: var(--green); }

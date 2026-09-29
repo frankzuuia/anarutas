@@ -147,7 +147,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
                 AppIcon(DriverIcon.ALERT, Modifier.size(16.dp), tint = DriverColors.amber)
                 Text("${ProductIncidentKind.entries.firstOrNull { it.wire == incident.kind }?.label ?: incident.kind} · ${incident.product}",
                     Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = DriverColors.amber)
-                Text("${incident.quantity} ${incident.unit}", style = MaterialTheme.typography.labelSmall, color = DriverColors.amber)
+                Text("${productQuantityText(incident.quantity)} ${incident.unit}", style = MaterialTheme.typography.labelSmall, color = DriverColors.amber)
             } }
             if (confirmation == null) {
                 if (canDeliverOrder(status.status) && stop.canAttend()) AppAction(if (hasIncidents) "Confirmar atención con incidencias" else "Entregado completo", DriverIcon.CHECK,

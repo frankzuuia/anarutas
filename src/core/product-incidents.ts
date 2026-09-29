@@ -112,7 +112,7 @@ export async function changeProductIncident(pool: Pool, authorization: string | 
       WHERE id=$1 AND execution_id=$2 AND stop_id=$3 AND shipment_id=$4 AND driver_id=$5 FOR UPDATE`,
     [target, route.id, stop!.id, shipment, driver.driver_id])).rows[0];
     if (!old) throw new AppError("NOT_FOUND", 404);
-    if (old.version !== expectedVersion || old.status !== "pending") throw new AppError("VERSION_CONFLICT", 409);
+    if (old.version !== expectedVersion || old.status !== "pending" || old.report_removed_at !== null) throw new AppError("VERSION_CONFLICT", 409);
     if (old.visit_sequence !== stop!.visit_sequence) throw new AppError("VISIT_NOT_ACTIVE", 409);
     if (form) {
       if (form.lineIndex !== old.line_index)
@@ -150,9 +150,9 @@ export async function classifyProductIncident(pool: Pool, actor: string, id: str
   const incidentId = uuid(id), version = integer(raw.expectedVersion, 1), next = incidentClassificationInput(raw);
   return transaction(pool, async sql => {
     await assertActiveActor(sql, actor);
-    const row = (await sql.query("SELECT department,concept,version,status FROM route_product_incidents WHERE id=$1 FOR UPDATE", [incidentId])).rows[0];
+    const row = (await sql.query("SELECT department,concept,version,status,report_removed_at FROM route_product_incidents WHERE id=$1 FOR UPDATE", [incidentId])).rows[0];
     if (!row) throw new AppError("NOT_FOUND", 404);
-    if (row.status === "canceled") throw new AppError("INCIDENT_CANCELED", 409);
+    if (row.status === "canceled" || row.report_removed_at !== null) throw new AppError("INCIDENT_CANCELED", 409);
     if (row.version !== version) throw new AppError("VERSION_CONFLICT", 409);
     const result = await sql.query(`UPDATE route_product_incidents SET department=$2,concept=$3,version=version+1
       WHERE id=$1 RETURNING version`, [incidentId, next.department, next.concept]);
@@ -169,8 +169,8 @@ export async function readProductIncidents(pool: Pool, actor: string, params: UR
     await sql.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
     await assertActiveActor(sql, actor);
     const where = `FROM route_product_incidents WHERE ($1::date IS NULL OR event_date>=$1::date)
-      AND ($2::date IS NULL OR event_date<=$2::date) AND ($3::uuid IS NULL OR driver_id=$3)
-      ${mode === "live" ? "AND status='pending' AND kind IN ('replacement_quality','replacement_wrong_product')" : mode === "export" ? "AND status<>'canceled'" : ""}`;
+      AND ($2::date IS NULL OR event_date<=$2::date) AND ($3::uuid IS NULL OR driver_id=$3) AND status<>'canceled' AND report_removed_at IS NULL
+      ${mode === "live" ? "AND status='pending' AND kind IN ('replacement_quality','replacement_wrong_product')" : ""}`;
     const values = [filters.from, filters.to, filters.driverId];
     const pending = (await sql.query(`SELECT count(*)::int AS n ${where} AND status='pending'`, values)).rows[0].n;
     const { rows } = await sql.query(`SELECT *,quantity::text,event_date::text AS date_text,
@@ -197,9 +197,9 @@ export async function resolveProductIncident(pool: Pool, actor: string, id: stri
   if (!note) throw new AppError("RESOLUTION_NOTE_REQUIRED");
   return transaction(pool, async sql => {
     await assertActiveActor(sql, actor);
-    const row = (await sql.query("SELECT status,version FROM route_product_incidents WHERE id=$1 FOR UPDATE", [incidentId])).rows[0];
+    const row = (await sql.query("SELECT status,version,report_removed_at FROM route_product_incidents WHERE id=$1 FOR UPDATE", [incidentId])).rows[0];
     if (!row) throw new AppError("NOT_FOUND", 404);
-    if (row.version !== version || row.status !== "pending") throw new AppError("VERSION_CONFLICT", 409);
+    if (row.version !== version || row.status !== "pending" || row.report_removed_at !== null) throw new AppError("VERSION_CONFLICT", 409);
     await sql.query(`UPDATE route_product_incidents SET status='resolved',resolved_at=now(),resolved_by=$2,
       resolution_note=$3,version=version+1 WHERE id=$1`, [incidentId, actor, note]);
     await audit(sql, actor, "product_incident.resolved", incidentId, { note });

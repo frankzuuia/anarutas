@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { CheckCircle2, Download, PackageSearch, Pencil } from "lucide-react";
+import { CheckCircle2, Download, PackageSearch, Pencil, Trash2 } from "lucide-react";
 import Image from "next/image";
 import type { ProductIncident, ProductIncidentReport } from "@/core/product-incidents";
 import { productIncidentNames, warehouseReasonNames } from "@/core/product-incidents-policy";
@@ -40,7 +40,8 @@ export function ProductIncidentsPanel({ from, to, driverId, revision, live = fal
   const [failure, setFailure] = useState<{ query: string; message: string } | null>(null);
   const [selected, setSelected] = useState<ProductIncident | null>(null);
   const [note, setNote] = useState("");
-  const [editing, setEditing] = useState(false);
+  const [action, setAction] = useState<"classification" | "resolve" | "cancel">("resolve");
+  const editing = action === "classification", removing = action === "cancel";
   const [department, setDepartment] = useState("");
   const [concept, setConcept] = useState("");
   const [commandError, setCommandError] = useState("");
@@ -79,19 +80,22 @@ export function ProductIncidentsPanel({ from, to, driverId, revision, live = fal
     {!report && !failure && <p role="status">Consultando productos…</p>}
     {report && !report.rows.length && <p className="muted">{live ? "Sin reposiciones pendientes." : "Sin incidencias de producto en este periodo."}</p>}
     {report && report.rows.length > 0 && <div className="product-incidents-scroll"><table>
-      <thead><tr><th>Fecha</th><th>Pedido / cliente</th><th>Cantidad</th><th>Producto</th>{!live && <th>Departamento / concepto</th>}<th>{live ? "Notas / seguimiento" : "Comentarios / evidencia"}</th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Pedido / cliente</th><th>Cantidad</th><th>Producto</th>{!live && <th>Departamento / concepto</th>}<th>{live ? "Notas / seguimiento" : "Comentarios / evidencia"}</th>{!live && <th aria-label="Acciones" />}</tr></thead>
       <tbody>{report.rows.map(row => <tr key={row.id}>
         <td><time dateTime={row.occurredAt}>{new Date(row.occurredAt).toLocaleString("es-MX", { timeZone: row.timezone, dateStyle: "short", timeStyle: "short" })}</time></td>
         <td><strong>{row.orderName}</strong><span>{row.snapshot.customer}</span><small>Reportó: {row.snapshot.driver}</small></td>
         <td className="product-quantity">{Number(row.quantity).toLocaleString("es-MX", { maximumFractionDigits: 6 })} {row.unit}</td>
         <td><strong>{row.product}</strong><small>{productIncidentNames[row.kind]}{row.warehouseReason ? ` · ${warehouseReasonNames[row.warehouseReason]}` : ""}</small></td>
         {!live && <td><span>{row.department || "Sin departamento"}</span><small>{row.concept || "Concepto por clasificar"}</small>
-          {row.status !== "canceled" && <button className="quiet" onClick={() => { setEditing(true); setSelected(row); setDepartment(row.department ?? ""); setConcept(row.concept ?? ""); setCommandError(""); }}>
+          {row.status !== "canceled" && <button className="quiet" onClick={() => { setAction("classification"); setSelected(row); setDepartment(row.department ?? ""); setConcept(row.concept ?? ""); setCommandError(""); }}>
             <Pencil size={13} />Editar clasificación</button>}</td>}
         <td><span className="product-incident-note">{row.note || "Sin notas"}</span>
           <ProductEvidence incident={row} />
-          {row.status === "resolved" ? <small>Resuelta · {row.resolutionNote}</small> : row.status === "canceled" ? <small>Cancelada por el chofer · fuera del Excel</small> : live && <button className="quiet" onClick={() => { setEditing(false); setSelected(row); setNote(""); setCommandError(""); }}><CheckCircle2 size={13} />Resolver</button>}
+          {row.status === "resolved" ? <small>Resuelta · {row.resolutionNote}</small> : row.status === "canceled" ? <small>Cancelada por el chofer · fuera del Excel</small> : live && <button className="quiet product-incident-resolve" onClick={() => { setAction("resolve"); setSelected(row); setNote(""); setCommandError(""); }}><CheckCircle2 size={16} />Resolver</button>}
         </td>
+        {!live && <td>{row.status !== "canceled" && <button className="danger product-incident-delete"
+          aria-label={`Eliminar incidencia de ${row.product} · ${row.orderName}`} title="Eliminar incidencia" disabled={busy}
+          onClick={() => { setAction("cancel"); setSelected(row); setCommandError(""); }}><Trash2 size={16} /></button>}</td>}
       </tr>)}</tbody>
     </table></div>}
     <div className="incident-pagination">
@@ -100,14 +104,15 @@ export function ProductIncidentsPanel({ from, to, driverId, revision, live = fal
     </div>
     {selected && <dialog ref={dialog} className="live-incident-confirm" aria-labelledby={title}
       onCancel={event => { event.preventDefault(); if (!busy) setSelected(null); }}>
-      <h2 id={title}>{editing ? "Editar clasificación" : "Resolver incidencia de producto"}</h2>
+      <h2 id={title}>{removing ? "Eliminar incidencia de producto" : editing ? "Editar clasificación" : "Resolver incidencia de producto"}</h2>
       <p>{selected.orderName} · {selected.product} · {Number(selected.quantity)} {selected.unit}</p>
-      <p>{editing ? "Departamento se usará en el Excel; Concepto es interno. La corrección quedará auditada y conservará el reporte original del chofer."
+      <p>{removing ? "Se retirará del panel y del Excel. Si el pedido sigue abierto, se restablecerá la cantidad correspondiente. Si ya está cerrado, sus cantidades y su entrega se conservarán tal como quedaron."
+        : editing ? "Departamento se usará en el Excel; Concepto es interno. La corrección quedará auditada y conservará el reporte original del chofer."
         : "Registra cómo se atendió. No cambia el pedido, inventario ni contabilidad de Odoo."}</p>
       <form onSubmit={async event => {
         event.preventDefault(); setBusy(true);
-        try { await api(`/api/incidents/products/${selected.id}/${editing ? "classification" : "resolve"}`, editing ? "PATCH" : "POST",
-          { expectedVersion: selected.version, ...(editing ? { department, concept } : { note }) });
+        try { await api(`/api/incidents/products/${selected.id}${removing ? "" : `/${action}`}`, removing ? "DELETE" : editing ? "PATCH" : "POST",
+          { expectedVersion: selected.version, ...(removing ? {} : editing ? { department, concept } : { note }) });
           setSelected(null); setRefresh(value => value + 1); }
         catch (error) { setCommandError((error as Error).message); setSelected(null); setRefresh(value => value + 1); }
         finally { setBusy(false); }
@@ -117,9 +122,9 @@ export function ProductIncidentsPanel({ from, to, driverId, revision, live = fal
           <datalist id={`${title}-departments`}><option value="Operaciones" /><option value="Compras" /><option value="Ventas" /></datalist>
           <label>Concepto<input required maxLength={120} list={`${title}-concepts`} value={concept} onChange={e => setConcept(e.target.value)} disabled={busy} /></label>
           <datalist id={`${title}-concepts`}>{["Reparto", "Picking", "Especiales", "Error_en_compra"].map(value => <option key={value} value={value} />)}</datalist>
-        </div> : <label>Cómo se resolvió<textarea required maxLength={2000} value={note} onChange={event => setNote(event.target.value)} disabled={busy} /></label>}
-        <div className="toolbar"><button disabled={busy || (editing ? !department.trim() || !concept.trim() : !note.trim())}>{busy ? "Guardando…" : editing ? "Guardar clasificación" : "Confirmar resolución"}</button>
-          <button type="button" className="quiet" disabled={busy} onClick={() => setSelected(null)}>Cancelar</button></div>
+        </div> : !removing && <label>Cómo se resolvió<textarea required maxLength={2000} value={note} onChange={event => setNote(event.target.value)} disabled={busy} /></label>}
+        <div className="toolbar"><button className={removing ? "danger" : undefined} disabled={busy || (editing ? !department.trim() || !concept.trim() : !removing && !note.trim())}>{busy ? "Guardando…" : removing ? "Eliminar incidencia" : editing ? "Guardar clasificación" : "Confirmar resolución"}</button>
+          <button type="button" className="quiet" disabled={busy} onClick={() => setSelected(null)}>{removing ? "Conservar incidencia" : "Cancelar"}</button></div>
       </form>
     </dialog>}
   </section>;
