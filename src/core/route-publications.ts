@@ -8,6 +8,7 @@ import { routeFingerprint, vehicleRouteFingerprints } from "./route-fingerprint"
 import { readPlanOptimization, lockRouteInputs } from "./route-optimization";
 import { getRoutingSettings } from "./routing-settings";
 import { routePublicationContentChanged, routePublicationSnapshot } from "./route-publication-content";
+import { nextPublicationRevision } from "./route-publication-revisions";
 
 type PublicationRow = {
   vehicle_id: string;
@@ -172,13 +173,14 @@ export async function publishRoutes(
         previous.driver_id === currentAssignment.fleet_driver_id
       )
         continue;
+      const revision = await nextPublicationRevision(sql, id, vehicle.id, previous?.revision ?? 0);
       const saved = await sql.query(
         `INSERT INTO route_plan_publications
-           (plan_id,vehicle_id,driver_id,source_plan_version,snapshot,snapshot_hash,published_by)
-         VALUES($1,$2,$3,$4,$5::jsonb,$6,$7)
+           (plan_id,vehicle_id,driver_id,source_plan_version,snapshot,snapshot_hash,published_by,revision)
+         VALUES($1,$2,$3,$4,$5::jsonb,$6,$7,$8)
          ON CONFLICT(plan_id,vehicle_id) DO UPDATE SET
            driver_id=EXCLUDED.driver_id,
-           revision=route_plan_publications.revision+1,
+           revision=EXCLUDED.revision,
            source_plan_version=EXCLUDED.source_plan_version,
            snapshot=EXCLUDED.snapshot,
            snapshot_hash=EXCLUDED.snapshot_hash,
@@ -195,6 +197,7 @@ export async function publishRoutes(
           serialized,
           hash,
           actor,
+          revision,
         ],
       );
       if (!saved.rowCount) throw new AppError("ROUTE_ALREADY_STARTED", 409);

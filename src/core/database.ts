@@ -31,6 +31,7 @@ import { migrateProductIncidents } from "./product-incidents-schema";
 import { migrateProductIncidentPhotos } from "./product-incident-photos-schema";
 import { migrateProductIncidentAmendments } from "./product-incident-amendments-schema";
 import { migrateProductIncidentAdminCancellation } from "./product-incident-admin-schema";
+import { migrateRoutePublicationRevisions } from "./route-publication-revisions-schema";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
   return new pg.Pool({
@@ -102,7 +103,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       );
       let version = result.rows[0]?.schema_version;
       if (
-        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].includes(
+        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31].includes(
           version,
         )
       )
@@ -148,6 +149,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (version < 28) await migrateProductIncidentPhotos(client);
       if (version < 29) await migrateProductIncidentAmendments(client);
       if (version < 30) await migrateProductIncidentAdminCancellation(client);
+      if (version < 31) await migrateRoutePublicationRevisions(client);
       return;
     }
     await client.query(`
@@ -192,6 +194,7 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migrateProductIncidentPhotos(client);
     await migrateProductIncidentAmendments(client);
     await migrateProductIncidentAdminCancellation(client);
+    await migrateRoutePublicationRevisions(client);
   });
 }
 export async function audit(

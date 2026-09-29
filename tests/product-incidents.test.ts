@@ -266,7 +266,7 @@ it("upgrades v26, protects concurrent quantities and closed visits, and exports 
       ALTER TABLE route_plans DROP COLUMN archived_at;
       UPDATE rutas_installation SET schema_version=26`);
     await Promise.all([migrate(f.db.pool, f.db.config.instanceId), migrate(f.db.pool, f.db.config.instanceId)]);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(30);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(31);
     await f.start();
     const state = () => readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
     const identity = async () => {

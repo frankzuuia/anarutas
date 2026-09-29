@@ -16,7 +16,14 @@ it("normalizes actual image bytes and rejects invalid, oversized and non-image v
   expect(await sharp(normalized!).metadata()).toMatchObject({ format: "webp", width: 128, height: 50 });
   for (const value of [false, null, undefined, 42, "", "@@@@", "a".repeat(180_001), Buffer.from("not an image").toString("base64")])
     expect(await normalizeProductThumbnail(value)).toBeNull();
-  const excessive = await sharp({ create: { width: 600, height: 600, channels: 3, background: "#fff" } }).png().toBuffer();
+  for (const side of [860, 1920, 4096]) {
+    const original = await sharp({ create: { width: side, height: side, channels: 3, background: "#fff" } }).webp().toBuffer();
+    const thumbnail = await normalizeProductThumbnail(original.toString("base64"));
+    expect(thumbnail).not.toBeNull();
+    expect(await sharp(thumbnail!).metadata()).toMatchObject({ format: "webp", width: 128, height: 128, hasProfile: false });
+    expect(thumbnail!.length).toBeLessThanOrEqual(65_536);
+  }
+  const excessive = await sharp({ create: { width: 4097, height: 4096, channels: 3, background: "#fff" } }).webp().toBuffer();
   expect(await normalizeProductThumbnail(excessive.toString("base64"))).toBeNull();
 });
 

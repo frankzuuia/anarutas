@@ -16,7 +16,9 @@ export async function normalizeProductThumbnail(image: unknown): Promise<Buffer 
   try {
     const bytes = Buffer.from(image, "base64");
     if (bytes.toString("base64") !== image) return null;
-    const result = await sharp(bytes, { limitInputPixels: 262_144, animated: false })
+    // Odoo can return original-sized bytes even from image_128. Bound decoding,
+    // then resize; the field name is not an image-dimension guarantee.
+    const result = await sharp(bytes, { limitInputPixels: 4096 * 4096, animated: false })
       .rotate().resize(128, 128, { fit: "inside", withoutEnlargement: true }).webp({ quality: 78 }).toBuffer();
     return result.length <= 65_536 ? result : null;
   } catch { return null; }

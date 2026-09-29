@@ -684,3 +684,9 @@ se prepara primero en `develop`; producción requiere su propia aprobación.
 - [x] PT-T02 (PT02..03, PT07..08): campo opcional Android, miniatura y logo Five atenuado, caché privada; mantener clicks/alertas/cantidades.
 - [x] PT-T03A (PT01..08): PG/Odoo real 6/6, regresión 29/29, HTTP E2E 1/1 y regresión de incidencias 2/2, 100% líneas dirigidas; mutación crítica TS 37/37 y Android 4/4; JVM 103/103, build/lint y APK 0.8.4. Evidencia en `QA-MINIATURAS-PRODUCTO-0.8.4.md`.
 - [ ] PT-T03B: validación visual Compose/QA físico. APK de instrumentación compilada; ejecución bloqueada por ADB (`closed`), sin contarla como aprobada. El propietario autorizó expresamente commit/push a develop con esta prueba pendiente a su cargo el 2026-09-29. Deploy manual del propietario; no certificación de producción.
+
+## BL-152 — corrección acotada autorizada
+
+- [x] RF-T01 (RF01..06): máximo durable y asignación de revisión sin reusar ejecución; migración automática aditiva y regresión PG 3/3, preservando rutas activas e historial.
+- [x] RF-T02 (RF07..08): normalizar foto real grande conservando límites, permisos y contrato de APK; Odoo real validado sin escrituras.
+- [x] RF-T03: 9/9 pruebas dirigidas, cobertura de líneas 100%, mutación 15/15, HTTP 3/3, typecheck/lint/build y bundle de migración aprobados. Suite general: 661 aprobadas, 1 timeout de limpieza PG aprobado al repetirlo sin cambios, 2 omitidas (Odoo aprobado por separado; FCM no afectado). Salvedad y evidencia en `QA-RECREACION-RUTA-Y-FOTO-ODOO.md`. Commit/push a develop autorizados por el propietario el 2026-09-29 tras informar los resultados; sin modificar ruta remota ni desplegar.

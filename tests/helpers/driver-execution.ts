@@ -76,13 +76,13 @@ export async function executionFixture(options: { groupFourthOrderWithFirst?: bo
     }
     const now = new Date("2026-09-24T17:00:00.000Z");
     const timezone = "America/Mexico_City";
-    const start = async (member = members[0]) => {
+    const start = async (member = members[0], expectedRevision = 1) => {
       for (let i = 0; i < 5; i++) {
         const bytes = await sharp({ create: { width: 24, height: 24, channels: 3,
           background: { r: 30 + i * 30, g: 80, b: 90 } } }).jpeg().toBuffer();
         await uploadDriverUnitPhoto(db.pool, member.driverId, plan.id, bytes, "image/jpeg", timezone, photoRoot, now);
       }
-      return startDriverRoute(db.pool, member.driverId, plan.id, 1, timezone, now, photoRoot);
+      return startDriverRoute(db.pool, member.driverId, plan.id, expectedRevision, timezone, now, photoRoot);
     };
     return { db, actor, members, planId: plan.id, now, timezone, photoRoot, start, close };
   } catch (error) { await close(); throw error; }

@@ -1563,3 +1563,24 @@ Datos: sólo lecturas de publicación y route_shipments.snapshot/source; ninguna
 Referencias: documentación instalada Next Route Handlers; https://github.com/odoo/odoo/blob/19.0/addons/product/models/product_product.py (image_128 hereda plantilla); https://developer.android.com/develop/ui/compose/graphics/images/customize. Verificar capacidades reales de la instalación antes de entregar. Revertir este bloque retira recursos opcionales sin migración inversa; APK nueva tolera endpoint ausente.
 
 Auditoría de diseño: GREEN LIGHT para implementación; se conserva BL-148..150 y el snapshot publicado (INTEGRITY TOTAL). PT-T01..03 corresponden a PT01..08 (MATCH PERFECT). Evidencia automatizada y limitaciones de validación visual en `QA-MINIATURAS-PRODUCTO-0.8.4.md`; no se certifica producción por diseño ni por compilar la APK.
+
+## BL-152 — fallos reproducidos: recreación y foto 860 × 860
+
+Causa demostrada en PostgreSQL aislado: DELETE de membresía elimina publicación por FK; INSERT posterior usa revisión 1 y enlaza la ejecución histórica 1. El overlay de correcciones vuelve como `point_corrected`; Android correctamente no lo trata como ruta lista para iniciar. No resolver habilitando el botón. Causa de foto demostrada contra Odoo real: `image_128` contiene WebP 860 × 860, 24536 bytes, base64 canónico; el límite anterior de 262144 píxeles lo descarta antes de reducirlo.
+
+Diseño: migración aditiva 31 crea `route_publication_revisions(plan_id,vehicle_id,last_revision)` sin FK destructiva. Sembrar máximos desde publicaciones, ejecuciones y auditoría de publicación/cancelación; un trigger AFTER INSERT/UPDATE/DELETE retiene todo máximo futuro sin alterar publicaciones. `publishRoutes`, ya bajo FOR UPDATE del plan, calcula máximo registrado/previo + 1 y usa esa revisión en INSERT/UPSERT. No cambiar cancelación/inicio ni datos históricos. Normalizador acepta hasta 4096² píxeles (64 MiB RGBA nominales), muy por debajo del límite general de Sharp; entrada base64 sigue 180000 caracteres y salida WebP 128 px/65536 bytes sin metadata.
+
+| Caso | Evento / resultado | Datos, seguridad y validación |
+| --- | --- | --- |
+| RF01 | Cancelar iniciada, quitar/agregar, publicar/iniciar | Revisión nueva, ejecución nueva, sin correcciones/entregas/incidencias viejas; PG real, historial intacto |
+| RF02 | Quitar/agregar sin iniciar, repetir varias veces | Nunca repetir revisión ni identidad de caché/push; PG y auditoría |
+| RF03 | Publicación repetida / concurrente | Mantener idempotencia y exclusión por plan; no consumir revisión sin cambio |
+| RF04 | Migrar/repetir migración con rutas activas y retiradas | Sólo registro técnico; snapshots, started_at, fotos e historial sin cambios; PG |
+| RF05 | Token ajeno, revisión vieja, menos de 5 fotos o fecha incorrecta | Mismos rechazos; regresión start/publicación y HTTP |
+| RF06 | Fallo dentro de transacción | Registro y publicación revierten juntos; PG |
+| RF07 | Foto 860/1920, exacto límite, entrada excesiva o inválida | Reducir válidas, fallback en rechazadas; bytes reales, Odoo real y mutación |
+| RF08 | Despliegue sin APK nueva | Contrato móvil intacto; caché de ausencia anterior expira en hasta 15 min; HTTP sobre build |
+
+Auditoría local: GREEN LIGHT / INTEGRITY TOTAL / MATCH PERFECT para RF-T01..03. Sin delegar decisiones de identidad/concurrencia. Referencias: FK y triggers locales, docs instaladas Next Route Handlers y constructor Sharp. Migración no modifica ruta activa ni históricos; downgrade a servidor schema30 no soportado (requiere servidor compatible con31), por lo que no ejecutar migración remota desde esta tarea. Deploy manual del propietario.
+
+Ejecución y revisión independiente terminadas: evidencia RF01..08 en `QA-RECREACION-RUTA-Y-FOTO-ODOO.md`. Incluye PostgreSQL real, Odoo en lectura, HTTP, cobertura y 15 mutaciones detectadas. Se conserva explícitamente el timeout de limpieza de la suite general y su repetición aprobada; no se oculta como una suite verde en un solo intento. Sin cambios en Android ni reglas de inicio/atención. Commit/push a develop autorizados expresamente por el propietario el 2026-09-29; deploy no realizado.

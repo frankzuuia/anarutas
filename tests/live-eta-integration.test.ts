@@ -51,7 +51,7 @@ it("persists independently fenced ETA with old clients, replay, stop, reset and 
 it("repeated migration preserves tracking and additive schema", async () => {
   const before = (await f.db.pool.query("SELECT execution_id,eta FROM route_live_tracking ORDER BY execution_id")).rows;
   await migrate(f.db.pool, f.db.config.instanceId);
-  expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(30);
+  expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(31);
   expect((await f.db.pool.query("SELECT execution_id,eta FROM route_live_tracking ORDER BY execution_id")).rows).toEqual(before);
 });
 it("upgrades v24 concurrently without losing existing GPS or session state", async () => {
@@ -60,7 +60,7 @@ it("upgrades v24 concurrently without losing existing GPS or session state", asy
   const before = (await f.db.pool.query("SELECT * FROM route_live_tracking ORDER BY execution_id")).rows;
   expect(before.length).toBeGreaterThan(0);
   await Promise.all([migrate(f.db.pool, f.db.config.instanceId), migrate(f.db.pool, f.db.config.instanceId)]);
-  expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(30);
+  expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(31);
   const after = (await f.db.pool.query("SELECT * FROM route_live_tracking ORDER BY execution_id")).rows;
   expect(after).toEqual(before.map(row => ({ ...row, eta: null })));
   await expect(f.db.pool.query("UPDATE route_live_tracking SET eta='[]'::jsonb")).rejects.toMatchObject({ code: "23514" });
