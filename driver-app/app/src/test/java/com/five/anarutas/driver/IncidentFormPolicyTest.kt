@@ -6,7 +6,7 @@ import org.junit.Test
 
 class IncidentFormPolicyTest {
     @Test fun incidentCardsKeepExactExistingCodesAndDistinctIcons() {
-        assertEquals(2, IncidentChoice.entries.size)
+        assertEquals(4, IncidentChoice.entries.size)
         assertEquals("customer_closed", IncidentChoice.CUSTOMER_CLOSED.code)
         assertEquals("reject", IncidentChoice.ORDER_REJECTED.code)
         assertEquals("Cliente cerrado", IncidentChoice.CUSTOMER_CLOSED.label)
@@ -19,6 +19,11 @@ class IncidentFormPolicyTest {
     }
 
     @Test fun choicesNeverBypassExistingAvailabilityOrOrderRestriction() {
+        for (choice in listOf(IncidentChoice.SHORTAGE_VALIDATION, IncidentChoice.SHORTAGE_WAREHOUSE)) {
+            assertFalse(incidentChoiceEnabled(choice, true, false))
+            assertFalse(incidentChoiceEnabled(choice, false, true))
+            assertTrue(incidentChoiceEnabled(choice, true, true))
+        }
         for (hasOrders in listOf(false, true)) {
             assertFalse(incidentChoiceEnabled(IncidentChoice.CUSTOMER_CLOSED, false, hasOrders))
             assertFalse(incidentChoiceEnabled(IncidentChoice.ORDER_REJECTED, false, hasOrders))

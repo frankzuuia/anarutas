@@ -557,3 +557,22 @@ para giros en vivo, Navigation SDK con costo observado por destino.
 # BL-104: cancelar publicación y mostrar sólo cambios propios
 
 Administrador activo puede cancelar una ruta publicada antes o después del inicio, con confirmación, versión del plan y revisión publicada. Se revoca únicamente la publicación: los pedidos quedan asignados a la misma camioneta y conservan su orden en el borrador para agregar o modificar paradas; se conservan fotos y auditoría. El dashboard móvil la retira y el outbox FCM encola el aviso existente. Guardar y publicar se muestra sólo si cambian pedidos/orden, chofer, datos visibles o recorrido de esa camioneta; la versión global por cambios ajenos no constituye un cambio propio. Validación: PostgreSQL, API/UI, aislamiento, concurrencia con inicio, eventos y mutación.
+## BL-147 — formulario de incidencias y evidencia múltiple
+
+Chofer con llegada vigente: hasta tres fotos por incidencia de producto; una
+incidencia no cierra el pedido. Sin tope de cantidad de incidencias por pedido;
+se mantienen controles de cantidad real por partida, no un límite de reportes. Una
+foto basta en reposiciones/devoluciones, faltantes siguen con evidencia opcional.
+Puede quitar capturas individuales antes del envío, nunca evidencia ya registrada.
+Departamento: Operaciones/Compras/Ventas. Concepto: Especiales/Reparto/Picking.
+Comentarios rápidos multiselección y notas adicionales, conservando ambos sin
+duplicarlos. Los faltantes usan las mismas tarjetas seleccionables de incidentes.
+Admin ve todas las fotos privadas y conserva edición auditada de clasificación.
+Excel conserva nueve columnas; Comentarios reúne selecciones y notas, no fotos,
+chofer ni Concepto. Sin cambios Odoo. Validar límites, privacidad, transacción,
+recibos, compatibilidad APK anterior, rotación y recuperación.
+## BL-148 — corrección y cancelación de incidencias por producto
+
+Una incidencia enviada permanece visible al chofer como «Incidencia enviada». Si modifica sus datos, el formulario vuelve a «Guardar incidencia»; el servidor exige versión vigente y conserva cada cambio en un registro append-only. Si el cliente desiste, el chofer confirma «Eliminar incidencia»: se cancela operativamente sin borrar evidencia ni auditoría. Una incidencia cancelada no consume cantidad, no exige reconocimiento al confirmar la entrega, no entra a Incidencias en vivo ni al Excel. Sólo se puede corregir o cancelar durante la visita activa y antes de cerrar el pedido; una resolución administrativa impide corrección posterior.
+
+El desglose muestra cantidad neta = cantidad publicada − suma de incidencias activas vinculadas a esa partida, y marca con alerta ámbar cualquier partida afectada. Los faltantes escritos manualmente, que no existen en las partidas publicadas, aparecen como renglones separados con alerta, sin descontar otra partida. La cantidad publicada e historial de eventos permanecen intactos. Varias incidencias en un pedido se agregan; la suma de las de una partida no supera la cantidad publicada, también en ediciones concurrentes. Evidencia existente se conserva al editar/cancelar.

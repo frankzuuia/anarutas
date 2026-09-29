@@ -15,7 +15,7 @@ Feature: Product incidents and weekly plan archive
 
   Scenario: Missing product was never listed
     When the driver reports a shortage by validation or from warehouse
-    Then product name, unit, quantity and Operaciones or Compras are required
+    Then product name, unit, quantity, department and concept are required in the new form
     And warehouse requires its additional reason
     And no product identifier or Odoo stock movement is invented
 
@@ -61,3 +61,38 @@ Feature: Product incidents and weekly plan archive
     And replaying the command does not duplicate the report or the file
     And weekly archive and closed-customer evidence cleanup preserve the product photo
     And shortages may still be reported without a photograph
+
+  Scenario: Multiple reports for one order
+    Given a driver has arrived and the order remains open
+    When the driver saves twelve distinct product incidents one after another
+    Then all twelve are retained and the driver can continue reporting
+    And there is no incident-count limit per order
+    And quantity limits still prevent reporting more than the actual published quantity
+
+  Scenario: Three removable photos and durable replay
+    Given a product-incident draft with three photographs
+    When the driver removes the second photo and captures a new one
+    Then the first and third remain unchanged and there are still three photos
+    And one photo is sufficient to satisfy mandatory evidence
+    And a fourth photo is rejected in the app, HTTP API and storage contract
+    When the driver retries the same submitted report
+    Then there is one report and one set of evidence, not duplicate photos
+
+  Scenario: Clear choices and complete comments
+    When the driver selects a shortage card
+    Then it has the same radio-card presentation as closed and rejected incidents
+    And selecting alone does not submit a report
+    When the driver selects Ventas, Picking, two quick comments and additional notes
+    Then the panel preserves the classification and all comments
+    And Excel still has nine columns without concept, driver or photos
+  Scenario: El chofer corrige una incidencia enviada y luego el cliente la cancela
+    Given una visita activa con una incidencia de una unidad sobre dos publicadas
+    Then el detalle muestra una unidad y una alerta en esa partida
+    When el chofer modifica esa incidencia
+    Then el formulario ofrece guardar y la edición conserva el mismo identificador con una versión nueva
+    When el cliente acepta el producto y el chofer confirma eliminar la incidencia
+    Then la incidencia queda cancelada y auditada, el detalle vuelve a dos unidades y el Excel no la incluye
+
+  Scenario: Faltantes manuales múltiples sin alterar partidas publicadas
+    Given un pedido con partidas publicadas y varios faltantes que no figuran en ellas
+    Then cada faltante aparece por separado con alerta y las cantidades publicadas permanecen intactas

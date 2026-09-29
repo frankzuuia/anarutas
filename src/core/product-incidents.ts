@@ -10,26 +10,33 @@ import { incidentQuantity, incidentClassificationInput, productIncidentClassific
 import { todayInTimezone } from "./local-date";
 import { incidentFilters } from "./driver-incidents";
 import type { storeIncidentEvidence } from "./driver-incident-evidence";
+import { productPhotoCount } from "./product-incident-form";
 
 export type ProductIncident = {
   id: string; executionId: string; shipmentId: string; lineIndex: number | null;
   kind: ProductIncidentKind; product: string; quantity: string; unit: string; note: string | null;
   orderName: string; occurredAt: string; date: string; timezone: string; driverId: string;
-  snapshot: ReturnType<typeof serviceSnapshot>; status: "pending" | "resolved"; version: number;
+  snapshot: ReturnType<typeof serviceSnapshot>; status: "pending" | "resolved" | "canceled"; version: number;
   department: string | null; concept: string | null; resolutionNote: string | null;
   warehouseReason: WarehouseReason | null;
   evidenceId: string | null;
+  evidenceIds?: string[];
 };
 export type ProductIncidentReport = { rows: ProductIncident[]; nextCursor: string | null; pending: number };
 
 export async function reportProductIncident(pool: Pool, authorization: string | null, planId: string,
   stopId: string, shipmentId: string, raw: Record<string, unknown>, timezone: string, at = new Date(),
-  evidence?: Pick<Awaited<ReturnType<typeof storeIncidentEvidence>>, "id" | "hash" | "bytes">) {
+  evidence?: Pick<Awaited<ReturnType<typeof storeIncidentEvidence>>, "id" | "hash" | "bytes">,
+  extraEvidence: Pick<Awaited<ReturnType<typeof storeIncidentEvidence>>, "id" | "hash" | "bytes">[] = []) {
   const identity = serviceIdentity(raw), input = productIncidentInput(raw);
+  const photos = [...(evidence ? [evidence] : []), ...extraEvidence];
+  productPhotoCount(photos.length);
+  if (extraEvidence.length && !evidence) throw new AppError("INVALID_PRODUCT_PHOTO_COUNT");
   const shipment = uuid(shipmentId), version = integer(raw.orderVersion, 1);
   return transaction(pool, async sql => {
     const context = await lockServiceContext(sql, authorization, planId, stopId, identity,
-      { command: "product-incident", shipment, version, ...input, ...(evidence ? { contentHash: evidence.hash } : {}) });
+      { command: "product-incident", shipment, version, ...input, ...(evidence ? { contentHash: evidence.hash } : {}),
+        ...(extraEvidence.length ? { extraContentHashes: extraEvidence.map(photo => photo.hash) } : {}) });
     if (context.previous) return context.previous;
     const { route, driver, stop, hash } = context;
     requireProductEvidence(input.kind, !!evidence);
@@ -51,21 +58,28 @@ export async function reportProductIncident(pool: Pool, authorization: string | 
     const sourceQuantity = line ? incidentQuantity(line.quantity) : null;
     if (sourceQuantity !== null) {
       const available = (await sql.query(`SELECT $3::numeric+COALESCE(sum(quantity),0)<=$4::numeric AS valid
-        FROM route_product_incidents WHERE execution_id=$1 AND shipment_id=$2 AND line_index=$5`,
+        FROM route_product_incidents WHERE execution_id=$1 AND shipment_id=$2 AND line_index=$5 AND status<>'canceled'`,
       [route.id, shipment, input.quantity, sourceQuantity, input.lineIndex])).rows[0].valid;
       if (!available) throw new AppError("INCIDENT_QUANTITY_EXCEEDED", 409);
     }
     const id = randomUUID();
-    const classification = productIncidentClassification(input.kind, input.department);
+    const classification = input.formVersion === 2 ? { department: input.department, concept: input.concept }
+      : productIncidentClassification(input.kind, input.department);
     await sql.query(`INSERT INTO route_product_incidents
       (id,execution_id,stop_id,shipment_id,driver_id,visit_sequence,kind,line_index,product,unit,quantity,
        source_quantity,note,order_name,occurred_at,event_date,timezone,snapshot,department,concept,warehouse_reason,
-       evidence_id,evidence_hash,evidence_bytes)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+       evidence_id,evidence_hash,evidence_bytes,form_comments,additional_note,form_updated)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
     [id, route.id, stop!.id, shipment, driver.driver_id, stop!.visit_sequence, input.kind, input.lineIndex,
       line?.name ?? input.product, line?.unit ?? input.unit, input.quantity, sourceQuantity, input.note,
-      source.orderName, at, todayInTimezone(timezone, at), timezone, JSON.stringify({ ...serviceSnapshot(route, stop!), reportedDepartment: input.department }),
-      classification.department, classification.concept, input.warehouseReason, evidence?.id ?? null, evidence?.hash ?? null, evidence?.bytes ?? null]);
+      source.orderName, at, todayInTimezone(timezone, at), timezone, JSON.stringify({ ...serviceSnapshot(route, stop!), reportedDepartment: input.department,
+        ...(input.formVersion === 2 ? { reportedConcept: input.concept, comments: input.comments, additionalNote: input.additionalNote } : {}) }),
+      classification.department, classification.concept, input.warehouseReason, evidence?.id ?? null, evidence?.hash ?? null, evidence?.bytes ?? null,
+      JSON.stringify(input.formVersion === 2 ? input.comments : []), input.formVersion === 2 ? input.additionalNote : input.note,
+      input.formVersion === 2]);
+    for (const [index, photo] of extraEvidence.entries()) await sql.query(`INSERT INTO route_product_incident_photos
+      (incident_id,position,evidence_id,evidence_hash,evidence_bytes) VALUES($1,$2,$3,$4,$5)`,
+    [id, index + 2, photo.id, photo.hash, photo.bytes]);
     await sql.query("UPDATE route_driver_execution_orders SET version=version+1,updated_at=$3 WHERE execution_id=$1 AND shipment_id=$2", [route.id, shipment, at]);
     await sql.query("UPDATE route_driver_execution_stops SET version=version+1 WHERE id=$1", [stop!.id]);
     await sql.query("UPDATE route_driver_executions SET revision=revision+1 WHERE id=$1", [route.id]);
@@ -76,12 +90,69 @@ export async function reportProductIncident(pool: Pool, authorization: string | 
   });
 }
 
+export async function changeProductIncident(pool: Pool, authorization: string | null, planId: string,
+  stopId: string, shipmentId: string, incidentId: string, raw: Record<string, unknown>, action: "amend" | "cancel") {
+  const identity = serviceIdentity(raw), shipment = uuid(shipmentId), target = uuid(incidentId);
+  const orderVersion = integer(raw.orderVersion, 1), expectedVersion = integer(raw.expectedVersion, 1);
+  const form = action === "amend" ? productIncidentInput(raw) : null;
+  if (form && form.formVersion !== 2) throw new AppError("INVALID_PRODUCT_FORM");
+  return transaction(pool, async sql => {
+    const { previous, driver, route, stop, hash } = await lockServiceContext(sql, authorization, planId, stopId,
+      identity, { command: `product-incident-${action}`, shipment, target, orderVersion, expectedVersion, ...(form ?? {}) });
+    if (previous) return previous;
+    const order = (await sql.query(`SELECT status,version FROM route_driver_execution_orders
+      WHERE execution_id=$1 AND stop_id=$2 AND shipment_id=$3 FOR UPDATE`, [route.id, stop!.id, shipment])).rows[0];
+    if (!order) throw new AppError("NOT_FOUND", 404);
+    if (order.version !== orderVersion) throw new AppError("VERSION_CONFLICT", 409);
+    if (!["open", "rejected", "closed_pending"].includes(order.status)) throw new AppError("ORDER_STATE_CONFLICT", 409);
+    if (order.status === "closed_pending" && (await sql.query(`SELECT 1 FROM route_driver_service_incidents
+      WHERE execution_id=$1 AND stop_id=$2 AND kind='customer_closed' AND visit_sequence=$3`,
+    [route.id, stop!.id, stop!.visit_sequence])).rowCount) throw new AppError("RETRY_REQUIRES_NEW_ARRIVAL", 409);
+    const old = (await sql.query(`SELECT * FROM route_product_incidents
+      WHERE id=$1 AND execution_id=$2 AND stop_id=$3 AND shipment_id=$4 AND driver_id=$5 FOR UPDATE`,
+    [target, route.id, stop!.id, shipment, driver.driver_id])).rows[0];
+    if (!old) throw new AppError("NOT_FOUND", 404);
+    if (old.version !== expectedVersion || old.status !== "pending") throw new AppError("VERSION_CONFLICT", 409);
+    if (old.visit_sequence !== stop!.visit_sequence) throw new AppError("VISIT_NOT_ACTIVE", 409);
+    if (form) {
+      if (form.lineIndex !== old.line_index)
+        throw new AppError("INVALID_PRODUCT_LINE");
+      if (form.lineIndex !== null) {
+        const available = (await sql.query(`SELECT $3::numeric+COALESCE(sum(quantity),0)<=$4::numeric AS valid
+          FROM route_product_incidents WHERE execution_id=$1 AND shipment_id=$2 AND line_index=$5
+            AND id<>$6 AND status<>'canceled'`,
+        [route.id, shipment, form.quantity, old.source_quantity, old.line_index, target])).rows[0].valid;
+        if (!available) throw new AppError("INCIDENT_QUANTITY_EXCEEDED", 409);
+      }
+    }
+    await sql.query("SELECT set_config('ana.product_incident_command_id',$1,true)", [identity.commandId]);
+    await sql.query("SELECT set_config('ana.product_incident_actor_id',$1,true)", [driver.driver_id]);
+    if (form) await sql.query(`UPDATE route_product_incidents SET kind=$2,warehouse_reason=$3,
+      product=$4,unit=$5,quantity=$6,note=$7,department=$8,concept=$9,form_comments=$10,
+      additional_note=$11,form_updated=true,version=version+1 WHERE id=$1`,
+    [target, form.kind, form.warehouseReason, form.lineIndex === null ? form.product : old.product,
+      form.lineIndex === null ? form.unit : old.unit, form.quantity, form.note, form.department,
+      form.concept, JSON.stringify(form.comments), form.additionalNote]);
+    else await sql.query(`UPDATE route_product_incidents SET status='canceled',canceled_at=now(),
+      canceled_by=$2,version=version+1 WHERE id=$1`, [target, driver.driver_id]);
+    await sql.query("UPDATE route_driver_execution_orders SET version=version+1,updated_at=now() WHERE execution_id=$1 AND shipment_id=$2", [route.id, shipment]);
+    await sql.query("UPDATE route_driver_execution_stops SET version=version+1 WHERE id=$1", [stop!.id]);
+    await sql.query("UPDATE route_driver_executions SET revision=revision+1 WHERE id=$1", [route.id]);
+    await sql.query("INSERT INTO route_driver_mobile_audit(driver_id,action,details) VALUES($1,$2,$3)",
+      [driver.driver_id, `mobile.product_incident.${action === "amend" ? "amended" : "canceled"}`,
+        JSON.stringify({ incidentId: target, executionId: route.id, shipmentId: shipment, deviceId: driver.device_id })]);
+    return saveDriverCommandReceipt(sql, driver.device_id, identity.commandId, hash, route.id,
+      { eventId: null, incidentId: target, occurredAt: new Date().toISOString(), executionRevision: route.revision + 1, duplicate: false });
+  });
+}
+
 export async function classifyProductIncident(pool: Pool, actor: string, id: string, raw: Record<string, unknown>) {
   const incidentId = uuid(id), version = integer(raw.expectedVersion, 1), next = incidentClassificationInput(raw);
   return transaction(pool, async sql => {
     await assertActiveActor(sql, actor);
-    const row = (await sql.query("SELECT department,concept,version FROM route_product_incidents WHERE id=$1 FOR UPDATE", [incidentId])).rows[0];
+    const row = (await sql.query("SELECT department,concept,version,status FROM route_product_incidents WHERE id=$1 FOR UPDATE", [incidentId])).rows[0];
     if (!row) throw new AppError("NOT_FOUND", 404);
+    if (row.status === "canceled") throw new AppError("INCIDENT_CANCELED", 409);
     if (row.version !== version) throw new AppError("VERSION_CONFLICT", 409);
     const result = await sql.query(`UPDATE route_product_incidents SET department=$2,concept=$3,version=version+1
       WHERE id=$1 RETURNING version`, [incidentId, next.department, next.concept]);
@@ -99,10 +170,11 @@ export async function readProductIncidents(pool: Pool, actor: string, params: UR
     await assertActiveActor(sql, actor);
     const where = `FROM route_product_incidents WHERE ($1::date IS NULL OR event_date>=$1::date)
       AND ($2::date IS NULL OR event_date<=$2::date) AND ($3::uuid IS NULL OR driver_id=$3)
-      ${mode === "live" ? "AND status='pending' AND kind IN ('replacement_quality','replacement_wrong_product')" : ""}`;
+      ${mode === "live" ? "AND status='pending' AND kind IN ('replacement_quality','replacement_wrong_product')" : mode === "export" ? "AND status<>'canceled'" : ""}`;
     const values = [filters.from, filters.to, filters.driverId];
     const pending = (await sql.query(`SELECT count(*)::int AS n ${where} AND status='pending'`, values)).rows[0].n;
     const { rows } = await sql.query(`SELECT *,quantity::text,event_date::text AS date_text,
+      ARRAY(SELECT evidence_id FROM route_product_incident_photos photos WHERE photos.incident_id=route_product_incidents.id ORDER BY position) AS extra_evidence_ids,
       to_char(occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time ${where}
       AND ($4::timestamptz IS NULL OR (occurred_at,id)<($4::timestamptz,$5::uuid))
       ORDER BY occurred_at DESC,id DESC ${mode === "export" ? "" : "LIMIT 51"}`,
@@ -112,7 +184,8 @@ export async function readProductIncidents(pool: Pool, actor: string, params: UR
       lineIndex: row.line_index, kind: row.kind, product: row.product, quantity: row.quantity, unit: row.unit,
       note: row.note, orderName: row.order_name, occurredAt: row.occurred_at.toISOString(), date: row.date_text,
       timezone: row.timezone, driverId: row.driver_id, snapshot: row.snapshot, status: row.status, version: row.version,
-      department: row.department, concept: row.concept, resolutionNote: row.resolution_note, warehouseReason: row.warehouse_reason, evidenceId: row.evidence_id })),
+      department: row.department, concept: row.concept, resolutionNote: row.resolution_note, warehouseReason: row.warehouse_reason,
+      evidenceId: row.evidence_id, evidenceIds: [...(row.evidence_id ? [row.evidence_id] : []), ...row.extra_evidence_ids] })),
       nextCursor: mode !== "export" && rows.length > 50 ? Buffer.from(JSON.stringify({ filterHash: filters.filterHash,
         time: last.cursor_time, id: last.id })).toString("base64url") : null };
   });

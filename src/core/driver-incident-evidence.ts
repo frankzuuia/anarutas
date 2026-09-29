@@ -74,7 +74,8 @@ export async function cleanIncidentEvidence(pool: Pool, configuredRoot?: string,
     const path = join(root, file.name), info = await lstat(path).catch(() => null);
     if (!info?.isFile() || info.mtimeMs > now.getTime() - 24 * 60 * 60 * 1000) continue;
     const referenced = await pool.query(`SELECT 1 FROM route_driver_incident_evidence WHERE storage_key=$1
-      UNION ALL SELECT 1 FROM route_product_incidents WHERE evidence_id=$2`, [file.name, fileId]);
+      UNION ALL SELECT 1 FROM route_product_incidents WHERE evidence_id=$2
+      UNION ALL SELECT 1 FROM route_product_incident_photos WHERE evidence_id=$2`, [file.name, fileId]);
     if (!referenced.rowCount) await unlink(path).catch(() => undefined);
   }
   return removed;

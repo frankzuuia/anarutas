@@ -51,7 +51,8 @@ test("mobile report → live visibility → admin classification → exact priva
   const path = `${origin}/api/mobile/plans/${f.planId}/stops/${stop.id}/orders/${stop.shipmentIds[0]}/product-incidents`;
   const data = { commandId: randomUUID(), executionId: route.id, publicationRevision: route.publicationRevision,
     executionRevision: route.revision, stopVersion: stop.version, visitSequence: stop.visitSequence,
-    orderVersion: stop.orderStates[0].version, kind: "replacement_quality", department: "Operaciones", lineIndex: 0, quantity: "0.25", note: "Producto dañado" };
+    orderVersion: stop.orderStates[0].version, kind: "replacement_quality", department: "Ventas", lineIndex: 0, quantity: "0.25", note: "Producto dañado",
+    formVersion: 2, concept: "Picking", comments: ["customer_specifications", "order_quantity_changed"] };
   for (const apiPath of ["/api/incidents/products", "/api/incidents/products/export"])
     expect((await request.get(origin + apiPath)).status()).toBe(401);
   expect((await request.post(path, { data })).status()).toBe(401);
@@ -59,10 +60,16 @@ test("mobile report → live visibility → admin classification → exact priva
   const headers = { Authorization: f.members[0].authorization };
   expect((await request.post(path, { headers, data })).status()).toBe(400);
   const photo = await sharp({ create: { width: 120, height: 80, channels: 3, background: "#779f32" } }).jpeg().toBuffer();
-  const withPhoto = (command = data) => ({ data: photo, headers: { ...headers, "Content-Type": "image/jpeg",
-    "X-Ana-Rutas-Command": Buffer.from(JSON.stringify(command)).toString("base64") } });
+  const withPhoto = (command = data, count = 3) => {
+    const boundary = `Test-${randomUUID()}`;
+    const body = [Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="command"\r\n\r\n${JSON.stringify(command)}`)];
+    for (let index = 0; index < count; index++) body.push(Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="photos"; filename="${index}.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`), photo);
+    body.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+    return { data: Buffer.concat(body), headers: { ...headers, "Content-Type": `multipart/form-data; boundary=${boundary}` } };
+  };
   expect((await request.post(path, { data: photo, headers: { ...headers, "Content-Type": "image/jpeg", "X-Ana-Rutas-Command": "[]" } })).status()).toBe(400);
   const started = performance.now();
+  expect((await request.post(path, withPhoto(data, 4))).status()).toBe(400);
   const response = await request.post(path, withPhoto());
   expect(response.status()).toBe(201);
   const receipt = await response.json();
@@ -80,7 +87,13 @@ test("mobile report → live visibility → admin classification → exact priva
   const live = page.getByRole("region", { name: "Reposiciones pendientes", exact: true });
   await expect(live).toContainText("Producto 1");
   await expect(live).toContainText("Reportó: Chofer 0");
-  await expect(live.getByRole("img", { name: "Evidencia: Producto 1" })).toBeVisible();
+  await expect(live.getByRole("img", { name: /Evidencia: Producto 1/ })).toHaveCount(3);
+  for (let index = 1; index <= 3; index++) {
+    await expect(live.getByRole("img", { name: `Evidencia: Producto 1 · ${index} de 3` })).toBeVisible();
+    const imageUrl = await live.getByRole("link", { name: new RegExp(`Foto ${index} de 3`) }).getAttribute("href");
+    expect((await request.get(origin + imageUrl!)).status()).toBe(401);
+    expect((await page.request.get(origin + imageUrl!)).status()).toBe(200);
+  }
   const evidence = await page.request.get(evidenceUrl);
   expect(evidence.status()).toBe(200);
   expect(evidence.headers()["content-type"]).toBe("image/webp");
@@ -100,6 +113,7 @@ test("mobile report → live visibility → admin classification → exact priva
   await expect(history).toContainText("Reportó: Chofer 0");
   await expect(history.getByRole("button", { name: "Resolver", exact: true })).toHaveCount(0);
   await expect(history).toContainText("Comentarios / evidencia");
+  await expect(history.locator(".product-incident-note")).toHaveCSS("white-space", "pre-wrap");
   await history.getByRole("button", { name: "Editar clasificación" }).click();
   const dialog = page.getByRole("dialog", { name: "Editar clasificación" });
   await dialog.getByLabel("Departamento", { exact: true }).fill("Compras");
@@ -117,6 +131,7 @@ test("mobile report → live visibility → admin classification → exact priva
   expect(sheet.columnCount).toBe(9);
   expect(sheet.getCell("F2").value).toBe("Compras");
   expect(sheet.getCell("D2").value).toBe(.25);
+  expect(sheet.getCell("H2").value).toBe("No cumple con las especificaciones del cliente\nSe modificó la cantidad en la orden\nProducto dañado");
   expect(JSON.stringify(sheet.model)).not.toContain("Chofer 0");
   expect(JSON.stringify(sheet.model)).not.toContain("Especiales");
   await mkdir(".local/qa/product-incidents", { recursive: true });
@@ -132,8 +147,37 @@ test("mobile report → live visibility → admin classification → exact priva
   await resolve.getByRole("button", { name: "Confirmar resolución" }).click();
   await expect(live).toContainText("Sin reposiciones pendientes");
   const rows = (await f.db.pool.query("SELECT status,department,concept,quantity::text,snapshot FROM route_product_incidents WHERE id=$1", [receipt.incidentId])).rows;
-  expect(rows).toMatchObject([{ status: "resolved", department: "Compras", concept: "Especiales", quantity: "0.250000", snapshot: { reportedDepartment: "Operaciones" } }]);
+  expect(rows).toMatchObject([{ status: "resolved", department: "Compras", concept: "Especiales", quantity: "0.250000", snapshot: { reportedDepartment: "Ventas", reportedConcept: "Picking" } }]);
   expect((await f.db.pool.query("SELECT action FROM route_audit WHERE entity_id=$1 ORDER BY id", [receipt.incidentId])).rows.map(row => row.action))
     .toEqual(["product_incident.classified", "product_incident.resolved"]);
+  const latest = await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
+  const identity = (route: typeof latest) => ({ commandId: randomUUID(), executionId: route.id,
+    publicationRevision: route.publicationRevision, executionRevision: route.revision,
+    stopVersion: route.stops[0].version, visitSequence: route.stops[0].visitSequence,
+    orderVersion: route.stops[0].orderStates[0].version });
+  const shortage = { ...identity(latest), kind: "shortage_warehouse", product: "Limón sin semilla", unit: "kg",
+    quantity: "3", warehouseReason: "special", department: "Compras", concept: "Especiales",
+    formVersion: 2, comments: [], note: "Faltó en bodega" };
+  const missing = await request.post(path, { headers, data: shortage });
+  expect(missing.status()).toBe(201);
+  const missingId = (await missing.json()).incidentId;
+  const changePath = `${path}/${missingId}`;
+  const next = await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
+  const amend = { ...shortage, ...identity(next), expectedVersion: 1, quantity: "2", note: "Cliente confirmó dos" };
+  expect((await request.post(`${changePath}/amend`, { data: amend })).status()).toBe(401);
+  expect((await request.post(`${changePath}/amend`, { headers: { Authorization: f.members[1].authorization }, data: amend })).status()).toBe(404);
+  expect((await request.post(`${changePath}/amend`, { headers, data: amend })).status()).toBe(200);
+  expect((await (await request.post(`${changePath}/amend`, { headers, data: amend })).json()).duplicate).toBe(true);
+  const edited = await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
+  expect(edited.stops[0].productIncidents.find(incident => incident.id === missingId)).toMatchObject({ quantity: "2.000000", version: 2 });
+  const cancel = { ...identity(edited), expectedVersion: 2 };
+  expect((await request.post(`${changePath}/cancel`, { headers, data: cancel })).status()).toBe(200);
+  expect((await (await request.post(`${changePath}/cancel`, { headers, data: cancel })).json()).duplicate).toBe(true);
+  expect((await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone)).stops[0]
+    .productIncidents.find(incident => incident.id === missingId)?.status).toBe("canceled");
+  expect((await f.db.pool.query("SELECT count(*) FROM route_product_incident_changes WHERE incident_id=$1", [missingId])).rows[0].count).toBe("2");
+  const afterCancel = await page.request.get(origin + url!);
+  const afterCancelBook = new ExcelJS.Workbook(); await afterCancelBook.xlsx.load(await afterCancel.body() as never);
+  expect(afterCancelBook.getWorksheet("Incidencias")!.rowCount).toBe(2);
   expect(pageErrors).toEqual([]);
 });

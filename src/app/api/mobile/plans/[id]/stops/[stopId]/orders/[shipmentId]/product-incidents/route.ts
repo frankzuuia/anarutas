@@ -1,7 +1,8 @@
 import { reportProductIncident } from "@/core/product-incidents";
 import { mobileBody, mobilePrincipal } from "@/server/driver-mobile-http";
 import { endpoint, json } from "@/server/http";
-import { reportProductIncidentWithEvidence } from "@/core/product-incidents-evidence";
+import { reportProductIncidentWithEvidence, reportProductIncidentWithPhotos } from "@/core/product-incidents-evidence";
+import { productPhotosBody } from "@/server/product-photos-body";
 import { unitPhotoBody } from "@/server/unit-photo-body";
 import { AppError } from "@/core/errors";
 
@@ -9,6 +10,11 @@ export function POST(request: Request, context: { params: Promise<{ id: string; 
   return endpoint(async () => {
     const { pool, config } = await mobilePrincipal(request);
     const { id, stopId, shipmentId } = await context.params;
+    if (request.headers.get("content-type")?.split(";")[0].trim() === "multipart/form-data") {
+      const { raw, photos } = await productPhotosBody(request);
+      return json(await reportProductIncidentWithPhotos(pool, request.headers.get("authorization"), id, stopId,
+        shipmentId, raw, config.timezone, photos), 201);
+    }
     if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") {
       let command: Record<string, unknown>;
       try {

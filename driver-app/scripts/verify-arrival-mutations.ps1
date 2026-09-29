@@ -1,4 +1,4 @@
-param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly)
+param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly, [switch]$ProductCaptureOnly)
 $ErrorActionPreference = 'Stop'
 # Mechanical mutations occur only in an isolated copy. No ADB, HTTP stubs or credential output.
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -13,7 +13,7 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 }
 $sourceFolder = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver'
 $originals = @{}
-foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt', 'ProductIncidentPolicy.kt')) {
+foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt', 'ProductIncidentPolicy.kt', 'IncidentCaptureStore.kt', 'ProductPhotoUpload.kt')) {
     $originals[$file] = [IO.File]::ReadAllText((Join-Path $sourceFolder $file))
 }
 $cases = @(
@@ -81,7 +81,7 @@ if ($IncidentFormOnly) {
     $cases = @(
         @{ name = 'form_ignore_availability'; from = 'available &&'; to = 'true &&' },
         @{ name = 'form_reject_without_orders'; from = '|| hasRejectableOrders'; to = '|| true' },
-        @{ name = 'form_invert_rejection_kind'; from = 'choice != IncidentChoice.ORDER_REJECTED'; to = 'choice == IncidentChoice.ORDER_REJECTED' },
+        @{ name = 'form_invert_closed_kind'; from = 'choice == IncidentChoice.CUSTOMER_CLOSED'; to = 'choice != IncidentChoice.CUSTOMER_CLOSED' },
         @{ name = 'form_wrong_wire_code'; from = 'ORDER_REJECTED("reject"'; to = 'ORDER_REJECTED("rejected"' },
         @{ name = 'form_wrong_closed_icon'; from = 'DriverIcon.STORE_CLOSED'; to = 'DriverIcon.ORDERS' },
         @{ name = 'form_note_truncates_early'; from = 'value.take(2000)'; to = 'value.take(1999)' },
@@ -154,6 +154,12 @@ if ($ProductOnly) {
         @{ name = 'product_allow_zero'; from = 'it > BigDecimal.ZERO'; to = 'it >= BigDecimal.ZERO' },
         @{ name = 'product_ignore_order'; from = 'it.shipmentId == shipmentId'; to = 'true' },
         @{ name = 'product_ignore_line'; from = 'it.lineIndex == lineIndex'; to = 'true' },
+        @{ name = 'product_count_canceled'; from = 'it.status != "canceled"'; to = 'true' },
+        @{ name = 'product_count_editing_incident'; from = 'it.id != exceptId'; to = 'true' },
+        @{ name = 'product_draft_mislabels_new'; from = 'if (saved == null) return true'; to = 'if (saved == null) return false' },
+        @{ name = 'product_draft_misses_note_edit'; from = 'note != saved.additionalNote'; to = 'false' },
+        @{ name = 'product_draft_misses_quantity_edit'; from = 'productQuantity(quantity)?.compareTo(productQuantity(saved.quantity)) != 0'; to = 'false' },
+        @{ name = 'product_draft_mislabels_decimal_format'; from = 'productQuantity(quantity)?.compareTo(productQuantity(saved.quantity)) != 0'; to = 'quantity != saved.quantity' },
         @{ name = 'product_add_instead_subtract'; from = '.subtract(incidents.filter'; to = '.add(incidents.filter' },
         @{ name = 'product_allow_negative_remaining'; from = '.max(BigDecimal.ZERO)'; to = '' },
         @{ name = 'product_drop_accumulation'; from = 'total.add(BigDecimal(incident.quantity))'; to = 'BigDecimal(incident.quantity)' },
@@ -165,8 +171,31 @@ if ($ProductOnly) {
         @{ name = 'product_allow_long_unit'; from = 'unit.trim().length <= 40'; to = 'true' },
         @{ name = 'product_allow_blank_name'; from = 'product.trim().isNotEmpty()'; to = 'true' },
         @{ name = 'product_allow_blank_unit'; from = 'unit.trim().isNotEmpty()'; to = 'true' },
-        @{ name = 'product_allow_controls'; from = '(product + unit).none { it.code < 32 }'; to = 'true' }
+        @{ name = 'product_allow_controls'; from = '(product + unit).none { it.code < 32 }'; to = 'true' },
+        @{ name = 'product_four_photos'; from = '1 else 0)..3'; to = '1 else 0)..4' },
+        @{ name = 'product_two_photo_limit'; from = '1 else 0)..3'; to = '1 else 0)..2' },
+        @{ name = 'product_zero_required_photos'; from = '1 else 0)..3'; to = '0 else 0)..3' },
+        @{ name = 'product_force_optional_photos'; from = '1 else 0)..3'; to = '1 else 1)..3' },
+        @{ name = 'product_invert_comments'; from = 'it.code in selected'; to = 'it.code !in selected' },
+        @{ name = 'product_untrimmed_note'; from = '+ note.trim()'; to = '+ note' },
+        @{ name = 'product_empty_comment_lines'; from = '.filter { it.isNotBlank() }'; to = '' },
+        @{ name = 'product_join_comments_without_separator'; from = 'joinToString("\n")'; to = 'joinToString("")' }
     ) | ForEach-Object { $_.file = 'ProductIncidentPolicy.kt'; $_.test = 'ProductIncidentPolicyTest'; $_ }
+}
+if ($ProductCaptureOnly) {
+    $cases = @(
+        @{ name = 'batch_allow_four'; from = 'sources.size in 1..3'; to = 'sources.size in 1..4' },
+        @{ name = 'batch_allow_duplicates'; from = 'sources.map { it.canonicalPath }.distinct().size == sources.size'; to = 'true' },
+        @{ name = 'batch_lose_drafts'; from = 'return keys'; to = 'sources.forEach { it.delete() }; return keys' },
+        @{ name = 'batch_leak_partial_upload'; from = 'keys.forEach(::discard); throw failure'; to = 'throw failure' }
+    ) | ForEach-Object { $_.file = 'IncidentCaptureStore.kt'; $_.test = 'IncidentCaptureStoreTest'; $_ }
+    $cases += @(
+        @{ name = 'upload_allow_four'; from = 'photos.size in 1..3'; to = 'photos.size in 1..4' },
+        @{ name = 'upload_reject_maximum_metadata'; from = 'metadata.size <= 16_384'; to = 'metadata.size < 16_384' },
+        @{ name = 'upload_allow_oversized_photo'; from = 'photos.all { it.size in 1..8 * 1024 * 1024 }'; to = 'true' },
+        @{ name = 'upload_lose_metadata'; from = 'chunks.add(metadata)'; to = '' },
+        @{ name = 'upload_wrong_length'; from = 'parts.sumOf { it.size.toLong() }'; to = 'parts.size.toLong()' }
+    ) | ForEach-Object { $_.file = 'ProductPhotoUpload.kt'; $_.test = 'ProductPhotoUploadTest'; $_ }
 }
 $arguments = @('testDebugUnitTest', '--console=plain')
 if ($ServerUrl) { $arguments += ('-PANA_RUTAS_SERVER_URL=' + $ServerUrl) }

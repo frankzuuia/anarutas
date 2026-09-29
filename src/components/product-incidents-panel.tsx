@@ -8,13 +8,18 @@ import { productIncidentNames, warehouseReasonNames } from "@/core/product-incid
 import { api } from "./api";
 
 function ProductEvidence({ incident }: { incident: ProductIncident }) {
+  const photos = incident.evidenceIds ?? (incident.evidenceId ? [incident.evidenceId] : []);
+  if (!photos.length) return <small>Sin fotografía</small>;
+  return <div className="product-evidence-gallery">{photos.map((photoId, index) =>
+    <ProductEvidencePhoto key={photoId} incident={incident} photoId={photoId} index={index} count={photos.length} />)}</div>;
+}
+function ProductEvidencePhoto({ incident, photoId, index, count }: { incident: ProductIncident; photoId: string; index: number; count: number }) {
   const [failed, setFailed] = useState(false);
-  if (!incident.evidenceId) return <small>Sin fotografía</small>;
-  const url = `/api/incidents/products/${incident.id}/evidence`;
+  const url = `/api/incidents/products/${incident.id}/evidence?photoId=${encodeURIComponent(photoId)}`;
   return <a className="product-evidence" href={url} target="_blank" rel="noreferrer">
-    {!failed && <Image unoptimized src={url} width={88} height={60} alt={`Evidencia: ${incident.product}`}
+    {!failed && <Image unoptimized src={url} width={88} height={60} alt={`Evidencia: ${incident.product}${count > 1 ? ` · ${index + 1} de ${count}` : ""}`}
       onError={() => setFailed(true)} />}
-    <span>{failed ? "Reintentar abrir evidencia" : "Ver evidencia"}</span>
+    <span>{failed ? "Reintentar abrir evidencia" : count > 1 ? `Foto ${index + 1} de ${count}` : "Ver evidencia"}</span>
   </a>;
 }
 
@@ -81,11 +86,11 @@ export function ProductIncidentsPanel({ from, to, driverId, revision, live = fal
         <td className="product-quantity">{Number(row.quantity).toLocaleString("es-MX", { maximumFractionDigits: 6 })} {row.unit}</td>
         <td><strong>{row.product}</strong><small>{productIncidentNames[row.kind]}{row.warehouseReason ? ` · ${warehouseReasonNames[row.warehouseReason]}` : ""}</small></td>
         {!live && <td><span>{row.department || "Sin departamento"}</span><small>{row.concept || "Concepto por clasificar"}</small>
-          <button className="quiet" onClick={() => { setEditing(true); setSelected(row); setDepartment(row.department ?? ""); setConcept(row.concept ?? ""); setCommandError(""); }}>
-            <Pencil size={13} />Editar clasificación</button></td>}
-        <td><span>{row.note || "Sin notas"}</span>
+          {row.status !== "canceled" && <button className="quiet" onClick={() => { setEditing(true); setSelected(row); setDepartment(row.department ?? ""); setConcept(row.concept ?? ""); setCommandError(""); }}>
+            <Pencil size={13} />Editar clasificación</button>}</td>}
+        <td><span className="product-incident-note">{row.note || "Sin notas"}</span>
           <ProductEvidence incident={row} />
-          {row.status === "resolved" ? <small>Resuelta · {row.resolutionNote}</small> : live && <button className="quiet" onClick={() => { setEditing(false); setSelected(row); setNote(""); setCommandError(""); }}><CheckCircle2 size={13} />Resolver</button>}
+          {row.status === "resolved" ? <small>Resuelta · {row.resolutionNote}</small> : row.status === "canceled" ? <small>Cancelada por el chofer · fuera del Excel</small> : live && <button className="quiet" onClick={() => { setEditing(false); setSelected(row); setNote(""); setCommandError(""); }}><CheckCircle2 size={13} />Resolver</button>}
         </td>
       </tr>)}</tbody>
     </table></div>}

@@ -28,6 +28,21 @@ internal class IncidentCaptureStore(cacheRoot: File, backupExcludedRoot: File,
             throw DriverApiException(410, "INCIDENT_CAPTURE_EXPIRED")
         return readLimited(file)
     }
+    /** Keep draft originals until the whole command is durable; a failed batch is reversible. */
+    fun stageBatch(sources: List<File>): List<String> {
+        require(sources.size in 1..3 && sources.map { it.canonicalPath }.distinct().size == sources.size)
+        val keys = mutableListOf<String>()
+        try {
+            for (source in sources) {
+                require(source.canonicalFile.parentFile == camera.canonicalFile && source.name.startsWith("incident-"))
+                val bytes = readLimited(source)
+                val key = UUID.randomUUID().toString()
+                keys.add(key)
+                file(key).outputStream().use { it.write(bytes) }
+            }
+            return keys
+        } catch (failure: Exception) { keys.forEach(::discard); throw failure }
+    }
     fun discard(key: String) { runCatching { file(key).delete() } }
     fun prune() {
         val cutoff = now() - 24L * 60 * 60 * 1000

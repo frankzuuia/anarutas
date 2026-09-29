@@ -1,5 +1,6 @@
 import { AppError } from "./errors";
 import { serviceNote } from "./driver-service-policy";
+import { incidentDepartments, productFormInput } from "./product-incident-form";
 
 export const productIncidentNames = {
   shortage_validation: "Faltante por validación",
@@ -16,7 +17,7 @@ export function productIncidentDetail(kind: ProductIncidentKind, reason: Warehou
   return { shortage_validation: "Validación", shortage_warehouse: "Faltante desde bodega",
     replacement_quality: "Calidad", replacement_wrong_product: "Producto erróneo", return: "Devolución" }[kind];
 }
-export function productIncidentClassification(kind: ProductIncidentKind, department: "Operaciones" | "Compras") {
+export function productIncidentClassification(kind: ProductIncidentKind, department: typeof incidentDepartments[number]) {
   return { department, concept: kind === "shortage_validation" && department === "Operaciones" ? "Reparto" : null };
 }
 export function incidentClassificationInput(raw: Record<string, unknown>) {
@@ -49,8 +50,9 @@ export function productIncidentInput(raw: Record<string, unknown>) {
   if (typeof raw.kind !== "string" || !Object.hasOwn(productIncidentNames, raw.kind))
     throw new AppError("INVALID_PRODUCT_INCIDENT");
   const kind = raw.kind as ProductIncidentKind;
-  if (raw.department !== "Operaciones" && raw.department !== "Compras") throw new AppError("INVALID_INCIDENT_DEPARTMENT");
-  const department: "Operaciones" | "Compras" = raw.department;
+  if (!incidentDepartments.some(value => value === raw.department)) throw new AppError("INVALID_INCIDENT_DEPARTMENT");
+  const department = raw.department as typeof incidentDepartments[number];
+  const form = productFormInput(raw);
   const warehouseReason = raw.warehouseReason;
   if (kind === "shortage_warehouse" ? typeof warehouseReason !== "string" || !Object.hasOwn(warehouseReasonNames, warehouseReason)
     : warehouseReason !== undefined && warehouseReason !== null) throw new AppError("INVALID_WAREHOUSE_REASON");
@@ -61,5 +63,5 @@ export function productIncidentInput(raw: Record<string, unknown>) {
   if (!manual && (raw.product !== undefined || raw.unit !== undefined)) throw new AppError("INVALID_PRODUCT_INCIDENT");
   return { kind, department, warehouseReason: kind === "shortage_warehouse" ? warehouseReason as WarehouseReason : null, lineIndex: manual ? null : lineIndex as number,
     product: manual ? field(raw.product, 300) : null, unit: manual ? field(raw.unit, 40) : null,
-    quantity: incidentQuantity(raw.quantity), note: serviceNote(raw.note) };
+    quantity: incidentQuantity(raw.quantity), note: serviceNote(raw.note), ...(form ?? {}) };
 }

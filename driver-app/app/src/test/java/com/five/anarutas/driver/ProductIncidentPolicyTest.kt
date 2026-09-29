@@ -5,6 +5,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProductIncidentPolicyTest {
+    @Test fun photosAndClassificationUseExactSelectableOptions() {
+        assertEquals(listOf("Operaciones", "Compras", "Ventas"), productDepartments)
+        assertEquals(listOf("Especiales", "Reparto", "Picking"), productConcepts)
+        for (kind in ProductIncidentKind.entries) for (count in -1..4)
+            assertEquals(count in (if (kind.manual) 0 else 1)..3, productPhotosValid(kind, count))
+        assertEquals(4, ProductComment.entries.size)
+        for (option in ProductComment.entries) assertEquals(option.label, productCommentsText(listOf(option.code), ""))
+        assertEquals("Especiales\nNo venía el producto en el pedido\nNota adicional",
+            productCommentsText(listOf("product_not_ordered", "special", "special"), "  Nota adicional  "))
+        assertEquals("", productCommentsText(emptyList(), "   "))
+        assertEquals("nota", productCommentsText(emptyList(), "nota"))
+    }
     @Test fun requiresEvidenceForReplacementsAndReturnsOnly() {
         for (kind in ProductIncidentKind.entries) assertEquals(kind in setOf(ProductIncidentKind.REPLACEMENT_QUALITY,
             ProductIncidentKind.REPLACEMENT_WRONG, ProductIncidentKind.RETURN), productEvidenceRequired(kind))
@@ -15,11 +27,25 @@ class ProductIncidentPolicyTest {
         assertEquals(BigDecimal("0.000001"), productQuantity(" 0.000001 "))
         assertEquals(BigDecimal("999999999999.999999"), productQuantity("999999999999.999999"))
     }
+    @Test fun sentIncidentOnlyReturnsToSaveAfterAnActualEdit() {
+        val sent = ProductIncidentRecord("i", "order", 0, "return", "Queso", "1.000000", "Unidades", "pending",
+            department = "Ventas", concept = "Picking", comments = listOf("special"), additionalNote = "Nota")
+        fun changed(quantity: String = "1", note: String = "Nota", comments: List<String> = listOf("special")) =
+            productIncidentDraftChanged(sent, "return", "Queso", "Unidades", quantity, note, "", "Ventas", "Picking", comments)
+        assertTrue(productIncidentDraftChanged(null, "return", "Queso", "Unidades", "1", "Nota", "", "Ventas", "Picking", emptyList()))
+        assertFalse(changed())
+        assertFalse(changed("1.0"))
+        assertTrue(changed("0.5"))
+        assertTrue(changed(note = "Otra nota"))
+        assertTrue(changed(comments = emptyList()))
+    }
     @Test fun sumsOnlyTheSameOrderAndLineIncludingResolvedIncidents() {
         val record = ProductIncidentRecord("1", "order", 0, "return", "Queso", "0.1", "kg", "pending")
         val records = listOf(record, record.copy(id = "2", quantity = "0.2", status = "resolved"),
+            record.copy(id = "3", quantity = "0.5", status = "canceled"),
             record.copy(shipmentId = "other"), record.copy(lineIndex = 1), record.copy(lineIndex = null))
         assertEquals(0, BigDecimal("1.7").compareTo(remainingProductQuantity(2.0, records, "order", 0)))
+        assertEquals(0, BigDecimal("1.8").compareTo(remainingProductQuantity(2.0, records, "order", 0, "1")))
         assertEquals(BigDecimal.ZERO, remainingProductQuantity(0.1, records, "order", 0))
         assertEquals(0, BigDecimal("2.0").compareTo(remainingProductQuantity(2.0, emptyList(), "order", 0)))
     }

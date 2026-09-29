@@ -76,6 +76,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
     var confirmation by rememberSaveable(stop.id) { mutableStateOf<String?>(null) }
     var note by rememberSaveable(stop.id) { mutableStateOf("") }
     var productLine by rememberSaveable(stop.id) { mutableStateOf<Int?>(null) }
+    var editingProductIncidentId by rememberSaveable(stop.id) { mutableStateOf<String?>(null) }
     val order = orders.find { it.id == selectedId } ?: orders.firstOrNull()
     val status = stop.orderStates.find { it.shipmentId == order?.id }
     val state = model.state
@@ -84,8 +85,13 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
     LaunchedEffect(state.serviceRevision) {
         if (confirmedRevision != state.serviceRevision) { confirmation = null; note = ""; confirmedRevision = state.serviceRevision }
     }
-    if (productLine != null && order != null) {
-        ProductIncidentSheet(stop, order, productLine, ProductIncidentKind.REPLACEMENT_QUALITY, model) { productLine = null }
+    val editingProductIncident = stop.productIncidents.find { it.id == editingProductIncidentId && it.shipmentId == order?.id && it.status != "canceled" }
+    if ((productLine != null || editingProductIncident != null) && order != null) {
+        ProductIncidentSheet(stop, order, editingProductIncident?.lineIndex ?: productLine,
+            ProductIncidentKind.entries.firstOrNull { it.wire == editingProductIncident?.kind }
+                ?: ProductIncidentKind.REPLACEMENT_QUALITY, model, editingProductIncident) {
+            productLine = null; editingProductIncidentId = null
+        }
         return
     }
     ServiceFormSurface({ if (!state.busy) close() }, header = {
@@ -114,7 +120,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
         if (order != null && status != null) {
             HorizontalDivider(color = DriverColors.line)
             SectionLabel(order.name, "${order.lines.size} partidas")
-            val productCases = stop.productIncidents.filter { it.shipmentId == order.id }
+            val productCases = stop.productIncidents.filter { it.shipmentId == order.id && it.status != "canceled" }
             val hasIncidents = productCases.isNotEmpty()
             StatusBadge(if (hasIncidents && status.status == OrderServiceStatus.DELIVERED) "Atendido con incidencias" else status.status.label,
                 if (status.status == OrderServiceStatus.DELIVERED) DriverColors.lime else DriverColors.amber)
@@ -122,17 +128,27 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
                 AppAction("Reintentar pedido", DriverIcon.REFRESH, Modifier.fillMaxWidth(), enabled = available) { confirmation = "retry" }
             }
             if (order.note.isNotBlank()) Text(order.note, color = DriverColors.amber)
-            if (hasIncidents) Text("${productCases.size} incidencias registradas · la reposición se gestiona por separado", color = DriverColors.amber,
+            if (hasIncidents) Text("${productCases.size} incidencias activas · administración conserva el detalle", color = DriverColors.amber,
                 style = MaterialTheme.typography.bodySmall)
             order.lines.forEachIndexed { index, line -> Row(Modifier.fillMaxWidth()
                 .clickable(enabled = available && stop.canAttend() && canDeliverOrder(status.status),
-                    onClickLabel = "Registrar incidencia de ${line.name}") { productLine = index }.padding(vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    onClickLabel = "Registrar incidencia de ${line.name}") { productLine = index }.heightIn(min = 44.dp).padding(vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (productCases.any { it.lineIndex == index }) AppIcon(DriverIcon.ALERT, Modifier.size(18.dp), tint = DriverColors.amber)
                 Text(line.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                Text("${line.quantity} ${line.unit}", color = DriverColors.lime, style = MaterialTheme.typography.labelLarge)
+                Text("${remainingProductQuantity(line.quantity, productCases, order.id, index).stripTrailingZeros().toPlainString()} ${line.unit}",
+                    color = DriverColors.lime, style = MaterialTheme.typography.labelLarge)
             } }
-            productCases.forEach { incident -> Text("${ProductIncidentKind.entries.firstOrNull { it.wire == incident.kind }?.label ?: incident.kind}: ${incident.product} · ${incident.quantity} ${incident.unit}",
-                style = MaterialTheme.typography.bodySmall, color = DriverColors.amber) }
+            productCases.forEach { incident -> Row(Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                .clickable(enabled = available && stop.canAttend() && canDeliverOrder(status.status),
+                    onClickLabel = "Ver incidencia de ${incident.product}") { editingProductIncidentId = incident.id }
+                .padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                AppIcon(DriverIcon.ALERT, Modifier.size(16.dp), tint = DriverColors.amber)
+                Text("${ProductIncidentKind.entries.firstOrNull { it.wire == incident.kind }?.label ?: incident.kind} · ${incident.product}",
+                    Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = DriverColors.amber)
+                Text("${incident.quantity} ${incident.unit}", style = MaterialTheme.typography.labelSmall, color = DriverColors.amber)
+            } }
             if (confirmation == null) {
                 if (canDeliverOrder(status.status) && stop.canAttend()) AppAction(if (hasIncidents) "Confirmar atención con incidencias" else "Entregado completo", DriverIcon.CHECK,
                     Modifier.fillMaxWidth(), enabled = available) { confirmation = "deliver" }
@@ -228,14 +244,20 @@ internal fun ServiceIncidentSheet(stop: ExecutionStop, initialOrderId: String?, 
         }
     }) {
         Text("Selecciona lo que ocurrió. Se enviará a administración con tu nombre y la hora del registro.", color = DriverColors.muted)
-        ProductIncidentKind.entries.filter { it.manual }.forEach { option ->
-            AppAction(option.label, DriverIcon.ALERT, Modifier.fillMaxWidth(), quiet = true,
-                enabled = available && selected != null) { missingKind = option.wire }
-        }
         Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             IncidentChoice.entries.forEach { choice ->
                 IncidentChoiceCard(choice, mode == choice.code, incidentChoiceEnabled(choice, available, orders.isNotEmpty())) { mode = choice.code }
             }
+        }
+        if (mode == IncidentChoice.SHORTAGE_VALIDATION.code || mode == IncidentChoice.SHORTAGE_WAREHOUSE.code) {
+            Text("Selecciona el pedido al que corresponde el producto faltante.", color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
+            if (orders.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                orders.forEach { order -> FilterChip(order.id == selected?.id, { selectedId = order.id }, enabled = available, label = { Text(order.name) }) }
+            } else Text(selected?.name ?: "Sin pedidos disponibles")
+            AppAction("Continuar con faltante", DriverIcon.ALERT, Modifier.fillMaxWidth(), enabled = available && selected != null) { missingKind = mode }
+            ServiceFeedback(model)
+            TextButton(enabled = !state.busy, onClick = ::dismiss) { Text("Volver al pedido") }
+            return@ServiceFormSurface
         }
         if (mode == "customer_closed") {
             Text("Todos los pedidos sin cerrar de esta parada quedarán pendientes de reintento. Toma una foto del negocio cerrado.", color = DriverColors.amber, style = MaterialTheme.typography.bodySmall)

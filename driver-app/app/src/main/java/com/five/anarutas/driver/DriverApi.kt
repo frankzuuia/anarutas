@@ -410,9 +410,40 @@ class DriverApi(private val server: String) {
     internal suspend fun serviceCommand(token: String, planId: String, stopId: String, shipmentId: String, payload: JSONObject) =
         JSONObject(exchange("POST", "/api/mobile/plans/$planId/stops/$stopId/orders/$shipmentId/service", token, payload))
 
-    internal suspend fun productIncidentCommand(token: String, planId: String, stopId: String, shipmentId: String, payload: JSONObject, bytes: ByteArray?): JSONObject {
+    internal suspend fun productIncidentCommand(token: String, planId: String, stopId: String, shipmentId: String, payload: JSONObject, photos: List<ByteArray>): JSONObject {
         val path = "/api/mobile/plans/$planId/stops/$stopId/orders/$shipmentId/product-incidents"
-        return if (bytes == null) JSONObject(exchange("POST", path, token, payload)) else evidenceCommand(token, path, payload, bytes)
+        if (photos.isEmpty()) return JSONObject(exchange("POST", path, token, payload))
+        if (payload.optInt("formVersion") != 2) {
+            require(photos.size == 1)
+            return evidenceCommand(token, path, payload, photos.single())
+        }
+        val upload = ProductPhotoUpload(payload.toString(), photos)
+        return withContext(Dispatchers.IO) {
+            val connection = URL("$server$path").openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = "POST"
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 10000
+                connection.readTimeout = 30000
+                connection.setRequestProperty("Authorization", "Bearer $token")
+                connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=${upload.boundary}")
+                connection.setRequestProperty("Accept", "application/json")
+                connection.setFixedLengthStreamingMode(upload.length)
+                connection.doOutput = true
+                connection.outputStream.use(upload::writeTo)
+                val status = connection.responseCode
+                val text = (if (status in 200..299) connection.inputStream else connection.errorStream)?.readLimited().orEmpty()
+                if (status !in 200..299) throw DriverApiException(status, runCatching { JSONObject(text).optString("error") }.getOrDefault(""))
+                JSONObject(text)
+            } finally { connection.disconnect() }
+        }
+    }
+
+    internal suspend fun changeProductIncidentCommand(token: String, planId: String, stopId: String,
+        shipmentId: String, incidentId: String, action: String, payload: JSONObject): JSONObject {
+        require(action == "amend" || action == "cancel")
+        return JSONObject(exchange("POST", "/api/mobile/plans/$planId/stops/$stopId/orders/$shipmentId/product-incidents/$incidentId/$action",
+            token, payload))
     }
 
     internal suspend fun retryOrderCommand(token: String, planId: String, stopId: String, shipmentId: String, payload: JSONObject) =

@@ -9,6 +9,26 @@ import org.junit.rules.TemporaryFolder
 
 class IncidentCaptureStoreTest {
     @get:Rule val files = TemporaryFolder()
+    @Test fun stagesThreeAsOneReversibleBatchAndKeepsDraftsAfterFailure() {
+        val cache = files.newFolder("batch-cache")
+        val backupExcluded = files.newFolder("batch-private")
+        val store = IncidentCaptureStore(cache, backupExcluded)
+        val camera = File(cache, "incident-camera").apply { mkdirs() }
+        val sources = (1..3).map { index -> File(camera, "incident-$index.jpg").apply { writeBytes(byteArrayOf(index.toByte())) } }
+        val keys = store.stageBatch(sources)
+        assertEquals(3, keys.distinct().size)
+        sources.forEachIndexed { index, source -> assertTrue(source.exists()); assertArrayEquals(source.readBytes(), store.read(keys[index])) }
+        keys.forEach(store::discard)
+        assertThrows(IllegalArgumentException::class.java) { store.stageBatch(emptyList()) }
+        assertThrows(IllegalArgumentException::class.java) { store.stageBatch(sources + sources[0]) }
+        val fourth = File(camera, "incident-4.jpg").apply { writeBytes(byteArrayOf(4)) }
+        assertThrows(IllegalArgumentException::class.java) { store.stageBatch(sources + fourth) }
+        assertThrows(IllegalArgumentException::class.java) { store.stageBatch(listOf(sources[0], sources[0])) }
+        assertThrows(DriverApiException::class.java) { store.stageBatch(listOf(sources[0], File(camera, "incident-missing.jpg"))) }
+        assertThrows(IllegalArgumentException::class.java) { store.stageBatch(listOf(sources[0], File(cache, "foreign.jpg"))) }
+        assertTrue(sources.all { it.exists() })
+        assertEquals(0, File(backupExcluded, "incident-outbox").listFiles()!!.size)
+    }
     @Test fun storesPrivateBytesRemovesCameraCopyAndRejectsForeignPaths() {
         val cache = files.newFolder("cache")
         val backupExcluded = files.newFolder("private")

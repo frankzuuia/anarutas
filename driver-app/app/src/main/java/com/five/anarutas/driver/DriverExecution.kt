@@ -45,7 +45,14 @@ internal fun parseExecution(raw: String, receivedElapsed: Long): DriverExecution
                     (0 until list.length()).map { i -> val record = list.getJSONObject(i)
                         ProductIncidentRecord(record.getString("id"), record.getString("shipmentId"),
                             if (record.isNull("lineIndex")) null else record.getInt("lineIndex"), record.getString("kind"),
-                            record.getString("product"), record.getString("quantity"), record.getString("unit"), record.getString("status")) }
+                            record.getString("product"), record.getString("quantity"), record.getString("unit"), record.getString("status"),
+                            record.optInt("version", 1), record.optString("department").takeUnless { record.isNull("department") }.orEmpty(),
+                            record.optString("concept").takeUnless { record.isNull("concept") }.orEmpty(),
+                            record.optString("warehouseReason").takeUnless { record.isNull("warehouseReason") }.orEmpty(),
+                            record.optJSONArray("comments")?.let { comments ->
+                                (0 until comments.length()).map(comments::getString)
+                            }.orEmpty(), record.optString("additionalNote").takeUnless { record.isNull("additionalNote") }.orEmpty(),
+                            record.optInt("evidenceCount")) }
                 }.orEmpty())
         })
 }

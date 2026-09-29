@@ -23,7 +23,7 @@ export async function executeDriverOrderCommand(pool: Pool, authorization: strin
       [route.id, stop!.id, shipment])).rows[0];
     if (!order) throw new AppError("NOT_FOUND", 404);
     if (order.version !== version) throw new AppError("VERSION_CONFLICT", 409);
-    const productIncidents = (await sql.query("SELECT id FROM route_product_incidents WHERE execution_id=$1 AND shipment_id=$2", [route.id, shipment])).rows;
+    const productIncidents = (await sql.query("SELECT id FROM route_product_incidents WHERE execution_id=$1 AND shipment_id=$2 AND status<>'canceled'", [route.id, shipment])).rows;
     if (action.kind === "deliver" && productIncidents.length && raw.productIncidentsAcknowledged !== true)
       throw new AppError("PRODUCT_INCIDENTS_ACK_REQUIRED", 409);
     if (action.kind !== "reschedule" && order.status === "closed_pending") {

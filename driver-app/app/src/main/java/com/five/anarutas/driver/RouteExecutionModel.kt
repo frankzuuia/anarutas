@@ -16,7 +16,8 @@ internal data class ExecutionUiState(val route: AssignedPlan? = null, val execut
     val loading: Boolean = true, val busy: Boolean = false, val verified: Boolean = false, val retired: Boolean = false,
     val pending: Boolean = false, val message: String = "Cargando tu ruta…", val arrivedStop: String? = null,
     val correctedStop: String? = null, val exitDestination: String? = null, val serviceRevision: Int = 0,
-    val continuation: StopContinuation? = null, val productRevision: Int = 0)
+    val continuation: StopContinuation? = null, val productRevision: Int = 0,
+    val lastProductIncidentId: String? = null, val lastProductAction: String? = null)
 
 /** Owns network/retry state across rotation. Business facts only come from the server. */
 internal class RouteExecutionModel(private val credentials: DeviceCredentials, private val planId: String,
@@ -31,6 +32,9 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
 
     private suspend fun access() = withContext(Dispatchers.IO) { credentials.load() }
     private suspend fun clearPending() {
+        pending?.optJSONArray("evidenceKeys")?.let { keys ->
+            withContext(Dispatchers.IO) { for (index in 0 until keys.length()) captures.discard(keys.getString(index)) }
+        }
         pending?.optString("evidenceKey")?.takeIf(String::isNotBlank)?.let { key ->
             withContext(Dispatchers.IO) { captures.discard(key) }
         }
@@ -83,7 +87,8 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                         }
                         "closed" -> "Cliente cerrado registrado con evidencia · folio ${command.getString("incidentId").takeLast(8)}. Pedidos pendientes de reintento."
                         "order-retry" -> "Pedido reabierto. Confirma una nueva llegada para atenderlo."
-                        "product-incident" -> "Incidencia de producto registrada. Administración ya puede consultarla."
+                        "product-incident", "product-incident-amend" -> "Incidencia enviada. Administración ya puede consultarla."
+                        "product-incident-cancel" -> "Incidencia eliminada. El historial y la evidencia quedan resguardados."
                         "phone" -> "Teléfono operativo guardado también en la ficha del cliente."
                         else -> "Punto corregido en tu ruta y en la ficha del cliente."
                     },
@@ -91,7 +96,9 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                     correctedStop = command.getString("stopId").takeIf { kind == "location" },
                     exitDestination = command.optString("destinationStopId").takeIf { (kind == "visit-exit" || kind == "order-retry") && it.isNotBlank() },
                     serviceRevision = state.serviceRevision + if (kind == "service" || kind == "closed" || kind == "order-retry") 1 else 0,
-                    productRevision = state.productRevision + if (kind == "product-incident") 1 else 0,
+                    productRevision = state.productRevision + if (kind.startsWith("product-incident")) 1 else 0,
+                    lastProductIncidentId = command.optString("incidentId").takeIf { kind.startsWith("product-incident") && it.isNotBlank() },
+                    lastProductAction = kind.takeIf { it.startsWith("product-incident") },
                     continuation = confirmedStopContinuation(command.getJSONObject("payload").getString("commandId"), kind,
                         command.getJSONObject("payload").optString("kind"), execution.stops.find { it.id == command.getString("stopId") }),
                 )
@@ -154,21 +161,48 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
         if (!allowed || (note?.length ?: 0) > 2000) return
         val payload = visitExitCommand(execution, stop, UUID.randomUUID().toString()).put("orderVersion", order.version)
             .put("kind", kind).put("reasonCode", reason).put("note", note)
-        if (kind == "deliver" && stop.productIncidents.any { it.shipmentId == shipmentId }) payload.put("productIncidentsAcknowledged", true)
+        if (kind == "deliver" && stop.productIncidents.any { it.shipmentId == shipmentId && it.status != "canceled" }) payload.put("productIncidentsAcknowledged", true)
         queueCommand(stopId, "service", payload, shipmentId = shipmentId)
     }
     fun reportProduct(stopId: String, shipmentId: String, lineIndex: Int?, kind: ProductIncidentKind,
-        quantity: String, product: String, unit: String, note: String, warehouseReason: String?, department: String, photo: File?) {
+        quantity: String, product: String, unit: String, note: String, warehouseReason: String?, department: String,
+        concept: String, comments: List<String>, photos: List<File>) {
         val execution = state.execution ?: return
         val stop = execution.stops.find { it.id == stopId } ?: return
         val order = stop.orderStates.find { it.shipmentId == shipmentId } ?: return
         if (!serviceAvailable(stop) || !stop.canAttend() || !canDeliverOrder(order.status)) return
-        if (productEvidenceRequired(kind) && photo == null) return
+        if (!productPhotosValid(kind, photos.size) || department !in productDepartments || concept !in productConcepts) return
         val payload = visitExitCommand(execution, stop, UUID.randomUUID().toString()).put("orderVersion", order.version)
             .put("kind", kind.wire).put("quantity", quantity).put("note", note).put("department", department)
+            .put("formVersion", 2).put("concept", concept).put("comments", org.json.JSONArray(comments))
         if (warehouseReason != null) payload.put("warehouseReason", warehouseReason)
         if (lineIndex == null) payload.put("product", product).put("unit", unit) else payload.put("lineIndex", lineIndex)
-        queueCommand(stopId, "product-incident", payload, shipmentId = shipmentId, capture = photo)
+        queueCommand(stopId, "product-incident", payload, shipmentId = shipmentId, productPhotos = photos)
+    }
+    fun amendProduct(stopId: String, shipmentId: String, incident: ProductIncidentRecord, kind: ProductIncidentKind,
+        quantity: String, product: String, unit: String, note: String, warehouseReason: String?, department: String,
+        concept: String, comments: List<String>) {
+        val execution = state.execution ?: return
+        val stop = execution.stops.find { it.id == stopId } ?: return
+        val order = stop.orderStates.find { it.shipmentId == shipmentId } ?: return
+        if (!serviceAvailable(stop) || !stop.canAttend() || !canDeliverOrder(order.status) || incident.status != "pending") return
+        if (department !in productDepartments || concept !in productConcepts) return
+        val payload = visitExitCommand(execution, stop, UUID.randomUUID().toString()).put("orderVersion", order.version)
+            .put("expectedVersion", incident.version).put("kind", kind.wire).put("quantity", quantity).put("note", note)
+            .put("department", department).put("formVersion", 2).put("concept", concept)
+            .put("comments", org.json.JSONArray(comments))
+        if (warehouseReason != null) payload.put("warehouseReason", warehouseReason)
+        if (incident.lineIndex == null) payload.put("product", product).put("unit", unit) else payload.put("lineIndex", incident.lineIndex)
+        queueCommand(stopId, "product-incident-amend", payload, shipmentId = shipmentId, incidentId = incident.id)
+    }
+    fun cancelProduct(stopId: String, shipmentId: String, incident: ProductIncidentRecord) {
+        val execution = state.execution ?: return
+        val stop = execution.stops.find { it.id == stopId } ?: return
+        val order = stop.orderStates.find { it.shipmentId == shipmentId } ?: return
+        if (!serviceAvailable(stop) || !stop.canAttend() || !canDeliverOrder(order.status) || incident.status != "pending") return
+        val payload = visitExitCommand(execution, stop, UUID.randomUUID().toString()).put("orderVersion", order.version)
+            .put("expectedVersion", incident.version)
+        queueCommand(stopId, "product-incident-cancel", payload, shipmentId = shipmentId, incidentId = incident.id)
     }
     fun reportClosed(stopId: String, note: String, photo: File) {
         val execution = state.execution ?: return
@@ -193,7 +227,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
     }
     private fun serviceAvailable(stop: ExecutionStop) = state.verified && !state.retired && !state.busy && !state.pending && stop.arrivedAt != null
     private fun queueCommand(stopId: String, kind: String, payload: JSONObject, destinationStopId: String? = null,
-        shipmentId: String? = null, capture: File? = null) {
+        shipmentId: String? = null, capture: File? = null, productPhotos: List<File> = emptyList(), incidentId: String? = null) {
         state = state.copy(busy = true, message = "Confirmando con el servidor…")
         viewModelScope.launch {
             gate.withLock {
@@ -203,7 +237,10 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                         .put("stopId", stopId).put("kind", kind).put("payload", payload)
                     if (destinationStopId != null) pending!!.put("destinationStopId", destinationStopId)
                     if (shipmentId != null) pending!!.put("shipmentId", shipmentId)
+                    if (incidentId != null) pending!!.put("incidentId", incidentId)
                     if (capture != null) pending!!.put("evidenceKey", withContext(Dispatchers.IO) { captures.stage(capture) })
+                    if (productPhotos.isNotEmpty()) pending!!.put("evidenceKeys",
+                        org.json.JSONArray(withContext(Dispatchers.IO) { captures.stageBatch(productPhotos) }))
                     withContext(Dispatchers.IO) { credentials.savePendingStopCommand(planId, pending!!.toString()) }
                     state = state.copy(pending = true)
                     sendPendingLocked()
@@ -238,12 +275,23 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                 "service" -> api.serviceCommand(saved.token, planId, command.getString("stopId"), command.getString("shipmentId"), payload)
                 "product-incident" -> {
                     // Check the durable receipt first, including after an app restart or a lost response.
-                    if (api.confirmedClosedIncident(saved.token, planId, payload.getString("commandId")) == null) {
-                        val bytes = command.optString("evidenceKey").takeIf(String::isNotBlank)?.let { key ->
-                            withContext(Dispatchers.IO) { captures.read(key) }
+                    var incidentId = api.confirmedClosedIncident(saved.token, planId, payload.getString("commandId"))
+                    if (incidentId == null) {
+                        val bytes = withContext(Dispatchers.IO) {
+                            command.optJSONArray("evidenceKeys")?.let { keys ->
+                                (0 until keys.length()).map { captures.read(keys.getString(it)) }
+                            } ?: command.optString("evidenceKey").takeIf(String::isNotBlank)?.let { listOf(captures.read(it)) }.orEmpty()
                         }
-                        api.productIncidentCommand(saved.token, planId, command.getString("stopId"), command.getString("shipmentId"), payload, bytes)
+                        incidentId = api.productIncidentCommand(saved.token, planId, command.getString("stopId"), command.getString("shipmentId"), payload, bytes).getString("incidentId")
                     }
+                    command.put("incidentId", incidentId)
+                }
+                "product-incident-amend", "product-incident-cancel" -> {
+                    val id = command.getString("incidentId")
+                    if (api.confirmedClosedIncident(saved.token, planId, payload.getString("commandId")) == null)
+                        api.changeProductIncidentCommand(saved.token, planId, command.getString("stopId"),
+                            command.getString("shipmentId"), id,
+                            if (command.getString("kind") == "product-incident-amend") "amend" else "cancel", payload)
                 }
                 "order-retry" -> api.retryOrderCommand(saved.token, planId, command.getString("stopId"), command.getString("shipmentId"), payload)
                 "closed" -> {

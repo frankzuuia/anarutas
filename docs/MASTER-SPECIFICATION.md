@@ -1465,3 +1465,43 @@ La sesión móvil autenticada solicita `DELETE /api/mobile/unit-photos/[photoId]
 El UUID nunca se usa como ruta arbitraria; el archivo sigue el nombre privado derivado del ID. No se ofrece borrar desde Control de unidades. Máximo ocho y mínimo cinco siguen siendo reglas del servidor. La acción de la APK es pequeña, accesible y sólo aparece antes del inicio; la confirmación muestra la foto específica. Objetivo: cero fotos ajenas borradas, cero rutas iniciadas con menos de cinco por carrera, cero WebP accesibles tras borrar, cobertura de los predicados de permiso/estado y mutation testing dirigido. El smoke físico y el despliegue quedan pendientes de develop.
 
 Veredicto forense: GREEN LIGHT para el bloque local; INTEGRITY TOTAL con BL-090, BL-092 y BL-093; MATCH PERFECT con MP-T13..MP-T15 en `PROGRESS.md`.
+## BL-147 — bloque aprobado: captura compacta y hasta tres evidencias
+
+Causa comprobada: ProductIncidentSheet mantiene un único photoPath; cada captura
+descarta el anterior. Preview de ancho completo y espaciado heredado alejan las
+acciones. Faltantes usan AppAction en vez de IncidentChoiceCard. API, recibo,
+outbox y BD también admiten una sola imagen: no basta cambiar presentación.
+
+| Escenario | Resultado / control | Prueba |
+| --- | --- | --- |
+| PI15 Capturar 1/2/3 fotos; quitar cualquiera | Miniaturas independientes, X local, cuarta bloqueada; una suficiente | JVM/Compose/HTTP |
+| PI16 Cancelar cámara/rotar/error/envío incierto | No reemplazar otras; lote durable, mismo recibo, no duplicados | JVM/PG/QA físico |
+| PI17 Clasificar y comentar | Ventas y conceptos permitidos; chips + nota sin duplicación | Unit/PG/Excel |
+| PI18 APK anterior y registros anteriores | Una imagen y recibo antiguo siguen válidos; no modificar histórico | PG/contrato |
+| PI19 Foto inválida/cuarta/sesión ajena | Rechazo completo; ninguna incidencia parcial ni foto pública | HTTP/PG |
+| PI20 Faltantes seleccionables | Cuatro tarjetas homogéneas; elegir no envía; modal específico | Compose |
+| PI21 Lectura/archivo/resolución | Todas las fotos permanecen; sólo acceso administrativo | PG/E2E |
+
+Flujo: formulario v2 → multipart acotado (3 × 8 MB + metadatos) → saneado
+secuencial → transacción existente/recibo → foto principal legacy + tabla de
+extras posiciones 2/3. Migración aditiva v28, FK e inmutabilidad. Rollback de
+binario requiere compatibilidad de versión de esquema; no ejecutar downgrade.
+Hashes ordenados enlazan el lote al recibo. No cambiar hash de solicitudes legacy.
+Clasificación/comentarios explícitos v2; v1 continúa con sus valores anteriores.
+Fotos borradas sólo del borrador; outbox protegido mientras se confirma envío.
+Panel lee extras por incidencia autenticada; limpieza de huérfanos reconoce extras.
+Referencia: Next16 local route-handlers/use-client; contratos PG/outbox del repo.
+GREEN LIGHT / INTEGRITY TOTAL / MATCH PERFECT con PI-T07..10. Se integra
+con BL-148 en develop; sin Deploy. UI conserva DriverColors y controles accesibles.
+## BL-148 — edición/cancelación de incidencias y saldo visible
+
+| Caso | Resultado verificable |
+| --- | --- |
+| PI22 Enviar y volver a abrir | «Incidencia enviada», datos vigentes y opción de editar/cancelar; no segunda alta implícita. |
+| PI23 Editar un campo | «Guardar incidencia»; versión CAS, recibo idempotente y cambio auditado. |
+| PI24 Cancelar por petición del cliente | Confirmación explícita; conserva evidencia e historia, deja de afectar saldo y exportación. |
+| PI25 Dos o más incidencias en una partida | Saldo agregado exacto; no negativo; triángulo ámbar y acceso individual a cada incidencia. |
+| PI26 Faltante no publicado | Renglón separado con alerta, edición y cancelación; ninguna partida publicada pierde cantidad. |
+| PI27 Carrera, sesión ajena, pedido cerrado, reintento | Rechazo atómico o mismo recibo; cero cambio parcial y ninguna incidencia ajena editable. |
+
+Migración aditiva v29: estado cancelado, bitácora inmutable, campos de formulario vigentes y validación de cantidad para INSERT/UPDATE. API móvil autenticada de enmienda y cancelación; misma outbox durable y bloqueo de visita/pedido. Los cambios de fotografía posteriores al envío quedan fuera de este bloque: fotos ya enviadas permanecen privadas y auditables. Publicación sólo en develop; el despliegue lo hace el propietario.

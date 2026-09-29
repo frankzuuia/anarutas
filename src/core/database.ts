@@ -28,6 +28,8 @@ import { migrateLiveTracking } from "./live-tracking-schema";
 import { migrateLiveEta } from "./live-eta-schema";
 import { migrateCustomerWindowsDaily } from "./customer-windows-daily-schema";
 import { migrateProductIncidents } from "./product-incidents-schema";
+import { migrateProductIncidentPhotos } from "./product-incident-photos-schema";
+import { migrateProductIncidentAmendments } from "./product-incident-amendments-schema";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
   return new pg.Pool({
@@ -99,7 +101,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       );
       let version = result.rows[0]?.schema_version;
       if (
-        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27].includes(
+        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29].includes(
           version,
         )
       )
@@ -142,6 +144,8 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (version < 25) await migrateLiveEta(client);
       if (version < 26) await migrateCustomerWindowsDaily(client);
       if (version < 27) await migrateProductIncidents(client);
+      if (version < 28) await migrateProductIncidentPhotos(client);
+      if (version < 29) await migrateProductIncidentAmendments(client);
       return;
     }
     await client.query(`
@@ -183,6 +187,8 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migrateLiveEta(client);
     await migrateCustomerWindowsDaily(client);
     await migrateProductIncidents(client);
+    await migrateProductIncidentPhotos(client);
+    await migrateProductIncidentAmendments(client);
   });
 }
 export async function audit(

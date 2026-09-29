@@ -649,3 +649,20 @@ No se incluyen cambios a repositorio five, sus entornos, vendedores, precios o V
 El traspaso de pedidos, eventos de llegada, incidencias, navegación y finanzas
 permanecen pendientes de bloques propios. El acceso directo teléfono + PIN
 se prepara primero en `develop`; producción requiere su propia aprobación.
+## BL-147 — mejora de captura aprobada
+
+- [x] PI-T07: contrato v2, clasificación/comentarios, migración v28 y evidencia 1..3 atómica compatible; legacy/recibo preservado en PG.
+- [x] PI-T08: outbox múltiple y formulario compacto con miniaturas, eliminación y pie visible; 95 JVM, 42 mutantes Android detectados.
+- [x] PI-T09: faltantes como tarjetas seleccionables; panel con todas las fotos y Excel sin nuevas columnas; doce incidencias en el mismo pedido sin cerrarlo.
+- [x] PI-T10: validación automatizada/PG/HTTP, cobertura y APK 0.8.1 completas;
+  ejecución Compose/cámara/rotación pendiente por conexión ADB cerrada.
+  Evidencia, corrección de expectativa de regresión y procedimiento físico en
+  `QA-CAPTURA-INCIDENCIAS-0.8.1.md`. Se integra con BL-148 en develop;
+  despliegue y QA físico siguen pendientes del propietario.
+## BL-148 — edición/cancelación y saldo de incidencias
+
+- [x] PI-T11: migración v29, enmienda/cancelación idempotente, autorización/CAS y auditoría sin borrar evidencia.
+- [x] PI-T12: API/lecturas y desglose Android con saldo neto, alertas y faltantes manuales separados.
+- [x] PI-T13: formulario enviado/editado/cancelable, X de foto discreta y outbox recuperable.
+- [x] PI-T14: unitarias, PostgreSQL, contrato HTTP, Android, E2E, Gherkin, cobertura/mutación, build APK y evidencia QA automatizada. Instrumentación física pendiente por ADB offline; ver `QA-EDICION-INCIDENCIAS-0.8.2.md`.
+- [x] PI-T15: commit/push a develop autorizado; despliegue manual por el propietario.

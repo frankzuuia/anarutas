@@ -38,6 +38,11 @@ class IncidentFormUiTest {
         } }
         val closed = compose.onNodeWithText("Cliente cerrado")
         val rejected = compose.onNodeWithText("Pedido rechazado")
+        for (text in listOf("Faltante por validación", "Faltante desde bodega")) {
+            compose.onNodeWithText(text).performClick().assertIsSelected()
+            closed.assertIsNotSelected()
+        }
+        closed.performClick()
         closed.assertIsSelected().assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton))
         rejected.assertIsNotSelected().performClick()
         rejected.assertIsSelected()

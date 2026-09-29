@@ -25,6 +25,7 @@ import androidx.compose.ui.window.DialogProperties
 /** The dialog owns IME insets, not the map activity or its content-size changes. */
 @Composable
 internal fun ServiceFormSurface(onDismiss: () -> Unit, header: @Composable () -> Unit,
+    compact: Boolean = false, footer: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(
         usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnClickOutside = false,
@@ -37,8 +38,12 @@ internal fun ServiceFormSurface(onDismiss: () -> Unit, header: @Composable () ->
                 Column(Modifier.fillMaxSize()) {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp)) { header() }
                     HorizontalDivider(color = DriverColors.line)
-                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
+                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(if (compact) 14.dp else 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 16.dp), content = content)
+                    footer?.let {
+                        HorizontalDivider(color = DriverColors.line)
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) { it() }
+                    }
                 }
             }
         }
