@@ -715,3 +715,15 @@ se prepara primero en `develop`; producción requiere su propia aprobación.
 - [x] WD-T02 (WD01..02,06..09): Android comparte destino/ETA real y borra al detener; etiquetas comunes avance/resumen/tiempos, APK0.8.7/code29 compilada, firma compatible; 116 JVM y mutación13/13. QA física separada y pendiente.
 - [x] WD-T03A (WD01..10): 42 dirigidas, 679 regresión/0 fallos/2 omisiones externas anteriores, HTTP2/2, 116 JVM; cobertura crítica100%, ramas agregadas99.19%; mutación289 políticas +8 PG +13 Android, todas detectadas. Typecheck/lint/build/audit y evidencia en `QA-REGRESO-EN-VIVO-0.8.7.md`.
 - [ ] WD-T03B: GPS/SDK físico; no declarar listo producción sin evidencia. El propietario autorizó expresamente commit/push a develop para probar el 2026-09-29, con esta salvedad y las dos omisiones externas anteriores informadas; deploy manual del propietario, sin cambios en main. Autorización permanente para subir a develop los cambios solicitados y verificados, registrada en AGENTS.md; main sólo con instrucción explícita.
+
+## BL-157..159 — liquidación, bloque 1 aprobado el 2026-09-30
+
+- [x] F-T00: autopsia de código/Odoo real, propuesta y aprobación del usuario («dale»). Base develop485ab3f, Five excluido.
+- [x] F-T01: contrato monetario e identidad estable, lectura Odoo coherente por IDs; dos pedidos reales y redondeo S00093 verificados.
+- [x] F-T02: migración34 aditiva, cola automática e historial inmutable; upgrade/repetición/rollback comprobados con PG real.
+- [x] F-T03: sincronizador exclusivo, recuperación, backoff y métricas; desconexión real durante RPC y aislamiento de objetivos fallidos verificados.
+- [x] F-T04: consulta autorizada de servidor, sin activar UI/cobros; HTTP real activa seguimiento automático y conserva snapshots operativos.
+- [x] F-T05: Gherkin LQ01..14;108/108 financieras con PG/Odoo reales,787 regresión/0 fallos/3 omisiones externas identificadas (financiera aprobada aparte),3/3 E2E,99.62% líneas/99.24% ramas,598/606 mutaciones de dominio y12/12 PG. Evidencia/límites en QA-FUENTE-FINANCIERA-BLOQUE-1.md.
+- [x] F-T06: revisión independiente final; typecheck/lint/build/bundle aprobados, audit0 vulnerabilidades, escaneo de credenciales sin coincidencias. Commit/push develop bajo autorización permanente; sin deploy ni cambios en main. Dos integraciones externas preexistentes ajenas al bloque permanecen omitidas, identificadas en QA.
+
+Bloques2..6 pendientes: precios/incidencias Android, cobro, roles, solicitudes/recepción/historial y E2E completo. Aprobar bloque1 no equivale a certificar estas funciones.

@@ -8,6 +8,8 @@ import type {
 
 export type ShipmentLine = {
   moveId: number;
+  saleLineId?: number;
+  uomId?: number;
   productId: number;
   name: string;
   quantity: number;

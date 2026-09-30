@@ -614,3 +614,15 @@ Reprogramar a distancia sólo closed_pending respaldado por una incidencia real 
 ## BL-156 — regreso real visible en administración
 
 Chofer autorizado: al iniciar explícitamente guía al origen real, compartir destino auxiliar bodega y su versión mediante la telemetría existente; stopId de cliente permanece nulo. Administrador activo ve «De regreso a bodega» en avance, resumen y tiempos, con ETA real cuando exista. No inferir regreso sólo porque todos los pedidos terminaron. Servidor verifica origen vigente y correspondencia completa de pedidos entregados/reprogramados; invalida la señal al reabrir pendientes, cambiar origen, detener seguimiento/guía, revocar acceso o terminar ejecución. Heartbeat y ETA tienen frescura independiente del GPS, sin rejuvenecer coordenadas. Registrar transiciones de destino, no cada muestra; mantener sesión/secuencia/aislamiento. Sólo metadatos auxiliares de tracking: cero cambios en publicación, cantidades, fotos, entregas, cierre operativo o liquidaciones. APK anterior conserva comportamiento, sin inventar un destino. Validación de contratos reales, UI, seguridad, carreras, cobertura, mutación y regresión.
+
+## BL-157..159 — fuente financiera de liquidación (bloque 1 aprobado, 2026-09-30)
+
+El sistema identifica cada entrega por origen/empresa/picking/orden y cada partida por movimiento/línea de venta/producto/UOM. No relaciona dinero por nombres ni posiciones. Importar crea seguimiento automático; la consulta posterior usa IDs, incluso si la validación cambia de día. Un pedido pendiente conserva importes provisionales y nunca habilita cobro. Odoo permanece de sólo lectura.
+
+La fuente financiera conserva moneda y redondeo, cantidades, descuentos, impuestos e importes oficiales decimales. Sólo una correspondencia completa de venta y entrega permite total de entrega. Entregas parciales, unidades distintas, líneas comerciales sin correspondencia o discrepancias no demostradas quedan en revisión con causa explícita. Un centavo de diferencia sólo es ajuste de redondeo si puede demostrarse con los valores de origen; no hay tolerancia genérica.
+
+Las revisiones son inmutables e independientes de los snapshots publicados. Actualizar Odoo no cambia ruta, visitas, incidencias ni recibos. Lecturas incoherentes se rechazan; fallos conservan la revisión anterior y exponen edad/error. Exclusión entre workers, reintentos persistentes y enfriamiento compartido evitan escrituras duplicadas y consultas simultáneas del sincronizador. El seguimiento no exige activación por pedido.
+
+El bloque entrega servicios de servidor autorizados; mostrar precios/cantidades en Android y usar esa versión para incidencias pertenece al bloque 2. Cobros, roles y recepción pertenecen a bloques posteriores. No se declara lista la liquidación completa.
+
+Aceptación: LQ01..14 de BLOQUE-LIQUIDACION-RUTAS-2026-09-30.md; Gherkin y QA del bloque deben vincular cada escenario a evidencia o limitación explícita. Las pruebas de dominio con datos de ensayo no certifican casos inexistentes en Odoo real.

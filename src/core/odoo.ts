@@ -14,6 +14,10 @@ import {
 } from "./order-candidates-validation";
 import { candidateConfig } from "./order-candidates-config";
 import type { RoutingShipment } from "./order-candidates-contract";
+import type { FinancialTarget } from "./financial-contract";
+import { financialCapabilities, financialId, normalizeFinancialObservation, type FinancialCapabilities, type FinancialRaw } from "./odoo-financial-contract";
+import { assertFinancialCoherence, buildFinancialSnapshot, financialHash } from "./financial-policy";
+import { odooRetryAfter } from "./odoo-retry";
 
 type OdooConfig = ReturnType<typeof readOdooConfig>;
 // Not exported: callers cannot select arbitrary models, methods, hosts or credentials.
@@ -42,6 +46,9 @@ async function rpc(
   } catch {
     throw new AppError("ODOO_UNAVAILABLE", 502);
   }
+  if (response.status === 429) throw new AppError("ODOO_RATE_LIMITED", 503, {
+    retryAfterSeconds: odooRetryAfter(response.headers.get("Retry-After")),
+  });
   if (!response.ok) throw new AppError("ODOO_UNAVAILABLE", 502);
   let data;
   try {
@@ -121,7 +128,9 @@ type ReadModel =
   | "sale.order.line"
   | "sale.order"
   | "product.product"
-  | "res.partner";
+  | "res.partner"
+  | "res.currency"
+  | "stock.location";
 function records(value: unknown): Row[] {
   if (
     !Array.isArray(value) ||
@@ -494,6 +503,8 @@ async function hydratePickings(
       const note = noteField ? pickerNoteValue(saleLine[noteField]) : undefined;
       groups.get(orderId)!.lines.push({
         moveId: Number(move.id),
+        saleLineId: relation(move.sale_line_id)[0],
+        uomId: relation(move[unitField])[0],
         productId: relation(move.product_id)[0],
         name: relation(move.product_id)[1],
         quantity,
@@ -795,4 +806,67 @@ export async function readCustomerPage(
     ceiling: pageCeiling,
     hasMore: rows.length === 250 && nextCursor < pageCeiling,
   };
+}
+
+let financialMetadata: { key: string; expires: number; caps: FinancialCapabilities } | undefined;
+async function financialReadCapabilities(session: BasicReadSession, ttlMs: number) {
+  // A credential change forces a new capability check without retaining the secret.
+  const key = financialHash([session.config.fingerprint, session.config.username, session.config.credential]);
+  if (financialMetadata?.key === key && financialMetadata.expires > Date.now()) return financialMetadata.caps;
+  const stock = await session.fields("stock.move");
+  const sale = await session.fields("sale.order.line");
+  const caps = financialCapabilities(stock, sale);
+  financialMetadata = { key, caps, expires: Date.now() + ttlMs };
+  return caps;
+}
+
+async function collectFinancialRaw(session: BasicReadSession, targets: FinancialTarget[], caps: FinancialCapabilities): Promise<FinancialRaw[]> {
+  const orders = await session.byIds("sale.order", targets.map(target => target.orderId), [
+    "id", "name", "state", "company_id", "currency_id", "order_line", "write_date", "amount_untaxed", "amount_tax", "amount_total",
+  ]);
+  const lineIds = [...orders.values()].flatMap(row => {
+    if (!Array.isArray(row.order_line)) throw new AppError("ODOO_FINANCIAL_INVALID_RESPONSE", 502);
+    return row.order_line.map(financialId);
+  });
+  const saleLines = await session.byIds("sale.order.line", lineIds, [
+    "id", "name", "order_id", "company_id", "product_id", "display_type", caps.saleUnitField, "currency_id",
+    "product_uom_qty", "qty_delivered", "price_unit", "discount", caps.taxField, "price_subtotal", "price_tax", "price_total", "write_date",
+  ]);
+  const moves = await session.all("stock.move", [
+    ["company_id", "=", session.config.companyId], "|", ["sale_line_id", "in", lineIds], ["picking_id", "in", targets.map(target => target.pickingId)],
+  ], ["id", "company_id", "sale_line_id", "picking_id", "product_id", caps.unitField, "product_uom_qty", caps.quantityField, "state", "origin_returned_move_id", "write_date"]);
+  const pickingIds = [...targets.map(target => target.pickingId), ...moves.flatMap(move => move.picking_id ? [relation(move.picking_id)[0]] : [])];
+  const pickings = await session.byIds("stock.picking", pickingIds, [
+    "id", "name", "company_id", "partner_id", "state", "picking_type_code", "location_dest_id", "date_done", "write_date",
+  ]);
+  const currencies = await session.byIds("res.currency", [...orders.values()].map(order => relation(order.currency_id)[0]), ["id", "name", "rounding", "decimal_places", "write_date"], false);
+  const locations = await session.byIds("stock.location", [...pickings.values()].map(picking => relation(picking.location_dest_id)[0]), ["id", "usage", "write_date"], false);
+  return targets.map(target => {
+    const lines = [...saleLines.values()].filter(line => relation(line.order_id)[0] === target.orderId);
+    const ownIds = new Set(lines.map(line => Number(line.id)));
+    const relevantMoves = moves.filter(move => (move.sale_line_id && ownIds.has(relation(move.sale_line_id)[0])) || (move.picking_id && relation(move.picking_id)[0] === target.pickingId));
+    const ownPickings = new Set([target.pickingId, ...relevantMoves.flatMap(move => move.picking_id ? [relation(move.picking_id)[0]] : [])]);
+    const ownLocations = new Set([...pickings.values()].filter(picking => ownPickings.has(Number(picking.id))).map(picking => relation(picking.location_dest_id)[0]));
+    const order = orders.get(target.orderId)!;
+    return {
+      picking: pickings.get(target.pickingId)!, order, saleLines: lines, moves: relevantMoves,
+      pickings: [...pickings.values()].filter(picking => ownPickings.has(Number(picking.id))),
+      currency: currencies.get(relation(order.currency_id)[0])!, locations: [...locations.values()].filter(location => ownLocations.has(Number(location.id))),
+    };
+  });
+}
+
+/** Closed read-only financial query, deliberately independent of the planning date range. */
+export async function readFinancialSources(targets: FinancialTarget[], config = readOdooConfig(), metadataTtlMs = 900_000) {
+  if (!targets.length) return [];
+  for (const target of targets) {
+    financialId(target.pickingId); financialId(target.orderId); financialId(target.partnerId);
+    if (target.source !== config.fingerprint) throw new AppError("ODOO_SOURCE_CHANGED", 409);
+  }
+  const session = await openBasicReadSession(config, false);
+  const caps = await financialReadCapabilities(session, metadataTtlMs);
+  const before = await collectFinancialRaw(session, targets, caps);
+  const after = await collectFinancialRaw(session, targets, caps);
+  assertFinancialCoherence(before, after);
+  return after.map((raw, index) => buildFinancialSnapshot(targets[index], normalizeFinancialObservation(raw, caps, targets[index], config.companyId)));
 }

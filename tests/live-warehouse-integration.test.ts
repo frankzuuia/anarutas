@@ -105,7 +105,7 @@ it("accepts only the current terminal warehouse, isolates sessions and preserves
     await f.db.pool.query("ALTER TABLE route_live_tracking DROP COLUMN warehouse_depot_version; UPDATE rutas_installation SET schema_version=32 WHERE singleton=true");
     const legacy = (await f.db.pool.query("SELECT * FROM route_live_tracking ORDER BY execution_id")).rows;
     await Promise.all([migrate(f.db.pool, f.db.config.instanceId), migrate(f.db.pool, f.db.config.instanceId)]);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(33);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(34);
     expect((await f.db.pool.query("SELECT * FROM route_live_tracking ORDER BY execution_id")).rows).toEqual(legacy.map(row => ({ ...row, warehouse_depot_version: null })));
     expect((await read()).warehouseDestination).toBeNull();
     await post(returning(2));

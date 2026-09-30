@@ -53,6 +53,7 @@ it("Odoo exposes no generic executor and permits only fixed read operations", as
     "readFulfilledByOrderNames",
     "readRoutingCandidates",
     "readCustomerPage",
+    "readFinancialSources",
   ]);
   expect(source).not.toMatch(/"(write|create|unlink)"/);
 });

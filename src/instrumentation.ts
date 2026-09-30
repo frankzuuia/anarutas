@@ -6,10 +6,12 @@ export async function register() {
     const { startUnitPhotoWorker } = await import("./server/unit-photo-worker");
     const { startRoutePushWorker } = await import("./server/route-push-worker");
     const { startPlanArchiveWorker } = await import("./server/plan-archive-worker");
+    const { startFinancialWorker } = await import("./server/financial-worker");
     startRoutingWorker();
     startGoogleConsumptionWorker();
     startUnitPhotoWorker();
     startRoutePushWorker();
     startPlanArchiveWorker();
+    startFinancialWorker();
   }
 }

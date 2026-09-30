@@ -100,7 +100,7 @@ it("finishes atomically in the depot, recovers lost replies and freezes driver w
     await expect(f.db.pool.query("DELETE FROM route_driver_execution_completions")).rejects.toMatchObject({ code: "42501" });
     await f.db.pool.query("UPDATE rutas_installation SET schema_version=31");
     await migrate(f.db.pool, f.db.config.instanceId); await migrate(f.db.pool, f.db.config.instanceId);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(33);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(34);
     expect((await state(f)).stops).toEqual(before.stops);
   } finally { await f.close(); }
 }, 120000);

@@ -132,7 +132,7 @@ it("upgrades schema 30 from publications, execution history and both audit shape
     const before = async () => Promise.all(["route_plan_publications", "route_driver_executions", "route_driver_execution_stops", "route_unit_photos"].map(async table => (await f.db.pool.query(`SELECT * FROM ${table} ORDER BY 1,2`)).rows));
     const snapshots = await before();
     await migrate(f.db.pool, f.db.config.instanceId);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(33);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(34);
     expect(await retained(f)).toBe(1); // Execution exists even after publication deletion.
     expect(await retained(f, other.vehicleId)).toBe(1); // Active publication preserved.
     expect(await Promise.all(auditVehicles.map(id => retained(f, id)))).toEqual([7, 4, 6]);

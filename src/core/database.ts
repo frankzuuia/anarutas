@@ -34,6 +34,7 @@ import { migrateProductIncidentAdminCancellation } from "./product-incident-admi
 import { migrateRoutePublicationRevisions } from "./route-publication-revisions-schema";
 import { migrateDriverRouteCompletion } from "./driver-route-completion-schema";
 import { migrateLiveWarehouse } from "./live-warehouse-schema";
+import { migrateFinancialSources } from "./financial-schema";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
   return new pg.Pool({
@@ -105,7 +106,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       );
       let version = result.rows[0]?.schema_version;
       if (
-        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33].includes(
+        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34].includes(
           version,
         )
       )
@@ -154,6 +155,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (version < 31) await migrateRoutePublicationRevisions(client);
       if (version < 32) await migrateDriverRouteCompletion(client);
       if (version < 33) await migrateLiveWarehouse(client);
+      if (version < 34) await migrateFinancialSources(client);
       return;
     }
     await client.query(`
@@ -201,6 +203,7 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migrateRoutePublicationRevisions(client);
     await migrateDriverRouteCompletion(client);
     await migrateLiveWarehouse(client);
+    await migrateFinancialSources(client);
   });
 }
 export async function audit(
