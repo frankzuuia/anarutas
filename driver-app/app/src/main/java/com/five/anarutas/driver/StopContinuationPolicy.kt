@@ -1,6 +1,6 @@
 package com.five.anarutas.driver
 
-internal enum class StopCompletion { DELIVERED, CUSTOMER_CLOSED }
+internal enum class StopCompletion { DELIVERED, CUSTOMER_CLOSED, RESCHEDULED }
 internal data class StopContinuation(val commandId: String, val stopId: String, val completion: StopCompletion)
 
 /** Called only for a server-confirmed command after the execution is re-read. */
@@ -9,6 +9,7 @@ internal fun confirmedStopContinuation(commandId: String, kind: String, serviceK
     val completion = when {
         kind == "closed" && stop.hasPendingRetry() -> StopCompletion.CUSTOMER_CLOSED
         kind == "service" && serviceKind == "deliver" && stop.isServiceFinished() -> StopCompletion.DELIVERED
+        kind == "service" && serviceKind == "reschedule" && stop.isServiceFinished() -> StopCompletion.RESCHEDULED
         else -> return null
     }
     return StopContinuation(commandId, stop.id, completion)

@@ -118,6 +118,12 @@ internal fun friendlyError(error: Throwable): String = when (error) {
         "EXECUTION_NOT_READY" -> "El servidor aún no tiene disponible la ejecución. Contacta a administración."
         "ROUTE_DATE_MISMATCH" -> "Esta ruta no corresponde al día de hoy."
         "ROUTE_ALREADY_STARTED" -> "Esta ruta ya inició y no admite más fotos ni cambios."
+        "ROUTE_COMPLETED" -> "Esta ruta ya terminó. Puedes consultar su historial, pero no cambiar sus pedidos."
+        "ROUTE_HAS_PENDING_ORDERS" -> "Aún hay pedidos por atender o reintentos pendientes. Entrégalos o reprograma los reintentos antes de regresar."
+        "ROUTING_ORIGIN_REQUIRED" -> "Administración debe configurar el punto de salida de bodega."
+        "ROUTING_ORIGIN_CHANGED" -> "Administración cambió el punto de bodega. Actualiza la ruta y confirma en el nuevo punto."
+        "RESCHEDULE_CLOSED_CASE_REQUIRED" -> "Este pedido no tiene un reintento por cliente cerrado registrado. Actualiza su información."
+        "ROUTE_COMPLETION_CONFIRMATION_REQUIRED" -> "Confirma el cierre desde el botón Terminar ruta."
         else -> if (error.status == 404 && error.code.isBlank())
             "El servidor aún no tiene disponible esta función. Avisa a administración para actualizarlo."
         else "El servidor rechazó la solicitud (${error.code.ifBlank { error.status.toString() }})."
@@ -305,7 +311,8 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
                     val withdrawn = (state.selected ?: state.dashboard?.today)?.let { route ->
                         latest.plans.none { it.id == route.id }
                     } == true
-                    if (withdrawn) NavigationRegistry.endSession()
+                    val completed = latest.today?.completedAt != null && latest.today.id == state.runningPlan()?.id
+                    if (withdrawn || completed) NavigationRegistry.endSession()
                     state = reconcilePublishedRoutes(state, latest)
                 }
             } catch (cancelled: CancellationException) {

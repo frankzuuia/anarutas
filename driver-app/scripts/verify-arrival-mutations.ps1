@@ -1,4 +1,4 @@
-param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly, [switch]$ProductCaptureOnly, [switch]$ProductPresentationOnly, [switch]$ProductThumbnailOnly)
+param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly, [switch]$ProductCaptureOnly, [switch]$ProductPresentationOnly, [switch]$ProductThumbnailOnly, [switch]$WarehouseOnly)
 $ErrorActionPreference = 'Stop'
 # Mechanical mutations occur only in an isolated copy. No ADB, HTTP stubs or credential output.
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -13,7 +13,7 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 }
 $sourceFolder = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver'
 $originals = @{}
-foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt', 'ProductIncidentPolicy.kt', 'IncidentCaptureStore.kt', 'ProductPhotoUpload.kt', 'ProductThumbnailStore.kt')) {
+foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt', 'ProductIncidentPolicy.kt', 'IncidentCaptureStore.kt', 'ProductPhotoUpload.kt', 'ProductThumbnailStore.kt', 'WarehouseReturnPolicy.kt')) {
     $originals[$file] = [IO.File]::ReadAllText((Join-Path $sourceFolder $file))
 }
 $cases = @(
@@ -211,6 +211,23 @@ if ($ProductThumbnailOnly) {
         @{ name = 'thumbnail_unbounded_stream'; from = 'output.size() + count > 65_536'; to = 'false' },
         @{ name = 'thumbnail_never_refresh'; from = 'age < 15 * 60_000L'; to = 'true' }
     ) | ForEach-Object { $_.file = 'ProductThumbnailStore.kt'; $_.test = 'ProductThumbnailStoreTest'; $_ }
+}
+if ($WarehouseOnly) {
+    $cases = @(
+        @{ name = 'warehouse_wrong_plan'; from = 'route.id != execution.planId'; to = 'false' },
+        @{ name = 'warehouse_old_publication'; from = 'route.publicationRevision != execution.publicationRevision'; to = 'false' },
+        @{ name = 'warehouse_unstarted'; from = 'route.startedAt.isNullOrBlank()'; to = 'false' },
+        @{ name = 'warehouse_blank_address'; from = 'departure.address.isBlank()'; to = 'false' },
+        @{ name = 'warehouse_invalid_latitude'; from = 'departure.latitude !in -90.0..90.0'; to = 'false' },
+        @{ name = 'warehouse_invalid_longitude'; from = 'departure.longitude !in -180.0..180.0'; to = 'false' },
+        @{ name = 'warehouse_ignore_version'; from = 'departure.version < 1'; to = 'false' },
+        @{ name = 'warehouse_allow_pending'; from = 'states.any { it.status !in listOf(OrderServiceStatus.DELIVERED, OrderServiceStatus.RESCHEDULED) }'; to = 'false' },
+        @{ name = 'warehouse_after_completion'; from = 'route.completedAt != null || execution.completedAt != null'; to = 'false' },
+        @{ name = 'warehouse_missing_states'; from = 'states.size != stop.shipmentIds.size'; to = 'false' },
+        @{ name = 'warehouse_foreign_states'; from = 'states.map { it.shipmentId }.toSet() != stop.shipmentIds.toSet()'; to = 'false' },
+        @{ name = 'warehouse_stale_origin_key'; from = ':${departure.version}:'; to = ':' },
+        @{ name = 'warehouse_stale_execution_key'; from = '$executionId:$etaId'; to = 'fixed:$etaId' }
+    ) | ForEach-Object { $_.file = 'WarehouseReturnPolicy.kt'; $_.test = 'WarehouseReturnPolicyTest'; $_ }
 }
 $arguments = @('testDebugUnitTest', '--console=plain')
 if ($ServerUrl) { $arguments += ('-PANA_RUTAS_SERVER_URL=' + $ServerUrl) }

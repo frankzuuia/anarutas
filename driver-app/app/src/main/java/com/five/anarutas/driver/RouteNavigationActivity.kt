@@ -73,6 +73,8 @@ class RouteNavigationActivity : FragmentActivity() {
     private var gpsLastAttempt: Long? = null
     private var gpsGeneration = 0
     private var selectedId by mutableStateOf("")
+    private var warehouseSelected by mutableStateOf(false)
+    private var confirmFinish by mutableStateOf(false)
     private var panelExpanded by mutableStateOf(true)
     private var voiceMuted by mutableStateOf(false)
     private var editing by mutableStateOf(false)
@@ -101,11 +103,14 @@ class RouteNavigationActivity : FragmentActivity() {
     private var editCustomerVersion: Int? = null
     private var hasFitted = false
     private var requestGeneration = 0
+    private var requestedDestinationKey: String? = null
     private val markers = mutableListOf<Marker>()
     private val lines = mutableListOf<Polyline>()
     private var radius: Circle? = null
     private var editorMarker: Marker? = null
-    private val currentStop: ExecutionStop? get() = model.state.execution?.stops?.find { it.id == selectedId }
+    private val currentStop: ExecutionStop? get() = if (warehouseSelected) null else model.state.execution?.stops?.find { it.id == selectedId }
+    private val warehouseDestination get() = warehouseReturnDestination(model.state.route, model.state.execution)
+    private fun currentDestinationKey() = if (model.state.execution?.completedAt != null) null else if (warehouseSelected) warehouseDestination?.key else currentStop?.let(::destinationKey)
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
@@ -148,6 +153,8 @@ class RouteNavigationActivity : FragmentActivity() {
         if (planId.isNullOrBlank()) { finish(); return }
         model = ViewModelProvider(this, RouteExecutionModel.factory(DeviceCredentials(applicationContext), planId, IncidentCaptureStore(applicationContext)))[RouteExecutionModel::class.java]
         selectedId = savedInstanceState?.getString("selected_stop").orEmpty()
+        warehouseSelected = savedInstanceState?.getBoolean("warehouse_selected") ?: false
+        confirmFinish = savedInstanceState?.getBoolean("confirm_finish") ?: false
         panelExpanded = savedInstanceState?.getBoolean("panel_expanded", true) ?: true
         orderStopId = savedInstanceState?.getString("order_stop")
         incidentStopId = savedInstanceState?.getString("incident_stop")
@@ -201,7 +208,7 @@ class RouteNavigationActivity : FragmentActivity() {
                 launch { while (isActive) { model.sync(); delay(30_000) } }
                 launch { while (isActive) {
                     tick = SystemClock.elapsedRealtime(); recoverGps(tick)
-                    model.state.execution?.takeIf { model.state.verified && !model.state.retired }?.let { execution ->
+                    model.state.execution?.takeIf { model.state.verified && !model.state.retired && it.completedAt == null }?.let { execution ->
                         LiveTrackingService.ensure(this@RouteNavigationActivity, execution,
                             if (navigating) currentStop?.id else execution.stops.find { guidance && destinationKey(it) == NavigationRegistry.destinationKey }?.id)
                     }
@@ -214,6 +221,8 @@ class RouteNavigationActivity : FragmentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("selected_stop", selectedId)
+        outState.putBoolean("warehouse_selected", warehouseSelected)
+        outState.putBoolean("confirm_finish", confirmFinish)
         outState.putBoolean("panel_expanded", panelExpanded)
         orderStopId?.let { outState.putString("order_stop", it) }
         incidentStopId?.let { outState.putString("incident_stop", it) }
@@ -298,19 +307,24 @@ class RouteNavigationActivity : FragmentActivity() {
         super.onDestroy()
     }
     private fun connectNavigator() {
-        if (navigator != null || connecting || noticeRequired || !precisePermission() || BuildConfig.NAVIGATION_API_KEY.isBlank() || model.state.execution == null || model.state.retired) return
+        if (navigator != null || connecting || noticeRequired || !precisePermission() || BuildConfig.NAVIGATION_API_KEY.isBlank() || model.state.execution == null || model.state.retired || model.state.execution?.completedAt != null) return
         connecting = true
         NavigationApi.getNavigator(this, object : NavigationApi.NavigatorListener {
             override fun onNavigatorReady(ready: Navigator) {
                 connecting = false
-                if (isDestroyed || model.state.retired) { if (!ready.isGuidanceRunning) ready.cleanup(); return }
+                if (isDestroyed || model.state.retired || model.state.execution?.completedAt != null) { ready.stopGuidance(); ready.cleanup(); return }
                 if (!NavigationRegistry.attach(ready)) { navMessage = "Otra guía sigue activa. Regresa a la ruta correspondiente."; return }
                 navigator = ready
                 applyVoicePreference(ready)
                 guidance = ready.isGuidanceRunning
                 if (guidance) {
-                    val active = model.state.execution?.stops?.find { destinationKey(it) == NavigationRegistry.destinationKey }
-                    if (active == null || !active.isVisibleOnMap()) stopGuidance() else selectedId = active.id
+                    if (warehouseDestination?.key == NavigationRegistry.destinationKey && warehouseDestination != null) {
+                        warehouseSelected = true
+                    } else {
+                        warehouseSelected = false
+                        val active = model.state.execution?.stops?.find { destinationKey(it) == NavigationRegistry.destinationKey }
+                        if (active == null || !active.isVisibleOnMap()) stopGuidance() else selectedId = active.id
+                    }
                 }
                 renderMap()
             }
@@ -336,6 +350,7 @@ class RouteNavigationActivity : FragmentActivity() {
     private fun stopGuidance() {
         requestGeneration++
         navigating = false
+        requestedDestinationKey = null
         NavigationRegistry.clearEta()
         navigator?.stopGuidance()
         navigator?.clearDestinations()
@@ -344,21 +359,24 @@ class RouteNavigationActivity : FragmentActivity() {
         LiveTrackingService.destination(model.state.execution?.id, null)
     }
     private fun guide(stop: ExecutionStop) {
-        val nav = navigator ?: return
         val point = stop.point ?: return
         if (navigating || noticeRequired || !model.state.verified || model.state.retired || editing || !stop.isVisibleOnMap()) return
-        val key = destinationKey(stop)
+        guideDestination(destinationKey(stop), point, stop.customer, stop.id, stop.id)
+    }
+    private fun guideDestination(key: String, point: ExecutionPoint, title: String, stopId: String?, etaId: String) {
+        val nav = navigator ?: return
         if (guidance && NavigationRegistry.destinationKey == key) return
         val generation = ++requestGeneration
         navigating = true
-        NavigationRegistry.beginEta(key, model.state.execution!!.id, stop.id)
-        LiveTrackingService.destination(model.state.execution?.id, stop.id)
-        navMessage = "Calculando guía a esta parada…"
+        requestedDestinationKey = key
+        NavigationRegistry.beginEta(key, model.state.execution!!.id, etaId)
+        LiveTrackingService.destination(model.state.execution?.id, stopId)
+        navMessage = if (stopId == null) "Calculando regreso a bodega…" else "Calculando guía a esta parada…"
         renderMap()
-        val waypoint = Waypoint.builder().setLatLng(point.latitude, point.longitude).setTitle(stop.customer).build()
+        val waypoint = Waypoint.builder().setLatLng(point.latitude, point.longitude).setTitle(title).build()
         nav.setDestination(waypoint, RoutingOptions()).setOnResultListener { result ->
             runOnUiThread {
-                when (guidanceResultDecision(generation, requestGeneration, key, currentStop?.let(::destinationKey), model.state.retired, isDestroyed)) {
+                when (guidanceResultDecision(generation, requestGeneration, key, currentDestinationKey(), model.state.retired || model.state.execution?.completedAt != null, isDestroyed)) {
                     GuidanceResultDecision.IGNORE -> return@runOnUiThread
                     GuidanceResultDecision.DESTINATION_CHANGED -> {
                         stopGuidance()
@@ -369,14 +387,15 @@ class RouteNavigationActivity : FragmentActivity() {
                     GuidanceResultDecision.CURRENT -> Unit
                 }
                 navigating = false
+                requestedDestinationKey = null
                 if (result == Navigator.RouteStatus.OK) {
                     NavigationRegistry.destinationKey = key
                     nav.startGuidance()
                     applyVoicePreference(nav)
                     guidance = true
                     NavigationRegistry.confirmEta(key)
-                    LiveTrackingService.destination(model.state.execution?.id, stop.id)
-                    navMessage = "Guía activa · el orden de tus pedidos no cambia"
+                    LiveTrackingService.destination(model.state.execution?.id, stopId)
+                    navMessage = if (stopId == null) "Guía activa a bodega · tus entregas se conservan" else "Guía activa · el orden de tus pedidos no cambia"
                 } else { stopGuidance(); navMessage = "No se pudo trazar la guía: $result. Puedes reintentar sin volver a guardar el punto." }
                 renderMap()
             }
@@ -384,8 +403,9 @@ class RouteNavigationActivity : FragmentActivity() {
     }
     private fun selectStop(id: String) {
         if (navigating || model.state.busy || editing) return
-        if (selectedId != id) {
+        if (selectedId != id || warehouseSelected) {
             stopGuidance()
+            warehouseSelected = false
             selectedId = id
             renderMap()
             currentStop?.point?.let { map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(it.latitude, it.longitude), 16f)) }
@@ -403,7 +423,7 @@ class RouteNavigationActivity : FragmentActivity() {
         verified = model.state.verified,
         pending = model.state.pending,
         busy = model.state.busy,
-        retired = model.state.retired,
+        retired = model.state.retired || model.state.execution?.completedAt != null,
         editing = editing,
         navigating = navigating,
         noticeRequired = noticeRequired,
@@ -411,6 +431,29 @@ class RouteNavigationActivity : FragmentActivity() {
         destination = stop.point,
         alreadyGuidingToDestination = guidance && NavigationRegistry.destinationKey == destinationKey(stop),
     )
+    private fun warehouseNavigationState(destination: WarehouseDestination) = NavigationActionState(
+        verified = model.state.verified,
+        pending = model.state.pending,
+        busy = model.state.busy,
+        retired = model.state.retired || model.state.execution?.completedAt != null,
+        editing = editing,
+        navigating = navigating,
+        noticeRequired = noticeRequired,
+        navigatorReady = navigator != null,
+        destination = destination.point,
+        alreadyGuidingToDestination = guidance && NavigationRegistry.destinationKey == destination.key,
+    )
+    private fun navigateToWarehouse() {
+        // Re-evaluate the latest confirmed orders/origin, not the dialog's captured value.
+        val destination = warehouseDestination ?: return
+        if (!navigationActionAllowed(warehouseNavigationState(destination))) return
+        stopGuidance()
+        warehouseSelected = true
+        model.dismissContinuation()
+        orderStopId = null; incidentStopId = null; incidentOrderId = null
+        showStops = false; stopChoices = emptyList(); panelExpanded = false
+        guideDestination(destination.key, destination.point, "Bodega", null, destination.etaId)
+    }
     private fun navigateToStop(id: String, retryVisit: Boolean = false) {
         val stop = model.state.execution?.stops?.find { it.id == id } ?: return
         if (!stop.isVisibleOnMap() || !navigationActionAllowed(navigationActionState(stop))) return
@@ -425,6 +468,7 @@ class RouteNavigationActivity : FragmentActivity() {
         }
         // Invalidate an in-flight/old destination before selecting this stop.
         stopGuidance()
+        warehouseSelected = false
         selectedId = id
         orderStopId = null
         showStops = false
@@ -514,6 +558,9 @@ class RouteNavigationActivity : FragmentActivity() {
                 .color(android.graphics.Color.rgb(147, 190, 90)).width(7f)))
         }
         val groups = execution.stops.filter { it.isVisibleOnMap() }.groupBy { it.point }
+        warehouseDestination?.takeIf { warehouseSelected }?.point?.let { depot ->
+            ready.addMarker(MarkerOptions().position(LatLng(depot.latitude, depot.longitude)).title("Bodega · punto de salida"))?.let(markers::add)
+        }
         for ((point, group) in groups) {
             val p = point!!
             val pending = group.any { it.hasPendingRetry() }
@@ -546,7 +593,8 @@ class RouteNavigationActivity : FragmentActivity() {
         val state = model.state
         val execution = state.execution
         val stop = currentStop
-        val etaLabel = navigationEtaLabel(NavigationRegistry.estimate(execution?.id, stop?.id),
+        val warehouse = warehouseDestination
+        val etaLabel = navigationEtaLabel(NavigationRegistry.estimate(execution?.id, if (warehouseSelected) warehouse?.etaId else stop?.id),
             stop?.arrivedAt != null, gps?.let { !it.mock && SystemClock.elapsedRealtime() - it.elapsedMillis in 0..30_000L } == true)
         val target = if (editing) draftPoint else stop?.point
         // The timer invalidates the view for expiry, but is not the time of a GPS callback.
@@ -556,18 +604,34 @@ class RouteNavigationActivity : FragmentActivity() {
         }
         val usableGps = arrival?.gps
         val eligibility = arrival?.eligibility
-        val available = state.verified && !state.busy && !state.pending && !state.retired
+        val available = state.verified && !state.busy && !state.pending && !state.retired && execution?.completedAt == null
+        val warehouseArrival = execution?.let { evaluateArrivalNow(gps, null, null, warehouse?.point, it.policy, SystemClock::elapsedRealtime) }
+        val canFinish = available && warehouse != null && warehouseArrival?.eligibility == ArrivalEligibility.READY
         val editConflict = editing && (editRevision != execution?.revision || editCustomerVersion != stop?.customerLocationVersion)
         val confirmedAddress = confirmedAddressFields(street, neighborhood, postalCode, city)
         val currentRepointPoint = execution?.policy?.let { currentLocationRepointCandidate(gps, it, SystemClock.elapsedRealtime()) }
         val maxHeight = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.height * .56f).toDp() }
         val dialogMaxHeight = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.height * .82f).toDp() }
-        LaunchedEffect(execution?.revision, execution?.policy?.version, state.retired) {
-            if (state.retired) { navigating = false; guidance = false; navigator = null; editing = false; orderStopId = null; incidentStopId = null; showStops = false; renderMap() }
+        LaunchedEffect(execution?.revision, execution?.policy?.version, state.route?.departure, state.retired) {
+            if (state.retired || execution?.completedAt != null) {
+                requestGeneration++; requestedDestinationKey = null
+                navigating = false; guidance = false; navigator = null; editing = false; orderStopId = null; incidentStopId = null
+                showStops = false; confirmFinish = false; panelExpanded = true; warehouseSelected = false; renderMap()
+            }
             else if (execution != null) {
                 if (execution.stops.none { it.id == selectedId }) selectedId = execution.stops.firstOrNull { it.arrivedAt == null }?.id ?: execution.stops.firstOrNull()?.id.orEmpty()
-                val guided = execution.stops.find { NavigationRegistry.destinationKey == destinationKey(it) }
-                if ((guidance || navigating) && (currentStop?.isServiceFinished() == true || guided?.isServiceFinished() == true)) stopGuidance()
+                if (warehouseSelected) {
+                    val key = warehouseDestination?.key
+                    val activeKey = if (navigating) requestedDestinationKey else NavigationRegistry.destinationKey
+                    if (key == null || ((guidance || navigating) && key != activeKey)) {
+                        stopGuidance()
+                        warehouseSelected = key != null
+                        navMessage = "El regreso cambió. Revisa tus pedidos y el punto de salida antes de iniciar la guía de nuevo."
+                    }
+                } else {
+                    val guided = execution.stops.find { NavigationRegistry.destinationKey == destinationKey(it) }
+                    if ((guidance || navigating) && (currentStop?.isServiceFinished() == true || guided?.isServiceFinished() == true)) stopGuidance()
+                }
                 renderMap()
                 connectNavigator()
                 currentStop?.let { if (guidance && NavigationRegistry.destinationKey != destinationKey(it)) guide(it) }
@@ -625,7 +689,7 @@ class RouteNavigationActivity : FragmentActivity() {
                     AppIcon(if (panelExpanded) DriverIcon.CHEVRON_DOWN else DriverIcon.CHEVRON_UP,
                         Modifier.size(22.dp), tint = DriverColors.lime,
                         description = if (panelExpanded) "Minimizar panel" else "Expandir panel")
-                    Text(if (panelExpanded) "Ocultar detalles" else "${stop?.position ?: "·"} · ${stop?.customer ?: "Ruta"}",
+                    Text(if (panelExpanded) "Ocultar detalles" else if (warehouseSelected) "Regreso a bodega" else "${stop?.position ?: "·"} · ${stop?.customer ?: "Ruta"}",
                         modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleMedium)
                     if (!panelExpanded) {
@@ -642,14 +706,15 @@ class RouteNavigationActivity : FragmentActivity() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Wordmark()
                     Spacer(Modifier.weight(1f))
-                    StatusBadge(if (eligibility == ArrivalEligibility.READY) "GPS listo" else "GPS", if (eligibility == ArrivalEligibility.READY) DriverColors.lime else DriverColors.amber)
+                    val displayEligibility = if (warehouseSelected) warehouseArrival?.eligibility else eligibility
+                    StatusBadge(if (displayEligibility == ArrivalEligibility.READY) "GPS listo" else "GPS", if (displayEligibility == ArrivalEligibility.READY) DriverColors.lime else DriverColors.amber)
                     AppIconButton(if (voiceMuted) DriverIcon.VOLUME_OFF else DriverIcon.VOLUME,
                         if (voiceMuted) "Activar voz de la guía" else "Silenciar voz de la guía", onClick = ::toggleVoice)
                     AppIconButton(DriverIcon.CLOSE, "Cerrar mapa", onClick = ::finish)
                 }
                 Text(state.message, style = MaterialTheme.typography.bodySmall, color = if (state.verified) DriverColors.muted else DriverColors.amber)
                 Text(LiveTrackingService.message, style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
-                if (execution != null && LiveTrackingService.isPaused(execution.id) && state.verified && !state.retired) {
+                if (execution != null && execution.completedAt == null && LiveTrackingService.isPaused(execution.id) && state.verified && !state.retired) {
                     TextButton(onClick = { LiveTrackingService.ensure(this@RouteNavigationActivity, execution,
                         execution.stops.find { guidance && destinationKey(it) == NavigationRegistry.destinationKey }?.id, resume = true) }) {
                         Text("Reanudar seguimiento")
@@ -657,6 +722,23 @@ class RouteNavigationActivity : FragmentActivity() {
                 }
                 if (navMessage.isNotBlank()) Text(navMessage, style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
                 if (state.retired) AppAction("Volver a Inicio", DriverIcon.HOME, onClick = ::finish)
+                else if (execution?.completedAt != null) {
+                    SectionLabel("RUTA TERMINADA", formatRouteTime(execution.completedAt, execution.timezone))
+                    Text("Tu regreso quedó confirmado. Guía y seguimiento finalizados.", style = MaterialTheme.typography.titleMedium)
+                    Text("Pedidos, reprogramaciones e incidencias permanecen en el historial. La liquidación se realiza por separado.", color = DriverColors.muted)
+                    AppAction("Volver a Inicio", DriverIcon.HOME, Modifier.fillMaxWidth(), onClick = ::finish)
+                }
+                else if (warehouseSelected && warehouse != null) {
+                    SectionLabel("REGRESO A BODEGA", "Sin pendientes")
+                    Text("Bodega", style = MaterialTheme.typography.titleLarge)
+                    Text(warehouse.departure.address, style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+                    Text("Todos los pedidos entregados o reprogramados. Confirma el cierre cuando llegues a bodega; no liquida la ruta.", style = MaterialTheme.typography.bodySmall, color = DriverColors.lime)
+                    if (guidance) AppAction("Detener guía", DriverIcon.CLOSE, Modifier.fillMaxWidth(), quiet = true) {
+                        stopGuidance()
+                        navMessage = "Guía detenida. Tus entregas y la ruta se conservan."
+                    }
+                    TextButton(enabled = !navigating, onClick = { stopChoices = emptyList(); showStops = true }) { Text("Ver paradas") }
+                }
                 else if (execution != null && stop != null) {
                     Text(if (editing) "CORREGIR UBICACIÓN" else "PARADA ${stop.position} DE ${execution.stops.size} · ${state.route?.vehicle.orEmpty()}",
                         style = MaterialTheme.typography.labelSmall, color = DriverColors.lime)
@@ -695,7 +777,9 @@ class RouteNavigationActivity : FragmentActivity() {
                                 enabled = available && navigationActionAllowed(navigationActionState(stop))) {
                                 navigateToStop(stop.id, retryVisit = true)
                             } else AppAction("Atender pedido", DriverIcon.ORDERS, Modifier.weight(1f)) { orderStopId = stop.id }
-                            if (stop.arrivedAt != null) AppAction("Registrar incidencia", DriverIcon.ALERT, Modifier.weight(1f),
+                            if (stop.hasPendingRetry() && !stop.canAttend()) AppAction("Reprogramar", DriverIcon.CLOCK, Modifier.weight(1f),
+                                enabled = available) { orderStopId = stop.id }
+                            else if (stop.arrivedAt != null) AppAction("Registrar incidencia", DriverIcon.ALERT, Modifier.weight(1f),
                                 enabled = available && stop.canAttend()) { orderStopId = null; incidentOrderId = null; incidentStopId = stop.id }
                             else if (!stop.isServiceFinished()) AppAction(if (guidance) "En guía" else "Iniciar guía", DriverIcon.ROUTE, Modifier.weight(1f),
                                 enabled = available && navigationActionAllowed(navigationActionState(stop))) { navigateToStop(stop.id) }
@@ -718,12 +802,27 @@ class RouteNavigationActivity : FragmentActivity() {
                     if (execution.hasCorrections && !guidance) Text("Puntos actualizados. La guía al destino se calcula al iniciarla; el trazo original no se muestra como vigente.",
                         style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
                 }
+                if (!state.retired && warehouse != null && !editing) {
+                    AppAction(if (guidance && NavigationRegistry.destinationKey == warehouse.key) "En guía a bodega" else "Ir a bodega",
+                        DriverIcon.ROUTE, Modifier.fillMaxWidth(), enabled = available && navigationActionAllowed(warehouseNavigationState(warehouse)),
+                        onClick = ::navigateToWarehouse)
+                    if (canFinish) AppAction("Terminar ruta", DriverIcon.CHECK, Modifier.fillMaxWidth()) { confirmFinish = true }
+                    else Text("Terminar ruta estará disponible al llegar a bodega con GPS reciente y preciso · radio ${execution?.policy?.radiusMeters} m.",
+                        color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
+                }
                 if (!precisePermission()) TextButton(onClick = { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName"))) }) { Text("Activar ubicación precisa") }
                 if (state.pending) AppAction("Verificar confirmación", DriverIcon.REFRESH, enabled = !state.busy, onClick = model::retry)
                 else if (!state.verified && !state.retired) TextButton(onClick = model::refresh) { Text("Reintentar conexión") }
                 }
             }
         }
+        if (confirmFinish && warehouse != null && execution?.completedAt == null) WarehouseFinishDialog(
+            address = warehouse.departure.address, canConfirm = canFinish, busy = state.busy || state.pending,
+            onConfirm = {
+                // The model rechecks the current publication, orders, origin and GPS before persisting a command.
+                model.completeRoute(warehouseArrival?.gps)
+                confirmFinish = false
+            }, onCancel = { confirmFinish = false })
         if (showStops && execution != null) DetailSurface({ showStops = false }) {
             val choices = if (stopChoices.isEmpty()) execution.stops else execution.stops.filter { it.id in stopChoices }
             SectionLabel(if (stopChoices.isEmpty()) "Tus paradas" else "Pedidos en este punto", "${choices.size}")
@@ -759,7 +858,9 @@ class RouteNavigationActivity : FragmentActivity() {
                         model.dismissContinuation()
                         navigateToStop(destination.id)
                     }
-                }, onClose = model::dismissContinuation)
+                }, onClose = model::dismissContinuation, warehouse = warehouse,
+                canReturn = available && warehouse != null && navigationActionAllowed(warehouseNavigationState(warehouse)),
+                onWarehouse = ::navigateToWarehouse)
         }
         if (addressDialog && editing && stop != null) Dialog(onDismissRequest = { if (!state.busy) addressDialog = false }) {
             Surface(color = DriverColors.surface, shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, DriverColors.line),

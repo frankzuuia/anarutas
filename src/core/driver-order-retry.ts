@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { transaction } from "./database";
 import { authenticateMobile } from "./driver-mobile-auth";
-import { executableRoute, type ExecutionStopRow } from "./driver-execution-read";
+import { executableRoute, assertExecutionOpen, type ExecutionStopRow } from "./driver-execution-read";
 import { driverCommandReceipt, saveDriverCommandReceipt } from "./driver-command-receipts";
 import { serviceIdentity, serviceSnapshot } from "./driver-service-context";
 import { retryOrderTransition, type DriverOrderStatus } from "./driver-service-policy";
@@ -22,11 +22,12 @@ export async function retryDriverOrder(pool: Pool, authorization: string | null,
   return transaction(pool, async sql => {
     const driver = await authenticateMobile(sql, authorization, true);
     await sql.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`driver-command:${driver.device_id}:${input.commandId}`]);
-    const route = await executableRoute(sql, driver.driver_id, plan, true);
+    const route = await executableRoute(sql, driver.driver_id, plan, true, true);
     if (route.id !== input.executionId || route.publication_revision !== input.publicationRevision)
       throw new AppError("VERSION_CONFLICT", 409);
     const previous = await driverCommandReceipt(sql, driver.device_id, input.commandId, hash);
     if (previous) return previous;
+    assertExecutionOpen(route);
     const stop = (await sql.query<ExecutionStopRow>(
       "SELECT * FROM route_driver_execution_stops WHERE id=$1 AND execution_id=$2 FOR UPDATE", [stopKey, route.id])).rows[0];
     if (!stop) throw new AppError("NOT_FOUND", 404);

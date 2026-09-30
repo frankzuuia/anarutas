@@ -11,7 +11,8 @@ export function liveMapFrameKey(routes: Pick<LiveRoute, "id" | "location">[], dr
   return JSON.stringify([driverId, revision, routes.map(route => [route.id, Boolean(route.location)]).sort()]);
 }
 
-export function locationHealth(route: Pick<LiveRoute, "location">, now: number) {
+export function locationHealth(route: Pick<LiveRoute, "location" | "completedAt">, now: number) {
+  if (route.completedAt) return { live: false, label: "Ruta terminada", age: null };
   if (!route.location) return { live: false, label: "Sin ubicación recibida", age: null };
   const age = Math.max(0, Math.floor((now - Date.parse(route.location.observedAt)) / 1000));
   const live = !route.location.stopped && age <= trackingPolicy.freshSeconds;

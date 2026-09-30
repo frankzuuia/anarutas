@@ -31,6 +31,10 @@ describe("live map presentation policy", () => {
   it("never claims a fix when the phone has sent none", () => {
     expect(locationHealth({ location: null }, now)).toEqual({ live: false, label: "Sin ubicación recibida", age: null });
   });
+  it("completed routes never claim active tracking even with a recent fix", () => {
+    for (const sample of [null, location]) expect(locationHealth({ location: sample, completedAt: new Date(now).toISOString() }, now))
+      .toEqual({ live: false, label: "Ruta terminada", age: null });
+  });
   it.each([
     [-1000, false, 0, true, "GPS · hace 0 s"],
     [29999, false, 29, true, "GPS · hace 29 s"],

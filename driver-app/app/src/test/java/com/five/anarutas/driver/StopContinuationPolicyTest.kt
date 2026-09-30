@@ -34,8 +34,11 @@ class StopContinuationPolicyTest {
             assertNull(confirmedStopContinuation("id", kind, "deliver", stop(1, OrderServiceStatus.DELIVERED)))
             assertNull(confirmedStopContinuation("id", kind, null, stop(1, OrderServiceStatus.CLOSED_PENDING)))
         }
-        for (kind in listOf("reject", "reschedule", null))
+        for (kind in listOf("reject", null))
             assertNull(confirmedStopContinuation("id", "service", kind, stop(1, OrderServiceStatus.DELIVERED)))
+        assertEquals(StopCompletion.RESCHEDULED,
+            confirmedStopContinuation("id", "service", "reschedule", stop(1, OrderServiceStatus.RESCHEDULED))?.completion)
+        assertNull(confirmedStopContinuation("id", "service", "reschedule", stop(1, OrderServiceStatus.CLOSED_PENDING)))
         assertNull(confirmedStopContinuation("id", "closed", null, null))
         assertNull(confirmedStopContinuation("id", "service", "deliver", null))
     }

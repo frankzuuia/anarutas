@@ -3,7 +3,7 @@ import type { Pool } from "pg";
 import { transaction, type Sql } from "./database";
 import { searchKey } from "./customers";
 import { authenticateMobile } from "./driver-mobile-auth";
-import { executableRoute, type ExecutionRow, type ExecutionStopRow } from "./driver-execution-read";
+import { executableRoute, assertExecutionOpen, type ExecutionRow, type ExecutionStopRow } from "./driver-execution-read";
 import { readOperationPolicy } from "./driver-operation-settings";
 import { arrivalLateness, correctedDeliveryAddress, geoPoint, gpsSample, lastClosingMinute, validateProximity, type CorrectedDeliveryAddress, type GeoPoint } from "./driver-execution-policy";
 import { integer, uuid } from "./orders-validation";
@@ -107,11 +107,12 @@ export async function executeStopCommand(pool: Pool, authorization: string | nul
     const driver = await authenticateMobile(sql, authorization, true);
     // Serializes reused keys even if a modified client sends them to different plans.
     await sql.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`driver-command:${driver.device_id}:${input.commandId}`]);
-    const route = await executableRoute(sql, driver.driver_id, plan, true);
+    const route = await executableRoute(sql, driver.driver_id, plan, true, true);
     if (route.id !== input.executionId || route.publication_revision !== input.publicationRevision)
       throw new AppError("VERSION_CONFLICT", 409);
     const previous = await receipt(sql, driver.device_id, input.commandId, hash);
     if (previous) return previous;
+    assertExecutionOpen(route);
     const { rows } = await sql.query<ExecutionStopRow>("SELECT * FROM route_driver_execution_stops WHERE id=$1 AND execution_id=$2 FOR UPDATE", [stopKey, route.id]);
     const stop = rows[0];
     if (!stop) throw new AppError("NOT_FOUND", 404);
@@ -194,11 +195,12 @@ export async function exitDriverVisit(pool: Pool, authorization: string | null, 
   return transaction(pool, async (sql) => {
     const driver = await authenticateMobile(sql, authorization, true);
     await sql.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`driver-command:${driver.device_id}:${input.commandId}`]);
-    const route = await executableRoute(sql, driver.driver_id, plan, true);
+    const route = await executableRoute(sql, driver.driver_id, plan, true, true);
     if (route.id !== input.executionId || route.publication_revision !== input.publicationRevision)
       throw new AppError("VERSION_CONFLICT", 409);
     const previous = await receipt(sql, driver.device_id, input.commandId, hash);
     if (previous) return previous;
+    assertExecutionOpen(route);
     const { rows } = await sql.query<ExecutionStopRow>(
       "SELECT * FROM route_driver_execution_stops WHERE id=$1 AND execution_id=$2 FOR UPDATE",
       [stopKey, route.id],

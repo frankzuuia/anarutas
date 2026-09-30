@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Sql } from "./database";
 import { authenticateMobile } from "./driver-mobile-auth";
-import { executableRoute, type ExecutionRow, type ExecutionStopRow } from "./driver-execution-read";
+import { executableRoute, assertExecutionOpen, type ExecutionRow, type ExecutionStopRow } from "./driver-execution-read";
 import { driverCommandReceipt } from "./driver-command-receipts";
 import { integer, uuid } from "./orders-validation";
 import { AppError } from "./errors";
@@ -15,24 +15,25 @@ export function serviceIdentity(raw: Record<string, unknown>) {
 }
 
 export async function lockServiceContext(sql: Sql, authorization: string | null, planId: string,
-  stopId: string, input: ReturnType<typeof serviceIdentity>, payload: unknown) {
+  stopId: string, input: ReturnType<typeof serviceIdentity>, payload: unknown, requireActiveVisit = true) {
   const plan = uuid(planId), stopKey = uuid(stopId);
   const hash = createHash("sha256").update(JSON.stringify({ plan, stopKey, input, payload })).digest("hex");
   const driver = await authenticateMobile(sql, authorization, true);
   await sql.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`driver-command:${driver.device_id}:${input.commandId}`]);
-  const route = await executableRoute(sql, driver.driver_id, plan, true);
+  const route = await executableRoute(sql, driver.driver_id, plan, true, true);
   if (route.id !== input.executionId || route.publication_revision !== input.publicationRevision)
     throw new AppError("VERSION_CONFLICT", 409);
   const previous = await driverCommandReceipt(sql, driver.device_id, input.commandId, hash);
   // Replays precede mutable revision checks: a committed response may have been lost.
   if (previous) return { previous, driver, route, hash, stop: null };
+  assertExecutionOpen(route);
   const { rows } = await sql.query<ExecutionStopRow>(
     "SELECT * FROM route_driver_execution_stops WHERE id=$1 AND execution_id=$2 FOR UPDATE", [stopKey, route.id]);
   const stop = rows[0];
   if (!stop) throw new AppError("NOT_FOUND", 404);
   if (route.revision !== input.executionRevision || stop.version !== input.stopVersion)
     throw new AppError("VERSION_CONFLICT", 409);
-  if (stop.visit_state !== "arrived" || stop.visit_sequence !== input.visitSequence)
+  if ((requireActiveVisit && stop.visit_state !== "arrived") || stop.visit_sequence !== input.visitSequence)
     throw new AppError("VISIT_NOT_ACTIVE", 409);
   return { previous: null, driver, route, hash, stop };
 }

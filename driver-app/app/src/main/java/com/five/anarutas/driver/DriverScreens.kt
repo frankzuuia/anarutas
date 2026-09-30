@@ -95,7 +95,7 @@ internal fun DashboardScreen(state: DriverUiState, model: DriverViewModel) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionLabel("Tu espacio")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HomeTile("Ruta activa", when { route == null -> "Por asignar"; route.startedAt != null -> "En recorrido"; else -> "Lista para preparar" }, DriverIcon.ROUTE, DriverColors.lime, Modifier.weight(1f), true) { model.navigate(DriverDestination.ROUTE) }
+                HomeTile("Ruta activa", when { route == null -> "Por asignar"; route.completedAt != null -> "Terminada"; route.startedAt != null -> "En recorrido"; else -> "Lista para preparar" }, DriverIcon.ROUTE, DriverColors.lime, Modifier.weight(1f), true) { model.navigate(DriverDestination.ROUTE) }
                 HomeTile("Pedidos", "${route?.orders?.size ?: 0} asignados hoy", DriverIcon.ORDERS, DriverColors.blue, Modifier.weight(1f)) { model.navigate(DriverDestination.ORDERS) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -122,7 +122,7 @@ internal fun DashboardScreen(state: DriverUiState, model: DriverViewModel) {
                         MiniMetric("DISTANCIA", formatRouteDistance(route.overview?.travelDistanceMeters))
                         MiniMetric("TIEMPO", formatRouteDuration(route.overview?.totalDurationSeconds))
                     }
-                    StatusBadge(when { route.startedAt != null -> "Ruta iniciada"; route.photoCount >= 5 -> "Revisión de salida lista"; else -> "${route.photoCount} de 5 fotos para salir" }, if (route.startedAt != null || route.photoCount >= 5) DriverColors.lime else DriverColors.amber)
+                    StatusBadge(when { route.completedAt != null -> "Ruta terminada"; route.startedAt != null -> "Ruta iniciada"; route.photoCount >= 5 -> "Revisión de salida lista"; else -> "${route.photoCount} de 5 fotos para salir" }, if (route.startedAt != null || route.photoCount >= 5) DriverColors.lime else DriverColors.amber)
                 }
             }
         }

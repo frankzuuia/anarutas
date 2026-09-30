@@ -47,6 +47,7 @@ import {
   readDriverPlan,
 } from "../src/core/driver-mobile-route";
 import type { SourceShipment } from "../src/core/orders-contract";
+import { saveRoutingSettings } from "../src/core/routing-settings";
 
 let db: Awaited<ReturnType<typeof startPostgres>>;
 let admin: string;
@@ -767,6 +768,33 @@ describe("driver mobile identity / real PostgreSQL and EC signatures", () => {
     expect(
       (await authenticateMobile(db.pool, `Bearer ${renewed.token}`)).driver_id,
     ).toBe(driverA.id);
+  });
+
+  it("reads the real departure without rewriting existing publications or requiring republication", async () => {
+    const read = () => readDriverPlan(db.pool, driverA.id, planId, "America/Mexico_City");
+    const publications = async () => (await db.pool.query(
+      "SELECT snapshot,snapshot_hash,revision,started_at FROM route_plan_publications WHERE plan_id=$1 ORDER BY vehicle_id", [planId],
+    )).rows;
+    const before = await publications();
+    expect((await read()).departure).toBeNull();
+    try {
+      const first = await saveRoutingSettings(db.pool, admin, {
+        depotAddress: "Bodega de QA", depotLocation: { latitude: 20.65, longitude: -103.42, placeId: null }, expectedVersion: 0,
+      });
+      expect((await read()).departure).toEqual({ address: first.depotAddress,
+        latitude: first.depotLocation!.latitude, longitude: first.depotLocation!.longitude, version: first.version });
+      const second = await saveRoutingSettings(db.pool, admin, {
+        depotAddress: "Nuevo punto confirmado", depotLocation: { latitude: 20.66, longitude: -103.43, placeId: null }, expectedVersion: first.version,
+      });
+      expect((await read()).departure).toEqual({ address: second.depotAddress,
+        latitude: second.depotLocation!.latitude, longitude: second.depotLocation!.longitude, version: second.version });
+      await expect(readDriverPlan(db.pool, randomUUID(), planId, "America/Mexico_City")).rejects.toThrow("NOT_FOUND");
+      expect(await publications()).toEqual(before);
+    } finally {
+      // Dedicated ephemeral PostgreSQL fixture only; restore the absent configuration.
+      await db.pool.query("DELETE FROM route_routing_settings WHERE singleton=true");
+    }
+    expect((await read()).departure).toBeNull();
   });
 
   it("does not grant another driver's plan by a supplied ID", async () => {

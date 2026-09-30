@@ -39,6 +39,7 @@ class LiveTrackingService : Service() {
         internal var message by mutableStateOf("Seguimiento del centro de control pendiente")
             private set
         internal fun ensure(context: Context, execution: DriverExecution, target: String?, resume: Boolean = false) {
+            if (execution.completedAt != null) { stop(); return }
             if (resume) paused = null
             if (paused == execution.id) return
             if (instance?.executionId == execution.id) { instance?.targetStopId = target; return }

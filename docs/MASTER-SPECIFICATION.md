@@ -550,7 +550,7 @@ teléfono maestro sin superponerlo en la lectura móvil dejaría la APK obsoleta
 `route_unit_photos` tiene retención de 15 días para inspección de unidad y no
 es almacenamiento de evidencia de negocio. El panel ya usa PostgreSQL NOTIFY
 → SSE → invalidación de lectura.
-No hay `closed_at` de ejecución ni libro de cobros: `finishedAt` de la ruta es
+BL-155 agrega finalización operativa durable en `route_driver_execution_completions`, independiente del libro de cobros, que sigue sin existir. `finishedAt` de la ruta es
 una **estimación de navegación**, no entrega de efectivo. El snapshot publicado
 contiene productos/cantidades, no precios ni importe cobrable. `route_users`
 sólo distingue usuarios activos, no un permiso de liquidador. Por ello cierre
@@ -1584,3 +1584,42 @@ Diseño: migración aditiva 31 crea `route_publication_revisions(plan_id,vehicle
 Auditoría local: GREEN LIGHT / INTEGRITY TOTAL / MATCH PERFECT para RF-T01..03. Sin delegar decisiones de identidad/concurrencia. Referencias: FK y triggers locales, docs instaladas Next Route Handlers y constructor Sharp. Migración no modifica ruta activa ni históricos; downgrade a servidor schema30 no soportado (requiere servidor compatible con31), por lo que no ejecutar migración remota desde esta tarea. Deploy manual del propietario.
 
 Ejecución y revisión independiente terminadas: evidencia RF01..08 en `QA-RECREACION-RUTA-Y-FOTO-ODOO.md`. Incluye PostgreSQL real, Odoo en lectura, HTTP, cobertura y 15 mutaciones detectadas. Se conserva explícitamente el timeout de limpieza de la suite general y su repetición aprobada; no se oculta como una suite verde en un solo intento. Sin cambios en Android ni reglas de inicio/atención. Commit/push a develop autorizados expresamente por el propietario el 2026-09-29; deploy no realizado.
+## BL-153 — iconos de métricas de ruta
+
+`DriverRouteScreen.RouteMetric` recibe `iconTint` explícito desde sus cuatro llamadas. Reutilizar `DriverColors.blue/red/lime/amber` y los vectores actuales (fill=null, stroke=1.7). Sin cambios de datos, API ni permisos. APK 0.8.5/code27 para instalar sobre la anterior. Aceptación: cada icono conserva contorno/tamaño y muestra el color solicitado; etiquetas y valores permanecen iguales. Verificar build/lint y regresión JVM existentes; QA visual en el dispositivo del propietario.
+
+## BL-154 — destino auxiliar bodega
+
+BL-155 sustituye únicamente la exclusión de `rescheduled` de WB02 por su tratamiento como terminal no entregado y añade cierre operativo. Los restantes escenarios WB siguen vigentes.
+
+`readDriverPlan`, después de autorizar asignación/publicación, añade `departure` opcional con dirección, coordenadas y versión de la configuración global real. Overlay sin reescribir snapshots, hashes o revisiones; compatible con publicaciones iniciadas y APK anteriores. Android tolera servidor anterior (campo ausente) y origen inválido. Política pura coteja todos los IDs/estados de pedidos con plan/ejecución antes de crear un destino auxiliar tipado. UI reutiliza el aviso de continuación y navegación de destino único; retorno sólo por acción explícita, sin SDK simulator. Destino auxiliar no pertenece a `execution.stops`, no participa en entrega/llegada/corrección, y tracking nunca transmite su identidad como stopId. Restauración reconoce la guía por ejecución, versión y coordenadas del origen; cálculo tardío, origen cambiado, ruta retirada o pedido reabierto invalidan la guía de regreso.
+
+| Caso | Resultado / evidencia requerida |
+| --- | --- |
+| WB01 | Última entrega confirmada, todos entregados → aviso y acción explícita a origen real |
+| WB02 | Abierto/cerrado pendiente/rechazado/reprogramado, incluso sin GPS o en parada actual → no regreso |
+| WB03 | Plan/revisión/IDs incompletos o duplicados, origen ausente/inválido, servidor anterior → no inventar destino |
+| WB04 | Cerrar aviso/reabrir mapa/rotar → botón recuperable, sin auto-navegar ni duplicar entrega |
+| WB05 | Sin confirmación/red/SDK listo o comando pendiente → acción bloqueada; recuperación sin nueva entrega |
+| WB06 | Origen actualizado, revocación o reapertura durante cálculo/guía → invalidación; callback viejo no reinicia |
+| WB07 | Regreso → guía SDK real, tracking stopId nulo; entrega, orden, métricas e historial intactos |
+| WB08 | Otro chofer/ruta cancelada → mismo rechazo antes de exponer origen; PG y contrato reales |
+
+WB-T01 contrato PG/lectura; WB-T02 política y navegación; WB-T03 QA, cobertura, mutación, instrumentación y APK. Sin migración ni dependencia nueva; rollback retira campos/acciones auxiliares. Referencia SDK: https://developers.google.com/maps/documentation/navigation/android-sdk/route y Navigator; documentos Next instalados Route Handlers. QA físico SDK/GPS condicionado a dispositivo real autorizado, nunca simulado.
+
+## BL-155 — finalizar recorrido, sin liquidación
+
+Primero servidor: migración aditiva 32 agrega registro de finalización inmutable por ejecución. Endpoint móvil POST finish usa permisos existentes, origen global y política GPS reales, locks de plan/publicación/ejecución y recibos por dispositivo/comando. No crear parada bodega ni reescribir snapshot. Exponer completedAt en lecturas autorizadas; impedir nuevas escrituras móviles/tracking de ejecución terminada, conservando consultas/recibos. Después Android: cola cifrada de comando de ruta, GPS validado en UI, modal de confirmación y relectura; retirar acceso a mapa vivo después de cierre confirmado y mostrar estado terminado en historial. Ampliar elegibilidad de regreso a delivered/rescheduled sin ocultar la diferencia. Reprogramación remota permite sólo closed_pending con caso customer_closed real; versión y visita coinciden, nunca entrega remota.
+
+| Caso | Resultado / validación |
+| --- | --- |
+| WF01 | Entregados/reprogramados + GPS bodega válido + Aceptar → un cierre operativo, tracking detenido y datos conservados |
+| WF02 | Cancelar / lejos / GPS viejo, impreciso o simulado / origen ausente o cambiado → sin cierre |
+| WF03 | Pedido pendiente o IDs incompletos / revisión vieja / otra sesión, ejecución o chofer → rechazo atómico |
+| WF04 | Doble tap, solicitudes concurrentes, respuesta perdida, app reiniciada → un cierre/recibo recuperable |
+| WF05 | Tras cierre → no entregar, corregir, reabrir reprogramado, reportar o reiniciar tracking; consultas/admin reporte intactos |
+| WF06 | Reprogramar closed_pending tras abandonar visita, a distancia → rescheduled con caso real e historial; entrega remota bloqueada |
+| WF07 | Carrera reprogramar/reabrir/cancelar/cerrar, error transaccional → estados consistentes, rollback, versión/conflicto recuperable |
+| WF08 | Upgrade repetido / APK antigua / plan retirado → datos históricos conservados; servidor anterior no confirma cierre inexistente |
+
+WF-T01 esquema/servidor/contratos; WF-T02 Android y consumidores; WF-T03 pruebas PG/HTTP/unitarias, cobertura/mutación, build y QA físico. Cierre no equivale a liquidación, no asigna fecha a reprogramados y no activa disponibilidad de flota por sí solo. Riesgo alto de transición de estado: todas las rutas críticas requieren validación, sin sustituir pruebas de GPS real por simulador.

@@ -16,13 +16,21 @@ export async function executeDriverOrderCommand(pool: Pool, authorization: strin
   return transaction(pool, async sql => {
     const { previous, driver, route, hash, stop } = await lockServiceContext(sql, authorization, planId, stopId,
       input, { shipment, version, ...action, ...(raw.productIncidentsAcknowledged === undefined ? {} :
-        { productIncidentsAcknowledged: raw.productIncidentsAcknowledged === true }) });
+        { productIncidentsAcknowledged: raw.productIncidentsAcknowledged === true }) }, action.kind !== "reschedule");
     if (previous) return previous;
     const order = (await sql.query<{ status: DriverOrderStatus; version: number }>(
       "SELECT status,version FROM route_driver_execution_orders WHERE execution_id=$1 AND stop_id=$2 AND shipment_id=$3 FOR UPDATE",
       [route.id, stop!.id, shipment])).rows[0];
     if (!order) throw new AppError("NOT_FOUND", 404);
     if (order.version !== version) throw new AppError("VERSION_CONFLICT", 409);
+    if (action.kind === "reschedule") {
+      serviceTransition(order.status, action.kind);
+      const closedCase = await sql.query(`SELECT 1 FROM route_driver_service_incidents i
+        JOIN route_driver_incident_orders io ON io.incident_id=i.id
+        WHERE i.execution_id=$1 AND i.stop_id=$2 AND i.kind='customer_closed'
+          AND i.visit_sequence<=$3 AND io.shipment_id=$4`, [route.id, stop!.id, stop!.visit_sequence, shipment]);
+      if (!closedCase.rowCount) throw new AppError("RESCHEDULE_CLOSED_CASE_REQUIRED", 409);
+    }
     const productIncidents = (await sql.query("SELECT id FROM route_product_incidents WHERE execution_id=$1 AND shipment_id=$2 AND status<>'canceled'", [route.id, shipment])).rows;
     if (action.kind === "deliver" && productIncidents.length && raw.productIncidentsAcknowledged !== true)
       throw new AppError("PRODUCT_INCIDENTS_ACK_REQUIRED", 409);

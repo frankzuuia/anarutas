@@ -74,10 +74,10 @@ internal fun otherPlans(dashboard: DriverDashboard): List<PlanSummary> =
 internal fun DriverUiState.activePlan(): AssignedPlan? = selected ?: dashboard?.today
 
 internal fun DriverUiState.runningPlan(): AssignedPlan? =
-    dashboard?.today?.takeIf { it.startedAt != null }
+    dashboard?.today?.takeIf { it.startedAt != null && it.completedAt == null }
 
 internal fun canPrepareRoute(route: AssignedPlan?, serviceDate: String?): Boolean =
-    route != null && route.date == serviceDate && route.startedAt == null
+    route != null && route.date == serviceDate && route.startedAt == null && route.completedAt == null
 
 internal fun canStartRoute(route: AssignedPlan?, serviceDate: String?): Boolean =
     canPrepareRoute(route, serviceDate) && route!!.photoCount >= 5 &&

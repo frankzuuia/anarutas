@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -38,15 +39,15 @@ internal fun RouteOverviewCard(route: AssignedPlan, timezone: String) {
             AppIcon(DriverIcon.ROUTE, tint = DriverColors.lime)
             Text(route.label, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
         }
-        StatusBadge(if (route.startedAt != null) "Ruta iniciada" else routeStatusLabel(route.routeStatus), if (route.routeStatus == "current") DriverColors.lime else DriverColors.amber)
+        StatusBadge(if (route.completedAt != null) "Ruta terminada" else if (route.startedAt != null) "Ruta iniciada" else routeStatusLabel(route.routeStatus), if (route.routeStatus == "current") DriverColors.lime else DriverColors.amber)
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                RouteMetric("Pedidos", route.orders.size.toString(), DriverIcon.ORDERS, Modifier.weight(1f))
-                RouteMetric("Paradas", route.overview?.stopCount?.toString() ?: "Pendiente", DriverIcon.PIN, Modifier.weight(1f))
+                RouteMetric("Pedidos", route.orders.size.toString(), DriverIcon.ORDERS, DriverColors.blue, Modifier.weight(1f))
+                RouteMetric("Paradas", route.overview?.stopCount?.toString() ?: "Pendiente", DriverIcon.PIN, DriverColors.red, Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                RouteMetric("Distancia", formatRouteDistance(route.overview?.travelDistanceMeters), DriverIcon.ROUTE, Modifier.weight(1f))
-                RouteMetric("Tiempo planeado", formatRouteDuration(route.overview?.totalDurationSeconds), DriverIcon.CLOCK, Modifier.weight(1f))
+                RouteMetric("Distancia", formatRouteDistance(route.overview?.travelDistanceMeters), DriverIcon.ROUTE, DriverColors.lime, Modifier.weight(1f))
+                RouteMetric("Tiempo planeado", formatRouteDuration(route.overview?.totalDurationSeconds), DriverIcon.CLOCK, DriverColors.amber, Modifier.weight(1f))
             }
         }
         HorizontalDivider(color = DriverColors.line)
@@ -58,10 +59,10 @@ internal fun RouteOverviewCard(route: AssignedPlan, timezone: String) {
 }
 
 @Composable
-private fun RouteMetric(label: String, value: String, icon: DriverIcon, modifier: Modifier) {
+private fun RouteMetric(label: String, value: String, icon: DriverIcon, iconTint: Color, modifier: Modifier) {
     Surface(modifier, shape = RoundedCornerShape(14.dp), color = DriverColors.raised) {
         Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            AppIcon(icon, Modifier.size(16.dp), tint = DriverColors.muted)
+            AppIcon(icon, Modifier.size(16.dp), tint = iconTint)
             Text(value, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-.5).sp)
             Text(label, style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
         }
@@ -91,6 +92,7 @@ private fun RouteDeparture(state: DriverUiState, route: AssignedPlan, model: Dri
     val isToday = route.date == state.dashboard?.serviceDate
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         when {
+            route.completedAt != null -> Text("Ruta terminada · ${state.dashboard?.timezone?.let { formatRouteTime(route.completedAt, it) }.orEmpty()} · sólo consulta", style = MaterialTheme.typography.bodyMedium, color = DriverColors.lime)
             !isToday -> Text("Ruta de otra fecha · sólo consulta", style = MaterialTheme.typography.bodyMedium, color = DriverColors.amber)
             route.startedAt != null -> {
                 if (mapAvailable) AppAction("Abrir mapa de ruta", DriverIcon.MAP, onClick = onMap)

@@ -124,7 +124,7 @@ it("admin and driver cancellation serialize, and v29 migration retains the origi
     await f.db.pool.query("ALTER TABLE route_product_incidents DROP COLUMN canceled_by_admin, DROP COLUMN report_removed_at, DROP COLUMN report_removed_by");
     await migrateProductIncidentAmendments(f.db.pool);
     await migrate(f.db.pool, f.db.config.instanceId);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(31);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(32);
     expect((await f.db.pool.query("SELECT status,canceled_by,canceled_by_admin FROM route_product_incidents WHERE id=$1", [legacy])).rows[0])
       .toEqual({ status: "canceled", canceled_by: f.members[0].driverId, canceled_by_admin: null });
     await expect(remove(legacy, 2)).rejects.toMatchObject({ code: "VERSION_CONFLICT" });

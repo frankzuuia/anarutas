@@ -4,7 +4,8 @@ import type { LiveRoute } from "./live-routes";
 export type LiveEta = { targetStopId: string; state: "ready" | "calculating" | "unavailable";
   remainingSeconds: number | null; observedAt: string };
 
-export function routeEta(route: Pick<LiveRoute, "targetStopId" | "arrivedStopId" | "eta" | "location">, now: number) {
+export function routeEta(route: Pick<LiveRoute, "targetStopId" | "arrivedStopId" | "eta" | "location" | "completedAt">, now: number) {
+  if (route.completedAt) return "Ruta terminada";
   if (route.arrivedStopId && (!route.targetStopId || route.arrivedStopId === route.targetStopId)) return "En atención";
   if (!route.targetStopId) return "Sin destino activo";
   const eta = route.eta;

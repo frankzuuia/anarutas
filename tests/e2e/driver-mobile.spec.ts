@@ -577,6 +577,7 @@ test("admin provisioning, native device login, route isolation and revocation ov
     return response.json();
   };
   const execution = await readExecution();
+  expect(execution.completedAt).toBeNull();
   const stop = execution.stops[0];
   const anonymous = await browser.newContext();
   expect((await anonymous.request.get(executionUrl)).status()).toBe(401);
@@ -756,16 +757,16 @@ test("admin provisioning, native device login, route isolation and revocation ov
   await livePanel.setViewportSize(desktopViewport);
   expect((await request.post(exitUrl, { headers: authorization, data: await serviceIdentity() })).status()).toBe(200);
   const retryExecution = await readExecution();
-  expect((await request.post(arrivalUrl, { headers: authorization, data: {
-    ...await serviceIdentity(), policyVersion: retryExecution.policy.version,
-    sample: { ...arrival.sample, capturedAt: new Date().toISOString() },
-  } })).status()).toBe(200);
-  await expect(liveSection.getByText("Pendiente de reintento por el chofer", { exact: true })).toHaveCount(0, { timeout: 2000 });
+  expect(retryExecution.stops[0].arrivedAt).toBeNull();
+  expect((await request.post(orderServiceUrl, { headers: authorization, data: {
+    ...await serviceIdentity(), orderVersion: retryExecution.stops[0].orderStates[0].version, kind: "deliver",
+  } })).status()).toBe(409);
   const retried = await readExecution();
   const reprogram = await request.post(orderServiceUrl, { headers: authorization, data: {
     ...await serviceIdentity(), orderVersion: retried.stops[0].orderStates[0].version, kind: "reschedule", note: "Coordinar nueva visita internamente",
   } });
   expect(reprogram.status()).toBe(200);
+  await expect(liveSection.getByText("Pendiente de reintento por el chofer", { exact: true })).toHaveCount(0, { timeout: 2000 });
   await expect(liveSection.getByText("Reprogramado", { exact: true })).toBeVisible({ timeout: 2000 });
   expect((await request.get(evidencePath)).status()).toBe(404);
   expect((await readExecution()).stops[0].orderStates[0].status).toBe("rescheduled");
@@ -821,6 +822,30 @@ test("admin provisioning, native device login, route isolation and revocation ov
   await expect(livePanel.getByText("Punto corregido", { exact: true })).toBeVisible();
   await expect(liveSection).toHaveCount(0);
   await livePanel.getByRole("button", { name: "Planificar rutas", exact: true }).click();
+  // Real HTTP closure, separately from liquidation. No SDK/GPS-provider simulation.
+  const finishUrl = `${origin}/api/mobile/plans/${planId}/finish`;
+  const snapshotBeforeFinish = (await db.pool.query("SELECT snapshot,snapshot_hash,revision FROM route_plan_publications WHERE plan_id=$1 ORDER BY vehicle_id", [planId])).rows;
+  const originSettings = await request.put(`${origin}/api/routing/settings`, { headers: { Origin: origin }, data: {
+    expectedVersion: 0, depotAddress: "Bodega HTTP QA", depotLocation: { latitude: 20.64, longitude: -103.4, placeId: "qa-depot" },
+  } });
+  expect(originSettings.status()).toBe(200);
+  const warehousePlan = await (await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization })).json();
+  expect(warehousePlan.departure).toMatchObject({ address: "Bodega HTTP QA", latitude: 20.64, longitude: -103.4, version: 1 });
+  const finishExecution = await readExecution();
+  const finishCommand = { commandId: randomUUID(), executionId: finishExecution.id, publicationRevision: finishExecution.publicationRevision,
+    executionRevision: finishExecution.revision, policyVersion: finishExecution.policy.version, depotVersion: warehousePlan.departure.version,
+    confirmed: true, sample: { latitude: 20.64, longitude: -103.4, accuracyMeters: 5, ageMilliseconds: 0, capturedAt: new Date().toISOString(), mock: false } };
+  expect((await request.post(finishUrl, { data: finishCommand })).status()).toBe(401);
+  expect((await request.post(finishUrl, { headers: authorization, data: { ...finishCommand, confirmed: false } })).status()).toBe(400);
+  const finished = await request.post(finishUrl, { headers: authorization, data: finishCommand });
+  expect(finished.status()).toBe(200);
+  expect((await finished.json()).completedAt).toBeTruthy();
+  expect(await (await request.post(finishUrl, { headers: authorization, data: finishCommand })).json()).toMatchObject({ duplicate: true });
+  expect((await readExecution()).completedAt).toBeTruthy();
+  expect((await request.post(arrivalUrl, { headers: authorization, data: { ...arrival, commandId: randomUUID() } })).status()).toBe(409);
+  expect((await db.pool.query("SELECT snapshot,snapshot_hash,revision FROM route_plan_publications WHERE plan_id=$1 ORDER BY vehicle_id", [planId])).rows).toEqual(snapshotBeforeFinish);
+  // Restore only the dedicated ephemeral database's singleton for the original republication fixture.
+  await db.pool.query("DELETE FROM route_routing_settings WHERE singleton=true");
   const cancelled = await request.post(cancelUrl, {
     headers: { Origin: origin },
     data: { expectedVersion: board.plan.version, expectedRevision: 1 },

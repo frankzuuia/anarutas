@@ -44,7 +44,7 @@ internal fun CustomerPhoneActions(stop: ExecutionStop, model: RouteExecutionMode
     var number by rememberSaveable(stop.id) { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     val state = model.state
-    val available = state.verified && !state.busy && !state.pending && !state.retired
+    val available = state.verified && !state.busy && !state.pending && !state.retired && state.execution?.completedAt == null
     if (!stop.phone.isNullOrBlank()) {
         AppAction("Llamar al cliente", DriverIcon.PHONE, Modifier.fillMaxWidth(), quiet = true) {
             try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", stop.phone, null))) }
@@ -80,7 +80,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
     val order = orders.find { it.id == selectedId } ?: orders.firstOrNull()
     val status = stop.orderStates.find { it.shipmentId == order?.id }
     val state = model.state
-    val available = state.verified && !state.busy && !state.pending && !state.retired
+    val available = state.verified && !state.busy && !state.pending && !state.retired && state.execution?.completedAt == null
     var confirmedRevision by remember { mutableIntStateOf(state.serviceRevision) }
     LaunchedEffect(state.serviceRevision) {
         if (confirmedRevision != state.serviceRevision) { confirmation = null; note = ""; confirmedRevision = state.serviceRevision }
@@ -153,7 +153,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
             if (confirmation == null) {
                 if (canDeliverOrder(status.status) && stop.canAttend()) AppAction(if (hasIncidents) "Confirmar atención con incidencias" else "Entregado completo", DriverIcon.CHECK,
                     Modifier.fillMaxWidth(), enabled = available) { confirmation = "deliver" }
-                if (canRescheduleOrder(status.status) && stop.arrivedAt != null) AppAction("Reprogramar", DriverIcon.CLOCK,
+                if (canRescheduleRetry(status.status, stop.visitSequence, stop.closedReportedVisitSequence)) AppAction("Reprogramar", DriverIcon.CLOCK,
                     Modifier.fillMaxWidth(), enabled = available, quiet = true) { confirmation = "reschedule" }
                 if (stop.canAttend() && canRejectOrder(status.status)) AppAction("Registrar incidencia", DriverIcon.ALERT,
                     Modifier.fillMaxWidth(), enabled = available, quiet = true, onClick = { onIncident(order.id) })
@@ -162,7 +162,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
                 Text(if (confirmation == "deliver" && hasIncidents) "Se conserva el detalle de faltantes, reposiciones y devoluciones. Las reposiciones siguen pendientes hasta que administración las atienda. No liquida la ruta ni modifica Odoo."
                     else if (confirmation == "deliver") "Confirma sólo cuando entregaste todos los productos. Esto no liquida ni cierra la ruta."
                     else if (confirmation == "retry") "Este pedido volverá a abierto y aparecerá en el mapa. Confirma una nueva llegada antes de entregarlo; la reprogramación queda en el historial."
-                    else "Se cerrará este pedido en la ruta actual. Administración decidirá cuándo volver a asignarlo. No se fija ninguna fecha.",
+                    else "Puedes reprogramar desde donde estés; no confirma una entrega. Administración decidirá cuándo volver a asignarlo. No se fija ninguna fecha.",
                     style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
                 if (confirmation == "reschedule") ServiceNoteField(note, { note = it }, "Notas de reprogramación · opcionales", available)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -193,7 +193,7 @@ internal fun ServiceIncidentSheet(stop: ExecutionStop, initialOrderId: String?, 
     var error by remember { mutableStateOf("") }
     val orders = state.route?.orders.orEmpty().filter { order -> stop.orderStates.any { it.shipmentId == order.id && canRejectOrder(it.status) } }
     val selected = orders.find { it.id == selectedId } ?: orders.firstOrNull()
-    val available = state.verified && !state.busy && !state.pending && !state.retired && stop.canAttend()
+    val available = state.verified && !state.busy && !state.pending && !state.retired && state.execution?.completedAt == null && stop.canAttend()
     fun discardPhotoFile(path: String?) {
         path?.let { val file = File(it)
             if (file.canonicalFile.parentFile == File(context.cacheDir, "incident-camera").canonicalFile) file.delete()

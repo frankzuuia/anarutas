@@ -49,6 +49,8 @@ data class RouteOverview(
     val performedShipmentCount: Int,
     val stopCount: Int,
 )
+
+data class RouteDeparture(val address: String, val latitude: Double, val longitude: Double, val version: Int)
 data class AssignedPlan(
     val id: String,
     val vehicleId: String = "",
@@ -63,6 +65,8 @@ data class AssignedPlan(
     val photoCount: Int = 0,
     val startedAt: String? = null,
     val publicationRevision: Int = 0,
+    val departure: RouteDeparture? = null,
+    val completedAt: String? = null,
 )
 data class DriverDashboard(
     val driver: DriverProfile,
@@ -151,6 +155,11 @@ internal fun parseAssignedPlan(response: JSONObject): AssignedPlan {
             if (publication.isNull("startedAt")) null else publication.optString("startedAt").takeIf(String::isNotBlank)
         },
         publicationRevision = response.optJSONObject("publication")?.optInt("revision") ?: 0,
+        completedAt = response.optJSONObject("publication")?.optString("completedAt")?.takeUnless { it.isBlank() || it == "null" },
+        departure = response.optJSONObject("departure")?.let { origin ->
+            RouteDeparture(origin.optString("address"), origin.optDouble("latitude"),
+                origin.optDouble("longitude"), origin.optInt("version"))
+        },
     )
 }
 
@@ -428,6 +437,9 @@ class DriverApi(private val server: String) {
         require(kind == "arrival" || kind == "location" || kind == "visit-exit" || kind == "phone")
         return JSONObject(exchange("POST", "/api/mobile/plans/$planId/stops/$stopId/$kind", token, payload))
     }
+
+    internal suspend fun completeRoute(token: String, planId: String, payload: JSONObject) =
+        JSONObject(exchange("POST", "/api/mobile/plans/$planId/finish", token, payload))
 
     internal suspend fun serviceCommand(token: String, planId: String, stopId: String, shipmentId: String, payload: JSONObject) =
         JSONObject(exchange("POST", "/api/mobile/plans/$planId/stops/$stopId/orders/$shipmentId/service", token, payload))

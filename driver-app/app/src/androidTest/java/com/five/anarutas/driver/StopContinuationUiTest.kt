@@ -49,4 +49,38 @@ class StopContinuationUiTest {
         compose.onNodeWithText("Cerrar").performScrollTo().assertIsEnabled()
         compose.onNodeWithText("No hay otra parada pendiente", substring = true).assertIsDisplayed()
     }
+
+    @Test fun lastDeliveryOffersWarehouseOnlyAfterExplicitActionAndReadiness() {
+        var ready by mutableStateOf(false)
+        var returns = 0
+        val warehouse = WarehouseDestination("execution", RouteDeparture("Punto de salida real", 20.65, -103.42, 1))
+        compose.setContent { DriverTheme {
+            StopContinuationSheet(StopCompletion.DELIVERED, null, false, {}, {}, warehouse, ready, { returns++ })
+        } }
+        compose.onNodeWithText("REGRESO A BODEGA").assertIsDisplayed()
+        compose.onNodeWithText("Punto de salida real").assertIsDisplayed()
+        compose.onNodeWithText("Ir a la siguiente parada").assertDoesNotExist()
+        compose.onNodeWithText("Ir a bodega").performScrollTo().assertIsNotEnabled()
+        compose.runOnIdle { assertEquals(0, returns); ready = true }
+        compose.onNodeWithText("Ir a bodega").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(1, returns) }
+    }
+
+    @Test fun pendingNextStopAlwaysTakesPriorityOverWarehouse() {
+        val warehouse = WarehouseDestination("execution", RouteDeparture("Bodega", 20.65, -103.42, 1))
+        compose.setContent { DriverTheme {
+            StopContinuationSheet(StopCompletion.DELIVERED, next, true, {}, {}, warehouse, true, {})
+        } }
+        compose.onNodeWithText("Ir a bodega").assertDoesNotExist()
+        compose.onNodeWithText("Ir a la siguiente parada").performScrollTo().assertIsEnabled()
+    }
+
+    @Test fun closedCustomerNeverSuggestsWarehouseEvenWithAnUnexpectedOriginArgument() {
+        val warehouse = WarehouseDestination("execution", RouteDeparture("Bodega", 20.65, -103.42, 1))
+        compose.setContent { DriverTheme {
+            StopContinuationSheet(StopCompletion.CUSTOMER_CLOSED, null, false, {}, {}, warehouse, true, {})
+        } }
+        compose.onNodeWithText("Ir a bodega").assertDoesNotExist()
+        compose.onNodeWithText("Esta parada sigue pendiente", substring = true).assertIsDisplayed()
+    }
 }

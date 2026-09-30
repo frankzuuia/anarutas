@@ -11,6 +11,8 @@ internal fun serviceVisitReady(arrived: Boolean, visit: Int, closedVisit: Int) =
 internal fun canDeliverOrder(status: OrderServiceStatus) = status in listOf(OrderServiceStatus.OPEN, OrderServiceStatus.CLOSED_PENDING, OrderServiceStatus.REJECTED)
 internal fun canRejectOrder(status: OrderServiceStatus) = status in listOf(OrderServiceStatus.OPEN, OrderServiceStatus.CLOSED_PENDING)
 internal fun canRescheduleOrder(status: OrderServiceStatus) = status == OrderServiceStatus.CLOSED_PENDING
+internal fun canRescheduleRetry(status: OrderServiceStatus, visitSequence: Int, closedReportedVisitSequence: Int) =
+    canRescheduleOrder(status) && closedReportedVisitSequence > 0 && visitSequence >= closedReportedVisitSequence
 internal fun canRetryRescheduledOrder(status: OrderServiceStatus) = status == OrderServiceStatus.RESCHEDULED
 internal fun ExecutionStop.hasPendingRetry() = orderStates.any { it.status == OrderServiceStatus.CLOSED_PENDING }
 internal fun ExecutionStop.isServiceFinished() = orderStates.isNotEmpty() && orderStates.all { it.status in listOf(OrderServiceStatus.DELIVERED, OrderServiceStatus.RESCHEDULED) }

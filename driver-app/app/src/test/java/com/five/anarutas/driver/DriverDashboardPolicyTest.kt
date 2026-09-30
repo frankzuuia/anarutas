@@ -164,4 +164,17 @@ class DriverDashboardPolicyTest {
         plate = "AAA-001",
         orderCount = 1,
     )
+
+    @Test fun `completed route stays consultable but cannot start or keep running`() {
+        val route = AssignedPlan("route", label = "Ruta", date = "2026-09-29", vehicle = "Unidad", plate = "",
+            routeStatus = "current", overview = null, orders = emptyList(), startedAt = "2026-09-29T12:00:00Z", completedAt = "2026-09-29T16:00:00Z")
+        val dashboard = DriverDashboard(DriverProfile("driver", "Chofer", ""), "America/Mexico_City", route.date,
+            listOf(summary(route.id, route.date)), route)
+        val state = DriverUiState(dashboard = dashboard)
+        assertEquals(route, state.activePlan())
+        assertEquals(null, state.runningPlan())
+        assertEquals(false, canPrepareRoute(route, route.date))
+        assertEquals(false, canStartRoute(route, route.date))
+        assertEquals(false, canPrepareRoute(route.copy(startedAt = null), route.date))
+    }
 }

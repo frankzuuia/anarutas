@@ -17,7 +17,7 @@ function RouteProgress({ route, now, selected, onSelect }: { route: LiveRoute; n
   const health = locationHealth(route, now);
   const active = route.stops.find(s => s.id === (route.arrivedStopId ?? route.targetStopId));
   return <article className="live-route-card">
-    <header><div><h3><Truck size={17} />{route.driver}</h3><p>{route.vehicle} · {route.plate}</p></div><span className={`badge ${health.live ? "green" : "amber"}`}>{health.label}</span></header>
+    <header><div><h3><Truck size={17} />{route.driver}</h3><p>{route.vehicle} · {route.plate}</p></div><span className={`badge ${route.completedAt || health.live ? "green" : "amber"}`}>{health.label}</span></header>
     <div className="small">{route.label} · {route.date}</div>
     <div className="live-progress-counts"><div><strong>{route.progress.delivered}/{route.progress.orders}</strong><span>pedidos entregados</span></div>
       <div><strong>{route.progress.remainingStops}</strong><span>paradas por atender</span></div></div>
@@ -26,7 +26,7 @@ function RouteProgress({ route, now, selected, onSelect }: { route: LiveRoute; n
     <p className="live-eta" aria-label={`Tiempo de ${route.driver}`}>{routeEta(route, now)}</p>
     <p className="small">{route.progress.completedStops}/{route.progress.totalStops} paradas entregadas · {route.progress.rescheduled} pedidos reprogramados · {route.progress.incidentOrders} con incidencia</p>
     {route.location && <p className="small">Precisión ±{Math.round(route.location.accuracy)} m · {new Date(route.location.observedAt).toLocaleTimeString("es-MX")}</p>}
-    {!route.location && <p className="live-gps-help">Aún no se ha recibido GPS de esta ruta. En el teléfono, abre la ruta con la APK 0.7.0 o posterior, permite ubicación precisa y revisa el estado de seguimiento. Si está detenido, pulsa «Reanudar seguimiento».</p>}
+    {!route.location && !route.completedAt && <p className="live-gps-help">Aún no se ha recibido GPS de esta ruta. En el teléfono, abre la ruta con la APK 0.7.0 o posterior, permite ubicación precisa y revisa el estado de seguimiento. Si está detenido, pulsa «Reanudar seguimiento».</p>}
     {route.corrected && <p className="small">Puntos corregidos. El recorrido anterior se omite.</p>}
     <div className="live-stop-list">{route.stops.map(stop => <button className={`live-stop ${selected === stop.id ? "selected" : ""} ${stop.progress.status}`} key={stop.id} onClick={() => onSelect(stop.id)}>
       <span className="live-stop-number">{stop.progress.status === "delivered" ? <CheckCircle2 size={15} /> : stop.progress.status === "incident" ? <AlertTriangle size={15} /> : stop.position}</span>

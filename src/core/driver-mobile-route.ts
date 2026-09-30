@@ -3,6 +3,7 @@ import { transaction } from "./database";
 import { AppError } from "./errors";
 import { uuid } from "./orders-validation";
 import { todayInTimezone } from "./local-date";
+import { getRoutingSettings } from "./routing-settings";
 
 export async function listDriverPlans(pool: Pool, driverId: string) {
   const { rows } = await pool.query(
@@ -10,6 +11,8 @@ export async function listDriverPlans(pool: Pool, driverId: string) {
             pub.snapshot->'plan'->>'label' AS label,
             pub.source_plan_version AS version,
             pub.revision AS publication_revision,pub.started_at,
+            (SELECT c.completed_at FROM route_driver_execution_completions c JOIN route_driver_executions e ON e.id=c.execution_id
+              WHERE e.plan_id=pub.plan_id AND e.vehicle_id=pub.vehicle_id AND e.publication_revision=pub.revision) AS completed_at,
             COALESCE((SELECT e.revision FROM route_driver_executions e WHERE e.plan_id=pub.plan_id
               AND e.vehicle_id=pub.vehicle_id AND e.publication_revision=pub.revision),0) AS execution_revision,
             pv.vehicle_id,v.name AS vehicle_name,v.plate,
@@ -39,7 +42,8 @@ export async function readDriverDashboard(
 ) {
   const serviceDate = todayInTimezone(timezone, now);
   const plans = await listDriverPlans(pool, driverId);
-  const today = plans.find((plan) => plan.service_date === serviceDate);
+  const today = plans.find((plan) => plan.service_date === serviceDate && !plan.completed_at)
+    ?? plans.find((plan) => plan.service_date === serviceDate);
   return {
     serviceDate,
     plans,
@@ -65,6 +69,8 @@ export async function readDriverPlan(
     if (!plan.rowCount) throw new AppError("NOT_FOUND", 404);
     const publication = await sql.query(
       `SELECT pub.snapshot,pub.revision,pub.started_at,pub.vehicle_id,
+              (SELECT c.completed_at FROM route_driver_execution_completions c JOIN route_driver_executions e ON e.id=c.execution_id
+                WHERE e.plan_id=pub.plan_id AND e.vehicle_id=pub.vehicle_id AND e.publication_revision=pub.revision) AS completed_at,
               (SELECT count(*)::integer FROM route_unit_photos photo
                 WHERE photo.plan_id=pub.plan_id AND photo.vehicle_id=pub.vehicle_id
                   AND photo.driver_id=pub.driver_id AND photo.expires_at>now()
@@ -100,8 +106,16 @@ export async function readDriverPlan(
       [id, assigned.vehicle_id, assigned.revision],
     );
     const phones = new Map(contacts.rows.flatMap(stop => stop.shipment_ids.map(shipmentId => [shipmentId, stop.phone] as const)));
+    const settings = await getRoutingSettings(sql);
     return {
       ...assigned.snapshot,
+      // Auxiliary return destination: never rewrite a publication or invent a stop.
+      departure: settings.depotLocation ? {
+        address: settings.depotAddress,
+        latitude: settings.depotLocation.latitude,
+        longitude: settings.depotLocation.longitude,
+        version: settings.version,
+      } : null,
       ...(points.size ? { routeStatus: "point_corrected" } : {}),
       // Current operational contact is an overlay, never a publication rewrite.
       orders: assigned.snapshot.orders.map((order: { id: string; lines: Record<string, unknown>[] }) => {
@@ -115,6 +129,7 @@ export async function readDriverPlan(
       publication: {
         revision: Number(assigned.revision),
         startedAt: assigned.started_at,
+        completedAt: assigned.completed_at?.toISOString() ?? null,
         photoCount: Number(assigned.photo_count),
       },
     };

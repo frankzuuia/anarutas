@@ -10,7 +10,7 @@ export type LiveStop = { id: string; position: number; customer: string; address
   orders: { id: string; name: string; status: DriverOrderStatus }[]; progress: ReturnType<typeof stopProgress> };
 export type LiveRoute = { id: string; planId: string; label: string; date: string;
   driverId: string; driver: string; vehicleId: string; vehicle: string; plate: string;
-  startedAt: string; targetStopId: string | null; arrivedStopId: string | null;
+  startedAt: string; completedAt?: string | null; targetStopId: string | null; arrivedStopId: string | null;
   eta?: LiveEta | null;
   location: { latitude: number; longitude: number; accuracy: number; observedAt: string; receivedAt: string; stopped: boolean } | null;
   polylines: string[]; corrected: boolean; stops: LiveStop[];
@@ -21,9 +21,9 @@ export async function readLiveRoutes(pool: Pool, actor: string): Promise<LiveRou
   return transaction(pool, async sql => {
     await sql.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
     await assertActiveActor(sql, actor);
-    const executions = (await sql.query(`SELECT e.*,e.service_date::text AS date,
+    const executions = (await sql.query(`SELECT e.*,e.service_date::text AS date,c.completed_at,
       pub.snapshot->'route' AS published_route,t.target_stop_id,t.latitude,t.longitude,t.accuracy_meters,t.observed_at,t.received_at,t.eta,
-      (t.stopped OR dev.revoked_at IS NOT NULL OR NOT coalesce(access.enabled,false)
+      (c.completed_at IS NOT NULL OR t.stopped OR dev.revoked_at IS NOT NULL OR NOT coalesce(access.enabled,false)
         OR NOT EXISTS(SELECT 1 FROM route_driver_mobile_sessions session WHERE session.device_id=t.device_id
           AND session.revoked_at IS NULL AND session.expires_at>now())) AS tracking_stopped
       FROM route_driver_executions e
@@ -32,6 +32,7 @@ export async function readLiveRoutes(pool: Pool, actor: string): Promise<LiveRou
       JOIN route_plan_vehicles pv ON pv.plan_id=e.plan_id AND pv.vehicle_id=e.vehicle_id AND pv.driver_id=e.driver_id
       JOIN route_drivers d ON d.id=e.driver_id AND d.active
       LEFT JOIN route_live_tracking t ON t.execution_id=e.id
+      LEFT JOIN route_driver_execution_completions c ON c.execution_id=e.id
       LEFT JOIN route_driver_mobile_devices dev ON dev.id=t.device_id
       LEFT JOIN route_driver_mobile_access access ON access.driver_id=e.driver_id
       ORDER BY e.service_date DESC,e.driver_name,e.id`)).rows;
@@ -50,6 +51,7 @@ export async function readLiveRoutes(pool: Pool, actor: string): Promise<LiveRou
       const route = e.published_route as PublicOptimizedRoute | null;
       return { id: e.id, planId: e.plan_id, label: e.plan_label, date: e.date, driverId: e.driver_id, driver: e.driver_name,
         vehicleId: e.vehicle_id, vehicle: e.vehicle_name, plate: e.vehicle_plate, startedAt: e.started_at.toISOString(),
+        completedAt: e.completed_at?.toISOString() ?? null,
         targetStopId: mapped.some(s => s.id === e.target_stop_id && s.progress.visible) ? e.target_stop_id : null,
         arrivedStopId: mapped.find(s => s.arrivedAt !== null && s.progress.visible)?.id ?? null,
         eta: e.eta ?? null,

@@ -71,6 +71,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                 recovered = true
                 if (encoded != null && pending == null) clearPending()
             }
+            if (execution.completedAt != null && state.execution?.completedAt == null) NavigationRegistry.endSession()
             state = state.copy(route = route, execution = execution, verified = true, loading = false,
                 pending = pending != null, message = if (state.loading) "Ruta sincronizada" else state.message)
             confirmed?.let { command ->
@@ -78,6 +79,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                 val kind = command.getString("kind")
                 state = state.copy(
                     message = when (kind) {
+                        "route-finish" -> "Ruta terminada. Guía y seguimiento finalizados; historial conservado."
                         "arrival" -> "Llegada registrada. Puedes revisar el pedido."
                         "visit-exit" -> "Visita anterior finalizada. El estado de sus pedidos se conserva."
                         "service" -> when (command.getJSONObject("payload").getString("kind")) {
@@ -92,15 +94,15 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                         "phone" -> "Teléfono operativo guardado también en la ficha del cliente."
                         else -> "Punto corregido en tu ruta y en la ficha del cliente."
                     },
-                    arrivedStop = command.getString("stopId").takeIf { kind == "arrival" },
-                    correctedStop = command.getString("stopId").takeIf { kind == "location" },
+                    arrivedStop = command.optString("stopId").takeIf { kind == "arrival" },
+                    correctedStop = command.optString("stopId").takeIf { kind == "location" },
                     exitDestination = command.optString("destinationStopId").takeIf { (kind == "visit-exit" || kind == "order-retry") && it.isNotBlank() },
                     serviceRevision = state.serviceRevision + if (kind == "service" || kind == "closed" || kind == "order-retry") 1 else 0,
                     productRevision = state.productRevision + if (kind.startsWith("product-incident")) 1 else 0,
                     lastProductIncidentId = command.optString("incidentId").takeIf { kind.startsWith("product-incident") && it.isNotBlank() },
                     lastProductAction = kind.takeIf { it.startsWith("product-incident") },
                     continuation = confirmedStopContinuation(command.getJSONObject("payload").getString("commandId"), kind,
-                        command.getJSONObject("payload").optString("kind"), execution.stops.find { it.id == command.getString("stopId") }),
+                        command.getJSONObject("payload").optString("kind"), execution.stops.find { it.id == command.optString("stopId") }),
                 )
                 confirmed = null
             }
@@ -133,7 +135,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
     fun submit(stopId: String, gps: DriverGps?, corrected: ExecutionPoint?, confirmedAddress: CorrectedAddressFields? = null) {
         val execution = state.execution ?: return
         val stop = execution.stops.find { it.id == stopId } ?: return
-        if (state.busy || state.pending || !state.verified || state.retired) return
+        if (!routeAvailable()) return
         val elapsed = SystemClock.elapsedRealtime()
         if (arrivalEligibility(gps, corrected ?: stop.point, execution.policy, elapsed) != ArrivalEligibility.READY) return
         if (corrected != null && stop.customerArchived) return
@@ -143,7 +145,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
     fun exitVisit(stopId: String, destinationStopId: String) {
         val execution = state.execution ?: return
         val stop = execution.stops.find { it.id == stopId } ?: return
-        if (state.busy || state.pending || !state.verified || state.retired || stop.arrivedAt == null || stop.visitSequence < 1 ||
+        if (!routeAvailable() || stop.arrivedAt == null || stop.visitSequence < 1 ||
             execution.stops.none { it.id == destinationStopId }) return
         queueCommand(stopId, "visit-exit", visitExitCommand(execution, stop, UUID.randomUUID().toString()), destinationStopId)
     }
@@ -151,11 +153,11 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
         val execution = state.execution ?: return
         val stop = execution.stops.find { it.id == stopId } ?: return
         val order = stop.orderStates.find { it.shipmentId == shipmentId } ?: return
-        if (!serviceAvailable(stop) || (kind != "reschedule" && !stop.canAttend())) return
+        if (!routeAvailable() || (kind != "reschedule" && (!serviceAvailable(stop) || !stop.canAttend()))) return
         val allowed = when (kind) {
             "deliver" -> canDeliverOrder(order.status)
             "reject" -> canRejectOrder(order.status) && reason in listOf("poor_quality", "late_arrival", "other") && (reason != "other" || !note.isNullOrBlank())
-            "reschedule" -> canRescheduleOrder(order.status)
+            "reschedule" -> canRescheduleRetry(order.status, stop.visitSequence, stop.closedReportedVisitSequence)
             else -> false
         }
         if (!allowed || (note?.length ?: 0) > 2000) return
@@ -214,7 +216,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
         val execution = state.execution ?: return
         val stop = execution.stops.find { it.id == stopId } ?: return
         val order = stop.orderStates.find { it.shipmentId == shipmentId } ?: return
-        if (!state.verified || state.busy || state.pending || state.retired || !canRetryRescheduledOrder(order.status)) return
+        if (!routeAvailable() || !canRetryRescheduledOrder(order.status)) return
         queueCommand(stopId, "order-retry", visitExitCommand(execution, stop, UUID.randomUUID().toString()).put("orderVersion", order.version),
             destinationStopId = stopId, shipmentId = shipmentId)
     }
@@ -225,8 +227,16 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
         queueCommand(stopId, "phone", visitExitCommand(execution, stop, UUID.randomUUID().toString())
             .put("phone", phone).put("customerVersion", stop.customerVersion))
     }
-    private fun serviceAvailable(stop: ExecutionStop) = state.verified && !state.retired && !state.busy && !state.pending && stop.arrivedAt != null
-    private fun queueCommand(stopId: String, kind: String, payload: JSONObject, destinationStopId: String? = null,
+    fun completeRoute(gps: DriverGps?) {
+        val execution = state.execution ?: return
+        val warehouse = warehouseReturnDestination(state.route, execution) ?: return
+        val elapsed = SystemClock.elapsedRealtime()
+        if (!routeAvailable() || arrivalEligibility(gps, warehouse.point, execution.policy, elapsed) != ArrivalEligibility.READY) return
+        queueCommand(null, "route-finish", routeFinishCommand(execution, warehouse, gps!!, elapsed, UUID.randomUUID().toString()))
+    }
+    private fun routeAvailable() = state.verified && !state.retired && !state.busy && !state.pending && state.execution?.completedAt == null
+    private fun serviceAvailable(stop: ExecutionStop) = routeAvailable() && stop.arrivedAt != null
+    private fun queueCommand(stopId: String?, kind: String, payload: JSONObject, destinationStopId: String? = null,
         shipmentId: String? = null, capture: File? = null, productPhotos: List<File> = emptyList(), incidentId: String? = null) {
         state = state.copy(busy = true, message = "Confirmando con el servidor…")
         viewModelScope.launch {
@@ -272,6 +282,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
             }
             val payload = command.getJSONObject("payload")
             when (command.getString("kind")) {
+                "route-finish" -> api.completeRoute(saved.token, planId, payload)
                 "service" -> api.serviceCommand(saved.token, planId, command.getString("stopId"), command.getString("shipmentId"), payload)
                 "product-incident" -> {
                     // Check the durable receipt first, including after an app restart or a lost response.

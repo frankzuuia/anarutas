@@ -10,7 +10,7 @@ internal data class ExecutionStop(val id: String, val position: Int, val custome
     val productIncidents: List<ProductIncidentRecord> = emptyList())
 internal data class DriverExecution(val id: String, val planId: String, val publicationRevision: Int, val revision: Int,
     val serverTime: Instant, val receivedElapsedMillis: Long, val timezone: String, val policy: ArrivalPolicy,
-    val hasCorrections: Boolean, val stops: List<ExecutionStop>)
+    val hasCorrections: Boolean, val stops: List<ExecutionStop>, val completedAt: String? = null)
 internal data class CorrectedAddressFields(val street: String, val neighborhood: String, val postalCode: String, val city: String) {
     val formatted: String get() = "$street, Col. $neighborhood, C.P. $postalCode, $city"
     fun json(): JSONObject = JSONObject().put("street", street).put("neighborhood", neighborhood)
@@ -54,7 +54,7 @@ internal fun parseExecution(raw: String, receivedElapsed: Long): DriverExecution
                             }.orEmpty(), record.optString("additionalNote").takeUnless { record.isNull("additionalNote") }.orEmpty(),
                             record.optInt("evidenceCount"), record.optBoolean("reportRemoved")) }
                 }.orEmpty())
-        })
+        }, json.optString("completedAt").takeUnless { it.isBlank() || it == "null" })
 }
 internal fun stopCommand(execution: DriverExecution, stop: ExecutionStop, gps: DriverGps, elapsed: Long,
     commandId: String, corrected: ExecutionPoint?, confirmedAddress: CorrectedAddressFields? = null): JSONObject {
@@ -79,3 +79,13 @@ internal fun visitExitCommand(execution: DriverExecution, stop: ExecutionStop, c
         .put("publicationRevision", execution.publicationRevision)
         .put("executionRevision", execution.revision)
         .put("stopVersion", stop.version).put("visitSequence", stop.visitSequence)
+
+internal fun routeFinishCommand(execution: DriverExecution, warehouse: WarehouseDestination, gps: DriverGps,
+    elapsed: Long, commandId: String): JSONObject = JSONObject()
+    .put("commandId", commandId).put("executionId", execution.id)
+    .put("publicationRevision", execution.publicationRevision).put("executionRevision", execution.revision)
+    .put("depotVersion", warehouse.departure.version).put("policyVersion", execution.policy.version).put("confirmed", true)
+    .put("sample", JSONObject().put("latitude", gps.point.latitude).put("longitude", gps.point.longitude)
+        .put("accuracyMeters", gps.accuracy).put("ageMilliseconds", elapsed - gps.elapsedMillis)
+        .put("capturedAt", sampleCapturedAt(execution.serverTime, execution.receivedElapsedMillis, gps.elapsedMillis).toString())
+        .put("mock", gps.mock))

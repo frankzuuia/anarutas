@@ -690,3 +690,21 @@ se prepara primero en `develop`; producción requiere su propia aprobación.
 - [x] RF-T01 (RF01..06): máximo durable y asignación de revisión sin reusar ejecución; migración automática aditiva y regresión PG 3/3, preservando rutas activas e historial.
 - [x] RF-T02 (RF07..08): normalizar foto real grande conservando límites, permisos y contrato de APK; Odoo real validado sin escrituras.
 - [x] RF-T03: 9/9 pruebas dirigidas, cobertura de líneas 100%, mutación 15/15, HTTP 3/3, typecheck/lint/build y bundle de migración aprobados. Suite general: 661 aprobadas, 1 timeout de limpieza PG aprobado al repetirlo sin cambios, 2 omitidas (Odoo aprobado por separado; FCM no afectado). Salvedad y evidencia en `QA-RECREACION-RUTA-Y-FOTO-ODOO.md`. Commit/push a develop autorizados por el propietario el 2026-09-29 tras informar los resultados; sin modificar ruta remota ni desplegar.
+## BL-153 — color de iconos en Tu ruta
+
+- [x] RC-T01: tintes explícitos azul/rojo/lima/dorado en los cuatro iconos originales; sin modificar métricas ni acciones.
+- [x] RC-T02: APK 0.8.5/code27 compilada, JVM 103/103 y lint 0 errores/33 advertencias existentes. Contraste de los cuatro tintes 9.18:1..12.70:1; vectores sin cambios. Entrega en `.local/releases/Five-Rutas-Chofer-0.8.5-develop.apk`; QA visual física pendiente (ADB offline). Evidencia en `QA-ICONOS-RUTA-0.8.5.md`.
+
+## BL-154 — regreso a bodega
+
+- [x] WB-T01: origen real autorizado, sin reescribir publicaciones; regresión PG/HTTP confirmada.
+- [x] WB-T02: aviso/botón/SDK bodega con guardas de IDs, estados, callbacks y restauración. BL-155 amplía a reprogramados terminales, nunca entregados.
+- [x] WB-T03A: 53 dirigidas, 110 JVM, HTTP2/2, cobertura crítica100%, mutación Android13/13 y APK0.8.6. Evidencia en `QA-REGRESO-Y-CIERRE-BODEGA-0.8.6.md`.
+- [ ] WB-T03B: instrumentación/QA físico pendiente por ADB `closed`; no se declara aprobada ni autoriza deploy.
+
+## BL-155 — cierre y reprogramación remota (ampliación solicitada)
+
+- [x] WF-T01: migración32, cierre transaccional inmutable/recibos, lecturas y rechazo de nuevas operaciones; reprogramación remota sólo caso cerrado real.
+- [x] WF-T02: botón/modal/GPS/cola cifrada y relectura, estado terminado en app/control, detener guía/seguimiento; consultas y datos conservados.
+- [x] WF-T03A: PG/HTTP/JVM, cobertura crítica100%, mutación32/32 política y10/10 integración, build/lint/audit runtime0 vulnerabilidades, APK0.8.6/code28; QA documentado. Regresión general: 669 aprobadas inicialmente; 3 fallos de preparación de bases antiguas corregidos sólo en fixture y sus 2 archivos repetidos completos (16/16); 672 escenarios aprobados y 2 omitidos, con recuperación explícita en QA.
+- [ ] WF-T03B: QA físico/instrumentación pendiente por ADB `closed`; no certificación de producción. El propietario autorizó expresamente commit/push a develop para probar el 2026-09-29, con esta salvedad informada; deploy manual del propietario, sin cambios en main.

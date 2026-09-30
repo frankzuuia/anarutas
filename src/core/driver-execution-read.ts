@@ -10,6 +10,7 @@ export type ExecutionRow = {
   id: string; plan_id: string; vehicle_id: string; publication_revision: number;
   revision: number; driver_id: string; started_at: Date; service_date: string;
   plan_label: string; vehicle_name: string; vehicle_plate: string; driver_name: string;
+  completed_at: Date | null;
 };
 export type ExecutionStopRow = {
   id: string; execution_id: string; customer_id: string; position: number;
@@ -19,7 +20,11 @@ export type ExecutionStopRow = {
   visit_state: "open" | "arrived"; visit_sequence: number;
 };
 
-export async function executableRoute(sql: Sql, driverId: string, planId: string, write: boolean) {
+export function assertExecutionOpen(route: ExecutionRow) {
+  if (route.completed_at) throw new AppError("ROUTE_COMPLETED", 409);
+}
+
+export async function executableRoute(sql: Sql, driverId: string, planId: string, write: boolean, allowCompleted = false) {
   const plan = await sql.query("SELECT id FROM route_plans WHERE id=$1 FOR SHARE", [uuid(planId)]);
   if (!plan.rowCount) throw new AppError("NOT_FOUND", 404);
   const { rows } = await sql.query(
@@ -34,12 +39,14 @@ export async function executableRoute(sql: Sql, driverId: string, planId: string
   if (rows.length !== 1) throw new AppError("NOT_FOUND", 404);
   const pub = rows[0];
   const execution = await sql.query<ExecutionRow>(
-    `SELECT e.*,e.service_date::text FROM route_driver_executions e
-      WHERE plan_id=$1 AND vehicle_id=$2 AND publication_revision=$3 AND driver_id=$4
-      FOR ${write ? "UPDATE" : "SHARE"}`,
+    `SELECT e.*,e.service_date::text,c.completed_at FROM route_driver_executions e
+      LEFT JOIN route_driver_execution_completions c ON c.execution_id=e.id
+      WHERE e.plan_id=$1 AND e.vehicle_id=$2 AND e.publication_revision=$3 AND e.driver_id=$4
+      FOR ${write ? "UPDATE" : "SHARE"} OF e`,
     [planId, pub.vehicle_id, pub.revision, driverId],
   );
   if (!execution.rows[0]) throw new AppError("EXECUTION_NOT_READY", 503);
+  if (write && !allowCompleted) assertExecutionOpen(execution.rows[0]);
   return execution.rows[0];
 }
 
@@ -67,6 +74,7 @@ export async function readDriverExecution(pool: Pool, driverId: string, planId: 
       id: route.id, planId: route.plan_id, vehicleId: route.vehicle_id,
       publicationRevision: route.publication_revision, revision: route.revision,
       startedAt: route.started_at.toISOString(), serviceDate: route.service_date,
+      completedAt: route.completed_at?.toISOString() ?? null,
       serverTime: new Date().toISOString(), timezone, policy,
       hasCorrections: rows.some((stop) => stop.corrected_at !== null),
       stops: rows.map((stop) => ({

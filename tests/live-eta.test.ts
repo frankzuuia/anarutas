@@ -32,6 +32,9 @@ describe("ETA wire contract", () => {
   });
 });
 describe("ETA presentation", () => {
+  it("completion takes precedence over retained ETA or arrival", () => {
+    expect(routeEta({ ...route, completedAt: now.toISOString(), arrivedStopId: target }, +now)).toBe("Ruta terminada");
+  });
   it("prioritizes canonical arrival but not arrival at another stop", () => {
     expect(routeEta({ ...route, arrivedStopId: target }, +now)).toBe("En atención");
     expect(routeEta({ ...route, arrivedStopId: target, targetStopId: null }, +now)).toBe("En atención");

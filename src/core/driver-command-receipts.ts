@@ -7,7 +7,7 @@ import { uuid } from "./orders-validation";
 
 export type DriverCommandResult = {
   eventId: string | null; occurredAt: string; executionRevision: number;
-  duplicate: boolean; unchanged?: boolean; incidentId?: string | null;
+  duplicate: boolean; unchanged?: boolean; incidentId?: string | null; completedAt?: string;
 };
 
 export async function driverCommandReceipt(sql: Sql, deviceId: string, commandId: string, hash: string) {
