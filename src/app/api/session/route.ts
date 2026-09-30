@@ -9,7 +9,7 @@ import {
 } from "@/server/http";
 export const dynamic = "force-dynamic";
 export function GET() {
-  return endpoint(async () => json((await principal()).user));
+  return endpoint(async () => json((await principal("any")).user));
 }
 export function POST(request: Request) {
   return endpoint(async () => {
@@ -24,7 +24,7 @@ export function POST(request: Request) {
 export function DELETE(request: Request) {
   return endpoint(async () => {
     await body(request);
-    const { pool, user, token } = await principal();
+    const { pool, user, token } = await principal("any");
     await logout(pool, user.id, token);
     const response = json({ closed: true });
     sessionCookie(response, "", true);

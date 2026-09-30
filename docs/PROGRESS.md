@@ -726,7 +726,7 @@ se prepara primero en `develop`; producción requiere su propia aprobación.
 - [x] F-T05: Gherkin LQ01..14;108/108 financieras con PG/Odoo reales,787 regresión/0 fallos/3 omisiones externas identificadas (financiera aprobada aparte),3/3 E2E,99.62% líneas/99.24% ramas,598/606 mutaciones de dominio y12/12 PG. Evidencia/límites en QA-FUENTE-FINANCIERA-BLOQUE-1.md.
 - [x] F-T06: revisión independiente final; typecheck/lint/build/bundle aprobados, audit0 vulnerabilidades, escaneo de credenciales sin coincidencias. Commit/push develop bajo autorización permanente; sin deploy ni cambios en main. Dos integraciones externas preexistentes ajenas al bloque permanecen omitidas, identificadas en QA.
 
-Bloque2 implementado con QA de dispositivo pendiente; bloques3..6 pendientes: cobro, roles, solicitudes/recepción/historial y E2E completo. Aprobar bloque1 no equivale a certificar estas funciones.
+Los bloques2..6 están implementados; la evidencia de cobros, roles, solicitudes, recepción e historial se registra en QA-LIQUIDACION-COMPLETA-0.8.9.md. La QA física de dispositivo sigue pendiente a cargo del propietario.
 
 ## BL-157..161 — bloque 2 aprobado («dale al bloque 2 y probamos completa»)
 
@@ -739,3 +739,12 @@ Bloque2 implementado con QA de dispositivo pendiente; bloques3..6 pendientes: co
 - [x] PF-T06A: QA automatizado unitario/PG/Odoo/HTTP/JVM, cobertura/mutación/regresión/seguridad y evidencia final en QA-IMPORTES-CHOFER-BLOQUE-2.md. Excepción de dispositivo aprobada por el propietario el 2026-09-30; commit/push develop autorizado, deploy manual.
 
 - [ ] PF-T06B: QA físico/Compose asumido por el propietario al completar bloques3..6, autorizados expresamente el 2026-09-30.
+
+## BL-162..168 — bloques3..6 autorizados el 2026-09-30
+
+- [x] CF-T01 (bloque3, CF01..06,14): contrato, esquema36, autorización histórica, confirmación y recibos inmutables; API y captura Android.
+- [x] CF-T02 (bloque4, CF05,07,08,14): esquema37, roles, formularios, principal/eventos y aislamiento de endpoints.
+- [x] CF-T03 (bloque5, CF09..15): esquema38, solicitudes/decisiones/reservas, lecturas, métricas y panel agrupado.
+- [x] CF-T04 (bloque5, CF04,05,09..13,15): tarjeta móvil, detalle y recuperación durable, cambios automáticos.
+- [x] CF-T05 (bloque6, CF01..16): 855 pruebas de regresión aprobadas/0 fallos/3 omisiones externas, 28 dirigidas, 125 JVM y E2E HTTP completo; cobertura 99.55% líneas/98.78% ramas, mutación 164/165 políticas +14/14 PG +13/13 Android. Typecheck/lint/build, seguridad, migrador y APK0.8.9/code31 verificados; entrega develop bajo autorización permanente. Evidencia y límites en QA-LIQUIDACION-COMPLETA-0.8.9.md; sin deploy.
+- [ ] CF-T06: QA física final a cargo del propietario; excepción informada aprobada, no certificación de producción.

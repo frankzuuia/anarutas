@@ -74,6 +74,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
     val orders = route?.orders.orEmpty().filter { it.id in stop.shipmentIds }
     var selectedId by rememberSaveable(stop.id) { mutableStateOf<String?>(null) }
     var confirmation by rememberSaveable(stop.id) { mutableStateOf<String?>(null) }
+    var financeOpen by rememberSaveable(stop.id) { mutableStateOf(false) }
     var note by rememberSaveable(stop.id) { mutableStateOf("") }
     var productLine by rememberSaveable(stop.id) { mutableStateOf<Int?>(null) }
     var editingProductIncidentId by rememberSaveable(stop.id) { mutableStateOf<String?>(null) }
@@ -83,7 +84,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
     val available = state.verified && !state.busy && !state.pending && !state.retired && state.execution?.completedAt == null
     var confirmedRevision by remember { mutableIntStateOf(state.serviceRevision) }
     LaunchedEffect(state.serviceRevision) {
-        if (confirmedRevision != state.serviceRevision) { confirmation = null; note = ""; confirmedRevision = state.serviceRevision }
+        if (confirmedRevision != state.serviceRevision) { if (confirmation == "deliver") financeOpen = true; confirmation = null; note = ""; confirmedRevision = state.serviceRevision }
     }
     val editingProductIncident = stop.productIncidents.find { it.id == editingProductIncidentId && it.shipmentId == order?.id && it.status != "canceled" }
     if ((productLine != null || editingProductIncident != null) && order != null) {
@@ -147,6 +148,8 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
                 }
             } }
             FinancialOrderSummary(order.financial)
+            if (status.status == OrderServiceStatus.DELIVERED) AppAction("Ver o registrar cobro", DriverIcon.CHECK, Modifier.fillMaxWidth()) { financeOpen = true }
+            if (financeOpen && state.execution != null) FinanceSheet(state.execution.id, order.id) { financeOpen = false }
             productCases.forEach { incident -> Row(Modifier.fillMaxWidth().heightIn(min = 44.dp)
                 .clickable(enabled = available && stop.canAttend() && canDeliverOrder(status.status),
                     onClickLabel = "Ver incidencia de ${incident.product}") { editingProductIncidentId = incident.id }

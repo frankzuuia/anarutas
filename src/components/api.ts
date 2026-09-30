@@ -1,4 +1,8 @@
 export const errors: Record<string, string> = {
+  ROLE_DENIED: "Tu cuenta no tiene acceso a esta sección.",
+  SETTLEMENT_VERSION_CHANGED: "La solicitud cambió o ya fue atendida. Actualiza para consultar la recepción guardada.",
+  SETTLEMENT_ROUTE_NOT_FINISHED: "El chofer aún no termina esta ruta.",
+  SETTLEMENT_DECISION_INVALID: "Selecciona aceptar o rechazar la solicitud.",
   RESOLUTION_NOTE_REQUIRED: "Indica cómo se resolvió la incidencia.",
   INVALID_PRODUCT_INCIDENT: "Completa Departamento y Concepto con hasta 120 caracteres cada uno.",
   PRODUCT_EVIDENCE_REQUIRED: "Esta reposición o devolución requiere una fotografía de evidencia.",

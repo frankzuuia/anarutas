@@ -643,3 +643,6 @@ Importes de incidencias son asignaciones proporcionales del importe oficial de l
 El servidor rechaza revisión vieja, fuente no validada/error/antigüedad excesiva e identidad cambiada en un comando financiero nuevo. Un recibo ya confirmado se recupera antes de revisar versiones mutables. Si una fuente cambia después de guardar una incidencia, sólo bases monetarias idénticas permiten conservar automáticamente su valorización; diferencias exigen revisión. La app conserva el borrador ante un conflicto y muestra la necesidad de revisar. El bloque no confirma cobros ni recibe dinero; éstos siguen separados.
 
 Validación: escenarios PF01..18 en MASTER-SPECIFICATION, unidad/contrato, PG real, HTTP, Android JVM/Compose, cobertura, mutación, regresión y APK. Permisos previos de sesión/chofer/ejecución/visita se mantienen; datos financieros se consultan sólo después de autorizar la publicación. Auditoría de cambios de incidencia incluye campos financieros y elección.
+
+## BL-162..168 — cobro, roles y liquidación autorizados
+Reglas, actores, permisos, datos y aceptación definidos en BLOQUES-LIQUIDACION-3-6.md. El propietario autorizó completar todos los bloques y realizar su QA física al final. No alterar recibos confirmados por cambios posteriores de la fuente; no mezclar crédito/transferencias con efectivo recibido.

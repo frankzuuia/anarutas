@@ -6,7 +6,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-enum class DriverDestination { HOME, ROUTE, ORDERS, UNIT, HISTORY, PROFILE, SETTINGS }
+enum class DriverDestination { HOME, ROUTE, ORDERS, UNIT, HISTORY, FINANCE, PROFILE, SETTINGS }
 enum class DashboardLoadState { LOADING, FAILED, READY }
 
 internal fun dashboardLoadState(

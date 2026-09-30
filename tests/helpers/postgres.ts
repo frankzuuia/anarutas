@@ -10,6 +10,7 @@ type TestPool = ReturnType<typeof createPool>;
 
 // Only for reconstructing pre-v20 schemas in isolated migration tests.
 export async function dropExecutionTablesForLegacyFixture(pool: TestPool) {
+  await pool.query("DROP TABLE route_settlement_claims,route_settlement_items,route_settlement_requests,route_order_payments,route_finance_execution_orders");
   await pool.query("DROP TABLE route_live_tracking,route_tracking_sessions,route_control_layouts");
   // Include the v32 leaf before its execution, driver and device references.
   // CASCADE on the execution alone removes its foreign key, not this table.

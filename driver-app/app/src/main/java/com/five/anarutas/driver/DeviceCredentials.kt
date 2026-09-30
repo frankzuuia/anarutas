@@ -139,6 +139,27 @@ class DeviceCredentials(context: Context) {
         editor.apply()
     }
 
+    // Financial outbox survives session logout; scoped to its enrolled device.
+    // Shared monitor also covers the map and main activities using separate instances.
+    internal fun saveFinanceCommand(deviceId: String, value: String) = synchronized(financeMonitor) {
+        val existing = readFinanceCommand(deviceId)
+        check(existing == null || existing == value) { "Hay una operación financiera pendiente de confirmar." }
+        val (iv, ciphertext) = encryptedToken(value)
+        check(preferences.edit().putString("finance:$deviceId:iv", iv).putString("finance:$deviceId:body", ciphertext).commit())
+    }
+    internal fun readFinanceCommand(deviceId: String): String? = synchronized(financeMonitor) {
+        val iv = preferences.getString("finance:$deviceId:iv", null) ?: return@synchronized null
+        val text = checkNotNull(preferences.getString("finance:$deviceId:body", null))
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, tokenKey(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
+        String(cipher.doFinal(Base64.decode(text, Base64.NO_WRAP)), Charsets.UTF_8)
+    }
+    internal fun clearFinanceCommand(deviceId: String, expected: String) = synchronized(financeMonitor) {
+        if (readFinanceCommand(deviceId) == expected)
+            check(preferences.edit().remove("finance:$deviceId:iv").remove("finance:$deviceId:body").commit())
+    }
+    private companion object { val financeMonitor = Any() }
+
     fun signChallenge(challengeId: String, nonce: String): String {
         val key = keyStore.getKey(signingAlias, null)
             ?: throw IllegalStateException("DEVICE_KEY_MISSING")

@@ -17,6 +17,16 @@ export async function driverPublicationFingerprint(
     plans.map((plan) => ({ planId: plan.id, vehicleId: plan.vehicle_id })),
     new Date(),
   );
+  // Receipts are append-only; request versions only increase. A bounded fingerprint
+  // detects every financial transition without returning the driver's entire history.
+  const settlements = (
+    await pool.query(
+      `SELECT
+    (SELECT count(*) FROM route_order_payments WHERE driver_id=$1) AS payments,
+    (SELECT COALESCE(sum(version),0) FROM route_settlement_requests WHERE driver_id=$1) AS requests`,
+      [driverId],
+    )
+  ).rows;
   return JSON.stringify([
     plans.map((plan) => [
       plan.id,
@@ -27,6 +37,7 @@ export async function driverPublicationFingerprint(
       policy.version,
     ]),
     financials,
+    settlements,
   ]);
 }
 

@@ -75,6 +75,7 @@ internal val DriverDestination.title: String get() = when (this) {
     DriverDestination.ORDERS -> "Pedidos"
     DriverDestination.UNIT -> "Mi unidad"
     DriverDestination.HISTORY -> "Mis rutas"
+    DriverDestination.FINANCE -> "Liquidación"
     DriverDestination.PROFILE -> "Mi perfil"
     DriverDestination.SETTINGS -> "Preferencias"
 }
@@ -85,6 +86,7 @@ internal val DriverDestination.icon: DriverIcon get() = when (this) {
     DriverDestination.ORDERS -> DriverIcon.ORDERS
     DriverDestination.UNIT -> DriverIcon.TRUCK
     DriverDestination.HISTORY -> DriverIcon.HISTORY
+    DriverDestination.FINANCE -> DriverIcon.CHECK
     DriverDestination.PROFILE -> DriverIcon.PROFILE
     DriverDestination.SETTINGS -> DriverIcon.SETTINGS
 }
@@ -246,6 +248,7 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
                         DriverDestination.ORDERS -> ordersContent(state, model, orderQuery) { orderQuery = it }
                         DriverDestination.UNIT -> item { UnitScreen(state, model) }
                         DriverDestination.HISTORY -> historyContent(state, model)
+                        DriverDestination.FINANCE -> item { FinanceScreen() }
                         DriverDestination.PROFILE -> item { ProfileScreen(state, model) }
                         DriverDestination.SETTINGS -> item { PreferencesScreen(keepAwake) { keepAwake = it; preferences.keepRouteAwake = it } }
                     }

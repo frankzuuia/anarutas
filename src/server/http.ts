@@ -6,6 +6,7 @@ import { assertInstallation, getPool } from "@/core/database";
 import { authenticate } from "@/core/auth";
 import { AppError } from "@/core/errors";
 import { sameOrigin } from "@/core/policy";
+import { requireAccountRole, type AccountRole } from "@/core/account-role";
 
 export function json(data: unknown, status = 200) {
   return NextResponse.json(data, {
@@ -107,10 +108,11 @@ export async function database() {
   await assertInstallation(pool, config.instanceId);
   return { pool, config };
 }
-export async function principal() {
+export async function principal(role: AccountRole | "any" = "routes") {
   const { pool, config } = await database();
   const token = (await cookies()).get(config.cookieName)?.value;
   const user = await authenticate(pool, config, token);
+  requireAccountRole(user.role, role);
   return { pool, config, token: token!, user };
 }
 export function sessionCookie(

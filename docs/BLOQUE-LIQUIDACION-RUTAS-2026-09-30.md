@@ -224,4 +224,4 @@ Cierre del bloque1:108/108 pruebas financieras con Odoo/PG real,787 regresión/0
 
 El usuario aprobó el bloque 1 con «dale» y confirmó la continuación durante su implementación. La evidencia final está en QA-FUENTE-FINANCIERA-BLOQUE-1.md. Esta fuente de datos no equivale a la liquidación completa.
 
-No volver a solicitar aprobación del bloque 1 ya concedida. Los bloques siguientes requieren cerrar su especificación y revisar sus reglas particulares antes de construirlos, conforme a la ejecución por bloques acordada.
+El propietario aprobó posteriormente todos los bloques restantes con «dale termina los bloques y al final probamos todo de una yo lo pruebo pero ya que tengas todo hecho». La especificación de los bloques3..6 está en [BLOQUES-LIQUIDACION-3-6.md](BLOQUES-LIQUIDACION-3-6.md); su implementación incluye cobros, roles, solicitudes, recepción e historial. La evidencia automatizada y el procedimiento completo para probar la APK0.8.9 están en [QA-LIQUIDACION-COMPLETA-0.8.9.md](QA-LIQUIDACION-COMPLETA-0.8.9.md). QA física a cargo del propietario; no se ha desplegado ni modificado main.

@@ -3332,3 +3332,24 @@ button.confirm-cancel {
     text-align: left;
   }
 }
+
+/* Liquidación keeps the existing theme; money categories retain text labels. */
+.settlement-panel { gap: 20px; }
+.settlement-panel .grid-three { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
+.settlement-money { display: flex; flex-direction: column; gap: 10px; overflow-wrap: anywhere; }
+.settlement-money span { display: flex; justify-content: space-between; gap: 12px; }
+.settlement-money .cash { color: #80e6a8; }
+.settlement-money .transfer { color: #a1d5ff; }
+.settlement-money .credit { color: #e2c1ff; }
+.settlement-route { display:flex; align-items:center; gap:16px; text-align:left; width:100%; padding:18px; }
+.settlement-route>span:first-of-type { flex:1; display:flex; flex-direction:column; gap:6px; }
+.settlement-request { display:flex; flex-direction:column; gap:12px; padding:12px 0; border-bottom:1px solid var(--border); }
+.settlement-panel details>summary { cursor:pointer; min-height:56px; flex-wrap:wrap; gap:12px; }
+.settlement-panel .modal { width:min(640px,calc(100vw - 32px)); max-height:90dvh; overflow:auto; }
+@media(max-width:1000px){.settlement-panel .grid-three { grid-template-columns:1fr; }}
+
+.settlement-dialog .modal-header,.settlement-dialog .modal-body,.settlement-dialog .modal-footer {padding:20px;}
+.settlement-dialog .modal-footer {display:flex;justify-content:flex-end;gap:12px;}
+
+.settlement-panel .toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.settlement-panel .toolbar > label { flex: 1 1 180px; }

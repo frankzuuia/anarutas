@@ -6,7 +6,7 @@ export function GET() {
     return json(
       (
         await pool.query(
-          "SELECT id,name,login,active,created_at FROM route_users ORDER BY created_at",
+          "SELECT id,name,login,active,role,created_at FROM route_users ORDER BY created_at",
         )
       ).rows,
     );

@@ -22,6 +22,7 @@ import {
 import type { User } from "@/core/auth";
 import type { DeletedPlan, Plan } from "@/core/plans";
 import { api, navigateAfterAuth } from "./api";
+import { SettlementPanel } from "./settlement-panel";
 import { DraftName } from "./draft-name";
 import { FleetPanel } from "./fleet-panel";
 import { OrdersBoard } from "./orders-board";
@@ -38,6 +39,7 @@ import { LiveRoutesPage } from "./live-route-view";
 import type { EmbeddedSection } from "@/core/control-screens";
 
 type Section =
+  | "settlements"
   | "plans"
   | "vehicles"
   | "drivers"
@@ -51,7 +53,12 @@ type Section =
   | "consumption"
   | "unit_control";
 const sections = [
-  { id: "control_center" as const, label: "Centro de control", icon: PanelsTopLeft },
+  { id: "settlements" as const, label: "Liquidación de rutas", icon: History },
+  {
+    id: "control_center" as const,
+    label: "Centro de control",
+    icon: PanelsTopLeft,
+  },
   { id: "live_routes" as const, label: "Ruta en vivo", icon: MapPinned },
   { id: "plans" as const, label: "Planificar rutas", icon: Route },
   { id: "incidents" as const, label: "Incidencias", icon: AlertTriangle },
@@ -122,7 +129,9 @@ export function Dashboard({
   embeddedSection?: EmbeddedSection;
   externalRevision?: number;
 }) {
-  const [section, setSection] = useState<Section>(embeddedSection ?? "plans");
+  const [section, setSection] = useState<Section>(
+    user.role === "settlement" ? "settlements" : (embeddedSection ?? "plans"),
+  );
   const [controlRevision, setControlRevision] = useState(0);
   const [menuClosed, setMenuClosed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -144,8 +153,16 @@ export function Dashboard({
     count: number;
   } | null>(null);
   const adoptPlan = useCallback((plan: Plan) => {
-    setSelected((previous) => previous?.id === plan.id && previous.version <= plan.version ? plan : previous);
-    setPlans((previous) => previous.map((p) => (p.id === plan.id && p.version <= plan.version ? plan : p)));
+    setSelected((previous) =>
+      previous?.id === plan.id && previous.version <= plan.version
+        ? plan
+        : previous,
+    );
+    setPlans((previous) =>
+      previous.map((p) =>
+        p.id === plan.id && p.version <= plan.version ? plan : p,
+      ),
+    );
   }, []);
   const adoptPendingValidationCount = useCallback(
     (planId: string, count: number) => {
@@ -171,7 +188,9 @@ export function Dashboard({
         setSelected((previous) => {
           if (!previous) return null;
           const current = latest.find((plan) => plan.id === previous.id);
-          return current && current.version < previous.version ? previous : current ?? null;
+          return current && current.version < previous.version
+            ? previous
+            : (current ?? null);
         });
         setBoardRevision((value) => value + 1);
       }
@@ -182,8 +201,10 @@ export function Dashboard({
         setConsumptionRevision((value) => value + 1);
       if (section === "unit_control") setUnitRevision((value) => value + 1);
       if (section === "incidents") setIncidentRevision((value) => value + 1);
-      if (section === "live_incidents") setLiveIncidentRevision((value) => value + 1);
-      if (section === "control_center" || section === "live_routes") setControlRevision(value => value + 1);
+      if (section === "live_incidents")
+        setLiveIncidentRevision((value) => value + 1);
+      if (section === "control_center" || section === "live_routes")
+        setControlRevision((value) => value + 1);
       return true;
     } catch (e) {
       setError((e as Error).message);
@@ -202,16 +223,19 @@ export function Dashboard({
       if (current) setLoading(false);
     };
     const requests: Record<Section, () => Promise<void>> = {
+      settlements: () => Promise.resolve(),
       vehicles: () => Promise.resolve(),
       drivers: () => Promise.resolve(),
       plans: () =>
         api<Plan[]>("/api/plans").then((data) => {
           if (current) {
             setPlans(data);
-            setSelected(previous => {
+            setSelected((previous) => {
               if (!previous) return null;
-              const latest = data.find(plan => plan.id === previous.id);
-              return latest && latest.version < previous.version ? previous : latest ?? null;
+              const latest = data.find((plan) => plan.id === previous.id);
+              return latest && latest.version < previous.version
+                ? previous
+                : (latest ?? null);
             });
           }
         }),
@@ -317,106 +341,125 @@ export function Dashboard({
     <div
       className={`app ${embeddedSection ? "embedded-dashboard" : ""} ${menuClosed ? "menu-closed" : ""} ${section === "plans" ? "planner-app" : ""} ${section === "customers" ? "customer-app" : ""} ${section === "control_center" ? "control-center-app" : ""} ${section === "live_routes" ? "live-routes-app" : ""}`}
     >
-      {!embeddedSection && <aside className="sidebar" id="app-navigation" hidden={menuClosed}>
-        <div className="brand">
-          <Route size={30} />
-          <div>
-            ANA RUTAS<small>BY FIVE</small>
-          </div>
-        </div>
-        <nav className="nav" aria-label="Navegación principal">
-          <span className="eyebrow">Operación</span>
-          {sections.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              className={id === section ? "active" : ""}
-              aria-current={id === section ? "page" : undefined}
-              onClick={() => {
-                setNotice("");
-                setSection(id);
-              }}
-            >
-              <Icon size={18} />
-              {label}
-            </button>
-          ))}
-        </nav>
-      </aside>}
-      <div className="content">
-        {!embeddedSection && <header className="topbar">
-          <div className="row">
-            <span className={`badge ${liveStatus === "En vivo" ? "green" : "amber"}`} aria-live="polite" aria-label="Estado de sincronización">{liveStatus}</span>
-            <button
-              className="quiet"
-              aria-label={menuClosed ? "Abrir menú" : "Cerrar menú"}
-              aria-expanded={!menuClosed}
-              aria-controls="app-navigation"
-              onClick={() => setMenuClosed((value) => !value)}
-            >
-              <Menu size={19} />
-            </button>
-            <span className="small">
-              {displayName} <span aria-hidden="true"> / </span> Administración
-            </span>
-          </div>
-          <div className="row">
-            <div className="avatar" aria-hidden="true">
-              {user.name.charAt(0).toUpperCase()}
+      {!embeddedSection && (
+        <aside className="sidebar" id="app-navigation" hidden={menuClosed}>
+          <div className="brand">
+            <Route size={30} />
+            <div>
+              ANA RUTAS<small>BY FIVE</small>
             </div>
-            <span className="small">{user.name}</span>
-            <button
-              className="quiet"
-              aria-label="Cerrar sesión"
-              disabled={busy}
-              onClick={() =>
-                void perform(async () => {
-                  await api("/api/session", "DELETE");
-                  navigateAfterAuth("/login");
-                })
-              }
-            >
-              <LogOut size={17} />
-            </button>
           </div>
-        </header>}
+          <nav className="nav" aria-label="Navegación principal">
+            <span className="eyebrow">Operación</span>
+            {sections.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                disabled={
+                  user.role === "settlement"
+                    ? id !== "settlements"
+                    : id === "settlements"
+                }
+                className={id === section ? "active" : ""}
+                aria-current={id === section ? "page" : undefined}
+                onClick={() => {
+                  setNotice("");
+                  setSection(id);
+                }}
+              >
+                <Icon size={18} />
+                {label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+      )}
+      <div className="content">
+        {!embeddedSection && (
+          <header className="topbar">
+            <div className="row">
+              <span
+                className={`badge ${liveStatus === "En vivo" ? "green" : "amber"}`}
+                aria-live="polite"
+                aria-label="Estado de sincronización"
+              >
+                {liveStatus}
+              </span>
+              <button
+                className="quiet"
+                aria-label={menuClosed ? "Abrir menú" : "Cerrar menú"}
+                aria-expanded={!menuClosed}
+                aria-controls="app-navigation"
+                onClick={() => setMenuClosed((value) => !value)}
+              >
+                <Menu size={19} />
+              </button>
+              <span className="small">
+                {displayName} <span aria-hidden="true"> / </span> Administración
+              </span>
+            </div>
+            <div className="row">
+              <div className="avatar" aria-hidden="true">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <span className="small">{user.name}</span>
+              <button
+                className="quiet"
+                aria-label="Cerrar sesión"
+                disabled={busy}
+                onClick={() =>
+                  void perform(async () => {
+                    await api("/api/session", "DELETE");
+                    navigateAfterAuth("/login");
+                  })
+                }
+              >
+                <LogOut size={17} />
+              </button>
+            </div>
+          </header>
+        )}
         <main
           className={`main ${section === "plans" ? "planner-main" : ""} ${section === "customers" ? "customer-main" : ""} ${section === "control_center" ? "control-center-main" : ""} ${section === "live_routes" ? "live-routes-main" : ""}`}
         >
-          {section !== "plans" && section !== "control_center" && section !== "live_routes" && (
-            <header className="page-heading">
-              <div>
-                <span className="eyebrow">Administración</span>
-                <h1>{title}</h1>
-                <p>
-                  {section === "vehicles"
-                    ? "Registra tus unidades y administra la asignación de choferes."
-                    : section === "unit_control"
-                      ? "Fotografías privadas de cada camioneta, organizadas por fecha y disponibles durante 15 días."
-                    : section === "drivers"
-                      ? "Datos de contacto, disponibilidad y documentos privados de tu equipo."
-                      : section === "customers"
-                        ? "Directorio operativo, ventanas de entrega y puntos por sucursal. Odoo permanece en sólo lectura."
-                        : section === "users"
-                          ? "Una cuenta por persona. Todos administran únicamente Ana Rutas."
-                          : section === "audit"
-                            ? "Actividad registrada con su autor y fecha."
-                            : section === "incidents"
-                              ? "Incidencias por producto, devoluciones, repuntes y llegadas fuera de horario. Consulta por fecha y chofer."
-                              : section === "live_incidents"
-                                ? "Casos de rutas iniciadas vigentes, agrupados por chofer y actualizados automáticamente."
-                              : "Métricas y cargos reales publicados por Google Cloud Billing, sin estimaciones internas."}
-                </p>
-              </div>
-              <button
-                className="quiet"
-                onClick={() => void refresh()}
-                disabled={loading || busy}
-              >
-                <RefreshCw size={16} />
-                Actualizar
-              </button>
-            </header>
-          )}
+          {section !== "plans" &&
+            section !== "control_center" &&
+            section !== "live_routes" && (
+              <header className="page-heading">
+                <div>
+                  <span className="eyebrow">Administración</span>
+                  <h1>{title}</h1>
+                  <p>
+                    {section === "vehicles"
+                      ? "Registra tus unidades y administra la asignación de choferes."
+                      : section === "unit_control"
+                        ? "Fotografías privadas de cada camioneta, organizadas por fecha y disponibles durante 15 días."
+                        : section === "drivers"
+                          ? "Datos de contacto, disponibilidad y documentos privados de tu equipo."
+                          : section === "customers"
+                            ? "Directorio operativo, ventanas de entrega y puntos por sucursal. Odoo permanece en sólo lectura."
+                            : section === "users"
+                              ? "Una cuenta por persona. Todos administran únicamente Ana Rutas."
+                              : section === "audit"
+                                ? "Actividad registrada con su autor y fecha."
+                                : section === "incidents"
+                                  ? "Incidencias por producto, devoluciones, repuntes y llegadas fuera de horario. Consulta por fecha y chofer."
+                                  : section === "live_incidents"
+                                    ? "Casos de rutas iniciadas vigentes, agrupados por chofer y actualizados automáticamente."
+                                    : section === "settlements"
+                                      ? "Cobros, solicitudes y recepción organizados por chofer y ruta."
+                                      : "Métricas y cargos reales publicados por Google Cloud Billing, sin estimaciones internas."}
+                  </p>
+                </div>
+                <button
+                  className="quiet"
+                  onClick={() => void refresh()}
+                  disabled={loading || busy}
+                >
+                  <RefreshCw size={16} />
+                  Actualizar
+                </button>
+              </header>
+            )}
           {error && (
             <p
               className={`notice error ${section === "plans" ? "planner-toast" : ""}`}
@@ -443,26 +486,78 @@ export function Dashboard({
           {section === "customers" && (
             <CustomerPanel revision={customerRevision + externalRevision} />
           )}
-          {section === "incidents" && <IncidentsPanel today={today} timezone={timezone} revision={incidentRevision + externalRevision} />}
-          {section === "live_incidents" && <LiveIncidentsPanel revision={liveIncidentRevision} />}
-          {section === "live_routes" && <ExpandableScreen title="Ruta en vivo"
-            heading={<div className="control-heading-line">
-              <h1>Ruta en vivo</h1>
-              <details className="control-help">
-                <summary aria-label="Información de Ruta en vivo" title="Cómo usar Ruta en vivo"><Info size={17} /></summary>
-                <div className="control-help-popover" role="note">
-                  <strong>Ubicación y avance en tiempo real</strong>
-                  <p>Selecciona un chofer, sigue su ubicación o consulta sus paradas con Ver avance. La antigüedad del GPS permanece visible al pie del mapa.</p>
+          {section === "incidents" && (
+            <IncidentsPanel
+              today={today}
+              timezone={timezone}
+              revision={incidentRevision + externalRevision}
+            />
+          )}
+          {section === "live_incidents" && (
+            <LiveIncidentsPanel revision={liveIncidentRevision} />
+          )}
+          {section === "live_routes" && (
+            <ExpandableScreen
+              title="Ruta en vivo"
+              heading={
+                <div className="control-heading-line">
+                  <h1>Ruta en vivo</h1>
+                  <details className="control-help">
+                    <summary
+                      aria-label="Información de Ruta en vivo"
+                      title="Cómo usar Ruta en vivo"
+                    >
+                      <Info size={17} />
+                    </summary>
+                    <div className="control-help-popover" role="note">
+                      <strong>Ubicación y avance en tiempo real</strong>
+                      <p>
+                        Selecciona un chofer, sigue su ubicación o consulta sus
+                        paradas con Ver avance. La antigüedad del GPS permanece
+                        visible al pie del mapa.
+                      </p>
+                    </div>
+                  </details>
                 </div>
-              </details>
-            </div>}
-            actions={<button className="quiet" onClick={() => void refresh()} disabled={loading || busy}><RefreshCw size={16} />Actualizar</button>}>
-            <LiveRoutesPage revision={controlRevision} />
-          </ExpandableScreen>}
-          {section === "control_center" && <ControlCenter revision={controlRevision}
-            onRefresh={() => void refresh()} refreshDisabled={loading || busy}
-            renderSection={value => <Dashboard user={user} displayName={displayName} today={today} timezone={timezone} embeddedSection={value} externalRevision={controlRevision} />} />}
-          {section === "unit_control" && <UnitControlPanel today={today} timezone={timezone} revision={unitRevision + externalRevision} />}
+              }
+              actions={
+                <button
+                  className="quiet"
+                  onClick={() => void refresh()}
+                  disabled={loading || busy}
+                >
+                  <RefreshCw size={16} />
+                  Actualizar
+                </button>
+              }
+            >
+              <LiveRoutesPage revision={controlRevision} />
+            </ExpandableScreen>
+          )}
+          {section === "control_center" && (
+            <ControlCenter
+              revision={controlRevision}
+              onRefresh={() => void refresh()}
+              refreshDisabled={loading || busy}
+              renderSection={(value) => (
+                <Dashboard
+                  user={user}
+                  displayName={displayName}
+                  today={today}
+                  timezone={timezone}
+                  embeddedSection={value}
+                  externalRevision={controlRevision}
+                />
+              )}
+            />
+          )}
+          {section === "unit_control" && (
+            <UnitControlPanel
+              today={today}
+              timezone={timezone}
+              revision={unitRevision + externalRevision}
+            />
+          )}
           {section === "consumption" && (
             <GoogleConsumptionPanel
               revision={consumptionRevision + externalRevision}
@@ -572,8 +667,8 @@ export function Dashboard({
                   )}
                   <div className="note-line">
                     <Info size={17} style={{ flexShrink: 0 }} />
-                    Los cambios y la optimización se guardan en el borrador.
-                    El chofer sólo ve una ruta después de publicarla.
+                    Los cambios y la optimización se guardan en el borrador. El
+                    chofer sólo ve una ruta después de publicarla.
                   </div>
                 </section>
               </div>
@@ -595,116 +690,134 @@ export function Dashboard({
               onConfirm={deleteDraft}
             />
           )}
-          {section === "users" && (
-            <div className="grid-two">
-              <section className="panel">
-                <div className="panel-header">
-                  <h2>Administradores</h2>
-                  <span className="badge">{users.length} cuentas</span>
-                </div>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Nombre / usuario</th>
-                        <th>Estado</th>
-                        <th>Acceso</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map((account) => (
-                        <tr key={account.id}>
-                          <td>
-                            {account.name}
-                            <small>
-                              {account.login}
-                              {account.id === user.id ? " · Tú" : ""}
-                            </small>
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${account.active ? "green" : ""}`}
-                            >
-                              {account.active ? "Activo" : "Inactivo"}
-                            </span>
-                          </td>
-                          <td>
-                            <button
-                              disabled={busy || account.id === user.id}
-                              onClick={() =>
-                                void perform(async () => {
-                                  await api(
-                                    `/api/users/${account.id}`,
-                                    "PATCH",
-                                    { active: !account.active },
-                                  );
-                                  await refresh();
-                                  setNotice(
-                                    account.active
-                                      ? "Cuenta desactivada y sesiones revocadas."
-                                      : "Cuenta activada.",
-                                  );
-                                })
-                              }
-                            >
-                              {account.active ? "Desactivar" : "Activar"}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-              <section className="panel">
-                <div className="panel-header">
-                  <h2>Añadir administrador</h2>
-                </div>
-                <form className="panel-body stack" onSubmit={addUser}>
-                  <label>
-                    Nombre completo
-                    <input
-                      name="name"
-                      required
-                      minLength={2}
-                      maxLength={120}
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label>
-                    Usuario
-                    <input
-                      name="login"
-                      required
-                      minLength={3}
-                      maxLength={120}
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label>
-                    Contraseña
-                    <input
-                      name="password"
-                      type="password"
-                      required
-                      minLength={6}
-                      maxLength={128}
-                      autoComplete="new-password"
-                    />
-                  </label>
-                  <p className="security-note">
-                    Entre 6 y 128 caracteres. Comparte el acceso por un canal
-                    seguro. Esta cuenta no da acceso al bot, vendedores, precios
-                    ni Odoo.
-                  </p>
-                  <button className="primary" disabled={busy}>
-                    <Plus size={17} />
-                    Crear cuenta
-                  </button>
-                </form>
-              </section>
-            </div>
+          {section === "settlements" && user.role === "settlement" && (
+            <SettlementPanel today={today} />
           )}
+          {section === "users" &&
+            (["routes", "settlement"] as const).map((role) => (
+              <div className="grid-two" key={role}>
+                <section className="panel">
+                  <div className="panel-header">
+                    <h2>
+                      {role === "routes"
+                        ? "Administradores de rutas"
+                        : "Liquidadores"}
+                    </h2>
+                    <span className="badge">
+                      {users.filter((account) => account.role === role).length}{" "}
+                      cuentas
+                    </span>
+                  </div>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Nombre / usuario</th>
+                          <th>Estado</th>
+                          <th>Acceso</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {users
+                          .filter((account) => account.role === role)
+                          .map((account) => (
+                            <tr key={account.id}>
+                              <td>
+                                {account.name}
+                                <small>
+                                  {account.login}
+                                  {account.id === user.id ? " · Tú" : ""}
+                                </small>
+                              </td>
+                              <td>
+                                <span
+                                  className={`badge ${account.active ? "green" : ""}`}
+                                >
+                                  {account.active ? "Activo" : "Inactivo"}
+                                </span>
+                              </td>
+                              <td>
+                                <button
+                                  disabled={busy || account.id === user.id}
+                                  onClick={() =>
+                                    void perform(async () => {
+                                      await api(
+                                        `/api/users/${account.id}`,
+                                        "PATCH",
+                                        { active: !account.active },
+                                      );
+                                      await refresh();
+                                      setNotice(
+                                        account.active
+                                          ? "Cuenta desactivada y sesiones revocadas."
+                                          : "Cuenta activada.",
+                                      );
+                                    })
+                                  }
+                                >
+                                  {account.active ? "Desactivar" : "Activar"}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+                <section className="panel">
+                  <div className="panel-header">
+                    <h2>
+                      {role === "routes"
+                        ? "Añadir administrador"
+                        : "Añadir liquidador"}
+                    </h2>
+                  </div>
+                  <form className="panel-body stack" onSubmit={addUser}>
+                    <input type="hidden" name="role" value={role} />
+                    <label>
+                      Nombre completo
+                      <input
+                        name="name"
+                        required
+                        minLength={2}
+                        maxLength={120}
+                        autoComplete="off"
+                      />
+                    </label>
+                    <label>
+                      Usuario
+                      <input
+                        name="login"
+                        required
+                        minLength={3}
+                        maxLength={120}
+                        autoComplete="off"
+                      />
+                    </label>
+                    <label>
+                      Contraseña
+                      <input
+                        name="password"
+                        type="password"
+                        required
+                        minLength={6}
+                        maxLength={128}
+                        autoComplete="new-password"
+                      />
+                    </label>
+                    <p className="security-note">
+                      Entre 6 y 128 caracteres. Comparte el acceso por un canal
+                      seguro. Esta cuenta no da acceso al bot, vendedores,
+                      precios ni Odoo.
+                    </p>
+                    <button className="primary" disabled={busy}>
+                      <Plus size={17} />
+                      Crear cuenta
+                    </button>
+                  </form>
+                </section>
+              </div>
+            ))}
           {section === "audit" && (
             <section className="panel">
               <div className="panel-header">

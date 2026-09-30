@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export function GET(request: Request) {
   return endpoint(async () => {
-    const { pool, config, token } = await principal();
+    const { pool, config, token } = await principal("any");
     return new NextResponse(
       panelEventStream(pool, config, token, request.signal),
       {

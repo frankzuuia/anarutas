@@ -36,6 +36,10 @@ import { migrateDriverRouteCompletion } from "./driver-route-completion-schema";
 import { migrateLiveWarehouse } from "./live-warehouse-schema";
 import { migrateFinancialSources } from "./financial-schema";
 import { migrateIncidentFinancials } from "./incident-financial-schema";
+import { migratePayments } from "./payment-schema";
+import { migrateAccountRoles } from "./account-role-schema";
+import { migrateSettlements } from "./settlement-schema";
+import { requireAccountRole, type AccountRole } from "./account-role";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
   return new pg.Pool({
@@ -109,7 +113,8 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (
         ![
           1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-          21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+          21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
+          38,
         ].includes(version)
       )
         throw new AppError("SCHEMA_VERSION_UNSUPPORTED", 503);
@@ -159,6 +164,9 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (version < 33) await migrateLiveWarehouse(client);
       if (version < 34) await migrateFinancialSources(client);
       if (version < 35) await migrateIncidentFinancials(client);
+      if (version < 36) await migratePayments(client);
+      if (version < 37) await migrateAccountRoles(client);
+      if (version < 38) await migrateSettlements(client);
       return;
     }
     await client.query(`
@@ -208,6 +216,9 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migrateLiveWarehouse(client);
     await migrateFinancialSources(client);
     await migrateIncidentFinancials(client);
+    await migratePayments(client);
+    await migrateAccountRoles(client);
+    await migrateSettlements(client);
   });
 }
 export async function audit(
@@ -222,10 +233,15 @@ export async function audit(
     [actor, action, entity, JSON.stringify(details)],
   );
 }
-export async function assertActiveActor(sql: Sql, actor: string) {
+export async function assertActiveActor(
+  sql: Sql,
+  actor: string,
+  role: AccountRole = "routes",
+) {
   const { rows } = await sql.query(
-    "SELECT active FROM route_users WHERE id=$1 FOR SHARE",
+    "SELECT active,role FROM route_users WHERE id=$1 FOR SHARE",
     [actor],
   );
   if (!rows[0]?.active) throw new AppError("UNAUTHENTICATED", 401);
+  requireAccountRole(rows[0].role, role);
 }

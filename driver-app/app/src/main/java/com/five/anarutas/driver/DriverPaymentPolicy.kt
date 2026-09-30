@@ -1,0 +1,28 @@
+package com.five.anarutas.driver
+
+import java.math.BigDecimal
+
+// Preview only. The server revalidates source revision, authorization and all amounts.
+internal data class PaymentPreview(val tendered: BigDecimal, val change: BigDecimal, val received: BigDecimal, val balance: BigDecimal)
+
+internal fun paymentPreview(method: String, tenderedText: String, changeText: String, expectedText: String?, roundingText: String?): PaymentPreview? {
+    if (method !in setOf("cash", "transfer", "credit")) return null
+    fun amount(text: String?): BigDecimal? = text?.takeIf { it.length <= 80 }?.toBigDecimalOrNull()
+        ?.takeIf { it.precision() <= 32 && it.scale() in -24..56 && it.signum() >= 0 }
+    val expected = amount(expectedText) ?: return null
+    val rounding = amount(roundingText)?.takeIf { it.signum() > 0 } ?: return null
+    val tendered = if (method == "credit") BigDecimal.ZERO else amount(tenderedText) ?: return null
+    val change = if (method == "cash") amount(changeText) ?: return null else BigDecimal.ZERO
+    if (listOf(expected, tendered, change).any { it.remainder(rounding).signum() != 0 }) return null
+    val received = tendered.subtract(change)
+    if (received.signum() < 0 || received > expected) return null
+    val balance = expected.subtract(received)
+    if (change.signum() != 0 && balance.signum() != 0) return null
+    return PaymentPreview(tendered, change, received, balance)
+}
+
+internal fun financeCommandRetryable(status: Int): Boolean = status !in 400..499 || status == 401 || status == 408 || status == 429
+
+internal data class FinanceReadTarget(val executionId: String?, val page: Int)
+internal fun financeReadStillCurrent(requested: FinanceReadTarget, current: FinanceReadTarget, requestedDevice: String, currentDevice: String): Boolean =
+    requested == current && requestedDevice == currentDevice

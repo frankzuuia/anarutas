@@ -92,6 +92,19 @@ internal fun friendlyError(error: Throwable): String = when (error) {
         "VERSION_CONFLICT" -> "La ruta cambió desde que la abriste. Actualízala y confirma de nuevo."
         "FINANCIAL_REVISION_CHANGED", "FINANCIAL_LINE_CHANGED", "FINANCIAL_REFERENCE_REQUIRED" -> "Odoo actualizó esta partida. Revisa los importes nuevos; tu captura se conserva."
         "FINANCIAL_SOURCE_STALE", "FINANCIAL_SOURCE_NOT_READY" -> "Esperando datos vigentes de Odoo. Tu captura se conserva; podrás enviarla al sincronizar."
+        "PAYMENT_BASIS_CHANGED" -> "El pedido cambió. Revisa sus importes e incidencias antes de confirmar el cobro."
+        "PAYMENT_ALREADY_CONFIRMED" -> "El cobro ya está registrado. Se mostrará el recibo guardado."
+        "PAYMENT_DELIVERY_REQUIRED" -> "Confirma primero la entrega del pedido."
+        "PAYMENT_METHOD_REQUIRED" -> "Selecciona efectivo, transferencia o crédito."
+        "PAYMENT_AMOUNT_INVALID" -> "Revisa los importes y los decimales permitidos por la moneda."
+        "PAYMENT_CHANGE_INVALID" -> "El cambio debe corresponder al total del pedido y sólo se admite en efectivo."
+        "CREDIT_RECEIVED_MUST_BE_ZERO" -> "Un pedido a crédito no registra dinero recibido."
+        "PAYMENT_NOTE_INVALID" -> "La nota debe tener como máximo 2,000 caracteres."
+        "SETTLEMENT_ROUTE_NOT_FINISHED" -> "Termina la ruta antes de solicitar su liquidación."
+        "SETTLEMENT_PAYMENTS_MISSING" -> "Registra el cobro de todos los pedidos entregados antes de liquidar la ruta completa."
+        "SETTLEMENT_REQUEST_PENDING" -> "Ya hay una solicitud por recibir. Espera la respuesta del liquidador."
+        "SETTLEMENT_NOTHING_PENDING" -> "Estos cobros ya fueron liquidados. Revisa el historial."
+        "SETTLEMENT_VERSION_CHANGED" -> "La solicitud cambió. Actualiza para ver la respuesta del liquidador."
         "REPLACEMENT_PAYMENT_REQUIRED" -> "Indica si el cliente paga completo o deja pendiente el importe de la reposición."
         "INVALID_FINANCIAL_INCIDENT" -> "Actualiza la partida y revisa cómo afecta el importe de la incidencia."
         "OPERATION_POLICY_CHANGED" -> "Administración cambió el radio de llegada. Revisa los nuevos límites y confirma otra vez."
@@ -378,7 +391,7 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
             DriverDestination.HOME -> state.dashboard?.today
             DriverDestination.ROUTE, DriverDestination.ORDERS, DriverDestination.UNIT ->
                 state.selected ?: state.dashboard?.today
-            DriverDestination.PROFILE, DriverDestination.HISTORY, DriverDestination.SETTINGS -> state.selected
+            DriverDestination.PROFILE, DriverDestination.HISTORY, DriverDestination.FINANCE, DriverDestination.SETTINGS -> state.selected
         }
         state = state.copy(
             destination = destination,

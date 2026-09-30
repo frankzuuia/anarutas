@@ -4,7 +4,7 @@ import { AppError } from "@/core/errors";
 import { Dashboard } from "@/components/dashboard";
 export const dynamic = "force-dynamic";
 export default async function Home() {
-  const access = await principal().catch((error) => {
+  const access = await principal("any").catch((error) => {
     if (error instanceof AppError && error.status === 401) return null;
     throw error;
   });

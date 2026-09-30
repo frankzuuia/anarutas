@@ -375,8 +375,17 @@ class DriverApi(private val server: String) {
             }
         }
 
-    suspend fun photoBytes(token: String, photoId: String): ByteArray = withContext(Dispatchers.IO) {
-        val connection = URL("$server/api/mobile/unit-photos/$photoId").openConnection() as HttpURLConnection
+    suspend fun photoBytes(token: String, photoId: String): ByteArray = authorizedPhotoBytes(token, "/api/mobile/unit-photos/$photoId")
+
+    internal suspend fun financeEvidence(token: String, executionId: String, incidentId: String, photoId: String): ByteArray {
+        val execution = java.util.UUID.fromString(executionId)
+        val incident = java.util.UUID.fromString(incidentId)
+        val photo = java.util.UUID.fromString(photoId)
+        return authorizedPhotoBytes(token, "/api/mobile/finance/$execution/evidence?incidentId=$incident&photoId=$photo")
+    }
+
+    private suspend fun authorizedPhotoBytes(token: String, path: String): ByteArray = withContext(Dispatchers.IO) {
+        val connection = URL("$server$path").openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "GET"
             connection.instanceFollowRedirects = false
@@ -427,6 +436,13 @@ class DriverApi(private val server: String) {
     suspend fun startRoute(token: String, planId: String, expectedRevision: Int) {
         exchange("POST", "/api/mobile/plans/$planId/start", token,
             JSONObject().put("expectedRevision", expectedRevision))
+    }
+
+    internal suspend fun financeList(token: String, page: Int) = org.json.JSONArray(exchange("GET", "/api/mobile/finance?page=$page", token))
+    internal suspend fun financeDetail(token: String, executionId: String) = JSONObject(exchange("GET", "/api/mobile/finance/$executionId", token))
+    internal suspend fun financeCommand(token: String, executionId: String, kind: String, payload: JSONObject): JSONObject {
+        require(kind == "payments" || kind == "requests")
+        return JSONObject(exchange("POST", "/api/mobile/finance/$executionId/$kind", token, payload))
     }
 
     internal suspend fun tracking(token: String, planId: String, payload: JSONObject): JSONObject =

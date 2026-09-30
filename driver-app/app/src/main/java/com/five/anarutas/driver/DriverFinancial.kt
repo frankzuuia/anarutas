@@ -11,7 +11,7 @@ data class IncidentFinancialReference(val revision: Int, val moveId: Long, val s
     fun json(): JSONObject = JSONObject().put("revision", revision).put("moveId", moveId).put("saleLineId", saleLineId)
     val key: String get() = "$revision:$moveId:$saleLineId"
 }
-data class DriverCurrency(val name: String, val decimalPlaces: Int)
+data class DriverCurrency(val name: String, val decimalPlaces: Int, val rounding: String? = null)
 data class DriverFinancialLine(val lineIndex: Int, val moveId: Long, val saleLineId: Long,
     val quantity: String, val unit: String, val unitPrice: String, val discount: String,
     val total: String, val physicalRemaining: String, val net: String?, val deduction: String?, val deferred: String?)
@@ -36,7 +36,7 @@ internal fun parseDriverFinancial(json: JSONObject?, receivedNanos: Long = Syste
     return DriverFinancialView(json.getInt("revision"), json.getString("status"), json.getBoolean("fresh"),
         json.nullableText("error"), json.nullableText("checkedAt")?.let(Instant::parse), Instant.parse(json.getString("serverTime")),
         json.getLong("maxAgeSeconds"), receivedNanos,
-        json.optJSONObject("currency")?.let { DriverCurrency(it.getString("name"), it.getInt("decimalPlaces")) },
+        json.optJSONObject("currency")?.let { DriverCurrency(it.getString("name"), it.getInt("decimalPlaces"), it.getString("rounding")) },
         (0 until lines.length()).map { index -> val line = lines.getJSONObject(index)
             DriverFinancialLine(line.getInt("lineIndex"), line.getLong("moveId"), line.getLong("saleLineId"),
                 line.getString("quantity"), line.getString("unit"), line.getString("unitPrice"), line.getString("discount"),

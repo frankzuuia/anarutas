@@ -13,7 +13,14 @@ import { sessionUsable } from "./policy";
 import type { readConfig } from "./config";
 
 type Config = ReturnType<typeof readConfig>;
-export type User = { id: string; name: string; login: string; active: boolean };
+import { accountRole, type AccountRole } from "./account-role";
+export type User = {
+  id: string;
+  name: string;
+  login: string;
+  active: boolean;
+  role: AccountRole;
+};
 export function textField(value: unknown, min = 1, max = 120): string {
   if (
     typeof value !== "string" ||
@@ -48,11 +55,12 @@ async function insertUser(
   sql: Parameters<typeof audit>[0],
   input: Record<string, unknown>,
   passwordHash: string,
+  role: AccountRole = "routes",
 ): Promise<User> {
   const id = randomUUID();
   const result = await sql.query(
-    "INSERT INTO route_users(id,name,login,password_hash) VALUES($1,$2,$3,$4) RETURNING id,name,login,active",
-    [id, textField(input.name, 2), loginKey(input.login), passwordHash],
+    "INSERT INTO route_users(id,name,login,password_hash,role) VALUES($1,$2,$3,$4,$5) RETURNING id,name,login,active,role",
+    [id, textField(input.name, 2), loginKey(input.login), passwordHash, role],
   );
   return result.rows[0];
 }
@@ -89,7 +97,7 @@ export async function login(
   await throttle(pool, `login:${tokenHash(key)}`, 6);
   const password = passwordField(input.password);
   const { rows } = await pool.query(
-    "SELECT id,name,login,active,password_hash FROM route_users WHERE login=$1",
+    "SELECT id,name,login,active,password_hash,role FROM route_users WHERE login=$1",
     [key],
   );
   const candidate = rows[0];
@@ -119,6 +127,7 @@ export async function login(
       name: candidate.name,
       login: candidate.login,
       active: candidate.active,
+      role: candidate.role,
     } as User,
   };
 }
@@ -129,7 +138,7 @@ export async function authenticate(
 ): Promise<User> {
   if (!token || token.length !== 64) throw new AppError("UNAUTHENTICATED", 401);
   const { rows } = await pool.query(
-    `SELECT u.id,u.name,u.login,u.active,s.expires_at,s.idle_expires_at,s.revoked_at,now() AS now
+    `SELECT u.id,u.name,u.login,u.active,u.role,s.expires_at,s.idle_expires_at,s.revoked_at,now() AS now
     FROM route_sessions s JOIN route_users u ON u.id=s.user_id WHERE s.token_hash=$1`,
     [tokenHash(token)],
   );
@@ -149,7 +158,13 @@ export async function authenticate(
     `UPDATE route_sessions SET idle_expires_at=LEAST(expires_at,now()+$2*interval '1 minute') WHERE token_hash=$1 AND revoked_at IS NULL`,
     [tokenHash(token), config.idleMinutes],
   );
-  return { id: row.id, name: row.name, login: row.login, active: row.active };
+  return {
+    id: row.id,
+    name: row.name,
+    login: row.login,
+    active: row.active,
+    role: row.role,
+  };
 }
 export async function logout(pool: Pool, actor: string, token: string) {
   await transaction(pool, async (client) => {
@@ -169,7 +184,12 @@ export async function createUser(
   const hash = await hashPassword(passwordField(input.password));
   return transaction(pool, async (client) => {
     await assertActiveActor(client, actor);
-    const user = await insertUser(client, input, hash);
+    const user = await insertUser(
+      client,
+      input,
+      hash,
+      accountRole(input.role ?? "routes"),
+    );
     await audit(client, actor, "account.created", user.id);
     return user;
   });
@@ -188,7 +208,7 @@ export async function setUserActive(
     );
     await assertActiveActor(client, actor);
     const result = await client.query(
-      "UPDATE route_users SET active=$2 WHERE id=$1 RETURNING id,name,login,active",
+      "UPDATE route_users SET active=$2 WHERE id=$1 RETURNING id,name,login,active,role",
       [id, active],
     );
     if (!result.rowCount) throw new AppError("NOT_FOUND", 404);
