@@ -10,19 +10,19 @@ import { loadGoogleMaps } from "./google-maps";
 import { createLiveMapMarkerNode } from "./live-map-marker";
 import { useLiveRoutes } from "./use-live-routes";
 import { routeEta } from "@/core/live-eta";
+import { routeDestinationLabel, warehouseReturnStatus } from "@/core/live-route-destination";
 
 const statusNames = { open: "Abierto", closed_pending: "Cliente cerrado · reintento", rejected: "Rechazado", rescheduled: "Reprogramado", delivered: "Entregado" };
 const colors = ["#8dddac", "#c591ee", "#80bffd", "#f5d676", "#f497bc", "#88ded8"];
 function RouteProgress({ route, now, selected, onSelect }: { route: LiveRoute; now: number; selected: string; onSelect: (id: string) => void }) {
   const health = locationHealth(route, now);
-  const active = route.stops.find(s => s.id === (route.arrivedStopId ?? route.targetStopId));
   return <article className="live-route-card">
     <header><div><h3><Truck size={17} />{route.driver}</h3><p>{route.vehicle} · {route.plate}</p></div><span className={`badge ${route.completedAt || health.live ? "green" : "amber"}`}>{health.label}</span></header>
     <div className="small">{route.label} · {route.date}</div>
     <div className="live-progress-counts"><div><strong>{route.progress.delivered}/{route.progress.orders}</strong><span>pedidos entregados</span></div>
       <div><strong>{route.progress.remainingStops}</strong><span>paradas por atender</span></div></div>
     <progress aria-label={`Entregas de ${route.driver}`} value={route.progress.delivered} max={Math.max(1, route.progress.orders)} />
-    <p className="live-route-destination"><Navigation size={16} />{active ? `${route.arrivedStopId ? "Atendiendo" : "Destino"}: ${active.position} · ${active.customer}` : "Sin destino confirmado"}</p>
+    <p className="live-route-destination"><Navigation size={16} />{routeDestinationLabel(route, now)}</p>
     <p className="live-eta" aria-label={`Tiempo de ${route.driver}`}>{routeEta(route, now)}</p>
     <p className="small">{route.progress.completedStops}/{route.progress.totalStops} paradas entregadas · {route.progress.rescheduled} pedidos reprogramados · {route.progress.incidentOrders} con incidencia</p>
     {route.location && <p className="small">Precisión ±{Math.round(route.location.accuracy)} m · {new Date(route.location.observedAt).toLocaleTimeString("es-MX")}</p>}
@@ -166,7 +166,7 @@ export function LiveRouteView({ feed, filter, onFilter, progressOnly = false }: 
     <span title="Paradas pendientes"><strong>{routes.reduce((n,r) => n+r.progress.remainingStops,0)}</strong> pendientes</span>
     {routes.length === 1 && <span className={locationHealth(routes[0], feed.now).live ? "gps-live" : "gps-stale"}>{locationHealth(routes[0], feed.now).label}</span>}
     {filter.driverId && routes.length === 1
-      ? <span className="live-eta" title="Tiempo estimado al destino activo del chofer">Próximo destino: {routeEta(routes[0], feed.now)}</span>
+      ? <span className="live-eta" title="Tiempo estimado al destino activo del chofer">{warehouseReturnStatus(routes[0], feed.now) ? `${routeDestinationLabel(routes[0], feed.now)} · ` : "Próximo destino: "}{routeEta(routes[0], feed.now)}</span>
       : <button ref={timesButton} className="quiet live-times-toggle" aria-expanded={timesOpen} aria-controls={timesId}
           disabled={!routes.length} onClick={() => { setDetailsOpen(false); setTimesOpen(v => !v); }}>Tiempos por chofer</button>}
   </div>;
@@ -189,11 +189,12 @@ export function LiveRouteView({ feed, filter, onFilter, progressOnly = false }: 
         <div className="live-details-heading"><strong>Tiempos por chofer</strong><button ref={timesClose} className="quiet" aria-label="Cerrar tiempos" onClick={closeTimes}><X size={17} /></button></div>
         {routes.map(route => {
           const target = route.stops.find(stop => stop.id === (route.targetStopId ?? route.arrivedStopId));
+          const auxiliary = warehouseReturnStatus(route, feed.now);
           return <button key={route.id} className="live-times-row" onClick={event => {
             const section = event.currentTarget.closest("section");
             chooseDriver(route.driverId);
             section?.querySelector<HTMLSelectElement>('select[aria-label="Chofer"]')?.focus();
-          }}><span><strong>{route.driver}</strong><small>{target ? `${target.position} · ${target.customer}` : "Sin destino activo"}</small>
+          }}><span><strong>{route.driver}</strong><small>{auxiliary || route.completedAt ? routeDestinationLabel(route, feed.now) : target ? `${target.position} · ${target.customer}` : "Sin destino activo"}</small>
             <small>{route.vehicle} · {route.label}</small></span><span className="live-eta">{routeEta(route, feed.now)}</span></button>;
         })}
       </aside>

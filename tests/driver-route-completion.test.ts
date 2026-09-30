@@ -62,6 +62,8 @@ it("finishes atomically in the depot, recovers lost replies and freezes driver w
     const input = await finishInput(f), before = await state(f);
     const tracking = { kind: "begin", executionId: before.id, publicationRevision: before.publicationRevision, sessionId: randomUUID() };
     await writeLiveTracking(f.db.pool, f.members[0].authorization, f.planId, tracking);
+    await writeLiveTracking(f.db.pool, f.members[0].authorization, f.planId, { ...tracking, kind: "sample", sequence: 1, targetStopId: null,
+      destination: { kind: "warehouse", depotVersion: input.depotVersion }, sample: null });
     const publication = (await f.db.pool.query("SELECT snapshot,snapshot_hash,revision FROM route_plan_publications ORDER BY vehicle_id")).rows;
     await expect(run(input, "Bearer invalid")).rejects.toMatchObject({ status: 401 });
     await expect(run(input, f.members[1].authorization)).rejects.toMatchObject({ status: 404 });
@@ -89,8 +91,8 @@ it("finishes atomically in the depot, recovers lost replies and freezes driver w
     expect((await f.db.pool.query("SELECT snapshot,snapshot_hash,revision FROM route_plan_publications ORDER BY vehicle_id")).rows).toEqual(publication);
     expect((await f.db.pool.query("SELECT count(*)::int AS n FROM route_driver_execution_completions")).rows[0].n).toBe(1);
     expect((await f.db.pool.query("SELECT count(*)::int AS n FROM route_driver_mobile_audit WHERE action='mobile.route.completed'")).rows[0].n).toBe(1);
-    expect((await f.db.pool.query("SELECT stopped,target_stop_id,eta FROM route_live_tracking WHERE execution_id=$1", [before.id])).rows[0])
-      .toEqual({ stopped: true, target_stop_id: null, eta: null });
+    expect((await f.db.pool.query("SELECT stopped,target_stop_id,eta,warehouse_depot_version FROM route_live_tracking WHERE execution_id=$1", [before.id])).rows[0])
+      .toEqual({ stopped: true, target_stop_id: null, eta: null, warehouse_depot_version: null });
     await expect(writeLiveTracking(f.db.pool, f.members[0].authorization, f.planId, { ...tracking, sessionId: randomUUID() }))
       .rejects.toMatchObject({ code: "ROUTE_COMPLETED" });
     await expect(arrive(f, 0)).rejects.toMatchObject({ code: "ROUTE_COMPLETED" });
@@ -98,7 +100,7 @@ it("finishes atomically in the depot, recovers lost replies and freezes driver w
     await expect(f.db.pool.query("DELETE FROM route_driver_execution_completions")).rejects.toMatchObject({ code: "42501" });
     await f.db.pool.query("UPDATE rutas_installation SET schema_version=31");
     await migrate(f.db.pool, f.db.config.instanceId); await migrate(f.db.pool, f.db.config.instanceId);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(32);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(33);
     expect((await state(f)).stops).toEqual(before.stops);
   } finally { await f.close(); }
 }, 120000);
@@ -122,9 +124,24 @@ it("reprograms a real closed retry after leaving the visit, while delivery still
     await service(f, 0, "reschedule");
     expect((await state(f)).stops[0].orderStates[0].status).toBe("rescheduled");
     for (const index of [1, 2]) { await arrive(f, index); await service(f, index, "deliver"); }
+    const terminal = await state(f), session = { executionId: terminal.id, publicationRevision: terminal.publicationRevision, sessionId: randomUUID() };
+    await writeLiveTracking(f.db.pool, f.members[0].authorization, f.planId, { ...session, kind: "begin" });
+    const returnSample = { ...session, kind: "sample", sequence: 1, targetStopId: null, sample: null, destination: { kind: "warehouse", depotVersion: 1 } };
+    await writeLiveTracking(f.db.pool, f.members[0].authorization, f.planId, returnSample);
+    expect((await readLiveRoutes(f.db.pool, f.actor)).routes.find(route => route.id === terminal.id)?.warehouseDestination).not.toBeNull();
+    stop = terminal.stops[0];
+    await retryDriverOrder(f.db.pool, f.members[0].authorization, f.planId, stop.id, stop.orderStates[0].shipmentId,
+      { ...await identity(f), orderVersion: stop.orderStates[0].version }, f.timezone, f.now);
+    expect((await readLiveRoutes(f.db.pool, f.actor)).routes.find(route => route.id === terminal.id)?.warehouseDestination).toBeNull();
+    await expect(writeLiveTracking(f.db.pool, f.members[0].authorization, f.planId, { ...returnSample, sequence: 2 }))
+      .rejects.toMatchObject({ code: "ROUTE_HAS_PENDING_ORDERS" });
+    await arrive(f, 0);
+    await reportCustomerClosed(f.db.pool, f.members[0].authorization, f.planId, stop.id,
+      await identity(f), photo, "image/jpeg", f.timezone, f.photoRoot, f.now);
+    await service(f, 0, "reschedule");
     await completeDriverRoute(f.db.pool, f.members[0].authorization, f.planId, await finishInput(f), f.now);
     expect((await state(f)).stops[0].orderStates[0].status).toBe("rescheduled");
-    expect((await f.db.pool.query("SELECT count(*)::int AS n FROM route_driver_service_incidents WHERE kind='rescheduled'")).rows[0].n).toBe(1);
+    expect((await f.db.pool.query("SELECT count(*)::int AS n FROM route_driver_service_incidents WHERE kind='rescheduled'")).rows[0].n).toBe(2);
   } finally { await f.close(); }
 }, 120000);
 

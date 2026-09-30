@@ -1,15 +1,19 @@
 import { trackingPolicy } from "./live-tracking-contract";
 import type { LiveRoute } from "./live-routes";
+import { warehouseReturnStatus } from "./live-route-destination";
 
-export type LiveEta = { targetStopId: string; state: "ready" | "calculating" | "unavailable";
+export type LiveEta = { targetStopId: string | null; depotVersion?: number; state: "ready" | "calculating" | "unavailable";
   remainingSeconds: number | null; observedAt: string };
 
-export function routeEta(route: Pick<LiveRoute, "targetStopId" | "arrivedStopId" | "eta" | "location" | "completedAt">, now: number) {
+export function routeEta(route: Pick<LiveRoute, "targetStopId" | "arrivedStopId" | "eta" | "location" | "completedAt" | "warehouseDestination">, now: number) {
   if (route.completedAt) return "Ruta terminada";
   if (route.arrivedStopId && (!route.targetStopId || route.arrivedStopId === route.targetStopId)) return "En atención";
-  if (!route.targetStopId) return "Sin destino activo";
+  const warehouse = warehouseReturnStatus(route, now);
+  if (warehouse === "stale") return "Tiempo desactualizado";
+  if (!route.targetStopId && !warehouse) return "Sin destino activo";
   const eta = route.eta;
-  if (!eta || eta.targetStopId !== route.targetStopId) return "Tiempo no disponible";
+  if (!eta || (warehouse ? eta.targetStopId !== null || eta.depotVersion !== route.warehouseDestination!.depotVersion
+    : eta.targetStopId !== route.targetStopId || eta.depotVersion !== undefined)) return "Tiempo no disponible";
   const age = now - Date.parse(eta.observedAt);
   const gpsAge = route.location ? now - Date.parse(route.location.observedAt) : Infinity;
   if (!Number.isFinite(age) || age < 0 || age > trackingPolicy.freshSeconds * 1000 ||

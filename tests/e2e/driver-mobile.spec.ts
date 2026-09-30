@@ -832,6 +832,38 @@ test("admin provisioning, native device login, route isolation and revocation ov
   const warehousePlan = await (await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization })).json();
   expect(warehousePlan.departure).toMatchObject({ address: "Bodega HTTP QA", latitude: 20.64, longitude: -103.4, version: 1 });
   const finishExecution = await readExecution();
+  const trackingUrl = `${origin}/api/mobile/plans/${planId}/tracking`;
+  const trackingSession = { executionId: finishExecution.id, publicationRevision: finishExecution.publicationRevision, sessionId: randomUUID() };
+  expect((await request.post(trackingUrl, { data: { ...trackingSession, kind: "begin" } })).status()).toBe(401);
+  expect((await request.post(trackingUrl, { headers: authorization, data: { ...trackingSession, kind: "begin" } })).status()).toBe(200);
+  const returning = { ...trackingSession, kind: "sample", sequence: 1, targetStopId: null,
+    destination: { kind: "warehouse", depotVersion: warehousePlan.departure.version },
+    eta: { targetStopId: null, depotVersion: warehousePlan.departure.version, state: "ready", remainingSeconds: 600, ageMilliseconds: 0 },
+    sample: { latitude: 20.64, longitude: -103.4, accuracyMeters: 5, ageMilliseconds: 0, mock: false } };
+  expect((await request.post(trackingUrl, { headers: authorization, data: returning })).status()).toBe(200);
+  const warehouseFeed = await (await request.get(`${origin}/api/live-routes`)).json();
+  expect(warehouseFeed.routes.find((route: { id: string }) => route.id === finishExecution.id)).toMatchObject({
+    targetStopId: null, warehouseDestination: { kind: "warehouse", depotVersion: 1, address: "Bodega HTTP QA" },
+    eta: { targetStopId: null, depotVersion: 1, remainingSeconds: 600 } });
+  await livePanel.getByRole("button", { name: "Ruta en vivo", exact: true }).click();
+  await livePanel.getByLabel("Chofer", { exact: true }).selectOption(driverId);
+  await livePanel.getByRole("button", { name: "Ver avance", exact: true }).click();
+  const progressPanel = livePanel.getByRole("complementary", { name: "Avance de los choferes" });
+  await expect(progressPanel.getByText("De regreso a bodega", { exact: true })).toBeVisible();
+  await expect(progressPanel.getByText("≈10 min", { exact: true })).toBeVisible();
+  await expect(livePanel.locator(".live-map-summary-footer")).toContainText("De regreso a bodega · ≈10 min");
+  await livePanel.screenshot({ path: "reports/screenshots/live-warehouse-desktop.png", fullPage: true });
+  await livePanel.setViewportSize({ width: 375, height: 812 });
+  await expect(progressPanel.getByText("De regreso a bodega", { exact: true })).toBeVisible();
+  await livePanel.screenshot({ path: "reports/screenshots/live-warehouse-mobile.png", fullPage: true });
+  await livePanel.setViewportSize({ width: 1440, height: 900 });
+  await livePanel.getByLabel("Chofer", { exact: true }).selectOption("");
+  await livePanel.getByRole("button", { name: "Tiempos por chofer", exact: true }).click();
+  await expect(livePanel.getByRole("complementary", { name: "Tiempos por chofer" }).getByText("De regreso a bodega", { exact: true })).toBeVisible();
+  // Clear just the auxiliary guide; orders, execution revision and SDK-free HTTP fixture remain intact.
+  expect((await request.post(trackingUrl, { headers: authorization, data: { ...returning, sequence: 2, destination: null, eta: null } })).status()).toBe(200);
+  expect((await (await request.get(`${origin}/api/live-routes`)).json()).routes.find((route: { id: string }) => route.id === finishExecution.id).warehouseDestination).toBeNull();
+  expect((await request.post(trackingUrl, { headers: authorization, data: { ...returning, sequence: 3 } })).status()).toBe(200);
   const finishCommand = { commandId: randomUUID(), executionId: finishExecution.id, publicationRevision: finishExecution.publicationRevision,
     executionRevision: finishExecution.revision, policyVersion: finishExecution.policy.version, depotVersion: warehousePlan.departure.version,
     confirmed: true, sample: { latitude: 20.64, longitude: -103.4, accuracyMeters: 5, ageMilliseconds: 0, capturedAt: new Date().toISOString(), mock: false } };
@@ -842,6 +874,12 @@ test("admin provisioning, native device login, route isolation and revocation ov
   expect((await finished.json()).completedAt).toBeTruthy();
   expect(await (await request.post(finishUrl, { headers: authorization, data: finishCommand })).json()).toMatchObject({ duplicate: true });
   expect((await readExecution()).completedAt).toBeTruthy();
+  const finishedFeed = await (await request.get(`${origin}/api/live-routes`)).json();
+  expect(finishedFeed.routes.find((route: { id: string }) => route.id === finishExecution.id)).toMatchObject({ warehouseDestination: null, eta: null });
+  await livePanel.getByLabel("Chofer", { exact: true }).selectOption(driverId);
+  await livePanel.getByRole("button", { name: "Ver avance", exact: true }).click();
+  await expect(progressPanel.locator(".live-route-destination")).toHaveText("Ruta terminada", { timeout: 15000 });
+  await livePanel.getByRole("button", { name: "Planificar rutas", exact: true }).click();
   expect((await request.post(arrivalUrl, { headers: authorization, data: { ...arrival, commandId: randomUUID() } })).status()).toBe(409);
   expect((await db.pool.query("SELECT snapshot,snapshot_hash,revision FROM route_plan_publications WHERE plan_id=$1 ORDER BY vehicle_id", [planId])).rows).toEqual(snapshotBeforeFinish);
   // Restore only the dedicated ephemeral database's singleton for the original republication fixture.

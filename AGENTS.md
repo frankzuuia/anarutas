@@ -1,7 +1,9 @@
 # Ana Rutas
 
 - Repositorio independiente. develop = desarrollo; main = producción.
-- No commit, push, merge ni despliegue sin autorización explícita.
+- Autorización permanente del propietario: commitear y subir a develop los cambios solicitados y verificados para probar, después de las puertas de calidad aplicables o de una excepción de prueba informada y aprobada.
+- No commit, push ni merge a main sin instrucción explícita del propietario.
+- No desplegar sin autorización explícita; el propietario realiza el deploy manual.
 - No modificar five, vendedores, listas de precios, V3 ni sus servicios/configuraciones.
 - Mismo artefacto en todos los entornos. Configuración en runtime mediante variables de cada instalación; nunca cuentas, hosts, secretos ni IDs de negocio en código.
 - Sólo lectura en Odoo en bloque 1. Datos de rutas y cuentas en PostgreSQL dedicado.

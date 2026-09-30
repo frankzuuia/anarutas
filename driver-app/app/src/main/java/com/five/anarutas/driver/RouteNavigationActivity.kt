@@ -111,6 +111,10 @@ class RouteNavigationActivity : FragmentActivity() {
     private val currentStop: ExecutionStop? get() = if (warehouseSelected) null else model.state.execution?.stops?.find { it.id == selectedId }
     private val warehouseDestination get() = warehouseReturnDestination(model.state.route, model.state.execution)
     private fun currentDestinationKey() = if (model.state.execution?.completedAt != null) null else if (warehouseSelected) warehouseDestination?.key else currentStop?.let(::destinationKey)
+    private fun trackingDestination(): TrackingDestination = trackingNavigationDestination(
+        warehouseDestination?.takeIf { warehouseSelected },
+        if (navigating) currentStop?.id else model.state.execution?.stops?.find { guidance && destinationKey(it) == NavigationRegistry.destinationKey }?.id,
+        navigating, guidance, requestedDestinationKey, NavigationRegistry.destinationKey)
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
@@ -209,8 +213,7 @@ class RouteNavigationActivity : FragmentActivity() {
                 launch { while (isActive) {
                     tick = SystemClock.elapsedRealtime(); recoverGps(tick)
                     model.state.execution?.takeIf { model.state.verified && !model.state.retired && it.completedAt == null }?.let { execution ->
-                        LiveTrackingService.ensure(this@RouteNavigationActivity, execution,
-                            if (navigating) currentStop?.id else execution.stops.find { guidance && destinationKey(it) == NavigationRegistry.destinationKey }?.id)
+                        LiveTrackingService.ensure(this@RouteNavigationActivity, execution, trackingDestination())
                     }
                     delay(1000)
                 } }
@@ -356,7 +359,7 @@ class RouteNavigationActivity : FragmentActivity() {
         navigator?.clearDestinations()
         guidance = false
         NavigationRegistry.destinationKey = null
-        LiveTrackingService.destination(model.state.execution?.id, null)
+        LiveTrackingService.destination(model.state.execution?.id, TrackingDestination())
     }
     private fun guide(stop: ExecutionStop) {
         val point = stop.point ?: return
@@ -370,7 +373,7 @@ class RouteNavigationActivity : FragmentActivity() {
         navigating = true
         requestedDestinationKey = key
         NavigationRegistry.beginEta(key, model.state.execution!!.id, etaId)
-        LiveTrackingService.destination(model.state.execution?.id, stopId)
+        LiveTrackingService.destination(model.state.execution?.id, trackingDestination())
         navMessage = if (stopId == null) "Calculando regreso a bodega…" else "Calculando guía a esta parada…"
         renderMap()
         val waypoint = Waypoint.builder().setLatLng(point.latitude, point.longitude).setTitle(title).build()
@@ -394,7 +397,7 @@ class RouteNavigationActivity : FragmentActivity() {
                     applyVoicePreference(nav)
                     guidance = true
                     NavigationRegistry.confirmEta(key)
-                    LiveTrackingService.destination(model.state.execution?.id, stopId)
+                    LiveTrackingService.destination(model.state.execution?.id, trackingDestination())
                     navMessage = if (stopId == null) "Guía activa a bodega · tus entregas se conservan" else "Guía activa · el orden de tus pedidos no cambia"
                 } else { stopGuidance(); navMessage = "No se pudo trazar la guía: $result. Puedes reintentar sin volver a guardar el punto." }
                 renderMap()
@@ -496,7 +499,7 @@ class RouteNavigationActivity : FragmentActivity() {
         NavigationRegistry.clearEta()
         navigator?.stopGuidance()
         guidance = false
-        LiveTrackingService.destination(model.state.execution?.id, null)
+        LiveTrackingService.destination(model.state.execution?.id, TrackingDestination())
         editing = true
         panelExpanded = true
         addressDialog = false
@@ -519,7 +522,7 @@ class RouteNavigationActivity : FragmentActivity() {
                 NavigationRegistry.beginEta(destinationKey(restored), execution.id, restored.id)
                 NavigationRegistry.confirmEta(destinationKey(restored))
             } }
-            LiveTrackingService.destination(model.state.execution?.id, currentStop?.id)
+            LiveTrackingService.destination(model.state.execution?.id, trackingDestination())
         }
         resumeGuide = false
         renderMap()
@@ -715,8 +718,7 @@ class RouteNavigationActivity : FragmentActivity() {
                 Text(state.message, style = MaterialTheme.typography.bodySmall, color = if (state.verified) DriverColors.muted else DriverColors.amber)
                 Text(LiveTrackingService.message, style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
                 if (execution != null && execution.completedAt == null && LiveTrackingService.isPaused(execution.id) && state.verified && !state.retired) {
-                    TextButton(onClick = { LiveTrackingService.ensure(this@RouteNavigationActivity, execution,
-                        execution.stops.find { guidance && destinationKey(it) == NavigationRegistry.destinationKey }?.id, resume = true) }) {
+                    TextButton(onClick = { LiveTrackingService.ensure(this@RouteNavigationActivity, execution, trackingDestination(), resume = true) }) {
                         Text("Reanudar seguimiento")
                     }
                 }

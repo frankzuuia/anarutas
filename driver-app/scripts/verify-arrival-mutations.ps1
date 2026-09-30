@@ -1,4 +1,4 @@
-param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly, [switch]$ProductCaptureOnly, [switch]$ProductPresentationOnly, [switch]$ProductThumbnailOnly, [switch]$WarehouseOnly)
+param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly, [switch]$ProductCaptureOnly, [switch]$ProductPresentationOnly, [switch]$ProductThumbnailOnly, [switch]$WarehouseOnly, [switch]$TrackingDestinationOnly)
 $ErrorActionPreference = 'Stop'
 # Mechanical mutations occur only in an isolated copy. No ADB, HTTP stubs or credential output.
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -13,7 +13,7 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 }
 $sourceFolder = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver'
 $originals = @{}
-foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt', 'ProductIncidentPolicy.kt', 'IncidentCaptureStore.kt', 'ProductPhotoUpload.kt', 'ProductThumbnailStore.kt', 'WarehouseReturnPolicy.kt')) {
+foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt', 'ProductIncidentPolicy.kt', 'IncidentCaptureStore.kt', 'ProductPhotoUpload.kt', 'ProductThumbnailStore.kt', 'WarehouseReturnPolicy.kt', 'TrackingDestinationPolicy.kt')) {
     $originals[$file] = [IO.File]::ReadAllText((Join-Path $sourceFolder $file))
 }
 $cases = @(
@@ -228,6 +228,23 @@ if ($WarehouseOnly) {
         @{ name = 'warehouse_stale_origin_key'; from = ':${departure.version}:'; to = ':' },
         @{ name = 'warehouse_stale_execution_key'; from = '$executionId:$etaId'; to = 'fixed:$etaId' }
     ) | ForEach-Object { $_.file = 'WarehouseReturnPolicy.kt'; $_.test = 'WarehouseReturnPolicyTest'; $_ }
+}
+if ($TrackingDestinationOnly) {
+    $cases = @(
+        @{ name = 'return_without_calculation'; from = 'navigating && requestedKey == warehouse.key'; to = 'requestedKey == warehouse.key' },
+        @{ name = 'return_without_guidance'; from = 'guiding && activeKey == warehouse.key'; to = 'activeKey == warehouse.key' },
+        @{ name = 'return_wrong_requested_key'; from = 'requestedKey == warehouse.key'; to = 'true' },
+        @{ name = 'return_wrong_active_key'; from = 'activeKey == warehouse.key'; to = 'true' },
+        @{ name = 'return_wrong_version'; from = 'depotVersion = warehouse.departure.version'; to = 'depotVersion = 1' },
+        @{ name = 'intent_customer_becomes_warehouse'; from = 'stopId == null && depotVersion > 0'; to = 'depotVersion > 0' },
+        @{ name = 'intent_accept_zero_version'; from = 'depotVersion > 0'; to = 'depotVersion >= 0' },
+        @{ name = 'replay_rejected_origin'; from = 'target.depotVersion == rejectedDepotVersion'; to = 'false' },
+        @{ name = 'reject_any_version'; from = 'target.depotVersion == rejectedDepotVersion'; to = 'true' },
+        @{ name = 'relax_all_conflicts'; from = 'status == 409 && code in'; to = 'status == 409 || code in' },
+        @{ name = 'report_missing_sdk_destination'; from = 'if (target.depotVersion != null && (eta == null ||'; to = 'if (target.depotVersion != null && eta != null && (' },
+        @{ name = 'report_foreign_sdk_destination'; from = 'eta.targetStopId != target.etaId'; to = 'false' },
+        @{ name = 'report_stopped_sdk_guidance'; from = 'eta.state != "calculating" && !guiding'; to = 'false' }
+    ) | ForEach-Object { $_.file = 'TrackingDestinationPolicy.kt'; $_.test = 'TrackingDestinationPolicyTest'; $_ }
 }
 $arguments = @('testDebugUnitTest', '--console=plain')
 if ($ServerUrl) { $arguments += ('-PANA_RUTAS_SERVER_URL=' + $ServerUrl) }

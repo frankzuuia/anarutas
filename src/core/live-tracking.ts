@@ -6,6 +6,9 @@ import { AppError } from "./errors";
 import { integer, uuid } from "./orders-validation";
 import { controlScreens, trackingIdentity, trackingPolicy, trackingSample } from "./live-tracking-policy";
 import { trackingEta } from "./live-eta-validation";
+import { trackingWarehouseDestination } from "./live-warehouse-policy";
+import { getRoutingSettings } from "./routing-settings";
+import { assertCompletionOrders } from "./driver-route-completion-policy";
 
 export async function writeLiveTracking(pool: Pool, authorization: string | null, planId: string, raw: Record<string, unknown>) {
   const identity = trackingIdentity(raw);
@@ -13,13 +16,14 @@ export async function writeLiveTracking(pool: Pool, authorization: string | null
   const sequence = raw.kind === "begin" ? 0 : integer(raw.sequence, 1);
   const sample = raw.kind === "sample" ? trackingSample(raw.sample) : null;
   const target = raw.kind === "sample" && raw.targetStopId !== null ? uuid(raw.targetStopId) : null;
+  const destination = raw.kind === "sample" ? trackingWarehouseDestination(raw.destination, target) : null;
   return transaction(pool, async sql => {
     const driver = await authenticateMobile(sql, authorization, true);
     const route = await executableRoute(sql, driver.driver_id, planId, true);
     if (route.id !== identity.executionId || route.publication_revision !== identity.publicationRevision)
       throw new AppError("TRACKING_SESSION_CHANGED", 409);
     const now = new Date();
-    const eta = raw.kind === "sample" ? trackingEta(raw.eta, target, now) : null;
+    const eta = raw.kind === "sample" ? trackingEta(raw.eta, target, now, destination) : null;
     const current = (await sql.query("SELECT * FROM route_live_tracking WHERE execution_id=$1 FOR UPDATE", [route.id])).rows[0];
     if (raw.kind === "begin") {
       const previous = (await sql.query("SELECT * FROM route_tracking_sessions WHERE id=$1", [identity.sessionId])).rows[0];
@@ -29,7 +33,7 @@ export async function writeLiveTracking(pool: Pool, authorization: string | null
       } else {
         await sql.query("INSERT INTO route_tracking_sessions(id,execution_id,device_id) VALUES($1,$2,$3)", [identity.sessionId, route.id, driver.device_id]);
         await sql.query(`INSERT INTO route_live_tracking(execution_id,session_id,device_id) VALUES($1,$2,$3)
-          ON CONFLICT(execution_id) DO UPDATE SET session_id=$2,device_id=$3,sequence=0,target_stop_id=NULL,eta=NULL,
+          ON CONFLICT(execution_id) DO UPDATE SET session_id=$2,device_id=$3,sequence=0,target_stop_id=NULL,eta=NULL,warehouse_depot_version=NULL,
           latitude=NULL,longitude=NULL,accuracy_meters=NULL,observed_at=NULL,received_at=now(),stopped=false`, [route.id, identity.sessionId, driver.device_id]);
         await sql.query("INSERT INTO route_driver_mobile_audit(driver_id,action,details) VALUES($1,'tracking.started',$2)",
           [driver.driver_id, JSON.stringify({ executionId: route.id, sessionId: identity.sessionId })]);
@@ -39,6 +43,16 @@ export async function writeLiveTracking(pool: Pool, authorization: string | null
     if (!current || current.session_id !== identity.sessionId || current.device_id !== driver.device_id || current.stopped)
       throw new AppError("TRACKING_SESSION_CHANGED", 409);
     if (sequence <= Number(current.sequence)) return { accepted: false, ...trackingPolicy };
+    if (destination) {
+      await sql.query("SELECT pg_advisory_xact_lock_shared(hashtext('ana-rutas:routing-settings'))");
+      const settings = await getRoutingSettings(sql);
+      if (!settings.depotLocation) throw new AppError("ROUTING_ORIGIN_REQUIRED", 409);
+      if (settings.version !== destination.depotVersion) throw new AppError("ROUTING_ORIGIN_CHANGED", 409);
+      const publication = (await sql.query("SELECT snapshot->'orders' AS orders FROM route_plan_publications WHERE plan_id=$1 AND vehicle_id=$2", [planId, route.vehicle_id])).rows[0];
+      const orders = (await sql.query<{ shipment_id: string; status: string }>(
+        "SELECT shipment_id,status FROM route_driver_execution_orders WHERE execution_id=$1 FOR SHARE", [route.id])).rows;
+      assertCompletionOrders(publication.orders.map((order: { id: string }) => order.id), orders);
+    }
     if (target) {
       const stop = await sql.query("SELECT id FROM route_driver_execution_stops WHERE execution_id=$1 AND id=$2", [route.id, target]);
       if (!stop.rowCount) throw new AppError("INVALID_TRACKING_TARGET");
@@ -47,10 +61,13 @@ export async function writeLiveTracking(pool: Pool, authorization: string | null
     // Heartbeats/older GPS may change the destination, but never rejuvenate old coordinates.
     const newer = sample && observed && (!current.observed_at || observed > current.observed_at);
     await sql.query(`UPDATE route_live_tracking SET sequence=$2,target_stop_id=$3,received_at=$4,stopped=$5,
-      latitude=$6,longitude=$7,accuracy_meters=$8,observed_at=$9,eta=$10 WHERE execution_id=$1`,
+      latitude=$6,longitude=$7,accuracy_meters=$8,observed_at=$9,eta=$10,warehouse_depot_version=$11 WHERE execution_id=$1`,
     [route.id, sequence, target, now, raw.kind === "stop", newer ? sample!.latitude : current.latitude,
       newer ? sample!.longitude : current.longitude, newer ? sample!.accuracy : current.accuracy_meters,
-      newer ? observed : current.observed_at, eta === null ? null : JSON.stringify(eta)]);
+      newer ? observed : current.observed_at, eta === null ? null : JSON.stringify(eta), destination?.depotVersion ?? null]);
+    if ((current.warehouse_depot_version ?? null) !== (destination?.depotVersion ?? null))
+      await sql.query("INSERT INTO route_driver_mobile_audit(driver_id,action,details) VALUES($1,'tracking.destination.changed',$2)",
+        [driver.driver_id, JSON.stringify({ executionId: route.id, sessionId: identity.sessionId, destination })]);
     return { accepted: true, ...trackingPolicy };
   });
 }

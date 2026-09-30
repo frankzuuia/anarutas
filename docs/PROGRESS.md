@@ -708,3 +708,10 @@ se prepara primero en `develop`; producción requiere su propia aprobación.
 - [x] WF-T02: botón/modal/GPS/cola cifrada y relectura, estado terminado en app/control, detener guía/seguimiento; consultas y datos conservados.
 - [x] WF-T03A: PG/HTTP/JVM, cobertura crítica100%, mutación32/32 política y10/10 integración, build/lint/audit runtime0 vulnerabilidades, APK0.8.6/code28; QA documentado. Regresión general: 669 aprobadas inicialmente; 3 fallos de preparación de bases antiguas corregidos sólo en fixture y sus 2 archivos repetidos completos (16/16); 672 escenarios aprobados y 2 omitidos, con recuperación explícita en QA.
 - [ ] WF-T03B: QA físico/instrumentación pendiente por ADB `closed`; no certificación de producción. El propietario autorizó expresamente commit/push a develop para probar el 2026-09-29, con esta salvedad informada; deploy manual del propietario, sin cambios en main.
+
+## BL-156 — bodega en seguimiento administrativo
+
+- [x] WD-T01 (WD01..08,10): metadato nullable/migración33, validar origen/terminales/ETA, transiciones auditadas y lectura consistente sin tocar negocio; PG/HTTP y mutación verde.
+- [x] WD-T02 (WD01..02,06..09): Android comparte destino/ETA real y borra al detener; etiquetas comunes avance/resumen/tiempos, APK0.8.7/code29 compilada, firma compatible; 116 JVM y mutación13/13. QA física separada y pendiente.
+- [x] WD-T03A (WD01..10): 42 dirigidas, 679 regresión/0 fallos/2 omisiones externas anteriores, HTTP2/2, 116 JVM; cobertura crítica100%, ramas agregadas99.19%; mutación289 políticas +8 PG +13 Android, todas detectadas. Typecheck/lint/build/audit y evidencia en `QA-REGRESO-EN-VIVO-0.8.7.md`.
+- [ ] WD-T03B: GPS/SDK físico; no declarar listo producción sin evidencia. El propietario autorizó expresamente commit/push a develop para probar el 2026-09-29, con esta salvedad y las dos omisiones externas anteriores informadas; deploy manual del propietario, sin cambios en main. Autorización permanente para subir a develop los cambios solicitados y verificados, registrada en AGENTS.md; main sólo con instrucción explícita.

@@ -1623,3 +1623,22 @@ Primero servidor: migración aditiva 32 agrega registro de finalización inmutab
 | WF08 | Upgrade repetido / APK antigua / plan retirado → datos históricos conservados; servidor anterior no confirma cierre inexistente |
 
 WF-T01 esquema/servidor/contratos; WF-T02 Android y consumidores; WF-T03 pruebas PG/HTTP/unitarias, cobertura/mutación, build y QA físico. Cierre no equivale a liquidación, no asigna fecha a reprogramados y no activa disponibilidad de flota por sí solo. Riesgo alto de transición de estado: todas las rutas críticas requieren validación, sin sustituir pruebas de GPS real por simulador.
+
+## BL-156 — contrato auxiliar bodega en Ruta en vivo
+
+Causa verificada: guía bodega usa stopId nulo, LiveTrackingService sólo consulta ETA por ese stopId y el panel sólo entiende paradas. No reemplazar textos a partir del contador de entregas. Primero migración aditiva33 agrega warehouse_depot_version nullable a route_live_tracking con CHECK positivo y target_stop_id nulo; no backfill ni nuevas tablas de negocio. Telemetría opcional destination={kind:warehouse,depotVersion}; ETA bodega con targetStopId nulo y depotVersion coincidente, sin UUID artificial. begin/stop/destino cliente/cierre limpian metadato. Bajo locks existentes de publicación/ejecución/tracking, revalidar configuración compartida y todos los IDs/estados publicados mediante la política de cierre ya existente; no modifica su implementación. Lectura administrativa vuelve a validar origen/pedidos y no expone un regreso inválido. Etiquetas compartidas usan timestamp de heartbeat; GPS/ETA conservan sus controles de edad. Sin red envejece a «Regreso a bodega · sin confirmación reciente», nunca sigue afirmando un regreso confirmado. Parada cliente, atención y finalización conservan prioridad.
+
+| Caso | Actor/precondición/evento → resultado | Datos/validación/fallo |
+| --- | --- | --- |
+| WD01 | Chofer con todos entregados/reprogramados inicia guía bodega → señal y ETA al panel | PG/HTTP/Android; destino real, stopId nulo, contador intacto |
+| WD02 | Pedidos terminados pero guía no iniciada / APK vieja → sin regreso inventado | Contrato opcional, UI |
+| WD03 | Origen ausente/versión vieja, pendientes, IDs extra/faltantes → señal rechazada | PG/política; rollback de secuencia/GPS, publicación conservada |
+| WD04 | StopId cliente + bodega o ETA ajena/malformada → rechazo | Entrada estricta, CHECK real, unitarias/contrato |
+| WD05 | Cambiar origen o reabrir reprogramado → lectura invalida, siguiente muestra rechaza | Locks existentes serializan; PG concurrencia |
+| WD06 | Detener guía/seguimiento, nueva sesión, cambiar cliente o finalizar → retirar señal/ETA | PG/Android; cierre inmutable32 sin cambio |
+| WD07 | Red/GPS viejo/falta SDK/callback anterior → no ETA ni confirmación fresca inventadas | Unitarias; ausencia real GPS no se simula |
+| WD08 | Otro dispositivo/chofer, sesión revocada/ruta cancelada → mismo aislamiento | PG/HTTP y regresión existente |
+| WD09 | Refresh, fechas/choferes, avance/resumen/tiempos en móvil/desktop → texto coherente | E2E real; tema existente sin rediseño |
+| WD10 | Upgrade32→33/repetición/versiones antiguas → preservar GPS, recibos y cierre | PG migración; compatibilidad backward APK, backend previo no certifica destino |
+
+WD-T01 servidor/esquema/política; WD-T02 Android y tres presentaciones; WD-T03 QA y evidencia. Auditoría local de arquitectura: GREEN LIGHT / INTEGRITY TOTAL / MATCH PERFECT. Referencias: archivos reales live-tracking/live-routes/NavigationRegistry, documentos Next instalados Route Handlers y Server/Client Components, contrato Navigator ya integrado. No nueva llamada a Google/Odoo, secreto o dependencia. Rollback de app tolera metadatos ausentes; tras schema33 requiere backend compatible con33. No delegación de invariantes ni inicio de liquidaciones.

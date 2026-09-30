@@ -38,11 +38,11 @@ class LiveTrackingService : Service() {
         private var instance: LiveTrackingService? = null
         internal var message by mutableStateOf("Seguimiento del centro de control pendiente")
             private set
-        internal fun ensure(context: Context, execution: DriverExecution, target: String?, resume: Boolean = false) {
+        internal fun ensure(context: Context, execution: DriverExecution, target: TrackingDestination, resume: Boolean = false) {
             if (execution.completedAt != null) { stop(); return }
             if (resume) paused = null
             if (paused == execution.id) return
-            if (instance?.executionId == execution.id) { instance?.targetStopId = target; return }
+            if (instance?.executionId == execution.id) { instance?.updateDestination(target); return }
             if (requested == execution.id) return
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 message = "Seguimiento: falta permiso de ubicación precisa"; return
@@ -51,12 +51,13 @@ class LiveTrackingService : Service() {
             try {
                 ContextCompat.startForegroundService(context, Intent(context, LiveTrackingService::class.java)
                     .putExtra("plan", execution.planId).putExtra("execution", execution.id)
-                    .putExtra("publication", execution.publicationRevision).putExtra("target", target))
+                    .putExtra("publication", execution.publicationRevision).putExtra("target", target.stopId)
+                    .putExtra("depotVersion", target.depotVersion ?: 0))
             } catch (_: RuntimeException) { requested = null; paused = execution.id; message = "No se pudo iniciar seguimiento. Toca Reanudar seguimiento." }
         }
         internal fun stop() { instance?.stopTracking() }
-        internal fun destination(execution: String?, target: String?) {
-            if (execution != null && instance?.executionId == execution) instance?.targetStopId = target
+        internal fun destination(execution: String?, target: TrackingDestination) {
+            if (execution != null && instance?.executionId == execution) instance?.updateDestination(target)
         }
         internal fun isPaused(id: String) = paused == id
     }
@@ -65,7 +66,12 @@ class LiveTrackingService : Service() {
     private lateinit var locations: LocationManager
     private var job: Job? = null
     private var executionId: String? = null
-    private var targetStopId: String? = null
+    private var trackingDestination = TrackingDestination()
+    private var rejectedDepotVersion: Int? = null
+    private fun updateDestination(target: TrackingDestination) {
+        if (target.depotVersion != rejectedDepotVersion) rejectedDepotVersion = null
+        trackingDestination = target
+    }
     private var gps: DriverGps? = null
     private val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
@@ -91,9 +97,10 @@ class LiveTrackingService : Service() {
         val execution = intent?.getStringExtra("execution")
         val publication = intent?.getIntExtra("publication", 0) ?: 0
         if (plan.isNullOrBlank() || execution.isNullOrBlank() || publication < 1) { stopSelf(); return START_NOT_STICKY }
-        targetStopId = intent.getStringExtra("target")
+        trackingDestination = trackingIntentDestination(intent.getStringExtra("target"), intent.getIntExtra("depotVersion", 0))
         if (executionId == execution) return START_NOT_STICKY
         job?.cancel(); locations.removeUpdates(listener); gps = null
+        rejectedDepotVersion = null
         executionId = execution
         val open = PendingIntent.getActivity(this, NOTIFICATION, Intent(this, RouteNavigationActivity::class.java)
             .putExtra(RouteNavigationActivity.EXTRA_PLAN_ID, plan), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -119,6 +126,7 @@ class LiveTrackingService : Service() {
             try {
                 while (isActive) {
                     if (access.token.isBlank() || credentials.load().token != access.token) { stopTracking(); break }
+                    var submittedDestination = TrackingDestination()
                     try {
                         if (!began) {
                             val policy = api.tracking(access.token, plan, payload("begin"))
@@ -130,19 +138,28 @@ class LiveTrackingService : Service() {
                         val sample = fix?.let { JSONObject().put("latitude", it.point.latitude).put("longitude", it.point.longitude)
                             .put("accuracyMeters", it.accuracy).put("ageMilliseconds", now - it.elapsedMillis).put("mock", false) }
                         // Read SDK now, on the main thread; never replay a cached ETA after reconnecting.
-                        val target = targetStopId
-                        val eta = NavigationRegistry.estimate(execution, target)?.let {
-                            JSONObject().put("targetStopId", it.targetStopId).put("state", it.state)
+                        val candidate = trackingEffectiveDestination(trackingDestination, rejectedDepotVersion)
+                        val estimate = NavigationRegistry.estimate(execution, candidate.etaId)
+                        val target = trackingObservedDestination(candidate, estimate, NavigationRegistry.isGuidanceRunning)
+                        submittedDestination = target
+                        val destination = target.depotVersion?.let { JSONObject().put("kind", "warehouse").put("depotVersion", it) }
+                        val eta = estimate?.takeIf { it.targetStopId == target.etaId }?.let {
+                            JSONObject().put("targetStopId", target.stopId ?: JSONObject.NULL).put("state", it.state)
                                 .put("remainingSeconds", it.remainingSeconds ?: JSONObject.NULL).put("ageMilliseconds", 0)
+                                .apply { target.depotVersion?.let { version -> put("depotVersion", version) } }
                         }
                         api.tracking(access.token, plan, payload("sample").put("sequence", ++sequence)
-                            .put("targetStopId", target ?: JSONObject.NULL).put("sample", sample ?: JSONObject.NULL)
+                            .put("targetStopId", target.stopId ?: JSONObject.NULL).put("sample", sample ?: JSONObject.NULL)
+                            .put("destination", destination ?: JSONObject.NULL)
                             .put("eta", eta ?: JSONObject.NULL))
                         message = if (fix == null) "Centro de control conectado · esperando GPS" else "Ubicación compartida con centro de control"
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (error: DriverApiException) {
-                        if (trackingMustStop(error.status)) { stopTracking(); break }
-                        message = "Seguimiento reconectando · última ubicación conservada"
+                        if (submittedDestination.depotVersion != null && trackingRejectsWarehouse(error.status, error.code)) {
+                            if (trackingDestination.depotVersion == submittedDestination.depotVersion) rejectedDepotVersion = submittedDestination.depotVersion
+                            message = "Regreso desactualizado · revisa tus pedidos y la bodega"
+                        } else if (trackingMustStop(error.status)) { stopTracking(); break }
+                        else message = "Seguimiento reconectando · última ubicación conservada"
                     } catch (_: Exception) { message = "Seguimiento reconectando · revisa tu conexión" }
                     delay(interval)
                 }
