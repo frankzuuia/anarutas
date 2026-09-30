@@ -883,7 +883,7 @@ describe("durable recalculation / real PostgreSQL and zero-distance road case", 
           "SELECT schema_version FROM rutas_installation WHERE singleton=true",
         )
       ).rows[0].schema_version,
-    ).toBe(34);
+    ).toBe(35);
     expect(
       (
         await db.pool.query(

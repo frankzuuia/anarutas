@@ -36,6 +36,7 @@ data class DeliveryOrder(
     val lines: List<DeliveryLine>,
     val latitude: Double? = null,
     val longitude: Double? = null,
+    val financial: DriverFinancialView? = null,
 )
 data class UnitPhoto(val id: String, val createdAt: String, val expiresAt: String)
 data class UnitPhotoUpload(val photo: UnitPhoto, val duplicate: Boolean)
@@ -67,6 +68,7 @@ data class AssignedPlan(
     val publicationRevision: Int = 0,
     val departure: RouteDeparture? = null,
     val completedAt: String? = null,
+    val executionRevision: Int? = null,
 )
 data class DriverDashboard(
     val driver: DriverProfile,
@@ -120,6 +122,7 @@ internal fun parseAssignedPlan(response: JSONObject): AssignedPlan {
             },
             latitude = if (item.isNull("latitude")) null else item.getDouble("latitude"),
             longitude = if (item.isNull("longitude")) null else item.getDouble("longitude"),
+            financial = parseDriverFinancial(item.optJSONObject("financial")),
         )
     }.sortedWith(compareBy<DeliveryOrder> { it.position }.thenBy { it.name })
     val overview = route?.let {
@@ -151,6 +154,7 @@ internal fun parseAssignedPlan(response: JSONObject): AssignedPlan {
             }
         } ?: route?.optString("encodedPolyline")?.takeIf(String::isNotBlank)?.let(::listOf).orEmpty(),
         photoCount = response.optJSONObject("publication")?.optInt("photoCount") ?: 0,
+        executionRevision = response.optJSONObject("publication")?.takeIf { it.has("executionRevision") }?.getInt("executionRevision"),
         startedAt = response.optJSONObject("publication")?.let { publication ->
             if (publication.isNull("startedAt")) null else publication.optString("startedAt").takeIf(String::isNotBlank)
         },

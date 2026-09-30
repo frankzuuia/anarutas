@@ -22,7 +22,18 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
     initialKind: ProductIncidentKind, model: RouteExecutionModel, editingIncident: ProductIncidentRecord? = null, close: () -> Unit) {
     val state = model.state
     val context = LocalContext.current
-    val line = lineIndex?.let { order.lines.getOrNull(it) }
+    var shortageSelection by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) {
+        mutableStateOf(if (editingIncident != null && lineIndex == null) "manual" else "")
+    }
+    val activeLineIndex = lineIndex ?: shortageSelection.toIntOrNull()
+    val line = activeLineIndex?.let { order.lines.getOrNull(it) }
+    val financial = order.financial
+    val financialLine = financial?.line(activeLineIndex)
+    val reference = financial?.reference(activeLineIndex)
+    var reviewedReference by rememberSaveable(stop.id, order.id, activeLineIndex, editingIncident?.id) {
+        mutableStateOf(reference?.key.orEmpty())
+    }
+    val now = financialClock()
     var savedId by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(editingIncident?.id) }
     val saved = savedId?.let { id -> state.execution?.stops?.flatMap { it.productIncidents }?.find { it.id == id } } ?: editingIncident
     var kindCode by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(editingIncident?.kind ?: initialKind.wire) }
@@ -35,7 +46,10 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
     var department by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(editingIncident?.department ?: "") }
     var concept by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(editingIncident?.concept ?: "") }
     var comments by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(editingIncident?.comments ?: emptyList()) }
-    val remaining = if (line != null) remainingProductQuantity(line.quantity, stop.productIncidents, order.id, lineIndex, savedId) else null
+    var replacementPayment by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf(editingIncident?.replacementPayment.orEmpty()) }
+    val replacement = kind == ProductIncidentKind.REPLACEMENT_QUALITY || kind == ProductIncidentKind.REPLACEMENT_WRONG
+    val remaining = if (line != null) remainingProductQuantity(financialLine?.quantity?.toBigDecimal() ?: java.math.BigDecimal.valueOf(line.quantity),
+        stop.productIncidents, order.id, activeLineIndex, savedId) else null
     val status = stop.orderStates.find { it.shipmentId == order.id }?.status
     val available = state.verified && !state.busy && !state.pending && !state.retired && stop.canAttend() &&
         (saved == null || saved.status == "pending" && !saved.reportRemoved) &&
@@ -47,7 +61,8 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
     var photoError by remember { mutableStateOf("") }
     val editable = !state.busy && !state.pending && cameraPath == null && (saved == null || saved.status == "pending" && !saved.reportRemoved)
     val changed = productIncidentDraftChanged(saved, kindCode, product, unit, quantity, note,
-        warehouseReason, department, concept, comments)
+        warehouseReason, department, concept, comments) ||
+        (replacement && replacementPayment != saved?.replacementPayment) || reference != saved?.financial
     var confirmCancel by rememberSaveable(savedId) { mutableStateOf(false) }
     fun discardPhoto(path: String?) {
         path?.let(::File)?.let { file ->
@@ -80,6 +95,8 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
                     department = confirmed.department
                     concept = confirmed.concept
                     comments = confirmed.comments
+                    replacementPayment = confirmed.replacementPayment.orEmpty()
+                    reviewedReference = confirmed.financial?.key.orEmpty()
                 }
                 photos.forEach(::discardPhoto); photos = emptyList(); readyPhotos = emptySet()
             }
@@ -90,12 +107,17 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
         state.busy -> "Guardando incidencia…"
         state.pending -> "Envío pendiente de confirmación. No vuelvas a capturar."
         !available -> state.message
-        !productIncidentValid(kind, quantity, product, unit, remaining, completeNote) ->
+        lineIndex == null && saved == null && shortageSelection.isEmpty() -> "Indica si el producto está incluido en el pedido."
+        reference?.key.orEmpty() != reviewedReference -> "La partida cambió. Revisa los nuevos importes antes de confirmar."
+        line != null && (reference != null || saved?.financial != null) && (!financialFresh(financial, now) || reference == null) ->
+            "Esperando cantidades e importes vigentes de Odoo. Tu captura se conserva."
+        !productIncidentValid(kind, quantity, product, unit, remaining, completeNote, linked = line != null) ->
             if (completeNote.length > 2000) "Máximo 2,000 caracteres entre comentarios y notas."
             else "Completa producto, unidad y una cantidad válida."
         department !in productDepartments -> "Selecciona el departamento."
         concept !in productConcepts -> "Selecciona el concepto."
         kind == ProductIncidentKind.SHORTAGE_WAREHOUSE && warehouseReason.isEmpty() -> "Selecciona el motivo desde bodega."
+        replacement && replacementPayment !in listOf("pay_full", "defer") -> "Indica cómo pagará el cliente la reposición."
         saved == null && !productPhotosValid(kind, photos.size) -> "Agrega al menos una foto de evidencia."
         photos.any { it !in readyPhotos } -> "Espera la vista previa o quita la foto que no se pudo leer."
         cameraPath != null -> "Termina la captura de la foto."
@@ -116,27 +138,49 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
         else if (saved != null && !changed) AppAction("Incidencia enviada", DriverIcon.CHECK, Modifier.fillMaxWidth(), enabled = false) {}
         else AppAction("Guardar incidencia", DriverIcon.CHECK, Modifier.fillMaxWidth(), enabled = available && missing.isEmpty()) {
             val amount = productQuantity(quantity)!!.stripTrailingZeros().toPlainString()
-            if (saved == null) model.reportProduct(stop.id, order.id, lineIndex, kind, amount, product, unit, note,
-                warehouseReason.takeIf { kind == ProductIncidentKind.SHORTAGE_WAREHOUSE }, department, concept, comments.toList(), photos.map(::File))
+            if (saved == null) model.reportProduct(stop.id, order.id, activeLineIndex, kind, amount, product, unit, note,
+                warehouseReason.takeIf { kind == ProductIncidentKind.SHORTAGE_WAREHOUSE }, department, concept, comments.toList(), photos.map(::File),
+                reference, replacementPayment.takeIf { replacement })
             else model.amendProduct(stop.id, order.id, saved, kind, amount, product, unit, note,
-                warehouseReason.takeIf { kind == ProductIncidentKind.SHORTAGE_WAREHOUSE }, department, concept, comments.toList())
+                warehouseReason.takeIf { kind == ProductIncidentKind.SHORTAGE_WAREHOUSE }, department, concept, comments.toList(),
+                reference, replacementPayment.takeIf { replacement })
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     }) {
-        if (line == null) {
+        if (lineIndex == null && saved == null) ProductSelectField("Producto faltante", shortageSelection,
+            listOf("manual" to "No está incluido en el pedido") + financial?.lines.orEmpty().mapNotNull { item ->
+                order.lines.getOrNull(item.lineIndex)?.let { item.lineIndex.toString() to "${it.name} · ${productQuantityText(item.quantity)} ${item.unit}" }
+            }, editable) {
+                shortageSelection = it
+                if (it == "manual" && !kind.manual) kindCode = initialKind.wire
+            }
+        if (line == null && (shortageSelection == "manual" || saved != null)) {
             Text("Escribe el producto que hizo falta, aunque no venga en el pedido.", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
             ShortageProductFields(product, quantity, unit, editable,
                 onProduct = { product = it }, onQuantity = { quantity = it }, onUnit = { unit = it })
-        } else {
+        } else if (line != null) {
             Text(line.name, style = MaterialTheme.typography.titleMedium)
-            Text("En pedido: ${productQuantityText(line.quantity.toString())} ${line.unit} · Disponible para reportar: ${remaining?.stripTrailingZeros()?.toPlainString()} ${line.unit}",
+            Text("En pedido: ${productQuantityText(financialLine?.quantity ?: line.quantity.toString())} ${financialLine?.unit ?: line.unit} · Disponible para reportar: ${remaining?.stripTrailingZeros()?.toPlainString()} ${financialLine?.unit ?: line.unit}",
                 style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+            FinancialLineDetails(financialLine, financial?.currency)
+            Text(financialStatus(financial, now), style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+            if (reference?.key.orEmpty() != reviewedReference) TextButton(enabled = editable && reference != null && financialFresh(financial, now),
+                onClick = { reviewedReference = reference?.key.orEmpty() }) { Text("Revisé los importes actualizados") }
         }
         ProductSelectField("Tipo de incidencia", kindCode,
-            ProductIncidentKind.entries.filter { it.manual == (line == null) }.map { it.wire to it.label }, editable) { kindCode = it }
-        if (!kind.manual) OutlinedTextField(quantity, { quantity = it.take(20) }, modifier = Modifier.fillMaxWidth(),
-            label = { Text(if (kind == ProductIncidentKind.RETURN) "Cantidad devuelta · $unit" else "Cantidad afectada · $unit") },
+            ProductIncidentKind.entries.filter { candidate ->
+                (if (line == null) candidate.manual else !candidate.manual || financialLine != null || candidate == kind) &&
+                    (saved == null || saved.evidenceCount > 0 || candidate.manual)
+            }.map { it.wire to it.label }, editable) { kindCode = it }
+        if (line != null) OutlinedTextField(quantity, { quantity = it.take(20) }, modifier = Modifier.fillMaxWidth(),
+            label = { Text(if (kind == ProductIncidentKind.RETURN) "Cantidad devuelta · ${financialLine?.unit ?: line.unit}" else "Cantidad afectada · ${financialLine?.unit ?: line.unit}") },
             enabled = editable, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+        if (replacement) {
+            ProductSelectField("Pago de la reposición", replacementPayment,
+                listOf("pay_full" to "El cliente paga completo", "defer" to "Deja pendiente el importe de la reposición"), editable) { replacementPayment = it }
+            Text("Esta elección determina el importe pendiente; el registro del cobro se realiza por separado.",
+                style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+        }
         if (remaining != null) TextButton(enabled = editable && remaining.signum() > 0,
             onClick = { quantity = remaining.stripTrailingZeros().toPlainString() }) { Text("Usar toda la cantidad disponible") }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

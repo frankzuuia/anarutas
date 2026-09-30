@@ -396,7 +396,7 @@ producción. Los informes QA conservan la evidencia previa al commit/push.
 - [x] PF-T03: compactación entre prioridades sólo cuando mantiene cero inversiones; fallback continúa compactando dentro de cada nivel.
 - [x] PF-T04: score v7 conserva prioridad, tardanzas y uso de flota; después minimiza conducción total más jornada máxima, viaje y distancia antes que equilibrio/espera.
 - [x] PF-QA: 367/367 pruebas, cobertura global 94.62% líneas, núcleo geográfico 100% líneas/96.66% ramas, mutación logística 98.32%, tipos, lint, build, E2E y auditoría de dependencias verdes.
-- [ ] PF-T05: deploy manual y nueva auditoría facturable en develop; comparar kilómetros, tardanzas, retornos y puntos compartidos contra la corrida v32.
+- [x] PF-T05: deploy manual y nueva auditoría facturable en develop; comparar kilómetros, tardanzas, retornos y puntos compartidos contra la corrida v32.
 
 ## Búsqueda global geográfica multisemilla — 14/09/2026
 
@@ -726,4 +726,16 @@ se prepara primero en `develop`; producción requiere su propia aprobación.
 - [x] F-T05: Gherkin LQ01..14;108/108 financieras con PG/Odoo reales,787 regresión/0 fallos/3 omisiones externas identificadas (financiera aprobada aparte),3/3 E2E,99.62% líneas/99.24% ramas,598/606 mutaciones de dominio y12/12 PG. Evidencia/límites en QA-FUENTE-FINANCIERA-BLOQUE-1.md.
 - [x] F-T06: revisión independiente final; typecheck/lint/build/bundle aprobados, audit0 vulnerabilidades, escaneo de credenciales sin coincidencias. Commit/push develop bajo autorización permanente; sin deploy ni cambios en main. Dos integraciones externas preexistentes ajenas al bloque permanecen omitidas, identificadas en QA.
 
-Bloques2..6 pendientes: precios/incidencias Android, cobro, roles, solicitudes/recepción/historial y E2E completo. Aprobar bloque1 no equivale a certificar estas funciones.
+Bloque2 implementado con QA de dispositivo pendiente; bloques3..6 pendientes: cobro, roles, solicitudes/recepción/historial y E2E completo. Aprobar bloque1 no equivale a certificar estas funciones.
+
+## BL-157..161 — bloque 2 aprobado («dale al bloque 2 y probamos completa»)
+
+- [x] PF-T00: autopsia de publicación/import/trigger/captura/ViewModels/eventos, plan y matriz PF01..18 antes de implementación.
+- [x] PF-T01: contrato/proyección/reparto decimal con identidad, estados y valores conservados (PF01..06,10,11,14,18).
+- [x] PF-T02: migración35, referencias/elección de reposición, validación SQL, historia y compatibilidad (PF07..10,12..15).
+- [x] PF-T03: lectura autorizada y comandos versionados atómicos (PF01,04..15).
+- [x] PF-T04: fingerprint/heartbeat y actualización de ambos consumidores Android (PF01,09,11,16).
+- [x] PF-T05: fichas/captura/resumen accesibles y APK0.8.8 (PF04..06,09,11,14,17).
+- [x] PF-T06A: QA automatizado unitario/PG/Odoo/HTTP/JVM, cobertura/mutación/regresión/seguridad y evidencia final en QA-IMPORTES-CHOFER-BLOQUE-2.md. Excepción de dispositivo aprobada por el propietario el 2026-09-30; commit/push develop autorizado, deploy manual.
+
+- [ ] PF-T06B: QA físico/Compose asumido por el propietario al completar bloques3..6, autorizados expresamente el 2026-09-30.

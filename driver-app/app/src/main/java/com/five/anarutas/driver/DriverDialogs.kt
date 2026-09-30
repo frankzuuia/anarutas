@@ -168,12 +168,18 @@ internal fun OrderDetailDialog(order: DeliveryOrder, timezone: String = "America
         }
         HorizontalDivider(color = DriverColors.line)
         SectionLabel("Productos", "${order.lines.size} partidas")
-        order.lines.forEach { line ->
+        order.lines.forEachIndexed { index, line ->
+            val financial = order.financial?.line(index)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
                 ProductThumbnail(line)
-                Text(line.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                Text("${line.quantity} ${line.unit}", style = MaterialTheme.typography.labelLarge, color = DriverColors.lime, modifier = Modifier.widthIn(max = 120.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(line.name, style = MaterialTheme.typography.bodyMedium)
+                    Text("${productQuantityText(financial?.quantity ?: line.quantity.toString())} ${financial?.unit ?: line.unit}",
+                        style = MaterialTheme.typography.labelLarge, color = DriverColors.lime)
+                    FinancialLineDetails(financial, order.financial?.currency)
+                }
             }
         }
+        FinancialOrderSummary(order.financial)
     }
 }

@@ -351,6 +351,7 @@ it("runtime controls validate values and backoff honors Retry-After beyond the n
   const config = financialSyncConfig({});
   expect(config).toEqual({
     pollSeconds: 60,
+    freshSeconds: 180,
     batchSize: 20,
     retrySeconds: 60,
     maxRetrySeconds: 3600,
@@ -405,6 +406,7 @@ it("checks inclusive config, decimal and Retry-After boundaries without binary r
     }),
   ).toEqual({
     pollSeconds: 1,
+    freshSeconds: 3,
     retrySeconds: 5,
     maxRetrySeconds: 600,
     metadataTtlSeconds: 700,

@@ -4,6 +4,7 @@ import { listDriverPlans } from "./driver-mobile-route";
 import { AppError } from "./errors";
 import { subscribePanelChanges } from "./panel-events";
 import { readOperationPolicy } from "./driver-operation-settings";
+import { publicationFinancialFingerprint } from "./driver-financial-store";
 
 export async function driverPublicationFingerprint(
   pool: Pool,
@@ -11,7 +12,12 @@ export async function driverPublicationFingerprint(
 ) {
   const plans = await listDriverPlans(pool, driverId);
   const policy = await readOperationPolicy(pool);
-  return JSON.stringify(
+  const financials = await publicationFinancialFingerprint(
+    pool,
+    plans.map((plan) => ({ planId: plan.id, vehicleId: plan.vehicle_id })),
+    new Date(),
+  );
+  return JSON.stringify([
     plans.map((plan) => [
       plan.id,
       plan.vehicle_id,
@@ -20,7 +26,8 @@ export async function driverPublicationFingerprint(
       Number(plan.execution_revision),
       policy.version,
     ]),
-  );
+    financials,
+  ]);
 }
 
 export function mobileEventStream(
@@ -66,14 +73,13 @@ export function mobileEventStream(
           const principal = await authenticateMobile(pool, authorization);
           if (principal.driver_id !== driverId)
             throw new AppError("MOBILE_UNAUTHENTICATED", 401);
-          if (dirty) {
-            dirty = false;
-            const latest = await driverPublicationFingerprint(pool, driverId);
-            if (latest !== fingerprint) {
-              fingerprint = latest;
-              emit("change");
-            }
-          } else emit("heartbeat");
+          const notified = dirty;
+          dirty = false;
+          const latest = await driverPublicationFingerprint(pool, driverId);
+          if (latest !== fingerprint) {
+            fingerprint = latest;
+            emit("change");
+          } else if (!notified) emit("heartbeat");
         } catch (error) {
           if (error instanceof AppError && error.status === 401)
             emit("session-expired");

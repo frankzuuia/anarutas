@@ -76,7 +76,12 @@ describe("driver mobile phone migration", () => {
       disabled.id,
       { pin: "9012", expectedMobileVersion: 0 },
     );
-    await revokeMobileAccess(db.pool, admin, disabled.id, disabledAccess.version);
+    await revokeMobileAccess(
+      db.pool,
+      admin,
+      disabled.id,
+      disabledAccess.version,
+    );
 
     await db.pool.query(
       "ALTER TABLE route_driver_mobile_access DROP CONSTRAINT route_driver_mobile_phone_canonical",
@@ -142,7 +147,7 @@ describe("driver mobile phone migration", () => {
     const version = await db.pool.query(
       "SELECT schema_version FROM rutas_installation WHERE singleton=true",
     );
-    expect(version.rows[0].schema_version).toBe(34);
+    expect(version.rows[0].schema_version).toBe(35);
     await expect(
       db.pool.query(
         "UPDATE route_driver_mobile_access SET login_phone='523311111111' WHERE driver_id=$1",

@@ -1,166 +1,463 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, rmdir, unlink, utimes, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  rmdir,
+  unlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import sharp from "sharp";
 import { expect, it } from "vitest";
 import { executionFixture } from "./helpers/driver-execution";
 import { readDriverExecution } from "../src/core/driver-execution-read";
-import { executeStopCommand, exitDriverVisit } from "../src/core/driver-stop-command";
+import {
+  executeStopCommand,
+  exitDriverVisit,
+} from "../src/core/driver-stop-command";
 import { executeDriverOrderCommand } from "../src/core/driver-order-command";
 import { reportCustomerClosed } from "../src/core/driver-closed-command";
 import { addDriverCustomerPhone } from "../src/core/driver-customer-phone";
 import { readDriverPlan } from "../src/core/driver-mobile-route";
 import { readDriverCommandResult } from "../src/core/driver-command-receipts";
-import { cleanIncidentEvidence, readIncidentEvidence } from "../src/core/driver-incident-evidence";
-import { readLiveIncidents, resolveLiveIncident } from "../src/core/driver-live-incidents";
+import {
+  cleanIncidentEvidence,
+  readIncidentEvidence,
+} from "../src/core/driver-incident-evidence";
+import {
+  readLiveIncidents,
+  resolveLiveIncident,
+} from "../src/core/driver-live-incidents";
 import { retryDriverOrder } from "../src/core/driver-order-retry";
 import { migrate } from "../src/core/database";
 import { readLiveRoutes } from "../src/core/live-routes";
 import { cancelPublishedRoute } from "../src/core/route-publications";
 
 type Fixture = Awaited<ReturnType<typeof executionFixture>>;
-async function state(f: Fixture) { return readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone); }
+async function state(f: Fixture) {
+  return readDriverExecution(
+    f.db.pool,
+    f.members[0].driverId,
+    f.planId,
+    f.timezone,
+  );
+}
 async function identity(f: Fixture, index = 0) {
-  const route = await state(f), stop = route.stops[index];
-  return { commandId: randomUUID(), executionId: route.id, publicationRevision: route.publicationRevision,
-    executionRevision: route.revision, stopVersion: stop.version, visitSequence: stop.visitSequence,
-    policyVersion: route.policy.version };
+  const route = await state(f),
+    stop = route.stops[index];
+  return {
+    commandId: randomUUID(),
+    executionId: route.id,
+    publicationRevision: route.publicationRevision,
+    executionRevision: route.revision,
+    stopVersion: stop.version,
+    visitSequence: stop.visitSequence,
+    policyVersion: route.policy.version,
+  };
 }
 async function arrive(f: Fixture, index = 0) {
   const route = await state(f);
-  await executeStopCommand(f.db.pool, f.members[0].authorization, f.planId, route.stops[index].id, "arrival", {
-    ...await identity(f, index), sample: { latitude: 20.64, longitude: -103.4, accuracyMeters: 5,
-      ageMilliseconds: 0, capturedAt: f.now.toISOString(), mock: false },
-  }, f.timezone, f.now);
+  await executeStopCommand(
+    f.db.pool,
+    f.members[0].authorization,
+    f.planId,
+    route.stops[index].id,
+    "arrival",
+    {
+      ...(await identity(f, index)),
+      sample: {
+        latitude: 20.64,
+        longitude: -103.4,
+        accuracyMeters: 5,
+        ageMilliseconds: 0,
+        capturedAt: f.now.toISOString(),
+        mock: false,
+      },
+    },
+    f.timezone,
+    f.now,
+  );
 }
-async function service(f: Fixture, index: number, orderIndex: number, action: Record<string, unknown>) {
-  const stop = (await state(f)).stops[index], order = stop.orderStates[orderIndex];
-  const input = { ...await identity(f, index), orderVersion: order.version, ...action };
-  const run = (raw: Record<string, unknown> = input, authorization = f.members[0].authorization) => executeDriverOrderCommand(f.db.pool,
-    authorization, f.planId, stop.id, order.shipmentId, raw, f.timezone, f.now);
+async function service(
+  f: Fixture,
+  index: number,
+  orderIndex: number,
+  action: Record<string, unknown>,
+) {
+  const stop = (await state(f)).stops[index],
+    order = stop.orderStates[orderIndex];
+  const input = {
+    ...(await identity(f, index)),
+    orderVersion: order.version,
+    ...action,
+  };
+  const run = (
+    raw: Record<string, unknown> = input,
+    authorization = f.members[0].authorization,
+  ) =>
+    executeDriverOrderCommand(
+      f.db.pool,
+      authorization,
+      f.planId,
+      stop.id,
+      order.shipmentId,
+      raw,
+      f.timezone,
+      f.now,
+    );
   return { run, input, order, stop };
 }
-const filters = () => new URLSearchParams({ from: "2026-09-24", to: "2026-09-24" });
-async function report(f: Fixture) { return readLiveIncidents(f.db.pool, f.actor, filters(), f.timezone, f.now); }
-async function photo() { return sharp({ create: { width: 24, height: 24, channels: 3, background: "#abcdef" } }).jpeg().toBuffer(); }
+const filters = () =>
+  new URLSearchParams({ from: "2026-09-24", to: "2026-09-24" });
+async function report(f: Fixture) {
+  return readLiveIncidents(f.db.pool, f.actor, filters(), f.timezone, f.now);
+}
+async function photo() {
+  return sharp({
+    create: { width: 24, height: 24, channels: 3, background: "#abcdef" },
+  })
+    .jpeg()
+    .toBuffer();
+}
 
 it("continuing after the final grouped delivery ends only the visit and preserves completed orders", async () => {
   const f = await executionFixture({ groupFourthOrderWithFirst: true });
   try {
-    await f.start(); await arrive(f);
+    await f.start();
+    await arrive(f);
     await (await service(f, 0, 0, { kind: "deliver" })).run();
-    expect((await state(f)).stops[0].orderStates.map(order => order.status).sort()).toEqual(["delivered", "open"]);
+    expect(
+      (await state(f)).stops[0].orderStates.map((order) => order.status).sort(),
+    ).toEqual(["delivered", "open"]);
     await (await service(f, 0, 1, { kind: "deliver" })).run();
-    const current = await state(f), command = await identity(f);
-    const run = () => exitDriverVisit(f.db.pool, f.members[0].authorization, f.planId, current.stops[0].id, command, f.timezone, f.now);
+    const current = await state(f),
+      command = await identity(f);
+    const run = () =>
+      exitDriverVisit(
+        f.db.pool,
+        f.members[0].authorization,
+        f.planId,
+        current.stops[0].id,
+        command,
+        f.timezone,
+        f.now,
+      );
     await run();
     expect((await run()).duplicate).toBe(true);
     const after = await state(f);
     expect(after.stops[0].arrivedAt).toBeNull();
-    expect(after.stops[0].orderStates.map(order => order.status)).toEqual(["delivered", "delivered"]);
+    expect(after.stops[0].orderStates.map((order) => order.status)).toEqual([
+      "delivered",
+      "delivered",
+    ]);
     expect(after.stops[1].arrivedAt).toBeNull();
-    expect(after.stops[1].orderStates.every(order => order.status === "open")).toBe(true);
-    expect((await readDriverPlan(f.db.pool, f.members[0].driverId, f.planId, f.timezone)).startedAt).not.toBeNull();
+    expect(
+      after.stops[1].orderStates.every((order) => order.status === "open"),
+    ).toBe(true);
+    expect(
+      (
+        await readDriverPlan(
+          f.db.pool,
+          f.members[0].driverId,
+          f.planId,
+          f.timezone,
+        )
+      ).startedAt,
+    ).not.toBeNull();
     expect((await report(f)).rows).toHaveLength(0);
-  } finally { await f.close(); }
+  } finally {
+    await f.close();
+  }
 }, 120_000);
 
 it("reopens one rescheduled order atomically, preserves history and requires a new verified arrival", async () => {
   const f = await executionFixture({ groupFourthOrderWithFirst: true });
   try {
-    await f.start(); await arrive(f);
+    await f.start();
+    await arrive(f);
     let stop = (await state(f)).stops[0];
-    await reportCustomerClosed(f.db.pool, f.members[0].authorization, f.planId, stop.id,
-      await identity(f), await photo(), "image/jpeg", f.timezone, f.photoRoot, f.now);
-    await (await service(f, 0, 0, { kind: "reschedule", note: "Cliente llamó después" })).run();
+    await reportCustomerClosed(
+      f.db.pool,
+      f.members[0].authorization,
+      f.planId,
+      stop.id,
+      await identity(f),
+      await photo(),
+      "image/jpeg",
+      f.timezone,
+      f.photoRoot,
+      f.now,
+    );
+    await (
+      await service(f, 0, 0, {
+        kind: "reschedule",
+        note: "Cliente llamó después",
+      })
+    ).run();
     await (await service(f, 0, 1, { kind: "reschedule" })).run();
     const originalCases = (await report(f)).rows;
     expect(originalCases).toHaveLength(2);
     let control = (await readLiveRoutes(f.db.pool, f.actor)).routes[0];
-    expect(control.progress).toMatchObject({ orders: 4, delivered: 0, rescheduled: 2, remainingStops: 2, completedStops: 0 });
+    expect(control.progress).toMatchObject({
+      orders: 4,
+      delivered: 0,
+      rescheduled: 2,
+      remainingStops: 2,
+      completedStops: 0,
+    });
     expect(control.stops[0].progress.visible).toBe(false);
     expect(control.stops).toHaveLength(3);
     // Re-run the real additive upgrade on a version-22 installation marker.
-    const beforeUpgrade = (await f.db.pool.query("SELECT id,kind FROM route_driver_stop_events ORDER BY id")).rows;
+    const beforeUpgrade = (
+      await f.db.pool.query(
+        "SELECT id,kind FROM route_driver_stop_events ORDER BY id",
+      )
+    ).rows;
     await f.db.pool.query("UPDATE rutas_installation SET schema_version=22");
     await migrate(f.db.pool, f.db.config.instanceId);
     await migrate(f.db.pool, f.db.config.instanceId);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(34);
-    expect((await f.db.pool.query("SELECT id,kind FROM route_driver_stop_events ORDER BY id")).rows).toEqual(beforeUpgrade);
+    expect(
+      (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
+        .rows[0].schema_version,
+    ).toBe(35);
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT id,kind FROM route_driver_stop_events ORDER BY id",
+        )
+      ).rows,
+    ).toEqual(beforeUpgrade);
     stop = (await state(f)).stops[0];
     const order = stop.orderStates[0];
-    const input = { ...await identity(f), orderVersion: order.version };
-    const run = (raw: Record<string, unknown> = input, auth = f.members[0].authorization, stopId = stop.id, shipmentId = order.shipmentId) =>
-      retryDriverOrder(f.db.pool, auth, f.planId, stopId, shipmentId, raw, f.timezone, f.now);
-    await expect(run(input, "Bearer invalid")).rejects.toMatchObject({ status: 401 });
-    await expect(run(input, f.members[1].authorization)).rejects.toMatchObject({ status: 404 });
-    await expect(run(input, f.members[0].authorization, randomUUID())).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
-    await expect(run(input, f.members[0].authorization, stop.id, randomUUID())).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
-    for (const key of ["executionRevision", "publicationRevision", "stopVersion", "visitSequence", "orderVersion"])
-      await expect(run({ ...input, [key]: 999 })).rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
-    await expect(run({ ...input, executionId: randomUUID() })).rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
+    const input = { ...(await identity(f)), orderVersion: order.version };
+    const run = (
+      raw: Record<string, unknown> = input,
+      auth = f.members[0].authorization,
+      stopId = stop.id,
+      shipmentId = order.shipmentId,
+    ) =>
+      retryDriverOrder(
+        f.db.pool,
+        auth,
+        f.planId,
+        stopId,
+        shipmentId,
+        raw,
+        f.timezone,
+        f.now,
+      );
+    await expect(run(input, "Bearer invalid")).rejects.toMatchObject({
+      status: 401,
+    });
+    await expect(run(input, f.members[1].authorization)).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(
+      run(input, f.members[0].authorization, randomUUID()),
+    ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    await expect(
+      run(input, f.members[0].authorization, stop.id, randomUUID()),
+    ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    for (const key of [
+      "executionRevision",
+      "publicationRevision",
+      "stopVersion",
+      "visitSequence",
+      "orderVersion",
+    ])
+      await expect(run({ ...input, [key]: 999 })).rejects.toMatchObject({
+        code: "VERSION_CONFLICT",
+        status: 409,
+      });
+    await expect(
+      run({ ...input, executionId: randomUUID() }),
+    ).rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
     const [a, b] = await Promise.all([run(), run()]);
     expect(a.eventId).toBe(b.eventId);
     expect([a.duplicate, b.duplicate].sort()).toEqual([false, true]);
-    await expect(run({ ...input, orderVersion: input.orderVersion + 1 })).rejects.toMatchObject({ code: "COMMAND_REUSED" });
+    await expect(
+      run({ ...input, orderVersion: input.orderVersion + 1 }),
+    ).rejects.toMatchObject({ code: "COMMAND_REUSED" });
     let current = await state(f);
-    expect(current.stops[0]).toMatchObject({ arrivedAt: null, visitState: "open" });
-    expect(current.stops[0].orderStates.map(order => order.status)).toEqual(["open", "rescheduled"]);
+    expect(current.stops[0]).toMatchObject({
+      arrivedAt: null,
+      visitState: "open",
+    });
+    expect(current.stops[0].orderStates.map((order) => order.status)).toEqual([
+      "open",
+      "rescheduled",
+    ]);
     control = (await readLiveRoutes(f.db.pool, f.actor)).routes[0];
     expect(control.stops[0].progress.visible).toBe(true);
     expect(control.arrivedStopId).toBeNull();
-    expect(control.progress).toMatchObject({ delivered: 0, rescheduled: 1, remainingStops: 3 });
+    expect(control.progress).toMatchObject({
+      delivered: 0,
+      rescheduled: 1,
+      remainingStops: 3,
+    });
     expect(current.stops[0].orderStates[1]).toEqual(stop.orderStates[1]);
     expect((await report(f)).rows).toHaveLength(1);
-    expect((await f.db.pool.query("SELECT count(*)::int AS n FROM route_driver_stop_events WHERE kind='order_reopened'")).rows[0].n).toBe(1);
-    expect((await f.db.pool.query("SELECT kind FROM route_driver_incident_events WHERE kind='reopened'")).rows).toHaveLength(1);
-    expect((await f.db.pool.query("SELECT details FROM route_driver_stop_events WHERE kind='visit_exit'")).rows[0].details)
-      .toMatchObject({ reason: "order_reopened" });
-    expect((await f.db.pool.query("SELECT note FROM route_driver_service_incidents WHERE id=$1", [originalCases.find(c => c.note)?.id])).rows[0].note)
-      .toBe("Cliente llamó después");
-    await expect((await service(f, 0, 0, { kind: "deliver" })).run()).rejects.toMatchObject({ code: "VISIT_NOT_ACTIVE" });
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT count(*)::int AS n FROM route_driver_stop_events WHERE kind='order_reopened'",
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT kind FROM route_driver_incident_events WHERE kind='reopened'",
+        )
+      ).rows,
+    ).toHaveLength(1);
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT details FROM route_driver_stop_events WHERE kind='visit_exit'",
+        )
+      ).rows[0].details,
+    ).toMatchObject({ reason: "order_reopened" });
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT note FROM route_driver_service_incidents WHERE id=$1",
+          [originalCases.find((c) => c.note)?.id],
+        )
+      ).rows[0].note,
+    ).toBe("Cliente llamó después");
+    await expect(
+      (await service(f, 0, 0, { kind: "deliver" })).run(),
+    ).rejects.toMatchObject({ code: "VISIT_NOT_ACTIVE" });
     await arrive(f);
     await (await service(f, 0, 0, { kind: "deliver" })).run();
     current = await state(f);
-    expect(current.stops[0].orderStates.map(order => order.status)).toEqual(["delivered", "rescheduled"]);
+    expect(current.stops[0].orderStates.map((order) => order.status)).toEqual([
+      "delivered",
+      "rescheduled",
+    ]);
     control = (await readLiveRoutes(f.db.pool, f.actor)).routes[0];
-    expect(control.progress).toMatchObject({ delivered: 1, rescheduled: 1, remainingStops: 2, completedStops: 0 });
+    expect(control.progress).toMatchObject({
+      delivered: 1,
+      rescheduled: 1,
+      remainingStops: 2,
+      completedStops: 0,
+    });
     expect(control.stops[0].progress.visible).toBe(false);
-    expect((await report(f)).metrics).toEqual({ pending: 1, completed: 1, resolved: 0 });
-    await expect(run({ ...await identity(f), commandId: randomUUID(), orderVersion: current.stops[0].orderStates[0].version }))
-      .rejects.toMatchObject({ code: "ORDER_STATE_CONFLICT" });
+    expect((await report(f)).metrics).toEqual({
+      pending: 1,
+      completed: 1,
+      resolved: 0,
+    });
+    await expect(
+      run({
+        ...(await identity(f)),
+        commandId: randomUUID(),
+        orderVersion: current.stops[0].orderStates[0].version,
+      }),
+    ).rejects.toMatchObject({ code: "ORDER_STATE_CONFLICT" });
     // A reprogrammed order remains reopenable even after admin resolution and exit.
-    const remainingCase = (await report(f)).rows.find(row => row.status === "active")!;
-    await resolveLiveIncident(f.db.pool, f.actor, remainingCase.id, { expectedVersion: remainingCase.version }, f.now);
-    await exitDriverVisit(f.db.pool, f.members[0].authorization, f.planId, current.stops[0].id, await identity(f), f.timezone, f.now);
+    const remainingCase = (await report(f)).rows.find(
+      (row) => row.status === "active",
+    )!;
+    await resolveLiveIncident(
+      f.db.pool,
+      f.actor,
+      remainingCase.id,
+      { expectedVersion: remainingCase.version },
+      f.now,
+    );
+    await exitDriverVisit(
+      f.db.pool,
+      f.members[0].authorization,
+      f.planId,
+      current.stops[0].id,
+      await identity(f),
+      f.timezone,
+      f.now,
+    );
     current = await state(f);
-    await run({ ...await identity(f), orderVersion: current.stops[0].orderStates[1].version }, f.members[0].authorization, stop.id, current.stops[0].orderStates[1].shipmentId);
-    expect((await state(f)).stops[0].orderStates.map(order => order.status)).toEqual(["delivered", "open"]);
+    await run(
+      {
+        ...(await identity(f)),
+        orderVersion: current.stops[0].orderStates[1].version,
+      },
+      f.members[0].authorization,
+      stop.id,
+      current.stops[0].orderStates[1].shipmentId,
+    );
+    expect(
+      (await state(f)).stops[0].orderStates.map((order) => order.status),
+    ).toEqual(["delivered", "open"]);
     expect((await report(f)).metrics.resolved).toBe(1);
-  } finally { await f.close(); }
+  } finally {
+    await f.close();
+  }
 }, 120_000);
 
 it("serializes competing reopen commands and rejects stale publication after confirmed replay", async () => {
   const f = await executionFixture();
   try {
-    await f.start(); await arrive(f);
+    await f.start();
+    await arrive(f);
     const stop = (await state(f)).stops[0];
-    await reportCustomerClosed(f.db.pool, f.members[0].authorization, f.planId, stop.id,
-      await identity(f), await photo(), "image/jpeg", f.timezone, f.photoRoot, f.now);
+    await reportCustomerClosed(
+      f.db.pool,
+      f.members[0].authorization,
+      f.planId,
+      stop.id,
+      await identity(f),
+      await photo(),
+      "image/jpeg",
+      f.timezone,
+      f.photoRoot,
+      f.now,
+    );
     await (await service(f, 0, 0, { kind: "reschedule" })).run();
     const order = (await state(f)).stops[0].orderStates[0];
-    const input = { ...await identity(f), orderVersion: order.version };
-    const run = (raw: Record<string, unknown>) => retryDriverOrder(f.db.pool, f.members[0].authorization, f.planId,
-      stop.id, order.shipmentId, raw, f.timezone);
-    const results = await Promise.allSettled([run(input), run({ ...input, commandId: randomUUID() })]);
-    expect(results.filter(r => r.status === "fulfilled")).toHaveLength(1);
-    expect(results.find(r => r.status === "rejected")).toMatchObject({ reason: { code: "VERSION_CONFLICT", status: 409 } });
-    expect((await f.db.pool.query("SELECT count(*)::int AS n FROM route_driver_stop_events WHERE kind='order_reopened'")).rows[0].n).toBe(1);
-    const version = (await f.db.pool.query("SELECT version FROM route_plans WHERE id=$1", [f.planId])).rows[0].version;
-    await cancelPublishedRoute(f.db.pool, f.actor, f.planId, f.members[0].vehicleId,
-      { expectedVersion: version, expectedRevision: input.publicationRevision });
+    const input = { ...(await identity(f)), orderVersion: order.version };
+    const run = (raw: Record<string, unknown>) =>
+      retryDriverOrder(
+        f.db.pool,
+        f.members[0].authorization,
+        f.planId,
+        stop.id,
+        order.shipmentId,
+        raw,
+        f.timezone,
+      );
+    const results = await Promise.allSettled([
+      run(input),
+      run({ ...input, commandId: randomUUID() }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((r) => r.status === "rejected")).toMatchObject({
+      reason: { code: "VERSION_CONFLICT", status: 409 },
+    });
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT count(*)::int AS n FROM route_driver_stop_events WHERE kind='order_reopened'",
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    const version = (
+      await f.db.pool.query("SELECT version FROM route_plans WHERE id=$1", [
+        f.planId,
+      ])
+    ).rows[0].version;
+    await cancelPublishedRoute(
+      f.db.pool,
+      f.actor,
+      f.planId,
+      f.members[0].vehicleId,
+      { expectedVersion: version, expectedRevision: input.publicationRevision },
+    );
     await expect(run(input)).rejects.toMatchObject({ status: 404 });
-  } finally { await f.close(); }
+  } finally {
+    await f.close();
+  }
 }, 120_000);
 
 it("rejects independently, authenticates, serializes replays and later delivers without erasing history", async () => {
@@ -168,203 +465,722 @@ it("rejects independently, authenticates, serializes replays and later delivers 
   try {
     await f.start();
     await arrive(f);
-    const command = await service(f, 0, 0, { kind: "reject", reasonCode: "other", note: "Cliente no lo requiere hoy" });
-    await expect(command.run(command.input, "Bearer invalid")).rejects.toMatchObject({ status: 401 });
-    await expect(command.run(command.input, f.members[1].authorization)).rejects.toMatchObject({ status: 404 });
-    for (const key of ["executionRevision", "publicationRevision", "stopVersion", "orderVersion"]) {
-      await expect(command.run({ ...command.input, [key]: 999 })).rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
+    const command = await service(f, 0, 0, {
+      kind: "reject",
+      reasonCode: "other",
+      note: "Cliente no lo requiere hoy",
+    });
+    await expect(
+      command.run(command.input, "Bearer invalid"),
+    ).rejects.toMatchObject({ status: 401 });
+    await expect(
+      command.run(command.input, f.members[1].authorization),
+    ).rejects.toMatchObject({ status: 404 });
+    for (const key of [
+      "executionRevision",
+      "publicationRevision",
+      "stopVersion",
+      "orderVersion",
+    ]) {
+      await expect(
+        command.run({ ...command.input, [key]: 999 }),
+      ).rejects.toMatchObject({ code: "VERSION_CONFLICT", status: 409 });
     }
-    await expect(command.run({ ...command.input, visitSequence: 99 })).rejects.toMatchObject({ code: "VISIT_NOT_ACTIVE", status: 409 });
+    await expect(
+      command.run({ ...command.input, visitSequence: 99 }),
+    ).rejects.toMatchObject({ code: "VISIT_NOT_ACTIVE", status: 409 });
     const [first, replay] = await Promise.all([command.run(), command.run()]);
     expect(first.incidentId).toBe(replay.incidentId);
     expect([first.duplicate, replay.duplicate].sort()).toEqual([false, true]);
-    expect(await readDriverCommandResult(f.db.pool, f.members[0].authorization, f.planId, command.input.commandId))
-      .toMatchObject({ confirmed: true, result: { incidentId: first.incidentId } });
-    expect(await readDriverCommandResult(f.db.pool, f.members[0].authorization, f.planId, randomUUID()))
-      .toEqual({ confirmed: false, result: null });
-    await expect(readDriverCommandResult(f.db.pool, null, f.planId, command.input.commandId)).rejects.toMatchObject({ status: 401 });
+    expect(
+      await readDriverCommandResult(
+        f.db.pool,
+        f.members[0].authorization,
+        f.planId,
+        command.input.commandId,
+      ),
+    ).toMatchObject({
+      confirmed: true,
+      result: { incidentId: first.incidentId },
+    });
+    expect(
+      await readDriverCommandResult(
+        f.db.pool,
+        f.members[0].authorization,
+        f.planId,
+        randomUUID(),
+      ),
+    ).toEqual({ confirmed: false, result: null });
+    await expect(
+      readDriverCommandResult(
+        f.db.pool,
+        null,
+        f.planId,
+        command.input.commandId,
+      ),
+    ).rejects.toMatchObject({ status: 401 });
     await f.start(f.members[1]);
-    expect(await readDriverCommandResult(f.db.pool, f.members[1].authorization, f.planId, command.input.commandId))
-      .toEqual({ confirmed: false, result: null });
-    await expect(command.run({ ...command.input, note: "Otro" })).rejects.toMatchObject({ code: "COMMAND_REUSED" });
+    expect(
+      await readDriverCommandResult(
+        f.db.pool,
+        f.members[1].authorization,
+        f.planId,
+        command.input.commandId,
+      ),
+    ).toEqual({ confirmed: false, result: null });
+    await expect(
+      command.run({ ...command.input, note: "Otro" }),
+    ).rejects.toMatchObject({ code: "COMMAND_REUSED" });
     let current = await state(f);
-    expect(current.stops[0].orderStates.map(order => order.status).sort()).toEqual(["open", "rejected"]);
+    expect(
+      current.stops[0].orderStates.map((order) => order.status).sort(),
+    ).toEqual(["open", "rejected"]);
     const live = await report(f);
     expect(live.metrics).toEqual({ pending: 1, completed: 0, resolved: 0 });
-    expect(live.rows[0]).toMatchObject({ kind: "order_rejected", canResolve: true, note: "Cliente no lo requiere hoy" });
-    expect((await readLiveIncidents(f.db.pool, f.actor, new URLSearchParams({ ...Object.fromEntries(filters()), driverId: f.members[1].driverId }), f.timezone, f.now)).rows).toHaveLength(0);
-    await expect(resolveLiveIncident(f.db.pool, f.actor, randomUUID(), { expectedVersion: 1 }, f.now))
-      .rejects.toMatchObject({ status: 404 });
-    await expect(resolveLiveIncident(f.db.pool, f.actor, first.incidentId!, { expectedVersion: 2 }, f.now))
-      .rejects.toMatchObject({ code: "VERSION_CONFLICT" });
-    await expect(resolveLiveIncident(f.db.pool, f.actor, first.incidentId!, { expectedVersion: 1 }, f.now))
-      .resolves.toMatchObject({ resolved: true, duplicate: false });
-    await expect(resolveLiveIncident(f.db.pool, f.actor, first.incidentId!, { expectedVersion: 1 }, f.now))
-      .resolves.toMatchObject({ resolved: true, duplicate: true });
+    expect(live.rows[0]).toMatchObject({
+      kind: "order_rejected",
+      canResolve: true,
+      note: "Cliente no lo requiere hoy",
+    });
+    expect(
+      (
+        await readLiveIncidents(
+          f.db.pool,
+          f.actor,
+          new URLSearchParams({
+            ...Object.fromEntries(filters()),
+            driverId: f.members[1].driverId,
+          }),
+          f.timezone,
+          f.now,
+        )
+      ).rows,
+    ).toHaveLength(0);
+    await expect(
+      resolveLiveIncident(
+        f.db.pool,
+        f.actor,
+        randomUUID(),
+        { expectedVersion: 1 },
+        f.now,
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      resolveLiveIncident(
+        f.db.pool,
+        f.actor,
+        first.incidentId!,
+        { expectedVersion: 2 },
+        f.now,
+      ),
+    ).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
+    await expect(
+      resolveLiveIncident(
+        f.db.pool,
+        f.actor,
+        first.incidentId!,
+        { expectedVersion: 1 },
+        f.now,
+      ),
+    ).resolves.toMatchObject({ resolved: true, duplicate: false });
+    await expect(
+      resolveLiveIncident(
+        f.db.pool,
+        f.actor,
+        first.incidentId!,
+        { expectedVersion: 1 },
+        f.now,
+      ),
+    ).resolves.toMatchObject({ resolved: true, duplicate: true });
     expect((await report(f)).metrics.resolved).toBe(1);
     current = await state(f);
-    await exitDriverVisit(f.db.pool, f.members[0].authorization, f.planId, current.stops[0].id, await identity(f), f.timezone, f.now);
+    await exitDriverVisit(
+      f.db.pool,
+      f.members[0].authorization,
+      f.planId,
+      current.stops[0].id,
+      await identity(f),
+      f.timezone,
+      f.now,
+    );
     const inactive = await service(f, 0, 0, { kind: "deliver" });
-    await expect(inactive.run()).rejects.toMatchObject({ code: "VISIT_NOT_ACTIVE" });
+    await expect(inactive.run()).rejects.toMatchObject({
+      code: "VISIT_NOT_ACTIVE",
+    });
     await arrive(f);
     const delivery = await service(f, 0, 0, { kind: "deliver" });
     await delivery.run();
     expect((await state(f)).stops[0].orderStates[0].status).toBe("delivered");
-    expect((await report(f)).metrics).toEqual({ pending: 0, completed: 1, resolved: 0 });
-    expect((await f.db.pool.query("SELECT kind FROM route_driver_incident_events WHERE incident_id=$1", [first.incidentId])).rows.map(row => row.kind))
-      .toEqual(expect.arrayContaining(["opened", "resolved_by_admin", "completed"]));
+    expect((await report(f)).metrics).toEqual({
+      pending: 0,
+      completed: 1,
+      resolved: 0,
+    });
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT kind FROM route_driver_incident_events WHERE incident_id=$1",
+          [first.incidentId],
+        )
+      ).rows.map((row) => row.kind),
+    ).toEqual(
+      expect.arrayContaining(["opened", "resolved_by_admin", "completed"]),
+    );
     expect((await delivery.run()).duplicate).toBe(true);
-    await expect((await service(f, 0, 0, { kind: "deliver" })).run()).rejects.toMatchObject({ code: "ORDER_STATE_CONFLICT" });
-  } finally { await f.close(); }
+    await expect(
+      (await service(f, 0, 0, { kind: "deliver" })).run(),
+    ).rejects.toMatchObject({ code: "ORDER_STATE_CONFLICT" });
+  } finally {
+    await f.close();
+  }
 }, 120_000);
 
 it("shows live cases across dates for started publications and hides revoked routes without deleting audit", async () => {
   const f = await executionFixture();
   try {
-    await f.start(); await arrive(f);
-    const rejected = await service(f, 0, 0, { kind: "reject", reasonCode: "other", note: "Revisar entrega" });
+    await f.start();
+    await arrive(f);
+    const rejected = await service(f, 0, 0, {
+      kind: "reject",
+      reasonCode: "other",
+      note: "Revisar entrega",
+    });
     const saved = await rejected.run();
     const future = new Date(f.now.getTime() + 48 * 60 * 60 * 1000);
-    const live = await readLiveIncidents(f.db.pool, f.actor, new URLSearchParams(), f.timezone, future);
+    const live = await readLiveIncidents(
+      f.db.pool,
+      f.actor,
+      new URLSearchParams(),
+      f.timezone,
+      future,
+    );
     expect(live.rows).toHaveLength(1);
-    expect(live.rows[0]).toMatchObject({ id: saved.incidentId, status: "active" });
+    expect(live.rows[0]).toMatchObject({
+      id: saved.incidentId,
+      status: "active",
+    });
     expect(live.metrics.pending).toBe(1);
-    expect((await readLiveIncidents(f.db.pool, f.actor, new URLSearchParams({ driverId: f.members[1].driverId }), f.timezone, future)).rows).toHaveLength(0);
-    expect((await readLiveIncidents(f.db.pool, f.actor, new URLSearchParams({ from: "2026-09-25", to: "2026-09-25" }), f.timezone, future)).rows).toHaveLength(0);
-    const planVersion = (await f.db.pool.query("SELECT version FROM route_plans WHERE id=$1", [f.planId])).rows[0].version;
-    await cancelPublishedRoute(f.db.pool, f.actor, f.planId, f.members[0].vehicleId,
-      { expectedVersion: planVersion, expectedRevision: rejected.input.publicationRevision });
-    expect((await readLiveIncidents(f.db.pool, f.actor, new URLSearchParams(), f.timezone, future)).rows).toHaveLength(0);
-    expect((await f.db.pool.query("SELECT count(*)::int AS count FROM route_driver_service_incidents WHERE id=$1", [saved.incidentId])).rows[0].count).toBe(1);
-  } finally { await f.close(); }
+    expect(
+      (
+        await readLiveIncidents(
+          f.db.pool,
+          f.actor,
+          new URLSearchParams({ driverId: f.members[1].driverId }),
+          f.timezone,
+          future,
+        )
+      ).rows,
+    ).toHaveLength(0);
+    expect(
+      (
+        await readLiveIncidents(
+          f.db.pool,
+          f.actor,
+          new URLSearchParams({ from: "2026-09-25", to: "2026-09-25" }),
+          f.timezone,
+          future,
+        )
+      ).rows,
+    ).toHaveLength(0);
+    const planVersion = (
+      await f.db.pool.query("SELECT version FROM route_plans WHERE id=$1", [
+        f.planId,
+      ])
+    ).rows[0].version;
+    await cancelPublishedRoute(
+      f.db.pool,
+      f.actor,
+      f.planId,
+      f.members[0].vehicleId,
+      {
+        expectedVersion: planVersion,
+        expectedRevision: rejected.input.publicationRevision,
+      },
+    );
+    expect(
+      (
+        await readLiveIncidents(
+          f.db.pool,
+          f.actor,
+          new URLSearchParams(),
+          f.timezone,
+          future,
+        )
+      ).rows,
+    ).toHaveLength(0);
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT count(*)::int AS count FROM route_driver_service_incidents WHERE id=$1",
+          [saved.incidentId],
+        )
+      ).rows[0].count,
+    ).toBe(1);
+  } finally {
+    await f.close();
+  }
 }, 120_000);
 
 it("requires a real photo, retries both orders, restores abandoned cases and reprograms without a date", async () => {
   const f = await executionFixture({ groupFourthOrderWithFirst: true });
   try {
-    await f.start(); await arrive(f);
-    const stop = (await state(f)).stops[0], input = { ...await identity(f), note: "Cortina cerrada" }, bytes = await photo();
-    const closed = (raw = input, data = bytes) => reportCustomerClosed(f.db.pool, f.members[0].authorization,
-      f.planId, stop.id, raw, data, "image/jpeg", f.timezone, f.photoRoot, f.now);
-    await expect(closed(input, Buffer.from("not an image"))).rejects.toMatchObject({ code: "UNIT_PHOTO_INVALID" });
+    await f.start();
+    await arrive(f);
+    const stop = (await state(f)).stops[0],
+      input = { ...(await identity(f)), note: "Cortina cerrada" },
+      bytes = await photo();
+    const closed = (raw = input, data = bytes) =>
+      reportCustomerClosed(
+        f.db.pool,
+        f.members[0].authorization,
+        f.planId,
+        stop.id,
+        raw,
+        data,
+        "image/jpeg",
+        f.timezone,
+        f.photoRoot,
+        f.now,
+      );
+    await expect(
+      closed(input, Buffer.from("not an image")),
+    ).rejects.toMatchObject({ code: "UNIT_PHOTO_INVALID" });
     expect((await report(f)).rows).toHaveLength(0);
     const saved = await closed();
     expect((await closed()).incidentId).toBe(saved.incidentId);
-    expect(await readdir(join(f.photoRoot, "incident-evidence"))).toHaveLength(1);
-    expect((await state(f)).stops[0].orderStates.map(order => order.status)).toEqual(["closed_pending", "closed_pending"]);
+    expect(await readdir(join(f.photoRoot, "incident-evidence"))).toHaveLength(
+      1,
+    );
+    expect(
+      (await state(f)).stops[0].orderStates.map((order) => order.status),
+    ).toEqual(["closed_pending", "closed_pending"]);
     let live = await report(f);
-    expect(live.rows[0]).toMatchObject({ canResolve: false, kind: "customer_closed", status: "active" });
+    expect(live.rows[0]).toMatchObject({
+      canResolve: false,
+      kind: "customer_closed",
+      status: "active",
+    });
     expect(live.rows[0].orders).toHaveLength(2);
-    await expect((await service(f, 0, 0, { kind: "deliver" })).run()).rejects.toMatchObject({ code: "RETRY_REQUIRES_NEW_ARRIVAL" });
+    await expect(
+      (await service(f, 0, 0, { kind: "deliver" })).run(),
+    ).rejects.toMatchObject({ code: "RETRY_REQUIRES_NEW_ARRIVAL" });
     const evidenceId = live.rows[0].evidenceId!;
-    expect((await readIncidentEvidence(f.db.pool, f.actor, evidenceId, f.photoRoot, f.now)).length).toBeGreaterThan(0);
-    await expect(readIncidentEvidence(f.db.pool, randomUUID(), evidenceId, f.photoRoot, f.now)).rejects.toMatchObject({ status: 401 });
-    await expect(resolveLiveIncident(f.db.pool, f.actor, saved.incidentId!, { expectedVersion: 1 }, f.now)).rejects.toMatchObject({ code: "DRIVER_RETRY_REQUIRED" });
-    await expect(closed({ ...await identity(f), note: "Cortina cerrada" })).rejects.toMatchObject({ code: "RETRY_REQUIRES_NEW_ARRIVAL" });
-    await exitDriverVisit(f.db.pool, f.members[0].authorization, f.planId, stop.id, await identity(f), f.timezone, f.now);
+    expect(
+      (
+        await readIncidentEvidence(
+          f.db.pool,
+          f.actor,
+          evidenceId,
+          f.photoRoot,
+          f.now,
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+    await expect(
+      readIncidentEvidence(
+        f.db.pool,
+        randomUUID(),
+        evidenceId,
+        f.photoRoot,
+        f.now,
+      ),
+    ).rejects.toMatchObject({ status: 401 });
+    await expect(
+      resolveLiveIncident(
+        f.db.pool,
+        f.actor,
+        saved.incidentId!,
+        { expectedVersion: 1 },
+        f.now,
+      ),
+    ).rejects.toMatchObject({ code: "DRIVER_RETRY_REQUIRED" });
+    await expect(
+      closed({ ...(await identity(f)), note: "Cortina cerrada" }),
+    ).rejects.toMatchObject({ code: "RETRY_REQUIRES_NEW_ARRIVAL" });
+    await exitDriverVisit(
+      f.db.pool,
+      f.members[0].authorization,
+      f.planId,
+      stop.id,
+      await identity(f),
+      f.timezone,
+      f.now,
+    );
     expect((await report(f)).metrics.pending).toBe(1);
     await arrive(f);
     expect((await report(f)).metrics.pending).toBe(0);
-    await exitDriverVisit(f.db.pool, f.members[0].authorization, f.planId, stop.id, await identity(f), f.timezone, f.now);
+    await exitDriverVisit(
+      f.db.pool,
+      f.members[0].authorization,
+      f.planId,
+      stop.id,
+      await identity(f),
+      f.timezone,
+      f.now,
+    );
     expect((await report(f)).metrics.pending).toBe(1);
     await arrive(f);
     await (await service(f, 0, 0, { kind: "deliver" })).run();
-    const reschedule = await service(f, 0, 1, { kind: "reschedule", note: "Coordinar con encargado" });
-    await expect(reschedule.run({ ...reschedule.input, date: "2026-09-25" })).rejects.toMatchObject({ code: "RESCHEDULE_HAS_NO_DATE" });
+    const reschedule = await service(f, 0, 1, {
+      kind: "reschedule",
+      note: "Coordinar con encargado",
+    });
+    await expect(
+      reschedule.run({ ...reschedule.input, date: "2026-09-25" }),
+    ).rejects.toMatchObject({ code: "RESCHEDULE_HAS_NO_DATE" });
     const reprogrammed = await reschedule.run();
     live = await report(f);
-    expect(live.rows.map(row => row.kind)).toEqual(["rescheduled"]);
-    expect(live.rows[0]).toMatchObject({ canResolve: true, note: "Coordinar con encargado" });
-    await expect(readIncidentEvidence(f.db.pool, f.actor, evidenceId, f.photoRoot, f.now)).rejects.toMatchObject({ status: 404 });
+    expect(live.rows.map((row) => row.kind)).toEqual(["rescheduled"]);
+    expect(live.rows[0]).toMatchObject({
+      canResolve: true,
+      note: "Coordinar con encargado",
+    });
+    await expect(
+      readIncidentEvidence(f.db.pool, f.actor, evidenceId, f.photoRoot, f.now),
+    ).rejects.toMatchObject({ status: 404 });
     expect(await cleanIncidentEvidence(f.db.pool, f.photoRoot, f.now)).toBe(1);
-    expect(await readdir(join(f.photoRoot, "incident-evidence"))).toHaveLength(0);
-    await resolveLiveIncident(f.db.pool, f.actor, reprogrammed.incidentId!, { expectedVersion: 1 }, f.now);
-    expect((await resolveLiveIncident(f.db.pool, f.actor, reprogrammed.incidentId!, { expectedVersion: 1 }, f.now)).duplicate).toBe(true);
-    expect((await state(f)).stops[0].orderStates.map(order => order.status)).toEqual(["delivered", "rescheduled"]);
-    await expect((await service(f, 0, 1, { kind: "deliver" })).run()).rejects.toMatchObject({ code: "ORDER_STATE_CONFLICT" });
-    expect((await f.db.pool.query("SELECT count(*)::int n FROM route_plans")).rows[0].n).toBe(1);
-    expect((await f.db.pool.query("SELECT kind FROM route_driver_incident_events WHERE incident_id=$1", [saved.incidentId])).rows.map(row => row.kind))
-      .toEqual(expect.arrayContaining(["retry_arrived", "retry_abandoned", "handled", "evidence_expired"]));
-  } finally { await f.close(); }
+    expect(await readdir(join(f.photoRoot, "incident-evidence"))).toHaveLength(
+      0,
+    );
+    await resolveLiveIncident(
+      f.db.pool,
+      f.actor,
+      reprogrammed.incidentId!,
+      { expectedVersion: 1 },
+      f.now,
+    );
+    expect(
+      (
+        await resolveLiveIncident(
+          f.db.pool,
+          f.actor,
+          reprogrammed.incidentId!,
+          { expectedVersion: 1 },
+          f.now,
+        )
+      ).duplicate,
+    ).toBe(true);
+    expect(
+      (await state(f)).stops[0].orderStates.map((order) => order.status),
+    ).toEqual(["delivered", "rescheduled"]);
+    await expect(
+      (await service(f, 0, 1, { kind: "deliver" })).run(),
+    ).rejects.toMatchObject({ code: "ORDER_STATE_CONFLICT" });
+    expect(
+      (await f.db.pool.query("SELECT count(*)::int n FROM route_plans")).rows[0]
+        .n,
+    ).toBe(1);
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT kind FROM route_driver_incident_events WHERE incident_id=$1",
+          [saved.incidentId],
+        )
+      ).rows.map((row) => row.kind),
+    ).toEqual(
+      expect.arrayContaining([
+        "retry_arrived",
+        "retry_abandoned",
+        "handled",
+        "evidence_expired",
+      ]),
+    );
+  } finally {
+    await f.close();
+  }
 }, 120_000);
 
 it("expires files at 24h without deleting audit and adds only a missing operational phone", async () => {
   const f = await executionFixture();
   try {
-    await f.start(); await arrive(f);
+    await f.start();
+    await arrive(f);
     const stop = (await state(f)).stops[0];
-    const phoneInput = { ...await identity(f), phone: "+52 33 9000 2851", customerVersion: stop.customerVersion };
-    await addDriverCustomerPhone(f.db.pool, f.members[0].authorization, f.planId, stop.id, phoneInput, f.now);
-    expect((await addDriverCustomerPhone(f.db.pool, f.members[0].authorization, f.planId, stop.id, phoneInput, f.now)).duplicate).toBe(true);
+    const phoneInput = {
+      ...(await identity(f)),
+      phone: "+52 33 9000 2851",
+      customerVersion: stop.customerVersion,
+    };
+    await addDriverCustomerPhone(
+      f.db.pool,
+      f.members[0].authorization,
+      f.planId,
+      stop.id,
+      phoneInput,
+      f.now,
+    );
+    expect(
+      (
+        await addDriverCustomerPhone(
+          f.db.pool,
+          f.members[0].authorization,
+          f.planId,
+          stop.id,
+          phoneInput,
+          f.now,
+        )
+      ).duplicate,
+    ).toBe(true);
     expect((await state(f)).stops[0].phone).toBe("+523390002851");
-    const mobilePlan = await readDriverPlan(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
-    expect(mobilePlan.orders.find((order: { id: string }) => order.id === stop.shipmentIds[0]).phone).toBe("+523390002851");
-    const published = (await f.db.pool.query("SELECT snapshot FROM route_plan_publications WHERE plan_id=$1 AND vehicle_id=$2", [f.planId, f.members[0].vehicleId])).rows[0].snapshot;
-    expect(published.orders.find((order: { id: string }) => order.id === stop.shipmentIds[0]).phone).not.toBe("+523390002851");
-    const customer = (await f.db.pool.query("SELECT phone,phone_overridden,version FROM route_customers WHERE id=$1", [stop.customerId])).rows[0];
+    const mobilePlan = await readDriverPlan(
+      f.db.pool,
+      f.members[0].driverId,
+      f.planId,
+      f.timezone,
+    );
+    expect(
+      mobilePlan.orders.find(
+        (order: { id: string }) => order.id === stop.shipmentIds[0],
+      ).phone,
+    ).toBe("+523390002851");
+    const published = (
+      await f.db.pool.query(
+        "SELECT snapshot FROM route_plan_publications WHERE plan_id=$1 AND vehicle_id=$2",
+        [f.planId, f.members[0].vehicleId],
+      )
+    ).rows[0].snapshot;
+    expect(
+      published.orders.find(
+        (order: { id: string }) => order.id === stop.shipmentIds[0],
+      ).phone,
+    ).not.toBe("+523390002851");
+    const customer = (
+      await f.db.pool.query(
+        "SELECT phone,phone_overridden,version FROM route_customers WHERE id=$1",
+        [stop.customerId],
+      )
+    ).rows[0];
     expect(customer.phone_overridden).toBe(true);
-    await expect(addDriverCustomerPhone(f.db.pool, f.members[0].authorization, f.planId, stop.id,
-      { ...await identity(f), phone: "3311111111", customerVersion: customer.version }, f.now)).rejects.toMatchObject({ code: "CUSTOMER_PHONE_ALREADY_SET" });
-    await reportCustomerClosed(f.db.pool, f.members[0].authorization, f.planId, stop.id, await identity(f), await photo(), "image/jpeg", f.timezone, f.photoRoot, f.now);
+    await expect(
+      addDriverCustomerPhone(
+        f.db.pool,
+        f.members[0].authorization,
+        f.planId,
+        stop.id,
+        {
+          ...(await identity(f)),
+          phone: "3311111111",
+          customerVersion: customer.version,
+        },
+        f.now,
+      ),
+    ).rejects.toMatchObject({ code: "CUSTOMER_PHONE_ALREADY_SET" });
+    await reportCustomerClosed(
+      f.db.pool,
+      f.members[0].authorization,
+      f.planId,
+      stop.id,
+      await identity(f),
+      await photo(),
+      "image/jpeg",
+      f.timezone,
+      f.photoRoot,
+      f.now,
+    );
     const evidenceId = (await report(f)).rows[0].evidenceId!;
     const deadline = new Date(f.now.getTime() + 24 * 60 * 60 * 1000);
-    expect((await readIncidentEvidence(f.db.pool, f.actor, evidenceId, f.photoRoot, new Date(deadline.getTime() - 1))).length).toBeGreaterThan(0);
-    await expect(readIncidentEvidence(f.db.pool, f.actor, evidenceId, f.photoRoot, deadline)).rejects.toMatchObject({ status: 404 });
-    expect(await cleanIncidentEvidence(f.db.pool, f.photoRoot, deadline)).toBe(1);
-    expect(await cleanIncidentEvidence(f.db.pool, f.photoRoot, deadline)).toBe(0);
-    expect(await readdir(join(f.photoRoot, "incident-evidence"))).toHaveLength(0);
-    expect((await f.db.pool.query("SELECT count(*)::int n FROM route_driver_service_incidents")).rows[0].n).toBe(1);
-  } finally { await f.close(); }
+    expect(
+      (
+        await readIncidentEvidence(
+          f.db.pool,
+          f.actor,
+          evidenceId,
+          f.photoRoot,
+          new Date(deadline.getTime() - 1),
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+    await expect(
+      readIncidentEvidence(
+        f.db.pool,
+        f.actor,
+        evidenceId,
+        f.photoRoot,
+        deadline,
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(await cleanIncidentEvidence(f.db.pool, f.photoRoot, deadline)).toBe(
+      1,
+    );
+    expect(await cleanIncidentEvidence(f.db.pool, f.photoRoot, deadline)).toBe(
+      0,
+    );
+    expect(await readdir(join(f.photoRoot, "incident-evidence"))).toHaveLength(
+      0,
+    );
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT count(*)::int n FROM route_driver_service_incidents",
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  } finally {
+    await f.close();
+  }
 }, 120_000);
 
 it("denies stale ownership/visit writes and serializes conflicting commands without partial delivery", async () => {
   const f = await executionFixture();
   try {
-    await f.start(); await arrive(f);
-    const command = await service(f, 0, 0, { kind: "reject", reasonCode: "poor_quality" });
-    await expect(command.run({ ...command.input, executionId: randomUUID() })).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
-    await expect(executeDriverOrderCommand(f.db.pool, f.members[0].authorization, f.planId, randomUUID(),
-      command.order.shipmentId, command.input, f.timezone, f.now)).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
-    await expect(executeDriverOrderCommand(f.db.pool, f.members[0].authorization, f.planId, command.stop.id,
-      randomUUID(), command.input, f.timezone, f.now)).rejects.toMatchObject({ status: 404 });
-    const results = await Promise.allSettled([command.run(), command.run({ ...command.input, commandId: randomUUID(), kind: "deliver", reasonCode: null })]);
-    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
-    expect(results.find(result => result.status === "rejected")).toMatchObject({ reason: { code: "VERSION_CONFLICT" } });
-    expect((await f.db.pool.query("SELECT count(*)::int n FROM route_driver_stop_events WHERE kind IN ('delivery','rejection')")).rows[0].n).toBe(1);
+    await f.start();
+    await arrive(f);
+    const command = await service(f, 0, 0, {
+      kind: "reject",
+      reasonCode: "poor_quality",
+    });
+    await expect(
+      command.run({ ...command.input, executionId: randomUUID() }),
+    ).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
+    await expect(
+      executeDriverOrderCommand(
+        f.db.pool,
+        f.members[0].authorization,
+        f.planId,
+        randomUUID(),
+        command.order.shipmentId,
+        command.input,
+        f.timezone,
+        f.now,
+      ),
+    ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    await expect(
+      executeDriverOrderCommand(
+        f.db.pool,
+        f.members[0].authorization,
+        f.planId,
+        command.stop.id,
+        randomUUID(),
+        command.input,
+        f.timezone,
+        f.now,
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+    const results = await Promise.allSettled([
+      command.run(),
+      command.run({
+        ...command.input,
+        commandId: randomUUID(),
+        kind: "deliver",
+        reasonCode: null,
+      }),
+    ]);
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      results.find((result) => result.status === "rejected"),
+    ).toMatchObject({ reason: { code: "VERSION_CONFLICT" } });
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT count(*)::int n FROM route_driver_stop_events WHERE kind IN ('delivery','rejection')",
+        )
+      ).rows[0].n,
+    ).toBe(1);
     const active = (await state(f)).stops[0];
-    await expect(addDriverCustomerPhone(f.db.pool, f.members[0].authorization, f.planId, active.id,
-      { ...await identity(f), phone: "3311111111", customerVersion: active.customerVersion + 1 }, f.now)).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
-    await f.db.pool.query("UPDATE route_customers SET archived_at=$2 WHERE id=$1", [active.customerId, f.now]);
-    await expect(addDriverCustomerPhone(f.db.pool, f.members[0].authorization, f.planId, active.id,
-      { ...await identity(f), phone: "3311111111", customerVersion: active.customerVersion }, f.now)).rejects.toMatchObject({ code: "CUSTOMER_UNAVAILABLE" });
-  } finally { await f.close(); }
+    await expect(
+      addDriverCustomerPhone(
+        f.db.pool,
+        f.members[0].authorization,
+        f.planId,
+        active.id,
+        {
+          ...(await identity(f)),
+          phone: "3311111111",
+          customerVersion: active.customerVersion + 1,
+        },
+        f.now,
+      ),
+    ).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
+    await f.db.pool.query(
+      "UPDATE route_customers SET archived_at=$2 WHERE id=$1",
+      [active.customerId, f.now],
+    );
+    await expect(
+      addDriverCustomerPhone(
+        f.db.pool,
+        f.members[0].authorization,
+        f.planId,
+        active.id,
+        {
+          ...(await identity(f)),
+          phone: "3311111111",
+          customerVersion: active.customerVersion,
+        },
+        f.now,
+      ),
+    ).rejects.toMatchObject({ code: "CUSTOMER_UNAVAILABLE" });
+  } finally {
+    await f.close();
+  }
 }, 120_000);
 
 it("retries failed evidence deletion, recovers missing files and removes only old unreferenced photos", async () => {
   const f = await executionFixture();
   try {
-    await f.start(); await arrive(f);
+    await f.start();
+    await arrive(f);
     const stop = (await state(f)).stops[0];
-    await reportCustomerClosed(f.db.pool, f.members[0].authorization, f.planId, stop.id, await identity(f),
-      await photo(), "image/jpeg", f.timezone, f.photoRoot, f.now);
+    await reportCustomerClosed(
+      f.db.pool,
+      f.members[0].authorization,
+      f.planId,
+      stop.id,
+      await identity(f),
+      await photo(),
+      "image/jpeg",
+      f.timezone,
+      f.photoRoot,
+      f.now,
+    );
     const root = join(f.photoRoot, "incident-evidence");
     const evidenceId = (await report(f)).rows[0].evidenceId!;
     const path = join(root, `${evidenceId}.webp`);
     await unlink(path);
     await mkdir(path); // A real filesystem failure, not an unlink mock.
-    await expect(readIncidentEvidence(f.db.pool, f.actor, evidenceId, f.photoRoot, f.now)).rejects.toMatchObject({ status: 404 });
+    await expect(
+      readIncidentEvidence(f.db.pool, f.actor, evidenceId, f.photoRoot, f.now),
+    ).rejects.toMatchObject({ status: 404 });
     const expired = new Date(f.now.getTime() + 24 * 60 * 60 * 1000);
-    expect(await cleanIncidentEvidence(f.db.pool, f.photoRoot, expired)).toBe(0);
-    expect((await f.db.pool.query("SELECT removed_at FROM route_driver_incident_evidence WHERE id=$1", [evidenceId])).rows[0].removed_at).toBeNull();
+    expect(await cleanIncidentEvidence(f.db.pool, f.photoRoot, expired)).toBe(
+      0,
+    );
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT removed_at FROM route_driver_incident_evidence WHERE id=$1",
+          [evidenceId],
+        )
+      ).rows[0].removed_at,
+    ).toBeNull();
     await rmdir(path); // Remove only the empty test directory; next pass sees ENOENT.
-    expect(await cleanIncidentEvidence(f.db.pool, f.photoRoot, expired)).toBe(1);
-    const old = join(root, `${randomUUID()}.webp`), young = join(root, `${randomUUID()}.webp`), unrelated = join(root, "keep.txt");
-    for (const candidate of [old, young, unrelated]) await writeFile(candidate, "private fixture");
-    await utimes(old, f.now, f.now); await utimes(unrelated, f.now, f.now); await utimes(young, expired, expired);
-    expect(await cleanIncidentEvidence(f.db.pool, f.photoRoot, expired)).toBe(0);
+    expect(await cleanIncidentEvidence(f.db.pool, f.photoRoot, expired)).toBe(
+      1,
+    );
+    const old = join(root, `${randomUUID()}.webp`),
+      young = join(root, `${randomUUID()}.webp`),
+      unrelated = join(root, "keep.txt");
+    for (const candidate of [old, young, unrelated])
+      await writeFile(candidate, "private fixture");
+    await utimes(old, f.now, f.now);
+    await utimes(unrelated, f.now, f.now);
+    await utimes(young, expired, expired);
+    expect(await cleanIncidentEvidence(f.db.pool, f.photoRoot, expired)).toBe(
+      0,
+    );
     const remaining = await readdir(root);
-    expect(remaining).toHaveLength(2); expect(remaining).toContain("keep.txt");
+    expect(remaining).toHaveLength(2);
+    expect(remaining).toContain("keep.txt");
     expect(remaining).not.toContain(old.slice(root.length + 1));
-    expect((await f.db.pool.query("SELECT count(*)::int n FROM route_driver_incident_events WHERE kind='evidence_expired'")).rows[0].n).toBe(1);
-  } finally { await f.close(); }
+    expect(
+      (
+        await f.db.pool.query(
+          "SELECT count(*)::int n FROM route_driver_incident_events WHERE kind='evidence_expired'",
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  } finally {
+    await f.close();
+  }
 }, 120_000);

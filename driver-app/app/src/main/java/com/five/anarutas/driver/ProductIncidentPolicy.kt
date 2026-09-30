@@ -13,7 +13,7 @@ internal data class ProductIncidentRecord(val id: String, val shipmentId: String
     val kind: String, val product: String, val quantity: String, val unit: String, val status: String,
     val version: Int = 1, val department: String = "", val concept: String = "", val warehouseReason: String = "",
     val comments: List<String> = emptyList(), val additionalNote: String = "", val evidenceCount: Int = 0,
-    val reportRemoved: Boolean = false)
+    val reportRemoved: Boolean = false, val financial: IncidentFinancialReference? = null, val replacementPayment: String? = null)
 internal enum class WarehouseReason(val wire: String, val label: String) {
     SPECIAL("special", "Especiales"), QUALITY("quality", "Calidad"), LATE("late_arrival", "Llegada tardía")
 }
@@ -52,15 +52,18 @@ internal fun productQuantity(text: String): BigDecimal? {
 }
 internal fun remainingProductQuantity(quantity: Double, incidents: List<ProductIncidentRecord>, shipmentId: String, lineIndex: Int,
     exceptId: String? = null): BigDecimal =
-    BigDecimal.valueOf(quantity).subtract(incidents.filter { it.shipmentId == shipmentId && it.lineIndex == lineIndex &&
+    remainingProductQuantity(BigDecimal.valueOf(quantity), incidents, shipmentId, lineIndex, exceptId)
+internal fun remainingProductQuantity(quantity: BigDecimal, incidents: List<ProductIncidentRecord>, shipmentId: String, lineIndex: Int,
+    exceptId: String? = null): BigDecimal =
+    quantity.subtract(incidents.filter { it.shipmentId == shipmentId && it.lineIndex == lineIndex &&
         it.status != "canceled" && it.id != exceptId }
         .fold(BigDecimal.ZERO) { total, incident -> total.add(BigDecimal(incident.quantity)) }).max(BigDecimal.ZERO)
 
 internal fun productIncidentValid(kind: ProductIncidentKind, quantity: String, product: String, unit: String,
-    remaining: BigDecimal?, note: String): Boolean {
+    remaining: BigDecimal?, note: String, linked: Boolean = !kind.manual): Boolean {
     val amount = productQuantity(quantity) ?: return false
     if (note.length > 2000) return false
-    if (kind.manual) return product.trim().isNotEmpty() && product.trim().length <= 300 &&
+    if (!linked) return product.trim().isNotEmpty() && product.trim().length <= 300 &&
         unit.trim().isNotEmpty() && unit.trim().length <= 40 && (product + unit).none { it.code < 32 }
     return remaining != null && amount <= remaining
 }

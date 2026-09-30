@@ -35,6 +35,7 @@ import { migrateRoutePublicationRevisions } from "./route-publication-revisions-
 import { migrateDriverRouteCompletion } from "./driver-route-completion-schema";
 import { migrateLiveWarehouse } from "./live-warehouse-schema";
 import { migrateFinancialSources } from "./financial-schema";
+import { migrateIncidentFinancials } from "./incident-financial-schema";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
   return new pg.Pool({
@@ -106,9 +107,10 @@ export async function migrate(pool: Pool, instanceId: string) {
       );
       let version = result.rows[0]?.schema_version;
       if (
-        ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34].includes(
-          version,
-        )
+        ![
+          1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+          21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+        ].includes(version)
       )
         throw new AppError("SCHEMA_VERSION_UNSUPPORTED", 503);
       if (version === 1) {
@@ -156,6 +158,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (version < 32) await migrateDriverRouteCompletion(client);
       if (version < 33) await migrateLiveWarehouse(client);
       if (version < 34) await migrateFinancialSources(client);
+      if (version < 35) await migrateIncidentFinancials(client);
       return;
     }
     await client.query(`
@@ -204,6 +207,7 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migrateDriverRouteCompletion(client);
     await migrateLiveWarehouse(client);
     await migrateFinancialSources(client);
+    await migrateIncidentFinancials(client);
   });
 }
 export async function audit(

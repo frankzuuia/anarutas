@@ -53,11 +53,17 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
         try {
             val saved = access()
             if (saved.token.isBlank()) { retire("Tu sesión terminó. Vuelve a ingresar."); return }
-            val execution = api.execution(saved.token, planId)
+            var execution = api.execution(saved.token, planId)
             if (state.execution?.let { it.id != execution.id } == true) {
                 retire("Administración cambió esta ruta. Abre la nueva publicación desde Inicio."); return
             }
-            val route = api.plan(saved.token, planId)
+            var route = api.plan(saved.token, planId)
+            // A command can commit between these reads. Never expose mixed operational revisions.
+            if (route.executionRevision != null && route.executionRevision != execution.revision) {
+                execution = api.execution(saved.token, planId)
+                route = api.plan(saved.token, planId)
+                if (route.executionRevision != execution.revision) throw DriverApiException(409, "VERSION_CONFLICT")
+            }
             if (route.startedAt == null || route.publicationRevision != execution.publicationRevision) {
                 retire("La ruta ya no está iniciada. Regresa a Inicio."); return
             }
@@ -120,7 +126,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                 val saved = access()
                 if (saved.token.isBlank()) { sync(); return }
                 api.observeEvents(saved.token) { event ->
-                    if (event == "reset" || event == "change" || event == "unauthorized") sync()
+                    if (event == "reset" || event == "change" || event == "session-expired") sync()
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { sync() }
@@ -168,7 +174,8 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
     }
     fun reportProduct(stopId: String, shipmentId: String, lineIndex: Int?, kind: ProductIncidentKind,
         quantity: String, product: String, unit: String, note: String, warehouseReason: String?, department: String,
-        concept: String, comments: List<String>, photos: List<File>) {
+        concept: String, comments: List<String>, photos: List<File>, financial: IncidentFinancialReference? = null,
+        replacementPayment: String? = null) {
         val execution = state.execution ?: return
         val stop = execution.stops.find { it.id == stopId } ?: return
         val order = stop.orderStates.find { it.shipmentId == shipmentId } ?: return
@@ -179,11 +186,12 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
             .put("formVersion", 2).put("concept", concept).put("comments", org.json.JSONArray(comments))
         if (warehouseReason != null) payload.put("warehouseReason", warehouseReason)
         if (lineIndex == null) payload.put("product", product).put("unit", unit) else payload.put("lineIndex", lineIndex)
+        appendIncidentFinancial(payload, financial, replacementPayment)
         queueCommand(stopId, "product-incident", payload, shipmentId = shipmentId, productPhotos = photos)
     }
     fun amendProduct(stopId: String, shipmentId: String, incident: ProductIncidentRecord, kind: ProductIncidentKind,
         quantity: String, product: String, unit: String, note: String, warehouseReason: String?, department: String,
-        concept: String, comments: List<String>) {
+        concept: String, comments: List<String>, financial: IncidentFinancialReference? = null, replacementPayment: String? = null) {
         val execution = state.execution ?: return
         val stop = execution.stops.find { it.id == stopId } ?: return
         val order = stop.orderStates.find { it.shipmentId == shipmentId } ?: return
@@ -195,6 +203,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
             .put("comments", org.json.JSONArray(comments))
         if (warehouseReason != null) payload.put("warehouseReason", warehouseReason)
         if (incident.lineIndex == null) payload.put("product", product).put("unit", unit) else payload.put("lineIndex", incident.lineIndex)
+        appendIncidentFinancial(payload, financial, replacementPayment)
         queueCommand(stopId, "product-incident-amend", payload, shipmentId = shipmentId, incidentId = incident.id)
     }
     fun cancelProduct(stopId: String, shipmentId: String, incident: ProductIncidentRecord) {

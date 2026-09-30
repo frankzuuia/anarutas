@@ -1660,3 +1660,52 @@ Correspondencia: F-T01 LQ01..08,12,13; F-T02 LQ01,05,10,11,14; F-T03 LQ02..04,09
 Revisión F-T03: un objetivo con fallos se reintenta solo, aun después del éxito de otro; un lote sano excluye los objetivos fallidos. Evita que un registro defectuoso bloquee repetidamente las demás identidades. PG real y dos mutaciones específicas validan ambas selecciones. `ready` certifica conciliación de la observación, no autorización de cobro ni frescura ilimitada; el consumidor de confirmación futura debe validar edad/error/versión. Evidencia y límites en QA-FUENTE-FINANCIERA-BLOQUE-1.md.
 
 Dependencias de cierre: decimal.js10.6.0 y parches de seguridad compatibles; Next/eslint-config-next16.3.8, brace-expansion y fast-uri. El build y los E2E financieros/móviles se repitieron sobre el árbol actualizado. Sin despliegue ni cambios Android.
+
+## Bloque 2 aprobado — PF, proyección e incidencias financieras
+
+Base develop362c948; schema34 y APK0.8.7/code29 inspeccionados antes de editar. Plan aprobado mediante «dale al bloque 2 y probamos completa». Referencias: guías Next instaladas Route Handlers; [Compose state](https://developer.android.com/develop/ui/compose/state) y [semantics](https://developer.android.com/develop/ui/compose/accessibility/semantics); contratos y triggers reales de producto27/29/30, ejecución, miniaturas y worker34. Master Architect y UI/UX aplicados sin sustituir el tema existente por la recomendación genérica de landing del buscador.
+
+### Conexión auditada y solución
+
+Publicación elimina IDs de partida y se mantiene inmutable después de iniciar; import snapshot retiene moveId/productId. El trigger de incidencias valida source_quantity contra publicación, y Android usa Double/cantidad publicada en dos fichas. Agregar sólo precios a UI dejaría límites antiguos y resúmenes desincronizados. `driverPublicationFingerprint` tampoco considera finanzas ni revisa huella durante un heartbeat sin notificación.
+
+PF-T01: módulos de contrato/política de proyección y reparto decimal. Conservar `order.lines` operativo para APK anterior/miniaturas; añadir `order.financial` con contractVersion, revision, status, freshness/error/checkedAt, líneas por lineIndex + moveId/saleLineId/UOM, cantidades decimales, unitPrice/descuento/importes originales, cantidad física restante y desglose monetario. Correspondencia completa entre publicación e import congelado antes de usar sus IDs, como exige miniaturas; enlazar luego sólo por moveId. No buscar por nombre. IDs o cobertura cambiados → revisión explícita, sin total derivado.
+
+Reparto: asignar cada importe oficial de línea comercial entre sus movimientos por cantidad; después entre importe conservado, devolución/faltante y reposición diferida por cantidades. Usar unidades enteras de redondeo, mayor residuo y desempate determinista por orden/ID; ajuste global se reparte con las mismas categorías y se muestra aparte. Cantidad cero tiene peso cero; devolución total termina exactamente en cero; pago completo conserva importe aunque reduzca cantidad física. No calcular porcentajes de impuestos ni cambiar Odoo.
+
+PF-T02: migración35 aditiva añade a incidencias financial_revision, financial_move_id, financial_sale_line_id y replacement_payment. Validación SQL comprueba revisión almacenada, identity de shipment/import/publicación/movimiento/línea, cantidad real y sumatoria bajo lock de execution_order. Nueva vía financiera convive con vía histórica de cantidad publicada. Permitir faltante ligado sólo con referencia financiera válida; faltante manual mantiene line_index/source_quantity nulos y no obtiene precio. Preservar constraints/fotos/cancelación/inmutabilidad/versionado/auditoría. Ampliar únicamente campos financieros y source_quantity modificables mediante comando versionado; line_index e identidad operacional no se mueven. Cancelar/resolver mantiene el tratamiento operativo, sin revalidar una fuente externa ya retirada.
+
+PF-T03: servicio de lectura interno bajo autorización existente de `readDriverPlan`, consulta por lote de shipments de la publicación. Para comandos usar mismo Sql y locks de ciclo/ejecución/orden, después target financiero FOR SHARE; worker34 sólo bloquea target, sin ciclo inverso. Comparar revision esperada, estado, última consulta/error y frescura runtime antes de escribir. Incidencias nuevas incluyen campos nuevos en hash idempotente; peticiones antiguas sin esos campos mantienen su hash exacto. Un cambio posterior de base monetaria (cantidad, precio, descuento, importe, moneda/UOM) invalida valorización anterior, sin alterar su registro.
+
+Lectura incluye incidencias de la ejecución exacta; no mezcla publicaciones viejas, resolved sigue vigente y report_removed no cancela dinero. Proyección previa al inicio no inventa ejecución. Contextos sin finanzas siguen usando operación anterior; incidencias antiguas sin evidencia monetaria quedan explícitamente sin valorización. Frescura configurable mediante RUTAS_FINANCIAL_FRESH_SECONDS, default tres intervalos de polling; es guardia operativa, no promesa/SLO. Expone latest-error/edad, sin secretos ni SQL al cliente.
+
+PF-T04: fingerprint autorizado incorpora revisión/salud financiera de sus shipments. Heartbeat comprueba huella aun sin NOTIFY, para detectar envejecimiento/error. Triggers específicos avisan cambios significativos del target; no reescriben publicaciones. Android recibe cambios en ambos modelos; detalle seleccionado de otro día se relee por su ID. Carga ejecución/plan debe detectar revisión operacional mezclada. La hoja financiera recibe estado actual, no copia retenida con remember.
+
+PF-T05: UI existente oscura/lima, filas con nombre/miniatura, cantidad y un segundo nivel de precio unitario/total; resumen separado original, descuentos, reposición pendiente, ajuste y monto actual. No mezclar monto físico y pendiente financiero. Reposición pregunta explícitamente sin preselección; faltante permite elegir partida incluida o producto ajeno. Cantidades/precios BigDecimal sólo para presentación/entrada, resultados monetarios autoritativos del servidor. Mantener cámara, cola cifrada, accesibilidad, giro de pantalla, borradores, confirmación y botones operativos. Versionar APK0.8.8/code30 sólo al construir con contrato35 compatible.
+
+### Escenarios y puertas
+
+| Caso | Actor/precondición/evento → resultado             | Datos/efecto y validación                                                     |
+| ---- | ------------------------------------------------- | ----------------------------------------------------------------------------- |
+| PF01 | Pendiente → done durante ruta/ficha abierta       | Valores finales automáticos; publicación intacta; Odoo lectura, PG/HTTP/JVM   |
+| PF02 | Validados/reordenados/productos iguales           | Asociación estable, import/publicación completos; rechazo si falta identidad  |
+| PF03 | Varios movimientos por venta y ajuste de centavos | Reparto exacto, sin duplicar total; propiedad conservación/unitarias/mutación |
+| PF04 | Devolución/faltante ligado parcial o total        | Descuento por partida y orden; total completo devuelto=0                      |
+| PF05 | Reposición paga completo vs diferido              | Elección obligatoria, cantidad física separada; pendiente sólo defer          |
+| PF06 | Producto manual ausente                           | Registro sin precio inventado/descuento; no asociación por texto              |
+| PF07 | Cantidad nueva 5.12 sobre publicación5            | App/servidor/SQL mismo límite; suma concurrente nunca excede5.12              |
+| PF08 | Editar/cancelar/resolver/retirar del reporte      | Auditoría/recibo; sólo cancelación revierte dinero; no alterar terminales     |
+| PF09 | Fuente cambia mientras se captura/guarda          | Esperada vieja rechazada; borrador conservado/revisión explícita              |
+| PF10 | Fuente cambia tras guardar incidencia             | Base equivalente conserva valoración; distinta requiere revisión              |
+| PF11 | Odoo falla/429/antiguo/offline                    | Aviso, último dato identificado, nuevas confirmaciones financieras bloqueadas |
+| PF12 | Doble tap/respuesta perdida/reinicio              | Recibo único, cola recuperable; sin descuento duplicado                       |
+| PF13 | Otra sesión/chofer/ruta/empresa                   | Rechazo antes de finanzas; permisos/aislamiento PG/HTTP                       |
+| PF14 | Incidencias/publicaciones/APK históricas          | Operación anterior preservada; sin asignar elección/precio supuestos          |
+| PF15 | Migración34→35 repetida/carrera/rollback          | Conservar filas/recibos/triggers; transacción completa                        |
+| PF16 | SSE/heartbeat/otra fecha/ficha abierta            | Releer identidad correcta; envejecimiento detectado sin intervención          |
+| PF17 | Nombres largos/tamaño fuente/giro/cámara          | Filas legibles, controles accesibles, borrador estable, Compose               |
+| PF18 | Impuestos/descuentos/monedas/ajuste negativo      | Conservar importes oficiales y precisión; cero simulación fiscal              |
+
+PF-T06: tests de dominio y contratos afectados, Gherkin, PG real (migración/CHECK/locks/rollback/permisos), HTTP sobre Next real, proveedor Odoo de sólo lectura cuando disponible, JVM/Compose y APK; cobertura dirigida objetivo>=95%, mutación>=90% con revisión de supervivientes; invariantes de importe/identidad/autorización sin rutas críticas sin probar. Reportar omisiones físicas honestamente; no simular un proveedor ni GPS. Repetir regresión general una vez estabilizado el código. Metricar complejidad, latencia y errores; audit dependencias y secretos.
+
+Auditoría de diseño: GREEN LIGHT para construir; INTEGRITY TOTAL con BL157..161 y guardas operativas; MATCH PERFECT PF-T01..06/escenariosPF01..18. No habilita cobro, rol liquidador ni recepción. Despliegue manual del propietario, main/Five intactos; rollback tras35 requiere servidor compatible35 y APK anterior tolerada. Sin subdelegación de reglas monetarias, seguridad o concurrencia.

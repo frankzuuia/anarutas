@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createHash, randomUUID } from "node:crypto";
-import { startPostgres, dropExecutionTablesForLegacyFixture } from "./helpers/postgres";
+import {
+  startPostgres,
+  dropExecutionTablesForLegacyFixture,
+} from "./helpers/postgres";
 import { bootstrap } from "../src/core/auth";
 import { createPlan, deletePlan, listPlans } from "../src/core/plans";
 import { createVehicle } from "../src/core/fleet";
@@ -166,7 +169,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(34);
+    ).toBe(35);
     const identityIndex = await db.pool.query(
       "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='route_shipments_plan_source_picking_order'",
     );
@@ -215,7 +218,7 @@ describe("fulfilled orders / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(34);
+    ).toBe(35);
     expect(
       (
         await db.pool.query(

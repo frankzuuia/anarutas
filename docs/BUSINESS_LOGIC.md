@@ -554,9 +554,11 @@ para giros en vivo, Navigation SDK con costo observado por destino.
 ## Ajuste 2B — descartar una foto antes de salir
 
 - BL-099: el chofer autenticado puede revisar y eliminar sólo una foto propia de la unidad, plan y fecha de servicio que tiene publicados, antes de iniciar la ruta. La APK pide confirmación sobre la foto elegida y actualiza el conteo desde el servidor; con menos de cinco fotos, Inicio vuelve a quedar inhabilitado. Después del inicio no aparece la acción y la API rechaza el borrado aunque un cliente modificado lo intente. La operación se serializa con el inicio, audita chofer/foto/plan/unidad y retira el metadato y el WebP privado sin exponer rutas de archivo. Si falla el borrado físico tras retirar el acceso, la limpieza de huérfanos lo reintenta. No afecta fotos de otras unidades, rutas o choferes.
+
 # BL-104: cancelar publicación y mostrar sólo cambios propios
 
 Administrador activo puede cancelar una ruta publicada antes o después del inicio, con confirmación, versión del plan y revisión publicada. Se revoca únicamente la publicación: los pedidos quedan asignados a la misma camioneta y conservan su orden en el borrador para agregar o modificar paradas; se conservan fotos y auditoría. El dashboard móvil la retira y el outbox FCM encola el aviso existente. Guardar y publicar se muestra sólo si cambian pedidos/orden, chofer, datos visibles o recorrido de esa camioneta; la versión global por cambios ajenos no constituye un cambio propio. Validación: PostgreSQL, API/UI, aislamiento, concurrencia con inicio, eventos y mutación.
+
 ## BL-147 — formulario de incidencias y evidencia múltiple
 
 Chofer con llegada vigente: hasta tres fotos por incidencia de producto; una
@@ -571,6 +573,7 @@ Admin ve todas las fotos privadas y conserva edición auditada de clasificación
 Excel conserva nueve columnas; Comentarios reúne selecciones y notas, no fotos,
 chofer ni Concepto. Sin cambios Odoo. Validar límites, privacidad, transacción,
 recibos, compatibilidad APK anterior, rotación y recuperación.
+
 ## BL-148 — corrección y cancelación de incidencias por producto
 
 Una incidencia enviada permanece visible al chofer como «Incidencia enviada». Si modifica sus datos, el formulario vuelve a «Guardar incidencia»; el servidor exige versión vigente y conserva cada cambio en un registro append-only. Si el cliente desiste, el chofer confirma «Eliminar incidencia»: se cancela operativamente sin borrar evidencia ni auditoría. Una incidencia cancelada no consume cantidad, no exige reconocimiento al confirmar la entrega, no entra a Incidencias en vivo ni al Excel. Sólo se puede corregir o cancelar durante la visita activa y antes de cerrar el pedido; una resolución administrativa impide corrección posterior.
@@ -588,6 +591,7 @@ Administrador activo puede eliminar desde Incidencias una incidencia pendiente o
 ### BL-150A — rutas canceladas y planes retirados
 
 La eliminación administrativa del reporte no depende de que la ruta siga publicada: si su ejecución ya no corresponde a una publicación iniciada vigente (cancelada, sustituida o plan eliminado), sólo se retira del panel/Excel, aun cuando el pedido histórico figure abierto. Nunca cambia cantidades, resoluciones, revisiones ni métricas de esa ejecución. Datos y permisos son los de BL-150; auditoría añade `routeRetired`. Bloqueos de plan/publicación preceden a ejecución/parada/pedido/incidencia para serializar cancelación, republicación y eliminación del plan. Validar canceladas pendientes/resueltas, planes eliminados, carreras, idempotencia y compatibilidad de pedidos abiertos/cerrados en rutas activas. Confirmación visual conserva el estilo existente y explica los tres estados.
+
 # BL-151 — miniaturas de producto para el chofer
 
 Chofer autorizado: cada línea del pedido muestra la foto de Odoo y, si falta o no está disponible, el logo Five atenuado. La foto es auxiliar y no condiciona llegada, cantidad, incidencia ni entrega. Se consulta en sólo lectura por la identidad de producto ya importada; nunca por similitud de nombre. Se añade un enlace privado a la respuesta móvil, sin reescribir la publicación. Cachear imágenes pequeñas con tamaño/vida acotados; validar asignación y origen antes de acceder a caché del servidor. Auditoría: no hay mutación de negocio; errores técnicos sin secretos. Validar autorización, publicación obsoleta, origen equivocado, fallback, caché, compatibilidad de APK y regresión de atención.
@@ -595,6 +599,7 @@ Chofer autorizado: cada línea del pedido muestra la foto de Odoo y, si falta o 
 ## BL-152 — corrección de identidad y normalización, sin nuevas reglas operativas
 
 Administrador: quitar/agregar una camioneta conserva el historial pero no reutiliza una revisión publicada, iniciada o retirada. Mantener un máximo durable por plan/camioneta, independiente de la membresía que se borra en cascada; publicar bajo el bloqueo de plan existente. Sin cambiar requisitos de fotos, fecha, asignación, cálculo, inicio, entregas o incidencias; sin reparar ni reescribir rutas activas durante la migración. Conservar auditoría/push y validar concurrencia, rollback, sesión/revisión vieja e historial byte a byte. Chofer: una imagen válida entregada por Odoo con dimensiones superiores al nombre `image_128` se reduce a 128 px antes de mostrarla; conservar límites de entrada/salida, autenticación, privacidad y logo cuando no hay imagen. Validar la foto real que causó el fallo y archivos inválidos/excesivos.
+
 ## BL-153 — colores de las métricas del chofer
 
 Pedidos azul, paradas rojo, distancia lima y tiempo dorado: tintar únicamente los cuatro iconos de contorno existentes en «Tu ruta», con la paleta DriverColors; conservar tamaños, etiquetas, valores y acciones.
@@ -626,3 +631,15 @@ Las revisiones son inmutables e independientes de los snapshots publicados. Actu
 El bloque entrega servicios de servidor autorizados; mostrar precios/cantidades en Android y usar esa versión para incidencias pertenece al bloque 2. Cobros, roles y recepción pertenecen a bloques posteriores. No se declara lista la liquidación completa.
 
 Aceptación: LQ01..14 de BLOQUE-LIQUIDACION-RUTAS-2026-09-30.md; Gherkin y QA del bloque deben vincular cada escenario a evidencia o limitación explícita. Las pruebas de dominio con datos de ensayo no certifican casos inexistentes en Odoo real.
+
+## BL-157..161 — precios e incidencias del chofer, bloque 2 aprobado
+
+Autorización del propietario: «dale al bloque 2 y probamos completa». Chofer asignado: consultar cantidades finales, precio unitario, descuento e importes oficiales de la fuente validada; pendiente muestra cantidades provisionales y aviso sin precios finales. La proyección se actualiza automáticamente tanto en tablero como ficha abierta. Identidad por origen/picking/orden/movimiento/línea/UOM; publicación y cantidades operativas históricas se conservan.
+
+Incidencia ligada a una partida: conservar revisión financiera e identidad, verificar cantidad acumulada bajo bloqueo y guardar elección de reposición. Devolución/faltante incluido descuenta; reposición exige elección explícita `pay_full` o `defer`. Ambas reducen cantidad física disponible; sólo `defer` reduce importe a cobrar ahora y se muestra separado como pendiente de reposición. Faltante ajeno al pedido se registra sin inventar precio ni descontar dinero. No asociar un producto manual por su nombre.
+
+Importes de incidencias son asignaciones proporcionales del importe oficial de la partida, no recálculo fiscal ni escritura de devolución en Odoo. Repartir unidades mínimas de moneda mediante mayor residuo y desempate estable; conservar suma exacta de línea y orden, incluso varios movimientos y ajuste global positivo/negativo. Cancelar revierte el efecto una sola vez; resolver o quitar del reporte sin cancelar no lo revierte. Datos históricos sin base financiera o elección verificable no reciben importes supuestos.
+
+El servidor rechaza revisión vieja, fuente no validada/error/antigüedad excesiva e identidad cambiada en un comando financiero nuevo. Un recibo ya confirmado se recupera antes de revisar versiones mutables. Si una fuente cambia después de guardar una incidencia, sólo bases monetarias idénticas permiten conservar automáticamente su valorización; diferencias exigen revisión. La app conserva el borrador ante un conflicto y muestra la necesidad de revisar. El bloque no confirma cobros ni recibe dinero; éstos siguen separados.
+
+Validación: escenarios PF01..18 en MASTER-SPECIFICATION, unidad/contrato, PG real, HTTP, Android JVM/Compose, cobertura, mutación, regresión y APK. Permisos previos de sesión/chofer/ejecución/visita se mantienen; datos financieros se consultan sólo después de autorizar la publicación. Auditoría de cambios de incidencia incluye campos financieros y elección.

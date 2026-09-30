@@ -9,9 +9,15 @@ export function financialSyncConfig(
       throw new AppError("FINANCIAL_CONFIG_INVALID", 503);
     return value;
   }
+  const pollSeconds = integer("RUTAS_FINANCIAL_POLL_SECONDS", 60, 86400);
   return {
     // Operational rate controls, not limits on money/quantities or cognitive output.
-    pollSeconds: integer("RUTAS_FINANCIAL_POLL_SECONDS", 60, 86400),
+    pollSeconds,
+    freshSeconds: integer(
+      "RUTAS_FINANCIAL_FRESH_SECONDS",
+      pollSeconds * 3,
+      604800,
+    ),
     batchSize: integer("RUTAS_FINANCIAL_BATCH_SIZE", 20, 100),
     retrySeconds: integer("RUTAS_FINANCIAL_RETRY_SECONDS", 60, 86400),
     maxRetrySeconds: integer("RUTAS_FINANCIAL_MAX_RETRY_SECONDS", 3600, 604800),

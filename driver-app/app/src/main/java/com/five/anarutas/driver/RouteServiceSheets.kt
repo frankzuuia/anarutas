@@ -136,17 +136,25 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
                 horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 ProductThumbnail(line)
                 if (productCases.any { it.lineIndex == index }) AppIcon(DriverIcon.ALERT, Modifier.size(18.dp), tint = DriverColors.amber)
-                Text(line.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                Text("${remainingProductQuantity(line.quantity, productCases, order.id, index).stripTrailingZeros().toPlainString()} ${line.unit}",
-                    color = DriverColors.lime, style = MaterialTheme.typography.labelLarge)
+                val financial = order.financial?.line(index)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(line.name, style = MaterialTheme.typography.bodyMedium)
+                    Text("${productQuantityText(financial?.physicalRemaining ?: remainingProductQuantity(line.quantity, productCases, order.id, index).toPlainString())} ${financial?.unit ?: line.unit}",
+                        color = DriverColors.lime, style = MaterialTheme.typography.labelLarge)
+                    if (financial != null && financial.physicalRemaining.toBigDecimal().compareTo(financial.quantity.toBigDecimal()) != 0)
+                        Text("Validado: ${productQuantityText(financial.quantity)} ${financial.unit}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+                    FinancialLineDetails(financial, order.financial?.currency)
+                }
             } }
+            FinancialOrderSummary(order.financial)
             productCases.forEach { incident -> Row(Modifier.fillMaxWidth().heightIn(min = 44.dp)
                 .clickable(enabled = available && stop.canAttend() && canDeliverOrder(status.status),
                     onClickLabel = "Ver incidencia de ${incident.product}") { editingProductIncidentId = incident.id }
                 .padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 AppIcon(DriverIcon.ALERT, Modifier.size(16.dp), tint = DriverColors.amber)
-                Text("${ProductIncidentKind.entries.firstOrNull { it.wire == incident.kind }?.label ?: incident.kind} · ${incident.product}",
+                Text("${ProductIncidentKind.entries.firstOrNull { it.wire == incident.kind }?.label ?: incident.kind} · ${incident.product}" +
+                    when (incident.replacementPayment) { "pay_full" -> " · Paga completo"; "defer" -> " · Pago pendiente"; else -> "" },
                     Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = DriverColors.amber)
                 Text("${productQuantityText(incident.quantity)} ${incident.unit}", style = MaterialTheme.typography.labelSmall, color = DriverColors.amber)
             } }

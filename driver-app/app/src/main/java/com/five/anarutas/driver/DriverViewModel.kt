@@ -43,7 +43,7 @@ data class DriverUiState(
     val openStartedMap: String? = null,
 )
 
-internal fun reconcilePublishedRoutes(state: DriverUiState, dashboard: DriverDashboard): DriverUiState {
+internal fun reconcilePublishedRoutes(state: DriverUiState, dashboard: DriverDashboard, refreshedSelection: AssignedPlan? = null): DriverUiState {
     val previous = state.selected ?: state.dashboard?.today
     val withdrawn = previous != null && dashboard.plans.none { it.id == previous.id }
     val dayChanged = state.dashboard?.serviceDate?.let { it != dashboard.serviceDate } ?: false
@@ -56,6 +56,7 @@ internal fun reconcilePublishedRoutes(state: DriverUiState, dashboard: DriverDas
     val selected = when {
         resetRoute -> dashboard.today
         previous?.id == dashboard.today?.id -> dashboard.today
+        previous != null && refreshedSelection?.id == previous.id -> refreshedSelection
         previous != null -> previous
         else -> dashboard.today
     }
@@ -89,6 +90,10 @@ internal fun friendlyError(error: Throwable): String = when (error) {
         "UNIT_PHOTO_REUSED" -> "Esta imagen ya se usó en otra ruta de la unidad. Toma una foto nueva."
         "UNIT_PHOTOS_REQUIRED" -> "Carga al menos cinco fotos distintas de la unidad antes de iniciar."
         "VERSION_CONFLICT" -> "La ruta cambió desde que la abriste. Actualízala y confirma de nuevo."
+        "FINANCIAL_REVISION_CHANGED", "FINANCIAL_LINE_CHANGED", "FINANCIAL_REFERENCE_REQUIRED" -> "Odoo actualizó esta partida. Revisa los importes nuevos; tu captura se conserva."
+        "FINANCIAL_SOURCE_STALE", "FINANCIAL_SOURCE_NOT_READY" -> "Esperando datos vigentes de Odoo. Tu captura se conserva; podrás enviarla al sincronizar."
+        "REPLACEMENT_PAYMENT_REQUIRED" -> "Indica si el cliente paga completo o deja pendiente el importe de la reposición."
+        "INVALID_FINANCIAL_INCIDENT" -> "Actualiza la partida y revisa cómo afecta el importe de la incidencia."
         "OPERATION_POLICY_CHANGED" -> "Administración cambió el radio de llegada. Revisa los nuevos límites y confirma otra vez."
         "LOCATION_STALE" -> "Espera una ubicación GPS reciente antes de confirmar."
         "LOCATION_IMPRECISE" -> "El GPS aún tiene demasiado margen de error. Espera una señal más precisa."
@@ -306,14 +311,18 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
         if (manual) state = state.copy(busy = true, error = "", notice = "")
         viewModelScope.launch {
             try {
-                val latest = DriverApi(BuildConfig.SERVER_URL).dashboard(accessToken)
+                val api = DriverApi(BuildConfig.SERVER_URL)
+                val latest = api.dashboard(accessToken)
+                val selectedId = state.selected?.id
+                val selected = selectedId?.takeIf { it != latest.today?.id && latest.plans.any { plan -> plan.id == it } }
+                    ?.let { api.plan(accessToken, it) }
                 if (state.token == accessToken && observedGeneration == routeMutationGeneration && (!state.busy || manual)) {
                     val withdrawn = (state.selected ?: state.dashboard?.today)?.let { route ->
                         latest.plans.none { it.id == route.id }
                     } == true
-                    val completed = latest.today?.completedAt != null && latest.today.id == state.runningPlan()?.id
+                    val completed = (selected ?: latest.today)?.let { it.completedAt != null && it.id == state.runningPlan()?.id } == true
                     if (withdrawn || completed) NavigationRegistry.endSession()
-                    state = reconcilePublishedRoutes(state, latest)
+                    state = reconcilePublishedRoutes(state, latest, selected)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled

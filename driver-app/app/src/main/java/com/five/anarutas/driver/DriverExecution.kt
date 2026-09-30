@@ -52,7 +52,9 @@ internal fun parseExecution(raw: String, receivedElapsed: Long): DriverExecution
                             record.optJSONArray("comments")?.let { comments ->
                                 (0 until comments.length()).map(comments::getString)
                             }.orEmpty(), record.optString("additionalNote").takeUnless { record.isNull("additionalNote") }.orEmpty(),
-                            record.optInt("evidenceCount"), record.optBoolean("reportRemoved")) }
+                            record.optInt("evidenceCount"), record.optBoolean("reportRemoved"),
+                            parseFinancialReference(record.optJSONObject("financial")),
+                            record.optString("replacementPayment").takeUnless { record.isNull("replacementPayment") }) }
                 }.orEmpty())
         }, json.optString("completedAt").takeUnless { it.isBlank() || it == "null" })
 }

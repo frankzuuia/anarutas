@@ -10,6 +10,7 @@ import { syncFinancialSources } from "../src/core/financial-sync";
 import { readShipmentFinancials } from "../src/core/financial-store";
 import { financialSyncConfig } from "../src/core/financial-config";
 import type { FinancialTarget } from "../src/core/financial-contract";
+import { projectDriverFinancials } from "../src/core/driver-financial-policy";
 
 it.skipIf(!process.env.RUTAS_TEST_FINANCIAL_TARGETS)(
   "reads real Odoo by identities, imports into real PostgreSQL, syncs automatically and preserves authoritative values",
@@ -119,6 +120,35 @@ it.skipIf(!process.env.RUTAS_TEST_FINANCIAL_TARGETS)(
           ),
         );
         expect(persisted.revision).toBe(1);
+        const projected = projectDriverFinancials({
+          revision: persisted.revision,
+          snapshot: persisted.snapshot,
+          lastError: persisted.last_error,
+          lastSuccessAt: persisted.last_success_at,
+          now: new Date(),
+          maxAgeSeconds: 180,
+          published: row.snapshot.lines,
+          imported: row.snapshot.lines,
+          incidents: [],
+        });
+        if (persisted.snapshot!.status === "ready") {
+          expect(projected.issues).toEqual([]);
+          expect(projected.totals!.net).toBe(
+            persisted.snapshot!.shipmentAmounts!.total,
+          );
+          expect(projected.lines).toHaveLength(row.snapshot.lines.length);
+          for (const line of projected.lines) {
+            const official = persisted.snapshot!.lines.find(
+              (move) => move.id === line.moveId,
+            )!;
+            expect(line.quantity).toBe(official.quantity);
+            expect(line.unitPrice).toBe(
+              persisted.snapshot!.saleLines.find(
+                (sale) => sale.id === official.saleLineId,
+              )!.unitPrice,
+            );
+          }
+        } else expect(projected.totals).toBeNull();
       }
       expect(
         (

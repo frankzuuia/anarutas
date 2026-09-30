@@ -4,6 +4,8 @@ import { AppError } from "./errors";
 import { uuid } from "./orders-validation";
 import { todayInTimezone } from "./local-date";
 import { getRoutingSettings } from "./routing-settings";
+import { readPublicationFinancials } from "./driver-financial-store";
+import type { FinancialPublishedLine } from "./driver-financial-contract";
 
 export async function listDriverPlans(pool: Pool, driverId: string) {
   const { rows } = await pool.query(
@@ -42,8 +44,10 @@ export async function readDriverDashboard(
 ) {
   const serviceDate = todayInTimezone(timezone, now);
   const plans = await listDriverPlans(pool, driverId);
-  const today = plans.find((plan) => plan.service_date === serviceDate && !plan.completed_at)
-    ?? plans.find((plan) => plan.service_date === serviceDate);
+  const today =
+    plans.find(
+      (plan) => plan.service_date === serviceDate && !plan.completed_at,
+    ) ?? plans.find((plan) => plan.service_date === serviceDate);
   return {
     serviceDate,
     plans,
@@ -91,43 +95,92 @@ export async function readDriverPlan(
     );
     const assigned = publication.rows[0];
     if (!assigned) throw new AppError("NOT_FOUND", 404);
-    const corrections = await sql.query<{ shipment_ids: string[]; latitude: number; longitude: number; address: string }>(
+    const execution = (
+      await sql.query(
+        `SELECT revision FROM route_driver_executions
+      WHERE plan_id=$1 AND vehicle_id=$2 AND publication_revision=$3 FOR SHARE`,
+        [id, assigned.vehicle_id, assigned.revision],
+      )
+    ).rows[0];
+    const financials = await readPublicationFinancials(
+      sql,
+      id,
+      assigned.vehicle_id,
+      assigned.revision,
+      assigned.snapshot.orders,
+    );
+    const corrections = await sql.query<{
+      shipment_ids: string[];
+      latitude: number;
+      longitude: number;
+      address: string;
+    }>(
       `SELECT s.shipment_ids,s.latitude,s.longitude,s.address FROM route_driver_execution_stops s
          JOIN route_driver_executions e ON e.id=s.execution_id
         WHERE e.plan_id=$1 AND e.vehicle_id=$2 AND e.publication_revision=$3 AND s.corrected_at IS NOT NULL`,
       [id, assigned.vehicle_id, assigned.revision],
     );
-    const points = new Map(corrections.rows.flatMap((stop) => stop.shipment_ids.map((shipmentId) => [shipmentId, stop] as const)));
-    const contacts = await sql.query<{ shipment_ids: string[]; phone: string | null }>(
+    const points = new Map(
+      corrections.rows.flatMap((stop) =>
+        stop.shipment_ids.map((shipmentId) => [shipmentId, stop] as const),
+      ),
+    );
+    const contacts = await sql.query<{
+      shipment_ids: string[];
+      phone: string | null;
+    }>(
       `SELECT s.shipment_ids,c.phone FROM route_driver_execution_stops s
          JOIN route_driver_executions e ON e.id=s.execution_id
          JOIN route_customers c ON c.id=s.customer_id
         WHERE e.plan_id=$1 AND e.vehicle_id=$2 AND e.publication_revision=$3`,
       [id, assigned.vehicle_id, assigned.revision],
     );
-    const phones = new Map(contacts.rows.flatMap(stop => stop.shipment_ids.map(shipmentId => [shipmentId, stop.phone] as const)));
+    const phones = new Map(
+      contacts.rows.flatMap((stop) =>
+        stop.shipment_ids.map(
+          (shipmentId) => [shipmentId, stop.phone] as const,
+        ),
+      ),
+    );
     const settings = await getRoutingSettings(sql);
     return {
       ...assigned.snapshot,
       // Auxiliary return destination: never rewrite a publication or invent a stop.
-      departure: settings.depotLocation ? {
-        address: settings.depotAddress,
-        latitude: settings.depotLocation.latitude,
-        longitude: settings.depotLocation.longitude,
-        version: settings.version,
-      } : null,
+      departure: settings.depotLocation
+        ? {
+            address: settings.depotAddress,
+            latitude: settings.depotLocation.latitude,
+            longitude: settings.depotLocation.longitude,
+            version: settings.version,
+          }
+        : null,
       ...(points.size ? { routeStatus: "point_corrected" } : {}),
       // Current operational contact is an overlay, never a publication rewrite.
-      orders: assigned.snapshot.orders.map((order: { id: string; lines: Record<string, unknown>[] }) => {
-        const point = points.get(order.id);
-        return { ...order,
-          lines: order.lines.map((line, index) => ({ ...line,
-            thumbnailPath: `/api/mobile/plans/${id}/orders/${order.id}/lines/${index}/thumbnail?revision=${Number(assigned.revision)}` })),
-          ...(phones.has(order.id) ? { phone: phones.get(order.id) } : {}),
-          ...(point ? { address: point.address, latitude: point.latitude, longitude: point.longitude, locationStatus: "driver_confirmed" } : {}) };
-      }),
+      orders: assigned.snapshot.orders.map(
+        (order: { id: string; lines: FinancialPublishedLine[] }) => {
+          const point = points.get(order.id);
+          return {
+            ...order,
+            financial: financials.get(order.id),
+            lines: order.lines.map((line, index) => ({
+              ...line,
+              thumbnailPath: `/api/mobile/plans/${id}/orders/${order.id}/lines/${index}/thumbnail?revision=${Number(assigned.revision)}`,
+            })),
+            ...(phones.has(order.id) ? { phone: phones.get(order.id) } : {}),
+            ...(point
+              ? {
+                  address: point.address,
+                  latitude: point.latitude,
+                  longitude: point.longitude,
+                  locationStatus: "driver_confirmed",
+                }
+              : {}),
+          };
+        },
+      ),
       publication: {
         revision: Number(assigned.revision),
+        executionRevision: execution?.revision ?? 0,
         startedAt: assigned.started_at,
         completedAt: assigned.completed_at?.toISOString() ?? null,
         photoCount: Number(assigned.photo_count),

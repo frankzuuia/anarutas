@@ -8,63 +8,213 @@ import { routeEta } from "../src/core/live-eta";
 import { migrate } from "../src/core/database";
 
 let f: Awaited<ReturnType<typeof executionFixture>>;
-beforeAll(async () => { f = await executionFixture(); await f.start(); await f.start(f.members[1]); }, 120000);
-afterAll(async () => { await f?.close(); });
+beforeAll(async () => {
+  f = await executionFixture();
+  await f.start();
+  await f.start(f.members[1]);
+}, 120000);
+afterAll(async () => {
+  await f?.close();
+});
 it("persists independently fenced ETA with old clients, replay, stop, reset and revoked sessions", async () => {
-  const execution = await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
-  const identity = { executionId: execution.id, publicationRevision: execution.publicationRevision, sessionId: randomUUID() };
+  const execution = await readDriverExecution(
+    f.db.pool,
+    f.members[0].driverId,
+    f.planId,
+    f.timezone,
+  );
+  const identity = {
+    executionId: execution.id,
+    publicationRevision: execution.publicationRevision,
+    sessionId: randomUUID(),
+  };
   const [one, two] = execution.stops;
-  const sample = { latitude: 20.64, longitude: -103.4, accuracyMeters: 5, ageMilliseconds: 0, mock: false };
-  const eta = { targetStopId: one.id, state: "ready", remainingSeconds: 1200, ageMilliseconds: 5000 };
-  const post = (data: Record<string, unknown>, member = 0) => writeLiveTracking(f.db.pool, f.members[member].authorization, f.planId, { ...identity, ...data });
-  const read = async () => (await readLiveRoutes(f.db.pool, f.actor)).routes.find(r => r.id === execution.id)!;
+  const sample = {
+    latitude: 20.64,
+    longitude: -103.4,
+    accuracyMeters: 5,
+    ageMilliseconds: 0,
+    mock: false,
+  };
+  const eta = {
+    targetStopId: one.id,
+    state: "ready",
+    remainingSeconds: 1200,
+    ageMilliseconds: 5000,
+  };
+  const post = (data: Record<string, unknown>, member = 0) =>
+    writeLiveTracking(f.db.pool, f.members[member].authorization, f.planId, {
+      ...identity,
+      ...data,
+    });
+  const read = async () =>
+    (await readLiveRoutes(f.db.pool, f.actor)).routes.find(
+      (r) => r.id === execution.id,
+    )!;
   await post({ kind: "begin" });
-  await post({ kind: "sample", sequence: 1, targetStopId: one.id, sample, eta });
+  await post({
+    kind: "sample",
+    sequence: 1,
+    targetStopId: one.id,
+    sample,
+    eta,
+  });
   const first = await read();
-  expect(first.eta).toMatchObject({ targetStopId: one.id, remainingSeconds: 1200, state: "ready" });
-  expect(Date.now() - Date.parse(first.eta!.observedAt)).toBeGreaterThanOrEqual(5000);
+  expect(first.eta).toMatchObject({
+    targetStopId: one.id,
+    remainingSeconds: 1200,
+    state: "ready",
+  });
+  expect(Date.now() - Date.parse(first.eta!.observedAt)).toBeGreaterThanOrEqual(
+    5000,
+  );
   expect(routeEta(first, Date.now())).toBe("≈20 min");
-  await expect(post({ kind: "sample", sequence: 2, targetStopId: two.id, sample, eta })).rejects.toMatchObject({ code: "INVALID_TRACKING_ETA" });
-  await expect(post({ kind: "sample", sequence: 2, targetStopId: one.id, sample, eta }, 1)).rejects.toMatchObject({ code: "TRACKING_SESSION_CHANGED" });
-  const foreign = (await readDriverExecution(f.db.pool, f.members[1].driverId, f.planId, f.timezone)).stops[0].id;
-  await expect(post({ kind: "sample", sequence: 2, targetStopId: foreign, sample, eta: { ...eta, targetStopId: foreign } })).rejects.toMatchObject({ code: "INVALID_TRACKING_TARGET" });
-  await post({ kind: "sample", sequence: 2, targetStopId: two.id, sample, eta: { ...eta, targetStopId: two.id, state: "calculating", remainingSeconds: null } });
+  await expect(
+    post({ kind: "sample", sequence: 2, targetStopId: two.id, sample, eta }),
+  ).rejects.toMatchObject({ code: "INVALID_TRACKING_ETA" });
+  await expect(
+    post({ kind: "sample", sequence: 2, targetStopId: one.id, sample, eta }, 1),
+  ).rejects.toMatchObject({ code: "TRACKING_SESSION_CHANGED" });
+  const foreign = (
+    await readDriverExecution(
+      f.db.pool,
+      f.members[1].driverId,
+      f.planId,
+      f.timezone,
+    )
+  ).stops[0].id;
+  await expect(
+    post({
+      kind: "sample",
+      sequence: 2,
+      targetStopId: foreign,
+      sample,
+      eta: { ...eta, targetStopId: foreign },
+    }),
+  ).rejects.toMatchObject({ code: "INVALID_TRACKING_TARGET" });
+  await post({
+    kind: "sample",
+    sequence: 2,
+    targetStopId: two.id,
+    sample,
+    eta: {
+      ...eta,
+      targetStopId: two.id,
+      state: "calculating",
+      remainingSeconds: null,
+    },
+  });
   expect(routeEta(await read(), Date.now())).toBe("Calculando…");
-  expect((await post({ kind: "sample", sequence: 1, targetStopId: one.id, sample, eta })).accepted).toBe(false);
+  expect(
+    (
+      await post({
+        kind: "sample",
+        sequence: 1,
+        targetStopId: one.id,
+        sample,
+        eta,
+      })
+    ).accepted,
+  ).toBe(false);
   expect((await read()).targetStopId).toBe(two.id);
   await post({ kind: "sample", sequence: 3, targetStopId: two.id, sample });
   expect((await read()).eta).toBeNull();
   expect(routeEta(await read(), Date.now())).toBe("Tiempo no disponible");
-  await post({ kind: "sample", sequence: 4, targetStopId: one.id, sample, eta: { ...eta, ageMilliseconds: 31000 } });
+  await post({
+    kind: "sample",
+    sequence: 4,
+    targetStopId: one.id,
+    sample,
+    eta: { ...eta, ageMilliseconds: 31000 },
+  });
   expect(routeEta(await read(), Date.now())).toBe("Tiempo desactualizado");
   await post({ kind: "stop", sequence: 5 });
   expect((await read()).eta).toBeNull();
   identity.sessionId = randomUUID();
   await post({ kind: "begin" });
   expect((await read()).eta).toBeNull();
-  await post({ kind: "sample", sequence: 1, targetStopId: one.id, sample, eta });
-  await f.db.pool.query("UPDATE route_driver_mobile_sessions SET revoked_at=now() WHERE device_id=$1", [f.members[0].deviceId]);
+  await post({
+    kind: "sample",
+    sequence: 1,
+    targetStopId: one.id,
+    sample,
+    eta,
+  });
+  await f.db.pool.query(
+    "UPDATE route_driver_mobile_sessions SET revoked_at=now() WHERE device_id=$1",
+    [f.members[0].deviceId],
+  );
   expect(routeEta(await read(), Date.now())).toBe("Tiempo desactualizado");
-  await expect(post({ kind: "sample", sequence: 2, targetStopId: one.id, sample, eta })).rejects.toMatchObject({ status: 401 });
-  expect((await readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone)).revision).toBe(execution.revision);
+  await expect(
+    post({ kind: "sample", sequence: 2, targetStopId: one.id, sample, eta }),
+  ).rejects.toMatchObject({ status: 401 });
+  expect(
+    (
+      await readDriverExecution(
+        f.db.pool,
+        f.members[0].driverId,
+        f.planId,
+        f.timezone,
+      )
+    ).revision,
+  ).toBe(execution.revision);
 });
 it("repeated migration preserves tracking and additive schema", async () => {
-  const before = (await f.db.pool.query("SELECT execution_id,eta FROM route_live_tracking ORDER BY execution_id")).rows;
+  const before = (
+    await f.db.pool.query(
+      "SELECT execution_id,eta FROM route_live_tracking ORDER BY execution_id",
+    )
+  ).rows;
   await migrate(f.db.pool, f.db.config.instanceId);
-  expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(34);
-  expect((await f.db.pool.query("SELECT execution_id,eta FROM route_live_tracking ORDER BY execution_id")).rows).toEqual(before);
+  expect(
+    (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
+      .rows[0].schema_version,
+  ).toBe(35);
+  expect(
+    (
+      await f.db.pool.query(
+        "SELECT execution_id,eta FROM route_live_tracking ORDER BY execution_id",
+      )
+    ).rows,
+  ).toEqual(before);
 });
 it("upgrades v24 concurrently without losing existing GPS or session state", async () => {
   // This disposable PostgreSQL belongs exclusively to executionFixture, never a deployed DB.
-  await f.db.pool.query("ALTER TABLE route_live_tracking DROP COLUMN eta; UPDATE rutas_installation SET schema_version=24 WHERE singleton=true");
-  const before = (await f.db.pool.query("SELECT * FROM route_live_tracking ORDER BY execution_id")).rows;
+  await f.db.pool.query(
+    "ALTER TABLE route_live_tracking DROP COLUMN eta; UPDATE rutas_installation SET schema_version=24 WHERE singleton=true",
+  );
+  const before = (
+    await f.db.pool.query(
+      "SELECT * FROM route_live_tracking ORDER BY execution_id",
+    )
+  ).rows;
   expect(before.length).toBeGreaterThan(0);
-  await Promise.all([migrate(f.db.pool, f.db.config.instanceId), migrate(f.db.pool, f.db.config.instanceId)]);
-  expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(34);
-  const after = (await f.db.pool.query("SELECT * FROM route_live_tracking ORDER BY execution_id")).rows;
-  expect(after).toEqual(before.map(row => ({ ...row, eta: null })));
-  await expect(f.db.pool.query("UPDATE route_live_tracking SET eta='[]'::jsonb")).rejects.toMatchObject({ code: "23514" });
-  await f.db.pool.query("UPDATE rutas_installation SET schema_version=24 WHERE singleton=true");
+  await Promise.all([
+    migrate(f.db.pool, f.db.config.instanceId),
+    migrate(f.db.pool, f.db.config.instanceId),
+  ]);
+  expect(
+    (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
+      .rows[0].schema_version,
+  ).toBe(35);
+  const after = (
+    await f.db.pool.query(
+      "SELECT * FROM route_live_tracking ORDER BY execution_id",
+    )
+  ).rows;
+  expect(after).toEqual(before.map((row) => ({ ...row, eta: null })));
+  await expect(
+    f.db.pool.query("UPDATE route_live_tracking SET eta='[]'::jsonb"),
+  ).rejects.toMatchObject({ code: "23514" });
+  await f.db.pool.query(
+    "UPDATE rutas_installation SET schema_version=24 WHERE singleton=true",
+  );
   await migrate(f.db.pool, f.db.config.instanceId);
-  expect((await f.db.pool.query("SELECT * FROM route_live_tracking ORDER BY execution_id")).rows).toEqual(after);
+  expect(
+    (
+      await f.db.pool.query(
+        "SELECT * FROM route_live_tracking ORDER BY execution_id",
+      )
+    ).rows,
+  ).toEqual(after);
 });
