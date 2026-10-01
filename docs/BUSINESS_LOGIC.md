@@ -649,3 +649,6 @@ Reglas, actores, permisos, datos y aceptación definidos en BLOQUES-LIQUIDACION-
 
 ## BL-169 — captura de cobro simplificada
 Chofer autenticado elige un único medio mediante tarjetas grandes con emoji y selección accesible. Efectivo captura dinero neto conservado; se retira «Cambio entregado» del formulario nuevo y se envía cambio cero. Transferencia captura «Monto transferido», obligatorio; vacío no se convierte en cero. Crédito conserva recibido cero y saldo completo. No habilitar pagos mixtos, cambiar recibos históricos ni alterar autorización, cola cifrada o auditoría de servidor. Validar monto parcial/completo/cero explícito, precisión, límites, método y estado pendiente; QA física a cargo del propietario según excepción vigente.
+
+## BL-170 — identidad de campos para cuentas internas
+Administrador de rutas crea cuentas routes/settlement con nombre personal y usuario de texto; ningún correo es obligatorio. Declarar semántica y secciones HTML distintas, nombre de formulario accesible, IDs únicos y ayuda de usuario interno. Conservar claves FormData name/login/password/role, normalización, permisos, hashing y auditoría existentes. No modificar preferencias globales del navegador ni evadir su gestor de contraseñas. Verificar alta y login reales sin @ para ambos roles; advertencias de alias de Brave son sugerencias externas, no validación de Ana Rutas.

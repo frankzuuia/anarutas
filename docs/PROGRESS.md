@@ -753,3 +753,7 @@ Los bloques2..6 están implementados; la evidencia de cobros, roles, solicitudes
 - [x] PC-T01 (PC01,04,05): tarjetas grandes con emojis, selección accesible y campo por medio.
 - [x] PC-T02 (PC02,03,06): captura neta sin cambio, payload validado y regresiones de vacío/precisión/saldo.
 - [x] PC-T03: 127JVM, 28contrato/PG, 6mutantes detectados, política100%líneas/95.71%ramas, Compose compilado, lint/build y APK0.8.10 compatibles. Evidencia en QA-CAPTURA-COBRO-0.8.10.md; QA física del propietario, commit/push develop autorizado sin deploy.
+
+## BL-170 — formularios de cuentas sin correo obligatorio
+- [x] AC-T01 (AC01..03): semántica HTML explícita, secciones/IDs únicos y ayuda de usuario interno en ambos roles, contrato intacto.
+- [x] AC-T02 (AC01..05): alta/login y permisos E2E real para ambos roles1/1(21.4s), validación HTML, typecheck/lint/build aprobados. Causa Brave y límite documentados en QA-CAMPOS-CUENTAS-2026-09-30.md; commit/push develop, deploy manual.

@@ -1729,3 +1729,18 @@ Flujo: PaymentMethodPicker de ancho completo, mínimo88dp, emoji decorativo soli
 | PC06 | Historial con cambio anterior, reintentos, precisión, fuente actualizada y permisos intactos | Regresión JVM y contrato PG existentes |
 
 Referencias: DriverDesign.kt e IncidentFormDesign.kt reales; [Compose: controles accesibles](https://developer.android.com/develop/ui/compose/accessibility/api-defaults). Consulta UI/UX y patrones21st revisados; se conserva el sistema existente y se usan emojis por petición explícita. Sin dependencias, backend, migraciones ni costes externos nuevos. GREEN LIGHT, INTEGRITY TOTAL y MATCH PERFECT con PC-T01..03. Rollback APK compatible con esquema38; excepción de ejecución física vigente, sin inventar evidencia visual.
+
+## BL-170 — autopsia de sugerencia de correo en cuentas
+Inspección: dashboard usa input de texto implícito y autocomplete off para name/login, sin ID diferenciado entre formularios. auth.loginKey normaliza texto, sin condición email. El aviso de las capturas coincide con Email Aliases de Brave; su código AddEmailAliasSuggestsion ofrece alias cuando clasifica signup+username incluso si no es input email. Identificar nombre/usuario evita ambigüedad semántica, pero no promete suprimir ese comportamiento nativo en el usuario.
+
+Corrección: type=text/inputMode=text, IDs por rol, label htmlFor, autocomplete section-routes/section-settlement con name/username/new-password. Usuario sin autocapitalización/corrector y ayuda asociada «Usuario interno; no requiere correo electrónico». No cambiar name/login enviados al API ni restricciones/hashing/auditoría. Forms con aria-label distinto y password perteneciente a su sección. Sin librerías, RPC o migraciones nuevas.
+
+| Caso | Resultado obligatorio | Evidencia |
+|---|---|---|
+| AC01 | Nombre Unicode y usuario con espacios sin @ válidos en formulario routes | DOM, alta real HTTP/PG, consulta y login |
+| AC02 | Mismo flujo settlement no afecta borrador ni rol de otro formulario | E2E real y aislamiento de formularios |
+| AC03 | Cada label apunta a ID único y semántica correcta; vacío/longitud mínima siguen rechazados | Validación HTML real y atributos |
+| AC04 | Liquidador creado entra sólo en liquidación, rutas sólo operativa | HTTP real con cookies independientes |
+| AC05 | Popup propio de Brave no tratado como validación del servidor | Código oficial Brave; límite documentado, no simular popup |
+
+Referencias: guía Next instalada forms/RouteHandlers; [autocomplete](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/autocomplete); [Brave AddEmailAliasSuggestsion](https://github.com/brave/brave-core/blob/master/chromium_src/chrome/browser/ui/autofill/chrome_autofill_client.cc); [Email Aliases](https://brave.com/privacy-updates/39-email-aliases/). GREEN LIGHT, INTEGRITY TOTAL, MATCH PERFECT con AC-T01..02. Cambio de marcado sin lógica crítica nueva: mutación monetaria/auth no aplicable; se conserva evidencia previa y repiten contratos de cuenta mediante E2E real.

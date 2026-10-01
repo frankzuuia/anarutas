@@ -772,37 +772,61 @@ export function Dashboard({
                         : "Añadir liquidador"}
                     </h2>
                   </div>
-                  <form className="panel-body stack" onSubmit={addUser}>
+                  <form
+                    className="panel-body stack"
+                    aria-label={
+                      role === "routes"
+                        ? "Crear administrador de rutas"
+                        : "Crear liquidador"
+                    }
+                    onSubmit={addUser}
+                  >
                     <input type="hidden" name="role" value={role} />
-                    <label>
+                    <label htmlFor={`account-${role}-full-name`}>
                       Nombre completo
                       <input
+                        id={`account-${role}-full-name`}
                         name="name"
+                        type="text"
+                        inputMode="text"
                         required
                         minLength={2}
                         maxLength={120}
-                        autoComplete="off"
+                        autoComplete={`section-${role} name`}
                       />
                     </label>
-                    <label>
+                    <label htmlFor={`account-${role}-username`}>
                       Usuario
                       <input
+                        id={`account-${role}-username`}
                         name="login"
+                        type="text"
+                        inputMode="text"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        aria-describedby={`account-${role}-username-help`}
                         required
                         minLength={3}
                         maxLength={120}
-                        autoComplete="off"
+                        autoComplete={`section-${role} username`}
                       />
                     </label>
-                    <label>
+                    <small
+                      id={`account-${role}-username-help`}
+                      className="muted"
+                    >
+                      Usuario interno; no requiere correo electrónico.
+                    </small>
+                    <label htmlFor={`account-${role}-password`}>
                       Contraseña
                       <input
+                        id={`account-${role}-password`}
                         name="password"
                         type="password"
                         required
                         minLength={6}
                         maxLength={128}
-                        autoComplete="new-password"
+                        autoComplete={`section-${role} new-password`}
                       />
                     </label>
                     <p className="security-note">

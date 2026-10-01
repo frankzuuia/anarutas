@@ -280,6 +280,132 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
     await expect(
       page.getByRole("heading", { name: "Añadir administrador", exact: true }),
     ).toBeVisible();
+    const accountForms = [
+      {
+        role: "routes",
+        title: "Crear administrador de rutas",
+        name: "María José Pérez",
+        login: "maria rutas",
+      },
+      {
+        role: "settlement",
+        title: "Crear liquidador",
+        name: "Ángel López Méndez",
+        login: "angel liquidacion",
+      },
+    ] as const;
+    const settlementForm = page.getByRole("form", {
+      name: "Crear liquidador",
+      exact: true,
+    });
+    await settlementForm
+      .getByLabel("Nombre completo", { exact: true })
+      .fill("Borrador conservado");
+    for (const account of accountForms) {
+      const form = page.getByRole("form", { name: account.title, exact: true });
+      const fullName = form.getByLabel("Nombre completo", { exact: true });
+      const username = form.getByLabel("Usuario", { exact: true });
+      const secret = form.getByLabel("Contraseña", { exact: true });
+      for (const field of [fullName, username]) {
+        await expect(field).toHaveAttribute("type", "text");
+        await expect(field).toHaveAttribute("inputmode", "text");
+      }
+      await expect(fullName).toHaveAttribute(
+        "id",
+        `account-${account.role}-full-name`,
+      );
+      await expect(fullName).toHaveAttribute(
+        "autocomplete",
+        `section-${account.role} name`,
+      );
+      await expect(username).toHaveAttribute(
+        "id",
+        `account-${account.role}-username`,
+      );
+      await expect(username).toHaveAttribute(
+        "autocomplete",
+        `section-${account.role} username`,
+      );
+      await expect(secret).toHaveAttribute(
+        "autocomplete",
+        `section-${account.role} new-password`,
+      );
+      await expect(username).toHaveAccessibleDescription(
+        "Usuario interno; no requiere correo electrónico.",
+      );
+      await username.fill("");
+      expect(
+        await username.evaluate(
+          (input: HTMLInputElement) => input.validity.valueMissing,
+        ),
+      ).toBe(true);
+      await fullName.fill(account.name);
+      await username.fill(account.login);
+      const createdPassword = randomUUID();
+      await secret.fill(createdPassword);
+      expect(
+        await form.evaluate((element: HTMLFormElement) =>
+          element.checkValidity(),
+        ),
+      ).toBe(true);
+      const saved = page.waitForResponse(
+        (response) =>
+          response.url() === `${origin}/api/users` &&
+          response.request().method() === "POST",
+      );
+      await form
+        .getByRole("button", { name: "Crear cuenta", exact: true })
+        .click();
+      const savedResponse = await saved;
+      expect(savedResponse.ok()).toBe(true);
+      expect(await savedResponse.json()).toMatchObject({
+        name: account.name,
+        login: account.login,
+        role: account.role,
+      });
+      await expect(
+        form.getByLabel("Nombre completo", { exact: true }),
+      ).toHaveValue("");
+      const storedUsers = await (
+        await page.request.get(`${origin}/api/users`)
+      ).json();
+      expect(storedUsers).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: account.name,
+            login: account.login,
+            role: account.role,
+          }),
+        ]),
+      );
+      const session = await request.post(`${origin}/api/session`, {
+        headers: { Origin: origin },
+        data: { login: account.login, password: createdPassword },
+      });
+      expect(session.ok()).toBe(true);
+      expect(
+        await (await request.get(`${origin}/api/session`)).json(),
+      ).toMatchObject({
+        name: account.name,
+        login: account.login,
+        role: account.role,
+      });
+      expect((await request.get(`${origin}/api/users`)).status()).toBe(
+        account.role === "routes" ? 200 : 403,
+      );
+      expect((await request.get(`${origin}/api/settlements`)).status()).toBe(
+        account.role === "settlement" ? 200 : 403,
+      );
+      await request.delete(`${origin}/api/session`, {
+        headers: { Origin: origin },
+        data: {},
+      });
+      if (account.role === "routes") {
+        await expect(
+          settlementForm.getByLabel("Nombre completo", { exact: true }),
+        ).toHaveValue("Borrador conservado");
+      }
+    }
     await page.screenshot({
       path: ".local/qa-settlements/accounts.png",
       fullPage: true,

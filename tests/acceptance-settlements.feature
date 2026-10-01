@@ -1,4 +1,18 @@
 Feature: Cobro y liquidación histórica por rol
+  Scenario: Crear cuentas internas sin correo electrónico
+    Given un administrador de rutas autenticado
+    When registra administrador y liquidador con nombre acentuado y usuario de texto sin arroba
+    Then ambos formularios aceptan los datos y conservan el rol seleccionado
+    And cada cuenta puede iniciar sesión con su usuario interno y contraseña
+    And el liquidador no puede acceder a usuarios ni operaciones de rutas
+
+  Scenario: Formularios independientes con campos identificados
+    Given un borrador de cuenta escrito en el formulario de liquidadores
+    When crea una cuenta desde el formulario de administradores
+    Then el borrador de liquidadores permanece intacto
+    And cada nombre usuario y contraseña conserva su identificador y sección propios
+    And un usuario vacío continúa siendo inválido
+
   Scenario: Captura neta sin cambio y selección accesible
     Given el formulario de cobro con tarjetas Efectivo Transferencia y Crédito
     When selecciona Efectivo y escribe 15.25 para un pedido de 20
