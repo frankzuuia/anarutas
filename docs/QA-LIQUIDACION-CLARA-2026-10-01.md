@@ -350,3 +350,29 @@ certificado SHA256 `f92d2160eccdadb8b72ac5573ef07dc09eb8fdd57c10621d33afaeb7dd4c
 el mismo de0.8.13; actualización sobre la anterior compatible con datos locales.
 Entrega a develop bajo autorización permanente y excepción física vigente;
 sin deploy, cambios de servidor, migración ni configuración nueva.
+
+## LC-T10 — cantidad final del recibo Android
+
+Autopsia: FinanceOrderDetail ya seleccionaba payment.snapshot, pero imprimía
+line.quantity original. liquidationQuantityText usa physicalRemaining congelado,
+igual al modal web. No divide dinero entre precio; mantiene todas las partidas,
+los importes originales/finales y las devoluciones amarillas. Etiqueta Cantidad
+final explícita. Pruebas de ADES4 devueltos3 (final1), devolución completa0 y
+cantidad1.000001 con importe0 impiden regresar al original o inferir peso del dinero.
+
+140JVM/0 fallos/0 errores, selector1/1 líneas4/4 instrucciones, complejidad1;
+100% cobertura del cambio. Mutaciones2/2 detectadas con2 fallos cada una.
+Gherkin LC17, sin cambios de contratos ni escritura financiera. Reproducción:
+comando Android del bloque anterior y verify-financial-mutations.ps1 -Scope quantity.
+Logs quantity-unit.log, quantity-mutation.log y quantity-android-verified.log en
+.local/qa-settlements. BUILD SUCCESSFUL1m45s; lint0 errores/35 avisos previos.
+Compilación de instrumentación aprobada; ejecución física conserva excepción
+del propietario. No declarar probado en dispositivo por compilar instrumentación.
+
+APK0.8.15/code37,69,131,086 bytes:
+.local/releases/ana-rutas-driver-0.8.15-cantidad-final.apk.
+SHA2568993EF62CDE87950CA3B0F8215F675F508B68BDC49D2894C7ED4CF58842C0BEA;
+firma SHA256f92d2160eccdadb8b72ac5573ef07dc09eb8fdd57c10621d33afaeb7dd4c2e35,
+compatible con0.8.14. Entrega de bloque de presentación a develop autorizada;
+sin deploy ni modificación del servidor. La ampliación de ruta/Buen trabajo
+tiene especificación separada y sus pruebas siguen pendientes de construcción.

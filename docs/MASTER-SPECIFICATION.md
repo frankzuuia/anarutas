@@ -1771,3 +1771,13 @@ de ruta o Atrás del sistema. Cajón y modales conservan prioridad de cierre.
 Métodos en tres tarjetas en fila, aproximadamente cuadradas a escala normal,
 permitiendo crecer por cifras largas/letra ampliada. Acceso de Liquidación con
 vector de signo de pesos. Mismas fuentes monetarias, permisos y comandos.
+
+LC-T10/LC17: Android debe mostrar physicalRemaining del recibo confirmado en
+Cantidad final, igual que LC-T06 web. Mantener cantidades originales en snapshot,
+importes y detalle de devoluciones intactos. No inferir cantidad de precios.
+La ampliación de liquidación completa está en
+PROPUESTA-LIQUIDACION-RUTA-2026-10-01.md. El propietario confirmó cierre en bodega
+(CP12 conservado), acción al final de Android, tarjeta del paquete en panel con
+tickets navegables y Finalizar trabajo después de recepción completa. Resumen
+durable separado del cierre operativo; LR01..24 y FW-T01..04. Especificación
+confirmada no equivale a implementación ni pruebas verdes.

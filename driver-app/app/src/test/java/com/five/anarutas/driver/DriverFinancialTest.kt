@@ -39,6 +39,19 @@ class DriverFinancialTest {
         assertFalse(liquidationOrderVisible("open", true))
         assertFalse(liquidationOrderVisible("rescheduled", true))
     }
+    @Test fun liquidationQuantityShowsTheDeliveredUnitAfterThreeOfFourWereReturned() {
+        val line = DriverFinancialLine(0, 100, 10, "4", "Unidades", "83.21", "0", "332.84", "1.000000", "83.21", "249.63", "0")
+        assertEquals("1", liquidationQuantityText(line))
+        assertEquals("4", line.quantity)
+        assertEquals("332.84", line.total)
+        assertEquals("249.63", line.deduction)
+        assertEquals("0", liquidationQuantityText(line.copy(physicalRemaining = "0.000000", net = "0")))
+    }
+    @Test fun deliveredQuantityKeepsFractionalPrecisionEvenWhenMoneyIsZero() {
+        val line = DriverFinancialLine(0, 100, 10, "5.25", "kg", "0", "100", "0", "1.00000100", "0", "0", "0")
+        assertEquals("1.000001", liquidationQuantityText(line))
+        assertEquals("5.25", liquidationQuantityText(line.copy(physicalRemaining = "5.250000")))
+    }
     @Test fun linkedShortagesUseFinalDecimalQuantityAndExcludeOnlyTheEditedIncident() {
         val record = ProductIncidentRecord("one", "order", 0, "shortage_validation", "Producto", "5", "kg", "pending")
         val remaining = remainingProductQuantity(BigDecimal("5.12"), listOf(record), "order", 0)

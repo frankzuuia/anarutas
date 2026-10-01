@@ -102,3 +102,12 @@ Característica: Liquidación legible y limitada a pedidos finalizados
     Y las tarjetas son aproximadamente cuadradas con letra normal
     Y conservan importes exactos y moneda con cifras largas o letra ampliada
     Y el acceso de Liquidación de rutas tiene un signo de pesos
+
+  Escenario: LC17 Cantidad final en el recibo Android después de una devolución
+    Dado un cobro confirmado de cuatro unidades ADES con tres devueltas
+    Cuando el chofer abre Ver pedido y cobro en liquidación
+    Entonces Cantidad final muestra una unidad conservada en el recibo
+    Y mantiene importe original 332.84 descuento 249.63 e importe final 83.21
+    Y abajo conserva las tres unidades devueltas y su descuento amarillo
+    Y una devolución total muestra cantidad final cero
+    Y pesos fraccionarios conservan su precisión incluso con importe cero

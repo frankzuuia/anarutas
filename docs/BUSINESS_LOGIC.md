@@ -685,3 +685,23 @@ o menú; la selección retenida de liquidación no cambia el retorno de otras
 pestañas. Resumen de efectivo/transferencia/crédito en tres tarjetas en fila,
 con importe exacto y moneda conservados. Es navegación/presentación: mismos
 permisos, fuentes y comandos; ningún movimiento monetario al regresar.
+
+LC17: en liquidación Android, Cantidad final usa la cantidad física restante del
+recibo confirmado. Cuatro originales con tres devueltos muestran una; una
+devolución total muestra cero. Mantener unidades fraccionarias, precio/importes
+originales y devolución exacta. No inferir unidades del dinero ni reescribir cobros.
+
+BL-179: Liquidación completa en bodega -> conservar Terminar ruta y solicitud
+del chofer al final de Android; agrupar sólo recibos no recibidos, sin duplicar
+reservas pendientes -> previsualización autoritativa revisada, snapshots y
+transacciones existentes. Permiso del chofer original, auditoría y LR02..15.
+BL-180: Recepción de paquete -> cuenta settlement recibe todos los pedidos del
+paquete en una transacción, con tarjeta visible y tickets individuales
+navegables -> roles/versiones/bases existentes, LR04..14,17,22.
+BL-181: Finalizar trabajo -> sólo tras terminar recorrido y recibir todos sus
+cobros; cierre durable distinto de cierre operativo -> esquema aditivo, identidad,
+idempotencia, outbox, evento, snapshot inmutable y LR16..24.
+BL-182: Buen trabajo -> número de entregados e incidencias activas distintas del
+snapshot y total neto de todos los recibos por moneda, incluidos ya aceptados y
+créditos -> cálculo decimal exacto en servidor, resumen congelado, sin reprogramados
+como entregados ni fotos/canceladas como incidencias; LR17..24.

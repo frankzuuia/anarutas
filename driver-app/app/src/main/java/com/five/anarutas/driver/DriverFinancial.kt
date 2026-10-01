@@ -68,6 +68,7 @@ internal fun financeCurrency(json: JSONObject) = DriverCurrency(json.getString("
 internal fun paymentMoney(payment: JSONObject, field: String) = financialMoney(payment.getString(field), financeCurrency(payment.getJSONObject("currency")))
 internal fun liquidationOrderVisible(status: String, paymentConfirmed: Boolean) = status == "delivered" && paymentConfirmed
 internal fun liquidationOrderVisible(order: JSONObject) = liquidationOrderVisible(order.optString("status"), order.objectOrNull("payment") != null)
+internal fun liquidationQuantityText(line: DriverFinancialLine) = productQuantityText(line.physicalRemaining)
 internal fun financialStatus(view: DriverFinancialView?, nowNanos: Long = System.nanoTime()): String = when {
     view == null || view.status == "unavailable" -> "Importes pendientes de sincronizar"
     view.status == "cancelled" -> "Entrega cancelada en Odoo · revisar con administración"

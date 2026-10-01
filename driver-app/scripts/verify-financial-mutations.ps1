@@ -1,4 +1,4 @@
-param([string[]]$Only = @(), [ValidateSet('financial', 'receipt', 'navigation')][string]$Scope = 'financial')
+param([string[]]$Only = @(), [ValidateSet('financial', 'receipt', 'navigation', 'quantity')][string]$Scope = 'financial')
 $ErrorActionPreference = 'Stop'
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $taskTempRoot = [IO.Path]::GetTempPath()
@@ -40,6 +40,12 @@ if ($Scope -eq 'navigation') {
         @{ name='leave_finance_detail_for_home'; from='-> DriverBackTarget.FINANCE_ROUTES'; to='-> DriverBackTarget.HOME' },
         @{ name='trap_finance_list'; from='financeExecutionId != null'; to='true' },
         @{ name='hijack_other_tabs'; from='destination == DriverDestination.FINANCE &&'; to='true &&' }
+    )
+}
+if ($Scope -eq 'quantity') {
+    $cases = @(
+        @{ name='original_quantity_after_return'; from='productQuantityText(line.physicalRemaining)'; to='productQuantityText(line.quantity)' },
+        @{ name='money_instead_of_physical_units'; from='productQuantityText(line.physicalRemaining)'; to='productQuantityText(line.net ?: line.quantity)' }
     )
 }
 if ($Only.Count) { $cases = @($cases | Where-Object { $Only -contains $_.name }); if ($cases.Count -ne $Only.Count) { throw 'Unknown mutation filter' } }

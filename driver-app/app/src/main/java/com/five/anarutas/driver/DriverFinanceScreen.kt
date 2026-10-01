@@ -172,7 +172,7 @@ private fun FinanceOrderDetail(order: JSONObject, executionId: String, model: Dr
     Text("Pedido completo · ${financial?.lines?.size ?: 0} ${if (financial?.lines?.size == 1) "partida" else "partidas"}", style = MaterialTheme.typography.titleSmall)
     financial?.lines?.forEach { line -> Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(lines.getOrNull(line.lineIndex)?.optString("name") ?: "Partida ${line.lineIndex + 1}", style = MaterialTheme.typography.titleSmall)
-        Text("${productQuantityText(line.quantity)} ${line.unit} · ${financialMoney(line.unitPrice, financial.currency)} / ${line.unit}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+        Text("Cantidad final: ${liquidationQuantityText(line)} ${line.unit} · ${financialMoney(line.unitPrice, financial.currency)} / ${line.unit}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
         if (line.discount.toBigDecimal().signum() != 0) Text("Descuento del pedido: ${productQuantityText(line.discount)}%", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
         FinanceReceiptValue("Original", financialMoney(line.total, financial.currency))
         if (line.net != null && line.net.toBigDecimal().compareTo(line.total.toBigDecimal()) != 0)

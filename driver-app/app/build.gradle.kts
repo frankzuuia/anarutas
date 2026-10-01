@@ -84,8 +84,8 @@ android {
         applicationId = "com.five.anarutas.driver"
         minSdk = 26
         targetSdk = 36
-        versionCode = 36
-        versionName = "0.8.14"
+        versionCode = 37
+        versionName = "0.8.15"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "SERVER_URL", "\"$driverServerUrl\"")
         buildConfigField("String", "NAVIGATION_API_KEY", "\"$navigationKey\"")

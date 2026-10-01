@@ -778,3 +778,11 @@ Los bloques2..6 están implementados; la evidencia de cobros, roles, solicitudes
 - [x] LC-T07: orden estable por cobro confirmado, incorporación a la derecha; flecha roja y tarjetas web más compactas. 55 pruebas PG/contratos y2 E2E verdes, evento374ms sin desplazar tarjetas; unidad100%/mutación5de5. Contrato operativo conserva orden de paradas.
 - [x] LC-T08: icono superior del mismo modelo financiero, spinner de lectura, retorno con borde lima y tarjetas compactas. 134JVM, mutación3de3, lint/build/Compose compilado; APK0.8.13/code35 firma compatible. QA física por excepción del propietario; evidencia en QA-LIQUIDACION-CLARA-2026-10-01.md.
 - [x] LC-T09: Android retorno junto a encabezado, Atrás del detalle vuelve al listado financiero; tres métodos en fila de tarjetas cuadradas y signo de pesos en acceso. 138JVM/0 fallos, retorno100% líneas/ramas y mutación4de4; lint0 errores/35 avisos previos, app/Compose compilados. APK0.8.14/code36 y firma compatible; QA física del propietario por excepción vigente. Evidencia en QA-LIQUIDACION-CLARA-2026-10-01.md; entrega develop autorizada, sin deploy.
+- [x] LC-T10/LC17: Android cantidad final del snapshot, devolución total y precisión física sin inferir unidades del dinero. 140JVM/0 fallos, selector100% líneas y mutación2de2; Gherkin/lint0 errores/35 avisos previos, APK0.8.15/code37 y firma compatible. QA física por excepción del propietario; evidencia en QA-LIQUIDACION-CLARA-2026-10-01.md.
+
+Liquidación completa: reglas confirmadas por el propietario; especificación en
+PROPUESTA-LIQUIDACION-RUTA-2026-10-01.md, CP12 conservado.
+- [ ] FW-T01: previsualización revisada, cierre durable separado, esquema40 aditivo, servidor/SQL/roles/idempotencia/eventos; LR02..12,14..24.
+- [ ] FW-T02: tarjeta visible de recepción de ruta y modal con pedidos/tickets, confirmación completa y actualización automática; LR02,04..06,09..14,17,22.
+- [ ] FW-T03: acción de ruta al final, modal/recuperación, Finalizar trabajo tras recepción y Buen trabajo con resumen real; LR02..08,13,16..20,24.
+- [ ] FW-T04: Gherkin, unidad/PG/HTTP/E2E/JVM, cobertura/mutación, seguridad/migración/build/APK/firma y QA reproducible; QA física del propietario.
