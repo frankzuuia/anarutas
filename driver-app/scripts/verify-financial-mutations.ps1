@@ -1,4 +1,4 @@
-param([string[]]$Only = @(), [ValidateSet('financial', 'receipt', 'navigation', 'quantity', 'settlement')][string]$Scope = 'financial')
+param([string[]]$Only = @(), [ValidateSet('financial', 'receipt', 'navigation', 'quantity', 'settlement', 'lifecycle')][string]$Scope = 'financial')
 $ErrorActionPreference = 'Stop'
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $taskTempRoot = [IO.Path]::GetTempPath()
@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Path (Join-Path $workRoot 'app') | Out-Null
 foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
     Copy-Item -LiteralPath (Join-Path $sourceRoot ('app/' + $entry)) -Destination (Join-Path $workRoot 'app') -Recurse
 }
-$policyFile = switch ($Scope) { 'settlement' { 'DriverSettlementPolicy.kt' } 'receipt' { 'DriverReceiptOrder.kt' } 'navigation' { 'DriverBackPolicy.kt' } default { 'DriverFinancial.kt' } }
+$policyFile = switch ($Scope) { 'lifecycle' { 'DriverRouteLifecycle.kt' } 'settlement' { 'DriverSettlementPolicy.kt' } 'receipt' { 'DriverReceiptOrder.kt' } 'navigation' { 'DriverBackPolicy.kt' } default { 'DriverFinancial.kt' } }
 $policy = Join-Path $workRoot ('app/src/main/java/com/five/anarutas/driver/' + $policyFile)
 $original = [IO.File]::ReadAllText($policy)
 $cases = @(
@@ -55,8 +55,19 @@ if ($Scope -eq 'settlement') {
         @{ name='hide_authorized_test_action'; from='completed || !warehouseRequired'; to='completed' }
     )
 }
+if ($Scope -eq 'lifecycle') {
+    $cases = @(
+        @{ name='repeat_historical_closure'; from='previous.workCompletedAt == null'; to='true' },
+        @{ name='close_other_plan'; from='it.id == previous.id'; to='true' },
+        @{ name='close_other_publication'; from='it.publicationRevision == previous.publicationRevision'; to='true' },
+        @{ name='close_unfinished_work'; from='it.workCompletedAt != null'; to='true' },
+        @{ name='discard_finance_summary'; from='workFinished && destination == DriverDestination.FINANCE'; to='false' },
+        @{ name='preserve_other_operational_screen'; from='destination == DriverDestination.FINANCE'; to='true' },
+        @{ name='preserve_finance_on_cancellation'; from='workFinished && destination'; to='true && destination' }
+    )
+}
 if ($Only.Count) { $cases = @($cases | Where-Object { $Only -contains $_.name }); if ($cases.Count -ne $Only.Count) { throw 'Unknown mutation filter' } }
-$testClass = switch ($Scope) { 'settlement' { 'DriverSettlementPolicyTest' } 'receipt' { 'DriverReceiptOrderTest' } 'navigation' { 'DriverBackPolicyTest' } default { 'DriverFinancialTest' } }
+$testClass = switch ($Scope) { 'lifecycle' { 'DriverRouteLifecycleTest' } 'settlement' { 'DriverSettlementPolicyTest' } 'receipt' { 'DriverReceiptOrderTest' } 'navigation' { 'DriverBackPolicyTest' } default { 'DriverFinancialTest' } }
 $arguments = @('testDebugUnitTest', '--tests', ('com.five.anarutas.driver.' + $testClass), '--console=plain')
 $results = @()
 Push-Location $workRoot

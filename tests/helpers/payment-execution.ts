@@ -17,9 +17,10 @@ export async function paymentExecutionFixture(
     collectAtFirstStop?: boolean;
     orderCount?: number;
     warehouseRequired?: boolean;
+    now?: Date;
   } = {},
 ) {
-  const f = await executionFixture({ orderCount: options.orderCount });
+  const f = await executionFixture({ orderCount: options.orderCount, now: options.now });
   try {
     // Financial regressions explicitly exercise the strict warehouse policy;
     // dedicated temporary-mode tests override this real persisted setting.

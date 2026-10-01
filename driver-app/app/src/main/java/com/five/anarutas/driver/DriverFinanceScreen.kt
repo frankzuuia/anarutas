@@ -174,9 +174,15 @@ internal fun FinanceScreen(model: DriverFinanceModel, initialExecutionId: String
                     Text("Todos los cobros fueron recibidos por liquidación.", color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
                 }
             }
-            if (requestRoute || requestShipment != null) AlertDialog(onDismissRequest = { if (!state.busy) { requestRoute = false; requestShipment = null } },
-                title = { Text(if (requestRoute) "¿Liquidar toda la ruta pendiente?" else "¿Solicitar liquidación del pedido?") },
-                text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (requestRoute || requestShipment != null) FinanceRequestSurface(
+                title = if (requestRoute) "¿Liquidar toda la ruta pendiente?" else "¿Solicitar liquidación del pedido?",
+                enabled = !state.busy && !state.pending, dismissEnabled = !state.busy,
+                onDismiss = { requestRoute = false; requestShipment = null },
+                onAccept = {
+                    val payload = JSONObject().put("shipmentId", requestShipment ?: JSONObject.NULL)
+                    if (requestRoute) routeRequestReview?.let(::JSONObject)?.optString("basis")?.takeIf { it.isNotBlank() }?.let { payload.put("basis", it) }
+                    model.submit(route.getString("id"), "requests", payload)
+                }) {
                     Text("El liquidador revisará y confirmará la recepción. Transferencias y créditos no se entregan en efectivo.")
                     if (requestRoute) {
                         val reviewed = routeRequestReview?.let(::JSONObject)
@@ -197,13 +203,7 @@ internal fun FinanceScreen(model: DriverFinanceModel, initialExecutionId: String
                         Text("${paymentMethodLabel(p.getString("method"))} · ${paymentMoney(p, if (p.getString("method") == "credit") "expected" else "received")}")
                     }
                     if (state.message.isNotBlank()) Text(state.message, color = DriverColors.amber, style = MaterialTheme.typography.bodySmall)
-                } },
-                confirmButton = { TextButton(enabled = !state.busy && !state.pending, onClick = {
-                    val payload = JSONObject().put("shipmentId", requestShipment ?: JSONObject.NULL)
-                    if (requestRoute) routeRequestReview?.let(::JSONObject)?.optString("basis")?.takeIf { it.isNotBlank() }?.let { payload.put("basis", it) }
-                    model.submit(route.getString("id"), "requests", payload)
-                }) { Text("Aceptar") } },
-                dismissButton = { TextButton(enabled = !state.busy, onClick = { requestRoute = false; requestShipment = null }) { Text("Cancelar") } })
+                }
         }
     }
 }

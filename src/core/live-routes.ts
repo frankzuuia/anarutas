@@ -39,6 +39,7 @@ export async function readLiveRoutes(pool: Pool, actor: string): Promise<LiveRou
       LEFT JOIN route_driver_execution_completions c ON c.execution_id=e.id
       LEFT JOIN route_driver_mobile_devices dev ON dev.id=t.device_id
       LEFT JOIN route_driver_mobile_access access ON access.driver_id=e.driver_id
+      WHERE NOT EXISTS(SELECT 1 FROM route_driver_work_completions w WHERE w.execution_id=e.id)
       ORDER BY e.service_date DESC,e.driver_name,e.id`)).rows;
     const ids = executions.map(e => e.id);
     const settings = await getRoutingSettings(sql);

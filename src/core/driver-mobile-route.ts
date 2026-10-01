@@ -6,6 +6,12 @@ import { todayInTimezone } from "./local-date";
 import { getRoutingSettings } from "./routing-settings";
 import { readPublicationFinancials } from "./driver-financial-store";
 import type { FinancialPublishedLine } from "./driver-financial-contract";
+import {
+  driverTodayPlan,
+  executionCompletedAtSql,
+  executionCompletionJoinsSql,
+  publicationExecutionJoinSql,
+} from "./route-lifecycle";
 
 export async function listDriverPlans(pool: Pool, driverId: string) {
   const { rows } = await pool.query(
@@ -13,8 +19,7 @@ export async function listDriverPlans(pool: Pool, driverId: string) {
             pub.snapshot->'plan'->>'label' AS label,
             pub.source_plan_version AS version,
             pub.revision AS publication_revision,pub.started_at,
-            (SELECT c.completed_at FROM route_driver_execution_completions c JOIN route_driver_executions e ON e.id=c.execution_id
-              WHERE e.plan_id=pub.plan_id AND e.vehicle_id=pub.vehicle_id AND e.publication_revision=pub.revision) AS completed_at,
+            ${executionCompletedAtSql} AS completed_at,w.completed_at AS work_completed_at,
             COALESCE((SELECT e.revision FROM route_driver_executions e WHERE e.plan_id=pub.plan_id
               AND e.vehicle_id=pub.vehicle_id AND e.publication_revision=pub.revision),0) AS execution_revision,
             pv.vehicle_id,v.name AS vehicle_name,v.plate,
@@ -25,6 +30,8 @@ export async function listDriverPlans(pool: Pool, driverId: string) {
      JOIN route_plans p ON p.id=pub.plan_id
      JOIN route_vehicles v ON v.id=pub.vehicle_id
      JOIN route_drivers d ON d.id=pub.driver_id
+     ${publicationExecutionJoinSql}
+     ${executionCompletionJoinsSql}
      WHERE d.active AND pub.revoked_at IS NULL AND (
        (pub.started_at IS NOT NULL AND pub.started_driver_id=$1 AND pv.driver_id=$1)
        OR (pub.started_at IS NULL AND pub.driver_id=$1 AND pv.driver_id=$1
@@ -44,10 +51,7 @@ export async function readDriverDashboard(
 ) {
   const serviceDate = todayInTimezone(timezone, now);
   const plans = await listDriverPlans(pool, driverId);
-  const today =
-    plans.find(
-      (plan) => plan.service_date === serviceDate && !plan.completed_at,
-    ) ?? plans.find((plan) => plan.service_date === serviceDate);
+  const today = driverTodayPlan(plans, serviceDate);
   return {
     serviceDate,
     plans,
@@ -73,8 +77,7 @@ export async function readDriverPlan(
     if (!plan.rowCount) throw new AppError("NOT_FOUND", 404);
     const publication = await sql.query(
       `SELECT pub.snapshot,pub.revision,pub.started_at,pub.vehicle_id,
-              (SELECT c.completed_at FROM route_driver_execution_completions c JOIN route_driver_executions e ON e.id=c.execution_id
-                WHERE e.plan_id=pub.plan_id AND e.vehicle_id=pub.vehicle_id AND e.publication_revision=pub.revision) AS completed_at,
+              ${executionCompletedAtSql} AS completed_at,w.completed_at AS work_completed_at,
               (SELECT count(*)::integer FROM route_unit_photos photo
                 WHERE photo.plan_id=pub.plan_id AND photo.vehicle_id=pub.vehicle_id
                   AND photo.driver_id=pub.driver_id AND photo.expires_at>now()
@@ -85,6 +88,8 @@ export async function readDriverPlan(
          ON pv.plan_id=pub.plan_id AND pv.vehicle_id=pub.vehicle_id
        JOIN route_vehicles v ON v.id=pub.vehicle_id
        JOIN route_drivers d ON d.id=pub.driver_id
+       ${publicationExecutionJoinSql}
+       ${executionCompletionJoinsSql}
        WHERE pub.plan_id=$1 AND d.active AND pub.revoked_at IS NULL AND (
          (pub.started_at IS NOT NULL AND pub.started_driver_id=$2 AND pv.driver_id=$2)
          OR (pub.started_at IS NULL AND pub.driver_id=$2 AND pv.driver_id=$2
@@ -183,6 +188,7 @@ export async function readDriverPlan(
         executionRevision: execution?.revision ?? 0,
         startedAt: assigned.started_at,
         completedAt: assigned.completed_at?.toISOString() ?? null,
+        workCompletedAt: assigned.work_completed_at?.toISOString() ?? null,
         photoCount: Number(assigned.photo_count),
       },
     };

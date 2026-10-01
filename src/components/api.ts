@@ -1,5 +1,6 @@
 export const errors: Record<string, string> = {
   ROLE_DENIED: "Tu cuenta no tiene acceso a esta sección.",
+  ROUTE_COMPLETED: "Esta ruta ya está finalizada; su historial se conserva para consulta.",
   SETTLEMENT_VERSION_CHANGED:
     "La solicitud cambió o ya fue atendida. Actualiza para consultar la recepción guardada.",
   SETTLEMENT_ROUTE_NOT_FINISHED: "El chofer aún no termina esta ruta.",

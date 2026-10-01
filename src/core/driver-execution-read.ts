@@ -5,6 +5,10 @@ import { uuid } from "./orders-validation";
 import { readOperationPolicy } from "./driver-operation-settings";
 import type { PublishedOrder } from "./driver-execution-policy";
 import type { DriverOrderStatus } from "./driver-service-policy";
+import {
+  executionCompletedAtSql,
+  executionCompletionJoinsSql,
+} from "./route-lifecycle";
 
 export type ExecutionRow = {
   id: string;
@@ -68,8 +72,8 @@ export async function executableRoute(
   if (rows.length !== 1) throw new AppError("NOT_FOUND", 404);
   const pub = rows[0];
   const execution = await sql.query<ExecutionRow>(
-    `SELECT e.*,e.service_date::text,c.completed_at FROM route_driver_executions e
-      LEFT JOIN route_driver_execution_completions c ON c.execution_id=e.id
+    `SELECT e.*,e.service_date::text,${executionCompletedAtSql} AS completed_at FROM route_driver_executions e
+      ${executionCompletionJoinsSql}
       WHERE e.plan_id=$1 AND e.vehicle_id=$2 AND e.publication_revision=$3 AND e.driver_id=$4
       FOR ${write ? "UPDATE" : "SHARE"} OF e`,
     [planId, pub.vehicle_id, pub.revision, driverId],

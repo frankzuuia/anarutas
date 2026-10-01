@@ -206,7 +206,7 @@ it("tests and restores the real runtime warehouse policy without fabricating a G
     expect(await request(requestBasis, commandId)).toMatchObject({
       duplicate: true,
     });
-    expect((await f.state()).completedAt).toBeNull();
+    expect((await f.state()).completedAt).toBe(results[0].completedAt);
     expect(
       (
         await f.db.pool.query(

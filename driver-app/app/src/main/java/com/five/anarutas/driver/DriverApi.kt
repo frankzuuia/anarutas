@@ -22,6 +22,7 @@ data class PlanSummary(
     val plate: String,
     val orderCount: Int,
     val publicationRevision: Int = 0,
+    val workCompletedAt: String? = null,
 )
 data class DeliveryLine(val name: String, val quantity: Double, val unit: String, val thumbnailPath: String? = null)
 data class DeliveryOrder(
@@ -69,6 +70,7 @@ data class AssignedPlan(
     val departure: RouteDeparture? = null,
     val completedAt: String? = null,
     val executionRevision: Int? = null,
+    val workCompletedAt: String? = null,
 )
 data class DriverDashboard(
     val driver: DriverProfile,
@@ -86,6 +88,7 @@ internal fun parsePlanSummary(item: JSONObject) = PlanSummary(
     plate = item.optString("plate"),
     orderCount = item.getInt("orders"),
     publicationRevision = item.optInt("publication_revision"),
+    workCompletedAt = item.optString("work_completed_at").takeUnless { it.isBlank() || it == "null" },
 )
 
 internal fun parseAssignedPlan(response: JSONObject): AssignedPlan {
@@ -160,6 +163,7 @@ internal fun parseAssignedPlan(response: JSONObject): AssignedPlan {
         },
         publicationRevision = response.optJSONObject("publication")?.optInt("revision") ?: 0,
         completedAt = response.optJSONObject("publication")?.optString("completedAt")?.takeUnless { it.isBlank() || it == "null" },
+        workCompletedAt = response.optJSONObject("publication")?.optString("workCompletedAt")?.takeUnless { it.isBlank() || it == "null" },
         departure = response.optJSONObject("departure")?.let { origin ->
             RouteDeparture(origin.optString("address"), origin.optDouble("latitude"),
                 origin.optDouble("longitude"), origin.optInt("version"))

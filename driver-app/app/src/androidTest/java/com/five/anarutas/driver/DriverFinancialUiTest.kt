@@ -19,13 +19,47 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.SemanticsProperties
 
 /** Real Compose rendering and semantics; these domain values do not substitute a provider. */
 @RunWith(AndroidJUnit4::class)
 class DriverFinancialUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @Test fun routeRequestModalKeepsAllThreeMethodsInsideAndCancelDoesNotSubmit() {
+        var accepts = 0
+        var cancels = 0
+        compose.setContent { DriverTheme {
+            FinanceRequestSurface("¿Liquidar toda la ruta pendiente?", true, true, { accepts++ }, { cancels++ }) {
+                FinanceMethodTiles("1246.5", "321.19", "0", DriverCurrency("MXN", 2))
+                Text("2 pedidos incluidos")
+            }
+        } }
+        listOf("Efectivo", "Transferencias", "Crédito", "$1,246.50", "$321.19", "$0.00").forEach {
+            compose.onNodeWithText(it).assertIsDisplayed()
+        }
+        val cards = listOf("Efectivo", "Transferencias", "Crédito").map { compose.onNodeWithText(it).fetchSemanticsNode().boundsInRoot }
+        cards.zipWithNext().forEach { (left, right) -> assertEquals(left.top, right.top, 2f); assertTrue(left.right <= right.left) }
+        compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange)).assertCountEquals(0)
+        compose.onNodeWithText("Cancelar").performClick()
+        compose.runOnIdle { assertEquals(0, accepts); assertEquals(1, cancels) }
+    }
+    @Test fun narrowMoneyTilesWithLargeFontsDoNotOverflowHorizontally() {
+        compose.setContent { DriverTheme { CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.5f)) {
+            Column(Modifier.width(240.dp).testTag("money-container")) {
+                FinanceMethodTiles("9007199254740993.01", "321.19", "0", DriverCurrency("MXN", 2))
+            }
+        } } }
+        val bounds = compose.onNodeWithTag("money-container").fetchSemanticsNode().boundsInRoot
+        listOf("Efectivo", "Transferencias", "Crédito").forEach { label ->
+            val card = compose.onNodeWithText(label).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+            assertTrue(card.left >= bounds.left && card.right <= bounds.right)
+        }
+        compose.onNodeWithText("$9,007,199,254,740,993.01").assertExists()
+        compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange)).assertCountEquals(0)
+    }
     @Test fun workSummaryShowsRealCountsAndExactTotalsInEveryCurrency() {
         compose.setContent { DriverTheme { Column(Modifier.width(320.dp)) {
             FinanceWorkSummary(25, 4, listOf(DriverCurrency("MXN", 2) to "996.87", DriverCurrency("USD", 2) to "0.000001"))

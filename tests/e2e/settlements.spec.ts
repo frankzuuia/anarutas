@@ -12,6 +12,7 @@ import { freePort } from "../helpers/postgres";
 import { createUser } from "../../src/core/auth";
 import { reportProductIncidentWithEvidence } from "../../src/core/product-incidents-evidence";
 import sharp from "sharp";
+import { todayInTimezone } from "../../src/core/local-date";
 
 for (const warehouseRequired of [true, false])
   test(`real HTTP collection to settlement, UI roles, individual acceptance and remaining route, warehouse=${warehouseRequired}`, async ({
@@ -26,9 +27,11 @@ async function settlementFlow(
   { page, request }: { page: Page; request: APIRequestContext },
 ) {
   test.setTimeout(180000);
+  const serviceDate = todayInTimezone("America/Mexico_City");
   const f = await paymentExecutionFixture({
     collectAtFirstStop: true,
     warehouseRequired,
+    now: new Date(`${serviceDate}T17:00:00.000Z`),
   });
   const timings: number[] = [];
   page.on("response", (response) => {
@@ -284,10 +287,10 @@ async function settlementFlow(
     await expect(
       page.getByRole("button", { name: "Liquidación de rutas", exact: true }),
     ).toBeEnabled();
-    await page.getByLabel("Desde", { exact: true }).fill("2026-09-24");
-    await page.getByLabel("Hasta", { exact: true }).fill("2026-09-24");
+    await page.getByLabel("Desde", { exact: true }).fill(serviceDate);
+    await page.getByLabel("Hasta", { exact: true }).fill(serviceDate);
     await page
-      .getByRole("button", { name: /Ejecución QA.*2026-09-24/ })
+      .getByRole("button", { name: new RegExp(`Ejecución QA.*${serviceDate}`) })
       .click();
     await expect(
       page.getByRole("heading", { name: /Solicitudes e historial/ }),
@@ -591,6 +594,22 @@ async function settlementFlow(
     );
     expect(summaries.map((s) => s.duplicate).sort()).toEqual([false, true]);
     expect(summaries[0].summary).toEqual(after.work.summary);
+    const executionPath = `${origin}/api/mobile/plans/${f.planId}/execution`;
+    const closedExecution = await (
+      await request.get(executionPath, { headers })
+    ).json();
+    expect(closedExecution.completedAt).toBe(summaries[0].completedAt);
+    const closedPlan = await (
+      await request.get(`${origin}/api/mobile/plans/${f.planId}`, { headers })
+    ).json();
+    expect(closedPlan.publication.workCompletedAt).toBe(summaries[0].completedAt);
+    expect(closedPlan.orders).toHaveLength(3);
+    const closedDashboard = await (
+      await request.get(`${origin}/api/mobile/dashboard`, { headers })
+    ).json();
+    expect(closedDashboard.today).toBeNull();
+    expect(closedDashboard.plans.find((p: { id: string }) => p.id === f.planId))
+      .toMatchObject({ work_completed_at: summaries[0].completedAt });
     await writeFile(
       ".local/qa-settlements/work-command-timing.json",
       JSON.stringify(
@@ -629,12 +648,11 @@ async function settlementFlow(
     await page
       .getByRole("combobox", { name: "Consultar por", exact: true })
       .selectOption("receipt");
-    const { todayInTimezone } = await import("../../src/core/local-date");
     const receiptDate = todayInTimezone(f.timezone);
     await page.getByLabel("Hasta", { exact: true }).fill(receiptDate);
     await page.getByLabel("Desde", { exact: true }).fill(receiptDate);
     await expect(
-      page.getByRole("button", { name: /Ejecución QA.*2026-09-24/ }),
+      page.getByRole("button", { name: new RegExp(`Ejecución QA.*${serviceDate}`) }),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", {
@@ -676,6 +694,22 @@ async function settlementFlow(
     await expect(
       page.getByRole("button", { name: "Liquidación de rutas", exact: true }),
     ).toBeDisabled();
+    const closedLive = await (
+      await page.request.get(`${origin}/api/live-routes`)
+    ).json();
+    expect(closedLive.routes.some((r: { id: string }) => r.id === f.executionId))
+      .toBe(false);
+    await page.getByRole("button", { name: "Planificar rutas", exact: true }).click();
+    await page.getByRole("combobox", { name: "Abrir borrador", exact: true })
+      .selectOption(f.planId);
+    const finalizedLane = page.locator(".lane.order-lane").filter({ hasText: "Unidad 0" });
+    await expect(finalizedLane).toContainText("Ruta finalizada");
+    await expect(finalizedLane.getByRole("button", { name: "Cancelar ruta", exact: true }))
+      .toHaveCount(0);
+    await page.screenshot({
+      path: `.local/qa-settlements/closure-planner-${warehouseRequired}.png`,
+      fullPage: true,
+    });
     await page
       .getByRole("button", { name: "Usuarios y accesos", exact: true })
       .click();

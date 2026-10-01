@@ -116,6 +116,14 @@ export async function completeDriverWork(
       ],
     );
     await sql.query(
+      "UPDATE route_driver_executions SET revision=revision+1 WHERE id=$1",
+      [route.id],
+    );
+    await sql.query(
+      "UPDATE route_live_tracking SET stopped=true,target_stop_id=NULL,eta=NULL,warehouse_depot_version=NULL,received_at=$2 WHERE execution_id=$1",
+      [route.id, now],
+    );
+    await sql.query(
       "INSERT INTO route_driver_mobile_audit(driver_id,action,details) VALUES($1,'mobile.work.completed',$2)",
       [
         driver.driver_id,

@@ -2,9 +2,7 @@ package com.five.anarutas.driver
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -63,12 +61,12 @@ internal fun FinanceRouteHeader(label: String, date: String, enabled: Boolean, o
 @Composable
 internal fun FinanceMethodTiles(cash: String, transfer: String, credit: String, currency: DriverCurrency) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val tileWidth = ((maxWidth - 16.dp) / 3).coerceAtLeast(100.dp)
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val tileWidth = ((maxWidth - 16.dp) / 3).coerceAtLeast(0.dp)
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(Triple("💵", "Efectivo", cash), Triple("🏦", "Transferencias", transfer), Triple("🗓️", "Crédito", credit)).forEachIndexed { index, (emoji, label, value) ->
                 val accent = listOf(DriverColors.lime, DriverColors.blue, DriverColors.purple)[index]
                 Surface(color = accent.copy(alpha = .06f), shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, accent.copy(alpha = .22f)),
-                    modifier = Modifier.width(tileWidth).heightIn(min = tileWidth).fillMaxHeight().semantics(mergeDescendants = true) {}) {
+                    modifier = Modifier.weight(1f).heightIn(min = tileWidth).fillMaxHeight().semantics(mergeDescendants = true) {}) {
                     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(emoji, fontSize = 20.sp)
                         Text(label, color = accent, style = MaterialTheme.typography.labelSmall)
@@ -79,6 +77,19 @@ internal fun FinanceMethodTiles(cash: String, transfer: String, credit: String, 
             }
         }
     }
+}
+
+@Composable
+internal fun FinanceRequestSurface(title: String, enabled: Boolean, dismissEnabled: Boolean,
+    onAccept: () -> Unit, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    ServiceFormSurface(onDismiss = { if (dismissEnabled) onDismiss() }, header = {
+        Text(title, style = MaterialTheme.typography.titleLarge)
+    }, footer = {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AppAction("Cancelar", DriverIcon.CLOSE, Modifier.weight(1f), quiet = true, enabled = dismissEnabled, onClick = onDismiss)
+            AppAction("Aceptar", DriverIcon.CHECK, Modifier.weight(1f), enabled = enabled, accent = DriverColors.amber, onClick = onAccept)
+        }
+    }, content = content)
 }
 
 @Composable

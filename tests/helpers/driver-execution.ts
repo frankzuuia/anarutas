@@ -12,10 +12,11 @@ import { routePublicationSnapshot } from "../../src/core/route-publication-conte
 import { configureMobileAccess, enrollMobileDevice } from "../../src/core/driver-mobile-auth";
 import { uploadDriverUnitPhoto } from "../../src/core/unit-photos";
 import { startDriverRoute } from "../../src/core/route-start";
+import { todayInTimezone } from "../../src/core/local-date";
 
 // Real isolated PostgreSQL, signatures, image files and start transaction. No HTTP/API mocks.
 // The persisted publication is a fixture for execution, not a claim of a Google calculation.
-export async function executionFixture(options: { groupFourthOrderWithFirst?: boolean; sourceFingerprint?: string; secondLinePerOrder?: boolean; orderCount?: number } = {}) {
+export async function executionFixture(options: { groupFourthOrderWithFirst?: boolean; sourceFingerprint?: string; secondLinePerOrder?: boolean; orderCount?: number; now?: Date } = {}) {
   const db = await startPostgres();
   const photoRoot = await mkdtemp(join(tmpdir(), "rutas-execution-"));
   const oldPepper = process.env.RUTAS_DRIVER_PIN_PEPPER;
@@ -27,6 +28,8 @@ export async function executionFixture(options: { groupFourthOrderWithFirst?: bo
     await rm(photoRoot, { recursive: true, force: true });
   };
   try {
+    const now = options.now ?? new Date("2026-09-24T17:00:00.000Z");
+    const timezone = "America/Mexico_City";
     const actor = (await bootstrap(db.pool, db.config, { token: db.config.bootstrapToken,
       name: "Execution QA", login: "execution-qa", password: randomUUID() })).id;
     const members: { driverId: string; vehicleId: string; deviceId: string; authorization: string }[] = [];
@@ -42,13 +45,13 @@ export async function executionFixture(options: { groupFourthOrderWithFirst?: bo
         publicKey: keys.publicKey.export({ type: "spki", format: "pem" }).toString() });
       members.push({ driverId: driver.id, vehicleId: vehicle.id, deviceId: enrollment.deviceId, authorization: `Bearer ${enrollment.token}` });
     }
-    const plan = await createPlan(db.pool, actor, { date: "2026-09-24", label: "Ejecución QA" });
+    const plan = await createPlan(db.pool, actor, { date: todayInTimezone(timezone, now), label: "Ejecución QA" });
     await selectPlanVehicles(db.pool, actor, plan.id, { vehicleIds: members.map(m => m.vehicleId), expectedVersion: plan.version });
     await persistImportPage(db.pool, actor, plan.id, {
       fingerprint: options.sourceFingerprint ?? createHash("sha256").update("execution-qa").digest("hex"),
       shipments: Array.from({ length: options.orderCount ?? 4 }, (_, index) => index + 1).map(index => ({ pickingId: index, pickingName: `OUT/${index}`, orderId: index,
         orderName: `S${index}`, partnerId: index === 4 ? 1 : index, customerName: `Cliente ${index === 4 ? 1 : index}`,
-        address: `Calle ${index === 4 ? 1 : index}`, validatedAt: "2026-09-24T12:00:00.000Z", promisedAt: null,
+        address: `Calle ${index === 4 ? 1 : index}`, validatedAt: options.now?.toISOString() ?? "2026-09-24T12:00:00.000Z", promisedAt: null,
         backorderId: null, lines: [{ moveId: index, productId: index, name: `Producto ${index}`, quantity: 2, unit: "kg" },
           ...(options.secondLinePerOrder ? [{ moveId: index + 10, productId: index + 10, name: `Producto ${index + 10}`, quantity: 3, unit: "kg" }] : [])] })),
       nextCursor: options.orderCount ?? 4, ceiling: options.orderCount ?? 4, hasMore: false, inspected: options.orderCount ?? 4, excluded: 0,
@@ -74,8 +77,6 @@ export async function executionFixture(options: { groupFourthOrderWithFirst?: bo
         VALUES($1,$2,$3,$4,$5,$6,$7)`, [plan.id, member.vehicleId, member.driverId, board.plan.version,
         serialized, createHash("sha256").update(serialized).digest("hex"), actor]);
     }
-    const now = new Date("2026-09-24T17:00:00.000Z");
-    const timezone = "America/Mexico_City";
     const start = async (member = members[0], expectedRevision = 1) => {
       for (let i = 0; i < 5; i++) {
         const bytes = await sharp({ create: { width: 24, height: 24, channels: 3,

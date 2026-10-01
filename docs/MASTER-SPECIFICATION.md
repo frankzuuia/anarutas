@@ -1798,3 +1798,14 @@ TB-T01..03 verificados en QA-LIQUIDACION-PRUEBA-0.8.17.md: 930 regresión/0 fall
 mutaciones detectadas115/115 políticas,7/7 SQL/configuración,1/1 guarda previa
 modificada,3/3 Android. APK0.8.17/code39 compatible; QA física por excepción
 vigente del propietario, despliegue manual y restauración posterior pendiente.
+
+BL184..185: corrección posterior confirmada el2026-10-01. Cierre de trabajo
+conecta la ejecución terminal con dashboard, publicaciones, live y guardas;
+modal ancho sin scroll lateral. Causa, fuentes, locks, compatibilidad, permisos,
+casos históricos y matriz CR01..12 en CORRECCION-CIERRE-RUTA-2026-10-01.md.
+No fabricar cierre GPS ni restaurar ahora el modo de prueba; historial intacto.
+CR-T01..03 verificados en QA-CIERRE-RUTA-0.8.18.md:934 regresión/0 fallos/3
+omisiones externas existentes,84 financieras/PG,148JVM y cuatro E2E reales.
+Selector/comando/transición100% líneas y ramas;13/13 mutaciones servidor y7/7
+Android detectadas. APK0.8.18/code40 compatible; QA física por excepción vigente
+del propietario. Entrega a develop, sin despliegue ni cambios a main.

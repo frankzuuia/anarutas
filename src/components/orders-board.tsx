@@ -45,6 +45,7 @@ type RoutePublication = {
   source_plan_version: number;
   published_at: string;
   started_at: string | null;
+  work_completed_at: string | null;
   has_changes: boolean;
   published_order_count: number;
 };
@@ -1675,33 +1676,37 @@ export function OrdersBoard({
                       {publication && (
                         <>
                           <span className="lane-publication-state">
-                            {publication.started_at
-                              ? "Ruta iniciada"
-                              : fleetChanged
-                                ? "Requiere republicar para el nuevo chofer"
-                                : publication.has_changes
-                                  ? "Cambios sin publicar"
-                                  : "Ruta publicada"}
+                            {publication.work_completed_at
+                              ? "Ruta finalizada"
+                              : publication.started_at
+                                ? "Ruta iniciada"
+                                : fleetChanged
+                                  ? "Requiere republicar para el nuevo chofer"
+                                  : publication.has_changes
+                                    ? "Cambios sin publicar"
+                                    : "Ruta publicada"}
                           </span>
-                          <button
-                            type="button"
-                            className="lane-cancel"
-                            disabled={busy}
-                            onClick={() => {
-                              setCancelError("");
-                              setCancelTarget({
-                                planId: plan.id,
-                                vehicleId: v.id,
-                                label: v.name,
-                                revision: publication.revision,
-                                orderCount: publication.published_order_count,
-                                started: Boolean(publication.started_at),
-                              });
-                            }}
-                          >
-                            <Ban size={12} aria-hidden="true" />
-                            Cancelar ruta
-                          </button>
+                          {!publication.work_completed_at && (
+                            <button
+                              type="button"
+                              className="lane-cancel"
+                              disabled={busy}
+                              onClick={() => {
+                                setCancelError("");
+                                setCancelTarget({
+                                  planId: plan.id,
+                                  vehicleId: v.id,
+                                  label: v.name,
+                                  revision: publication.revision,
+                                  orderCount: publication.published_order_count,
+                                  started: Boolean(publication.started_at),
+                                });
+                              }}
+                            >
+                              <Ban size={12} aria-hidden="true" />
+                              Cancelar ruta
+                            </button>
+                          )}
                         </>
                       )}
                       {!publication?.started_at &&

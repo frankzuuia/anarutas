@@ -48,6 +48,12 @@ export async function startDriverRoute(
     if (route.revision !== revision)
       throw new AppError("VERSION_CONFLICT", 409);
     if (route.started_at) {
+      const finished = await sql.query(
+        `SELECT 1 FROM route_driver_executions e JOIN route_driver_work_completions w ON w.execution_id=e.id
+         WHERE e.plan_id=$1 AND e.vehicle_id=$2 AND e.publication_revision=$3`,
+        [id, route.vehicle_id, route.revision],
+      );
+      if (finished.rowCount) throw new AppError("ROUTE_COMPLETED", 409);
       await createDriverExecution(sql, id, route.vehicle_id);
       return { startedAt: route.started_at as Date, alreadyStarted: true };
     }

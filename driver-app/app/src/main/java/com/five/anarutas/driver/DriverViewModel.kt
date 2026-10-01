@@ -47,7 +47,8 @@ internal fun reconcilePublishedRoutes(state: DriverUiState, dashboard: DriverDas
     val previous = state.selected ?: state.dashboard?.today
     val withdrawn = previous != null && dashboard.plans.none { it.id == previous.id }
     val dayChanged = state.dashboard?.serviceDate?.let { it != dashboard.serviceDate } ?: false
-    val resetRoute = withdrawn || dayChanged
+    val workFinished = driverWorkFinishedTransition(previous, dashboard)
+    val resetRoute = withdrawn || dayChanged || workFinished
     val priorRevisions = state.dashboard?.plans?.associate { it.id to it.publicationRevision }.orEmpty()
     val newlyPublished = state.dashboard != null && dashboard.plans.any { plan ->
         val prior = priorRevisions[plan.id]
@@ -63,13 +64,15 @@ internal fun reconcilePublishedRoutes(state: DriverUiState, dashboard: DriverDas
     return state.copy(
         dashboard = dashboard,
         selected = selected,
-        destination = if (resetRoute) DriverDestination.HOME else state.destination,
+        destination = if (resetRoute && !keepFinanceSummaryOpen(state.destination, workFinished)) DriverDestination.HOME else state.destination,
         photos = if (resetRoute) emptyList() else state.photos,
         showPhotos = if (resetRoute) false else state.showPhotos,
         orderDetailId = if (resetRoute) null else state.orderDetailId,
+        openStartedMap = if (resetRoute) null else state.openStartedMap,
         notice = when {
             dayChanged -> "Nuevo día de operación. Toma las fotos de hoy antes de iniciar tu ruta."
             withdrawn -> "Administración retiró esta ruta. Espera una nueva publicación."
+            workFinished -> "Ruta finalizada. Puedes consultar tus tickets y el resumen en el historial."
             newlyPublished -> "Tienes una ruta nueva o actualizada. Ya aparece en tu jornada."
             else -> state.notice
         },
@@ -342,7 +345,8 @@ class DriverViewModel(private val credentials: DeviceCredentials) : ViewModel() 
                     val withdrawn = (state.selected ?: state.dashboard?.today)?.let { route ->
                         latest.plans.none { it.id == route.id }
                     } == true
-                    val completed = (selected ?: latest.today)?.let { it.completedAt != null && it.id == state.runningPlan()?.id } == true
+                    val completed = driverWorkFinishedTransition(state.runningPlan(), latest) ||
+                        (selected ?: latest.today)?.let { it.completedAt != null && it.id == state.runningPlan()?.id } == true
                     if (withdrawn || completed) NavigationRegistry.endSession()
                     state = reconcilePublishedRoutes(state, latest, selected)
                 }

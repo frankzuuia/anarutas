@@ -128,6 +128,9 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
     LaunchedEffect(model) {
         RoutePushEvents.refresh.collect { model.requestDashboardRefresh() }
     }
+    LaunchedEffect(financeModel.state.receiptRevision) {
+        if (financeModel.state.receiptRevision > 0) model.requestDashboardRefresh()
+    }
 
     DisposableEffect(view, running?.id, keepAwake) {
         val previous = view.keepScreenOn

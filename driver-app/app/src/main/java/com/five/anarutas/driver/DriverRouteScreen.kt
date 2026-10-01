@@ -39,7 +39,7 @@ internal fun RouteOverviewCard(route: AssignedPlan, timezone: String) {
             AppIcon(DriverIcon.ROUTE, tint = DriverColors.lime)
             Text(route.label, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
         }
-        StatusBadge(if (route.completedAt != null) "Ruta terminada" else if (route.startedAt != null) "Ruta iniciada" else routeStatusLabel(route.routeStatus), if (route.routeStatus == "current") DriverColors.lime else DriverColors.amber)
+        StatusBadge(if (route.workCompletedAt != null) "Ruta finalizada" else if (route.completedAt != null) "Ruta terminada" else if (route.startedAt != null) "Ruta iniciada" else routeStatusLabel(route.routeStatus), if (route.routeStatus == "current") DriverColors.lime else DriverColors.amber)
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 RouteMetric("Pedidos", route.orders.size.toString(), DriverIcon.ORDERS, DriverColors.blue, Modifier.weight(1f))

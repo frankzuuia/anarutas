@@ -15,6 +15,10 @@ import {
   routePublicationSnapshot,
 } from "./route-publication-content";
 import { nextPublicationRevision } from "./route-publication-revisions";
+import {
+  executionCompletionJoinsSql,
+  publicationExecutionJoinSql,
+} from "./route-lifecycle";
 
 type PublicationRow = {
   vehicle_id: string;
@@ -23,14 +27,17 @@ type PublicationRow = {
   source_plan_version: number;
   published_at: Date;
   started_at: Date | null;
+  work_completed_at: Date | null;
   has_changes: boolean;
   published_order_count: number;
 };
 
 export async function listRoutePublications(sql: Sql, planId: string) {
   const { rows } = await sql.query(
-    `SELECT vehicle_id,driver_id,revision,source_plan_version,published_at,started_at,snapshot
-       FROM route_plan_publications WHERE plan_id=$1 AND revoked_at IS NULL ORDER BY vehicle_id`,
+    `SELECT pub.vehicle_id,pub.driver_id,pub.revision,pub.source_plan_version,pub.published_at,pub.started_at,pub.snapshot,
+       w.completed_at AS work_completed_at FROM route_plan_publications pub
+       ${publicationExecutionJoinSql} ${executionCompletionJoinsSql}
+       WHERE pub.plan_id=$1 AND pub.revoked_at IS NULL ORDER BY pub.vehicle_id`,
     [uuid(planId)],
   );
   if (!rows.length) return [] as PublicationRow[];
@@ -302,6 +309,12 @@ export async function cancelPublishedRoute(
       throw new AppError("NOT_FOUND", 404);
     if (Number(publication.revision) !== expectedRevision)
       throw new AppError("VERSION_CONFLICT", 409);
+    const finished = await sql.query(
+      `SELECT 1 FROM route_driver_executions e JOIN route_driver_work_completions w ON w.execution_id=e.id
+       WHERE e.plan_id=$1 AND e.vehicle_id=$2 AND e.publication_revision=$3`,
+      [id, vehicle, expectedRevision],
+    );
+    if (finished.rowCount) throw new AppError("ROUTE_COMPLETED", 409);
     await sql.query(
       "SELECT set_config('ana_rutas.cancel_started_route','on',true)",
     );

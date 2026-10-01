@@ -712,3 +712,11 @@ total antes de cierre de trabajo -> configuración persistida del servidor,
 guardas SQL independientes, auditar modo, no fabricar cierre GPS; TB01..10 en
 PRUEBA-LIQUIDACION-SIN-BODEGA-2026-10-01.md. Restauración automática por política,
 roles e historial intactos.
+
+BL-184: Trabajo confirmado finaliza también la ruta visible -> estado terminal
+de la ejecución, Inicio sin ruta, planificación finalizada, fuera de Ruta en vivo,
+GPS/comandos detenidos e historial conservado -> proyección de datos ya reales,
+locks/replay/permisos intactos, CR01..10 en CORRECCION-CIERRE-RUTA-2026-10-01.md.
+BL-185: Modal amplio sin recortar métodos -> tres tarjetas adaptadas al ancho,
+contenido vertical y acciones fijas -> componentes Android existentes,
+accesibilidad/precisión monetaria conservadas; CR11..12.

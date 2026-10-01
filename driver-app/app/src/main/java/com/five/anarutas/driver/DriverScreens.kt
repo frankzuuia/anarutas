@@ -196,7 +196,7 @@ internal fun LazyListScope.historyContent(state: DriverUiState, model: DriverVie
     item { ScreenTitle("Mis rutas", "Rutas publicadas para ti") }
     if (plans.isEmpty()) item { EmptyPanel("Todavía no hay rutas", "Tus rutas publicadas se mostrarán aquí, con sus pedidos y recorridos.", DriverIcon.HISTORY) }
     items(plans, key = { it.id }) { plan ->
-        ActionRow(DriverIcon.ROUTE, plan.label, "${plan.date} · ${plan.vehicle} · ${plan.orderCount} pedidos") { if (!state.busy) model.selectPlan(plan.id) }
+        ActionRow(DriverIcon.ROUTE, plan.label, "${plan.date} · ${plan.vehicle} · ${plan.orderCount} pedidos${if (plan.workCompletedAt != null) " · Ruta finalizada" else ""}") { if (!state.busy) model.selectPlan(plan.id) }
     }
 }
 
