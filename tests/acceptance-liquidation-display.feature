@@ -25,6 +25,14 @@ Característica: Liquidación legible y limitada a pedidos finalizados
     Y el redondeo del pedido se explica por separado
     Y una modificación posterior de Odoo no reescribe el recibo
 
+  Escenario: La cantidad del resumen corresponde al pedido final
+    Dado un pedido de 5 unidades de alfalfa con devolución confirmada de 4
+    Cuando se abre el modal del pedido en liquidación web
+    Entonces Cantidad final muestra 1 unidad de alfalfa
+    Y el importe original conserva el valor de las 5 unidades
+    Y el importe final conserva el cobro confirmado de la unidad restante
+    Y el detalle amarillo conserva las 4 unidades devueltas y su descuento
+
   Escenario: LC08 Cincuenta pedidos y detalle independiente
     Dado un recorrido con 50 pedidos cobrados
     Cuando el liquidador busca un cliente o filtra por estado

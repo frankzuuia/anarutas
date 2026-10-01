@@ -329,6 +329,16 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
     await expect(
       orderDetail.getByRole("cell", { name: "Producto 3", exact: true }),
     ).toBeVisible();
+    const returnedProduct = orderDetail.getByRole("row").filter({
+      hasText: "Producto 3",
+    });
+    await expect(returnedProduct.getByRole("cell").nth(1)).toHaveText("1 kg");
+    await expect(returnedProduct.getByRole("cell").nth(3)).toHaveText(
+      "$20.00 MXN",
+    );
+    await expect(returnedProduct.getByRole("cell").nth(4)).toHaveText(
+      "$10.00 MXN",
+    );
     await expect(orderDetail.locator(".settlement-order-totals")).toContainText(
       "Total final $10.00 MXN",
     );

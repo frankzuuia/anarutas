@@ -169,3 +169,34 @@ SHA256 del archivo final:
 Actualizar conservando datos. Es una APK de desarrollo para la prueba autorizada.
 Commit/push a develop bajo autorización permanente, con QA física pendiente
 informada; no certificación ni despliegue de producción.
+
+## Corrección posterior — cantidad final en el modal web
+
+El propietario detectó que Alfalfa conservaba cantidad5 aunque la devolución4
+y el importe final eran correctos. La celda leía `line.quantity` del recibo,
+que es la cantidad original. Ahora usa `line.physicalRemaining`, ya calculada
+por el dominio y congelada en el mismo snapshot. Encabezado y etiqueta móvil
+web: Cantidad final. No cambia Android, importes, recibos, esquema ni comandos.
+
+- Regresión roja sobre el comportamiento anterior: pedido QA de2kg con
+  devolución1 mostraba2kg, esperaba1kg. Fallo confirmado de la celda, no del
+  proveedor ni del cálculo; `.local/qa-final-quantity-before.log`.
+- La misma prueba PG/HTTP/Chrome pasa después del ajuste,1/1 en28.6s;
+  original$20.00 y final$10.00 permanecen iguales. También recorre recepción,
+  reintentos, cancelación y permisos. `.local/qa-final-quantity-http.log`.
+- 41 pruebas de política/formato existentes aprobadas: cantidades fraccionarias,
+  devoluciones completas, cancelaciones y separación de reposiciones. No nueva
+  función ni lógica monetaria crítica; se conserva cobertura/mutación del bloque
+  anterior. La regresión roja detecta concretamente volver al campo incorrecto.
+- Next build con TypeScript, ESLint0 errores/1 aviso previo y diff-check verdes;
+  escaneo de14 archivos cliente sin credenciales locales. Logs
+  `.local/qa-final-quantity-build.log`, `-unit.log`, `-lint.log`, `-metrics.log`.
+- Latencia local de23 respuestas: p95 71.1ms, máximo115.9ms; no prueba de carga.
+  Complejidad del dominio y contratos sin cambios. No ampliar la regresión general
+  ni reconstruir APK para una selección de campo y etiqueta exclusiva de web.
+
+Reproducción: ejecutar las dos unidades `driver-financial-policy.test.ts` y
+`financial-display.test.ts`, `npm run build`, `npm run lint` y
+`npx playwright test tests/e2e/settlements.spec.ts`. Captura verificada actualizada:
+`.local/qa-settlements/return-discount-modal.png`. Entrega develop, deploy del
+propietario; no requiere cambiar configuración ni modificar el pedido existente.

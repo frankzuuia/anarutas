@@ -153,7 +153,7 @@ export function SettlementOrderModal({
               <thead>
                 <tr>
                   <th>Producto</th>
-                  <th>Cantidad</th>
+                  <th>Cantidad final</th>
                   <th>Unitario</th>
                   <th>Original</th>
                   <th>Final</th>
@@ -166,8 +166,8 @@ export function SettlementOrderModal({
                       {source.order?.lines[line.lineIndex]?.name ??
                         `Partida ${line.lineIndex + 1}`}
                     </td>
-                    <td data-label="Cantidad">
-                      {quantity(line.quantity)} {line.unit}
+                    <td data-label="Cantidad final">
+                      {quantity(line.physicalRemaining)} {line.unit}
                     </td>
                     <td data-label="Unitario">
                       {money(line.unitPrice, currency)}

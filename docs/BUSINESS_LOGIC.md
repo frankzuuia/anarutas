@@ -673,3 +673,8 @@ Verificación del refresco sin asignación; importes y cantidades con formato
 legible; descuentos por incidencia derivados del recibo; resúmenes por medio
 y detalle modal web/Android. Liquidación móvil sólo muestra pedidos entregados
 con cobro confirmado. El cobro operativo mantiene su acceso a pedidos abiertos.
+
+En el modal web de liquidación, Cantidad final muestra physicalRemaining del
+recibo confirmado después de incidencias activas. No usar quantity original ni
+recalcular a partir del precio. Importes originales/finales y detalle devuelto
+conservados; corrección de presentación sin alterar la operación monetaria.

@@ -191,3 +191,11 @@ descuento exacto y motivo. Sin franja verde ni recuadros rellenos de incidencias
 Los importes siguen saliendo del recibo confirmado y su proyección por identidad.
 La tabla conserva su altura intrínseca; el cuerpo del modal desplaza todo el
 contenido manteniendo el cierre visible. Regresión geométrica además de visibilidad.
+
+Corrección acotada solicitada después: en el modal web, Cantidad final corresponde
+a physicalRemaining del snapshot confirmado, no a quantity original. Ejemplo:
+5 de alfalfa con devolución de4 muestra1; el importe original conserva las5 y
+el detalle amarillo conserva las4 devueltas. Sin recalcular cobros ni alterar app,
+backend, permisos o recibos. Verificar cantidades sin incidencia, devolución
+parcial/completa, cantidades fraccionarias y cancelaciones mediante política
+existente y regresión de la celda del navegador real.
