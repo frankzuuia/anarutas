@@ -1,4 +1,4 @@
-param([string[]]$Only = @(), [ValidateSet('financial', 'receipt')][string]$Scope = 'financial')
+param([string[]]$Only = @(), [ValidateSet('financial', 'receipt', 'navigation')][string]$Scope = 'financial')
 $ErrorActionPreference = 'Stop'
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $taskTempRoot = [IO.Path]::GetTempPath()
@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Path (Join-Path $workRoot 'app') | Out-Null
 foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
     Copy-Item -LiteralPath (Join-Path $sourceRoot ('app/' + $entry)) -Destination (Join-Path $workRoot 'app') -Recurse
 }
-$policyFile = if ($Scope -eq 'receipt') { 'DriverReceiptOrder.kt' } else { 'DriverFinancial.kt' }
+$policyFile = switch ($Scope) { 'receipt' { 'DriverReceiptOrder.kt' } 'navigation' { 'DriverBackPolicy.kt' } default { 'DriverFinancial.kt' } }
 $policy = Join-Path $workRoot ('app/src/main/java/com/five/anarutas/driver/' + $policyFile)
 $original = [IO.File]::ReadAllText($policy)
 $cases = @(
@@ -34,8 +34,16 @@ if ($Scope -eq 'receipt') {
         @{ name='unstable_simultaneous_collection'; from='else leftId.compareTo(rightId)'; to='else 0' }
     )
 }
+if ($Scope -eq 'navigation') {
+    $cases = @(
+        @{ name='navigate_with_drawer_open'; from='drawerOpen -> DriverBackTarget.DRAWER'; to='false -> DriverBackTarget.DRAWER' },
+        @{ name='leave_finance_detail_for_home'; from='-> DriverBackTarget.FINANCE_ROUTES'; to='-> DriverBackTarget.HOME' },
+        @{ name='trap_finance_list'; from='financeExecutionId != null'; to='true' },
+        @{ name='hijack_other_tabs'; from='destination == DriverDestination.FINANCE &&'; to='true &&' }
+    )
+}
 if ($Only.Count) { $cases = @($cases | Where-Object { $Only -contains $_.name }); if ($cases.Count -ne $Only.Count) { throw 'Unknown mutation filter' } }
-$testClass = if ($Scope -eq 'receipt') { 'DriverReceiptOrderTest' } else { 'DriverFinancialTest' }
+$testClass = switch ($Scope) { 'receipt' { 'DriverReceiptOrderTest' } 'navigation' { 'DriverBackPolicyTest' } default { 'DriverFinancialTest' } }
 $arguments = @('testDebugUnitTest', '--tests', ('com.five.anarutas.driver.' + $testClass), '--console=plain')
 $results = @()
 Push-Location $workRoot

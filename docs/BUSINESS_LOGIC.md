@@ -678,3 +678,10 @@ En el modal web de liquidación, Cantidad final muestra physicalRemaining del
 recibo confirmado después de incidencias activas. No usar quantity original ni
 recalcular a partir del precio. Importes originales/finales y detalle devuelto
 conservados; corrección de presentación sin alterar la operación monetaria.
+
+LC15..16: el chofer vuelve desde una ruta de liquidación al listado financiero
+mediante el botón junto al encabezado o Atrás Android. Primero se cierra modal
+o menú; la selección retenida de liquidación no cambia el retorno de otras
+pestañas. Resumen de efectivo/transferencia/crédito en tres tarjetas en fila,
+con importe exacto y moneda conservados. Es navegación/presentación: mismos
+permisos, fuentes y comandos; ningún movimiento monetario al regresar.

@@ -102,7 +102,7 @@ internal fun DashboardScreen(state: DriverUiState, model: DriverViewModel) {
                 HomeTile("Mi unidad", route?.vehicle ?: "Sin ruta asignada", DriverIcon.TRUCK, DriverColors.purple, Modifier.weight(1f)) { model.navigate(DriverDestination.UNIT) }
                 HomeTile("Mis rutas", "${dashboard.plans.size} publicadas", DriverIcon.HISTORY, DriverColors.amber, Modifier.weight(1f)) { model.navigate(DriverDestination.HISTORY) }
             }
-            HomeTile("Liquidación de rutas", "Cobros, solicitudes e historial", DriverIcon.CHECK, DriverColors.lime, Modifier.fillMaxWidth()) { model.navigate(DriverDestination.FINANCE) }
+            HomeTile("Liquidación de rutas", "Cobros, solicitudes e historial", DriverIcon.MONEY, DriverColors.lime, Modifier.fillMaxWidth()) { model.navigate(DriverDestination.FINANCE) }
         }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionLabel("Hoy", "${route?.date ?: dashboard.serviceDate}")

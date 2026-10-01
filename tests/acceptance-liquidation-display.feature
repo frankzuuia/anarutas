@@ -84,3 +84,21 @@ Característica: Liquidación legible y limitada a pedidos finalizados
     Y al pulsarlo muestra progreso y bloquea otro toque mientras carga
     Y Volver a mis rutas es un botón negro con contorno y letras lima
     Y las tarjetas compactas conservan acciones táctiles de 48dp y texto ampliado
+
+  Escenario: LC15 Retorno Android desde el detalle de liquidación
+    Dado que el chofer abrió una ruta en Liquidación de rutas
+    Cuando pulsa Atrás de Android o Volver a mis rutas junto al nombre de ruta
+    Entonces vuelve al listado de sus rutas de liquidación
+    Y al volver a entrar no reaparece el modal del pedido anterior
+    Y funciona también cuando el detalle carga o pierde conexión
+    Cuando hay un modal o el menú abiertos
+    Entonces Atrás primero cierra esa capa y conserva la ruta seleccionada
+    Y desde el listado financiero el siguiente Atrás puede volver a Inicio
+    Y las otras pestañas conservan su regreso habitual
+
+  Escenario: LC16 Resumen financiero en tres tarjetas
+    Cuando el chofer consulta importes de la liquidación
+    Entonces Efectivo, Transferencias y Crédito aparecen en una fila de tres tarjetas
+    Y las tarjetas son aproximadamente cuadradas con letra normal
+    Y conservan importes exactos y moneda con cifras largas o letra ampliada
+    Y el acceso de Liquidación de rutas tiene un signo de pesos

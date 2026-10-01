@@ -282,3 +282,71 @@ apksigner, certificado SHA256
 idéntico al de0.8.12: actualizar sobre la anterior conserva datos.
 Entrega develop bajo autorización permanente y excepción física vigente;
 deploy y prueba física del propietario. Sin migración ni configuración nueva.
+
+## LC-T09 — navegación y resumen horizontal Android
+
+Petición explícita del propietario de 2026-10-01; alcance exclusivo Android.
+Autopsia: el BackHandler de DriverShell siempre regresaba a HOME salvo menú
+abierto. FinanceMoneySummary creaba tres Surface fillMaxWidth sucesivas dentro
+de una Column. El retorno se dibujaba antes del nombre de ruta; el acceso usaba
+DriverIcon.CHECK. Se corrigen esas conexiones de presentación.
+
+Cambios: DriverBackPolicy resuelve menú primero, detalle financiero al listado
+financeExecutionId=null, otras pestañas y siguiente Atrás a Inicio. El shell usa
+la misma política en el BackHandler real. Los Dialog conservan su ventana y
+onDismiss propios; no alterar su cierre ni enviar comandos al navegar. Se
+limpia la selección del pedido/modal al volver al listado para no reaparecer.
+La lectura durante carga o error usa la identidad seleccionada de la ruta.
+
+FinanceRouteHeader muestra nombre/fecha a la izquierda y botón negro/borde lima
+a la derecha, con mínimo48dp y texto adaptable. FinanceMethodTiles distribuye
+tres superficies en una fila con ancho (disponible-16dp)/3, mínimo100dp; las
+tarjetas pequeñas son aproximadamente cuadradas a escala normal y pueden
+crecer con letra/cifras largas. En ancho extremo mantienen fila con scroll
+horizontal. No recortar ni redondear importes: mismo financialMoney y moneda
+en renglón propio. Semántica agrupada por tarjeta para lectura accesible.
+MONEY es un vector local de signo de pesos, aplicado al acceso y menú financiero.
+
+Puertas aplicables: toda la regresión JVM Android, cobertura del nuevo retorno,
+mutación de condiciones de navegación en copia temporal, lint y compilación
+de app/Compose. Nuevas pruebas Compose de posición del retorno, tres tarjetas,
+importe largo con150% de letra y Atrás nativo con modal/menú/selección/listado.
+Ninguna API, esquema, dinero, autenticación, dependencias ni secret cambia;
+no repetir55 contratos PostgreSQL y web E2E del bloque previo porque son intactos.
+
+Reproducción: con ANDROID_HOME real, dentro de driver-app ejecutar
+`gradlew.bat testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest createDebugUnitTestCoverageReport`
+y `scripts/verify-financial-mutations.ps1 -Scope navigation`.
+Logs `.local/qa-settlements/horizontal-android-build.log` y
+`horizontal-navigation-mutation.log`. Escenarios Gherkin LC15..16 en
+tests/acceptance-liquidation-display.feature. La ejecución física de Compose,
+gesto Atrás y diseño con datos reales queda a cargo del propietario según
+excepción vigente; compilar instrumentación no prueba ejecución en dispositivo.
+
+Resultados de unidad:138 pruebas JVM,0 fallos/0 errores. Nuevo DriverBackPolicy:
+líneas5/5, ramas6/6, instrucciones14/14, método1/1; cobertura100% y complejidad4.
+Matriz incluye menú en todos los destinos con/sin selección, detalle financiero,
+listado financiero y selección retenida al salir a cada otra pestaña. Objetivo100%
+en este resolver por su efecto sobre una pantalla de dinero; pagos intactos.
+No aumento de latencia de red ni nuevas lecturas por diseño; resolución local
+constante y sólo tres tarjetas por moneda. No declarar SLO o rendimiento físico.
+
+Incidencia de QA: la primera compilación instrumentada usó Espresso.pressBack
+sin dependencia instalada. Se corrigió para enviar KEYCODE_BACK con
+InstrumentationRegistry ya usado por el proyecto, sin nueva dependencia.
+
+Verificación final: `horizontal-android-verified.log`, BUILD SUCCESSFUL en3m55s;
+138JVM/0 errores/0 fallos, lint0 errores/35 avisos previos. Las cuatro mutaciones
+de navegación fueron detectadas4/4: menú ignorado, detalle enviado a Inicio,
+listado atrapado y selección financiera imponiéndose sobre otras pestañas.
+Cuatro nuevas pruebas instrumentadas compiladas, no ejecutadas en dispositivo;
+la comprobación visual y el gesto físico Atrás los realiza el propietario.
+
+APK0.8.14/code36, aplicación `com.five.anarutas.driver`, targetSdk36;
+69,131,082 bytes en `.local/releases/ana-rutas-driver-0.8.14-liquidacion-horizontal.apk`.
+SHA256 `5E9177ECA6908F6BDFE06D072464E98C06D9945D6397912A0FE1B66C885CF363`,
+idéntico al APK generado por assembleDebug. Firma verificada con apksigner,
+certificado SHA256 `f92d2160eccdadb8b72ac5573ef07dc09eb8fdd57c10621d33afaeb7dd4c2e35`,
+el mismo de0.8.13; actualización sobre la anterior compatible con datos locales.
+Entrega a develop bajo autorización permanente y excepción física vigente;
+sin deploy, cambios de servidor, migración ni configuración nueva.

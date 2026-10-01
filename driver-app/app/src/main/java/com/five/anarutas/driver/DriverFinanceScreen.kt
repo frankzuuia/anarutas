@@ -43,6 +43,7 @@ internal fun FinanceScreen(model: DriverFinanceModel, initialExecutionId: String
     var requestShipment by rememberSaveable { mutableStateOf<String?>(null) }
     var requestRoute by rememberSaveable { mutableStateOf(false) }
     var requestRevision by rememberSaveable { mutableIntStateOf(state.receiptRevision) }
+    LaunchedEffect(state.executionId) { if (state.executionId == null) { selectedOrder = null; requestShipment = null; requestRoute = false } }
     LaunchedEffect(state.receiptRevision) { if (requestRevision != state.receiptRevision) { requestShipment = null; requestRoute = false; requestRevision = state.receiptRevision } }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Liquidación de rutas", style = MaterialTheme.typography.headlineSmall)
@@ -66,8 +67,7 @@ internal fun FinanceScreen(model: DriverFinanceModel, initialExecutionId: String
             Text(if (state.message.isBlank()) "Cargando pedidos…" else "El detalle no está disponible. Puedes actualizar o volver a tus rutas.")
         } else {
             val route = detail.getJSONObject("route")
-            FinanceBackButton(enabled = !state.busy) { selectedOrder = null; model.select(null) }
-            Text("${route.getString("label")} · ${route.getString("date")}", style = MaterialTheme.typography.titleMedium)
+            FinanceRouteHeader(route.getString("label"), route.getString("date"), enabled = !state.busy) { selectedOrder = null; model.select(null) }
             FinanceMoneySummary("Por entregar a liquidación", detail.getJSONArray("outstandingTotals").objects())
             FinanceMoneySummary("Recibido por liquidación", detail.getJSONArray("acceptedTotals").objects())
             if (route.isNull("completedAt")) Text("Puedes liquidar cada pedido cobrado durante el recorrido.", color = DriverColors.muted)
@@ -148,7 +148,6 @@ internal fun FinanceScreen(model: DriverFinanceModel, initialExecutionId: String
         }
     }
 }
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FinanceMoneySummary(title: String, totals: List<JSONObject>) {
     if (totals.isEmpty()) return
@@ -156,14 +155,7 @@ private fun FinanceMoneySummary(title: String, totals: List<JSONObject>) {
         Text(title, style = MaterialTheme.typography.titleSmall)
         totals.forEach { total ->
             val currency = financeCurrency(total.getJSONObject("currency"))
-            listOf(Triple("cash", "💵 Efectivo", DriverColors.lime), Triple("transfer", "🏦 Transferencias", DriverColors.blue), Triple("credit", "🗓️ Crédito", DriverColors.purple)).forEach { (key, label, accent) ->
-                Surface(color = accent.copy(alpha = .06f), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, accent.copy(alpha = .22f)), modifier = Modifier.fillMaxWidth()) {
-                    FlowRow(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(label, color = accent, style = MaterialTheme.typography.labelLarge)
-                        Text(financialMoney(total.getString(key), currency), color = accent, style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-            }
+            FinanceMethodTiles(total.getString("cash"), total.getString("transfer"), total.getString("credit"), currency)
             if (total.getString("balance").toBigDecimal().signum() != 0) Text("Pago parcial pendiente del cliente: ${financialMoney(total.getString("balance"), currency)}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
             if (total.getString("deferred").toBigDecimal().signum() != 0) Text("Por cobrar al entregar reposiciones: ${financialMoney(total.getString("deferred"), currency)}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
         }

@@ -10,7 +10,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
@@ -86,7 +85,7 @@ internal val DriverDestination.icon: DriverIcon get() = when (this) {
     DriverDestination.ORDERS -> DriverIcon.ORDERS
     DriverDestination.UNIT -> DriverIcon.TRUCK
     DriverDestination.HISTORY -> DriverIcon.HISTORY
-    DriverDestination.FINANCE -> DriverIcon.CHECK
+    DriverDestination.FINANCE -> DriverIcon.MONEY
     DriverDestination.PROFILE -> DriverIcon.PROFILE
     DriverDestination.SETTINGS -> DriverIcon.SETTINGS
 }
@@ -167,9 +166,9 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
             }
         }
     }
-    BackHandler(enabled = drawer.isOpen || state.destination != DriverDestination.HOME) {
-        if (drawer.isOpen) scope.launch { drawer.close() } else model.navigate(DriverDestination.HOME)
-    }
+    DriverShellBackHandler(drawer.isOpen, state.destination, financeModel.state.executionId,
+        onCloseDrawer = { scope.launch { drawer.close() } }, onFinanceRoutes = { financeModel.select(null) },
+        onHome = { model.navigate(DriverDestination.HOME) })
 
     ModalNavigationDrawer(
         drawerState = drawer,

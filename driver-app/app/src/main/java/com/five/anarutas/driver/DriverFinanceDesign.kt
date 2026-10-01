@@ -1,15 +1,32 @@
 package com.five.anarutas.driver
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+@Composable
+internal fun DriverShellBackHandler(drawerOpen: Boolean, destination: DriverDestination, financeExecutionId: String?,
+    onCloseDrawer: () -> Unit, onFinanceRoutes: () -> Unit, onHome: () -> Unit) {
+    BackHandler(enabled = drawerOpen || destination != DriverDestination.HOME) {
+        when (driverBackTarget(drawerOpen, destination, financeExecutionId)) {
+            DriverBackTarget.DRAWER -> onCloseDrawer()
+            DriverBackTarget.FINANCE_ROUTES -> onFinanceRoutes()
+            DriverBackTarget.HOME -> onHome()
+        }
+    }
+}
 
 @Composable
 internal fun FinanceRefreshButton(loading: Boolean, enabled: Boolean, onRefresh: () -> Unit) {
@@ -23,11 +40,44 @@ internal fun FinanceRefreshButton(loading: Boolean, enabled: Boolean, onRefresh:
 }
 
 @Composable
-internal fun FinanceBackButton(enabled: Boolean, onBack: () -> Unit) {
-    OutlinedButton(onClick = onBack, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp),
+internal fun FinanceBackButton(enabled: Boolean, modifier: Modifier = Modifier, onBack: () -> Unit) {
+    OutlinedButton(onClick = onBack, enabled = enabled, modifier = modifier.heightIn(min = 48.dp),
         shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, DriverColors.lime.copy(alpha = .55f)),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         colors = ButtonDefaults.outlinedButtonColors(containerColor = DriverColors.background, contentColor = DriverColors.lime)) {
-        Text("Volver a mis rutas")
+        Text("Volver a mis rutas", style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@Composable
+internal fun FinanceRouteHeader(label: String, date: String, enabled: Boolean, onBack: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, style = MaterialTheme.typography.titleMedium)
+            Text(date, style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+        }
+        FinanceBackButton(enabled, Modifier.widthIn(max = 148.dp), onBack)
+    }
+}
+
+@Composable
+internal fun FinanceMethodTiles(cash: String, transfer: String, credit: String, currency: DriverCurrency) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val tileWidth = ((maxWidth - 16.dp) / 3).coerceAtLeast(100.dp)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(Triple("💵", "Efectivo", cash), Triple("🏦", "Transferencias", transfer), Triple("🗓️", "Crédito", credit)).forEachIndexed { index, (emoji, label, value) ->
+                val accent = listOf(DriverColors.lime, DriverColors.blue, DriverColors.purple)[index]
+                Surface(color = accent.copy(alpha = .06f), shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, accent.copy(alpha = .22f)),
+                    modifier = Modifier.width(tileWidth).heightIn(min = tileWidth).fillMaxHeight().semantics(mergeDescendants = true) {}) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(emoji, fontSize = 20.sp)
+                        Text(label, color = accent, style = MaterialTheme.typography.labelSmall)
+                        Text(financialMoney(value, currency).removeSuffix(" ${currency.name}"), color = accent, style = MaterialTheme.typography.titleSmall)
+                        Text(currency.name, color = accent.copy(alpha = .8f), style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
     }
 }
 

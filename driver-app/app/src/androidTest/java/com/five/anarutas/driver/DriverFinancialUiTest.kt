@@ -3,6 +3,8 @@ package com.five.anarutas.driver
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -24,6 +26,70 @@ import androidx.compose.ui.unit.dp
 @RunWith(AndroidJUnit4::class)
 class DriverFinancialUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @Test fun routeReturnSitsToTheRightOfTheRouteName() {
+        var returned = false
+        compose.setContent { DriverTheme { Column(Modifier.width(320.dp)) {
+            FinanceRouteHeader("entrega 10", "2026-10-01", true) { returned = true }
+        } } }
+        val title = compose.onNodeWithText("entrega 10").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val back = compose.onNodeWithText("Volver a mis rutas").assertIsDisplayed()
+        val backBounds = back.fetchSemanticsNode().boundsInRoot
+        assertTrue(title.right < backBounds.left)
+        assertTrue(backBounds.top <= title.bottom && backBounds.bottom >= title.top)
+        back.performClick()
+        compose.runOnIdle { assertTrue(returned) }
+    }
+    @Test fun methodCardsShareOneRowAndKeepFullMoneyAndCurrency() {
+        compose.setContent { DriverTheme { Column(Modifier.width(320.dp)) {
+            FinanceMethodTiles("1086.5", "0", "0", DriverCurrency("MXN", 2))
+        } } }
+        val cards = listOf("Efectivo", "Transferencias", "Crédito").map { label ->
+            compose.onNodeWithText(label).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        }
+        cards.zipWithNext().forEach { (left, right) ->
+            assertEquals(left.top, right.top, 2f)
+            assertTrue(left.right <= right.left)
+        }
+        cards.forEach { assertTrue(it.height / it.width in .9f..1.3f) }
+        compose.onNodeWithText("$1,086.50").assertIsDisplayed()
+        compose.onAllNodesWithText("MXN").assertCountEquals(3)
+    }
+    @Test fun moneyTilesPreserveLongExactAmountsWithLargeFonts() {
+        compose.setContent { DriverTheme { CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.5f)) {
+            Column(Modifier.width(320.dp)) {
+                FinanceMethodTiles("9007199254740993.01", "0.000001", "20", DriverCurrency("MXN", 2))
+            }
+        } } }
+        compose.onNodeWithText("$9,007,199,254,740,993.01").assertIsDisplayed()
+        compose.onNodeWithText("$0.000001").assertIsDisplayed()
+        compose.onNodeWithText("$20.00").assertIsDisplayed()
+        compose.onAllNodesWithText("MXN").assertCountEquals(3)
+    }
+    @Test fun nativeBackReturnsFromFinanceDetailBeforeLeavingTheTabAndClosesDialogsFirst() {
+        var selected by mutableStateOf<String?>("selected-execution")
+        var drawerOpen by mutableStateOf(false)
+        var dialogOpen by mutableStateOf(true)
+        var homes = 0
+        compose.setContent { DriverTheme {
+            DriverShellBackHandler(drawerOpen, DriverDestination.FINANCE, selected,
+                onCloseDrawer = { drawerOpen = false }, onFinanceRoutes = { selected = null }, onHome = { homes++ })
+            Text(if (selected != null) "Detalle de ruta" else "Mis rutas de liquidación")
+            if (dialogOpen) AlertDialog(onDismissRequest = { dialogOpen = false }, title = { Text("Confirmar liquidación") },
+                confirmButton = { TextButton(onClick = { dialogOpen = false }) { Text("Aceptar") } })
+        } }
+        compose.waitForIdle()
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.onNodeWithText("Confirmar liquidación").assertDoesNotExist()
+        compose.onNodeWithText("Detalle de ruta").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, homes); drawerOpen = true }
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.runOnIdle { assertFalse(drawerOpen); assertNotNull(selected); assertEquals(0, homes) }
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.onNodeWithText("Mis rutas de liquidación").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, homes) }
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.runOnIdle { assertEquals(1, homes) }
+    }
     @Test fun refreshControlShowsProgressAndPreventsDuplicateTaps() {
         var loading by mutableStateOf(false)
         var refreshes = 0

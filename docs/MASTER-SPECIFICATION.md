@@ -1764,3 +1764,10 @@ los nuevos después de los existentes sin cambiar el orden operativo de ruta.
 Web: flecha roja de retorno y tarjetas compactas. Android: actualizar en toolbar
 del mismo modelo financiero, indicador de lectura, retorno negro/borde lima y
 acciones juntas en tarjetas compactas, conservando 48dp y expansión por texto.
+
+LC-T09: petición explícita del propietario de 2026-10-01. En Android, retornar
+al listado de liquidación desde el detalle mediante botón junto al encabezado
+de ruta o Atrás del sistema. Cajón y modales conservan prioridad de cierre.
+Métodos en tres tarjetas en fila, aproximadamente cuadradas a escala normal,
+permitiendo crecer por cifras largas/letra ampliada. Acceso de Liquidación con
+vector de signo de pesos. Mismas fuentes monetarias, permisos y comandos.
