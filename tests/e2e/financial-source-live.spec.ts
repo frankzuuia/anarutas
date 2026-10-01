@@ -185,6 +185,52 @@ test("real HTTP import activates the financial worker without a manual sync comm
         )
       ).rows,
     ).toEqual(operational);
+    const validated = operational.find(
+      (row) => row.snapshot.fulfillmentStatus === "validated",
+    );
+    expect(validated).toBeTruthy();
+    const stale = structuredClone(validated!.snapshot);
+    stale.fulfillmentStatus = "pending_validation";
+    stale.odooPickingState = "assigned";
+    stale.validatedAt = null;
+    stale.lines[0].quantity += 1;
+    // Reconstruct the reported stale draft in the isolated DB; Odoo remains strictly read-only.
+    await db.pool.query("UPDATE route_shipments SET snapshot=$2 WHERE id=$1", [
+      validated!.id,
+      JSON.stringify(stale),
+    ]);
+    const priorVersion = (
+      await db.pool.query("SELECT version FROM route_plans WHERE id=$1", [
+        plan.id,
+      ])
+    ).rows[0].version;
+    await expect
+      .poll(
+        async () =>
+          (
+            await db.pool.query(
+              "SELECT snapshot FROM route_shipments WHERE id=$1",
+              [validated!.id],
+            )
+          ).rows[0].snapshot,
+        { timeout: 45000, intervals: [500] },
+      )
+      .toEqual(validated!.snapshot);
+    expect(
+      (
+        await db.pool.query("SELECT version FROM route_plans WHERE id=$1", [
+          plan.id,
+        ])
+      ).rows[0].version,
+    ).toBe(priorVersion + 1);
+    expect(
+      (
+        await db.pool.query(
+          "SELECT count(*)::int AS n FROM route_audit WHERE action='orders.source_refreshed' AND entity_id=$1",
+          [plan.id],
+        )
+      ).rows[0].n,
+    ).toBeGreaterThan(0);
     expect(
       (
         await db.pool.query(

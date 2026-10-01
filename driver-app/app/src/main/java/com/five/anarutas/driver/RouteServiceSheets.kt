@@ -75,6 +75,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
     var selectedId by rememberSaveable(stop.id) { mutableStateOf<String?>(null) }
     var confirmation by rememberSaveable(stop.id) { mutableStateOf<String?>(null) }
     var financeOpen by rememberSaveable(stop.id) { mutableStateOf(false) }
+    var collectionOpen by rememberSaveable(stop.id) { mutableStateOf(false) }
     var note by rememberSaveable(stop.id) { mutableStateOf("") }
     var productLine by rememberSaveable(stop.id) { mutableStateOf<Int?>(null) }
     var editingProductIncidentId by rememberSaveable(stop.id) { mutableStateOf<String?>(null) }
@@ -84,7 +85,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
     val available = state.verified && !state.busy && !state.pending && !state.retired && state.execution?.completedAt == null
     var confirmedRevision by remember { mutableIntStateOf(state.serviceRevision) }
     LaunchedEffect(state.serviceRevision) {
-        if (confirmedRevision != state.serviceRevision) { if (confirmation == "deliver") financeOpen = true; confirmation = null; note = ""; confirmedRevision = state.serviceRevision }
+        if (confirmedRevision != state.serviceRevision) { confirmation = null; note = ""; confirmedRevision = state.serviceRevision }
     }
     val editingProductIncident = stop.productIncidents.find { it.id == editingProductIncidentId && it.shipmentId == order?.id && it.status != "canceled" }
     if ((productLine != null || editingProductIncident != null) && order != null) {
@@ -93,6 +94,12 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
                 ?: ProductIncidentKind.REPLACEMENT_QUALITY, model, editingProductIncident) {
             productLine = null; editingProductIncidentId = null
         }
+        return
+    }
+    if (collectionOpen && order != null && state.execution != null) {
+        CollectionPaymentSheet(state.execution.id, order.id,
+            if (status?.status == OrderServiceStatus.DELIVERED) null else { { model.collectionAttention(stop.id, order.id) } },
+            { paymentId -> collectionOpen = false; model.collectionConfirmed(stop.id, paymentId); close() }, { collectionOpen = false })
         return
     }
     ServiceFormSurface({ if (!state.busy) close() }, header = {
@@ -148,8 +155,10 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
                 }
             } }
             FinancialOrderSummary(order.financial)
-            if (status.status == OrderServiceStatus.DELIVERED) AppAction("Ver o registrar cobro", DriverIcon.CHECK, Modifier.fillMaxWidth()) { financeOpen = true }
-            if (financeOpen && state.execution != null) FinanceSheet(state.execution.id, order.id) { financeOpen = false }
+            if (status.status == OrderServiceStatus.DELIVERED) AppAction(if (status.paymentRequired && !status.paymentConfirmed) "Registrar cobro pendiente" else "Ver pedido y cobro", DriverIcon.CHECK, Modifier.fillMaxWidth()) {
+                if (status.paymentRequired && !status.paymentConfirmed) collectionOpen = true else financeOpen = true
+            }
+            if (financeOpen && state.execution != null && status.status == OrderServiceStatus.DELIVERED) FinanceSheet(state.execution.id, order.id) { financeOpen = false }
             productCases.forEach { incident -> Row(Modifier.fillMaxWidth().heightIn(min = 44.dp)
                 .clickable(enabled = available && stop.canAttend() && canDeliverOrder(status.status),
                     onClickLabel = "Ver incidencia de ${incident.product}") { editingProductIncidentId = incident.id }
@@ -163,23 +172,21 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
             } }
             if (confirmation == null) {
                 if (canDeliverOrder(status.status) && stop.canAttend()) AppAction(if (hasIncidents) "Confirmar atención con incidencias" else "Entregado completo", DriverIcon.CHECK,
-                    Modifier.fillMaxWidth(), enabled = available) { confirmation = "deliver" }
+                    Modifier.fillMaxWidth(), enabled = available) { collectionOpen = true }
                 if (canRescheduleRetry(status.status, stop.visitSequence, stop.closedReportedVisitSequence)) AppAction("Reprogramar", DriverIcon.CLOCK,
                     Modifier.fillMaxWidth(), enabled = available, quiet = true) { confirmation = "reschedule" }
                 if (stop.canAttend() && canRejectOrder(status.status)) AppAction("Registrar incidencia", DriverIcon.ALERT,
                     Modifier.fillMaxWidth(), enabled = available, quiet = true, onClick = { onIncident(order.id) })
             } else {
-                Text(when (confirmation) { "deliver" -> if (hasIncidents) "¿Confirmas la atención de ${order.name} con sus incidencias?" else "¿Confirmas la entrega completa de ${order.name}?"; "retry" -> "Reintentar ${order.name}"; else -> "Reprogramar ${order.name}" }, style = MaterialTheme.typography.titleMedium)
-                Text(if (confirmation == "deliver" && hasIncidents) "Se conserva el detalle de faltantes, reposiciones y devoluciones. Las reposiciones siguen pendientes hasta que administración las atienda. No liquida la ruta ni modifica Odoo."
-                    else if (confirmation == "deliver") "Confirma sólo cuando entregaste todos los productos. Esto no liquida ni cierra la ruta."
-                    else if (confirmation == "retry") "Este pedido volverá a abierto y aparecerá en el mapa. Confirma una nueva llegada antes de entregarlo; la reprogramación queda en el historial."
+                Text(if (confirmation == "retry") "Reintentar ${order.name}" else "Reprogramar ${order.name}", style = MaterialTheme.typography.titleMedium)
+                Text(if (confirmation == "retry") "Este pedido volverá a abierto y aparecerá en el mapa. Confirma una nueva llegada antes de entregarlo; la reprogramación queda en el historial."
                     else "Puedes reprogramar desde donde estés; no confirma una entrega. Administración decidirá cuándo volver a asignarlo. No se fija ninguna fecha.",
                     style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
                 if (confirmation == "reschedule") ServiceNoteField(note, { note = it }, "Notas de reprogramación · opcionales", available)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     AppAction("Aceptar", DriverIcon.CHECK, Modifier.weight(1f), enabled = available) {
                         if (confirmation == "retry") model.retryRescheduled(stop.id, order.id)
-                        else model.submitService(stop.id, order.id, confirmation!!, note = note)
+                        else model.submitService(stop.id, order.id, "reschedule", note = note)
                     }
                     TextButton(enabled = !state.busy && !state.pending, onClick = { confirmation = null; note = "" }) { Text("Cancelar") }
                 }

@@ -3353,3 +3353,62 @@ button.confirm-cancel {
 
 .settlement-panel .toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
 .settlement-panel .toolbar > label { flex: 1 1 180px; }
+
+.settlement-order-receipt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+}
+.settlement-order-amount {
+  flex: 1 1 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid #38714d;
+  border-radius: 14px;
+  background: #132a1c;
+  color: #b2efc4;
+  overflow-wrap: anywhere;
+}
+.settlement-order-amount strong {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.settlement-order-receipt > small {
+  flex-basis: 100%;
+}
+.settlement-order-totals {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.settlement-order-totals span {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+.settlement-order-totals > strong {
+  color: #b2efc4;
+  font-size: 1.25rem;
+}
+
+.settlement-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.settlement-dialog .modal-header,
+.settlement-dialog .modal-footer {
+  flex-shrink: 0;
+}
+.settlement-dialog .modal-body {
+  min-height: 0;
+  overflow-y: auto;
+}

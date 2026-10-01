@@ -198,6 +198,7 @@ export function normalizeFinancialObservation(
         saleLineId: nullableRelation(row.sale_line_id)?.[0] ?? null,
         pickingId: nullableRelation(row.picking_id)?.[0] ?? null,
         productId: relation(row.product_id)[0],
+        productName: relation(row.product_id)[1],
         uomId: relation(row[caps.unitField])[0],
         uom: relation(row[caps.unitField])[1],
         demand: financialDecimal(row.product_uom_qty),

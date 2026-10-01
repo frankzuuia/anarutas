@@ -5,6 +5,22 @@ import java.math.BigDecimal
 // Preview only. The server revalidates source revision, authorization and all amounts.
 internal data class PaymentPreview(val tendered: BigDecimal, val change: BigDecimal, val received: BigDecimal, val balance: BigDecimal)
 
+internal data class CollectionPreview(val tendered: BigDecimal, val cash: BigDecimal, val transfer: BigDecimal, val balance: BigDecimal)
+internal fun collectionPaymentPreview(method: String, cashText: String, transferText: String, expectedText: String?, roundingText: String?): CollectionPreview? {
+    if (method !in setOf("cash", "transfer", "credit", "mixed")) return null
+    fun amount(text: String?): BigDecimal? = text?.takeIf { it.length <= 80 }?.toBigDecimalOrNull()
+        ?.takeIf { it.precision() <= 32 && it.scale() in -24..56 && it.signum() >= 0 }
+    val expected = amount(expectedText) ?: return null
+    val rounding = amount(roundingText)?.takeIf { it.signum() > 0 } ?: return null
+    val cash = when (method) { "cash" -> expected; "mixed" -> amount(cashText) ?: return null; else -> BigDecimal.ZERO }
+    val transfer = when (method) { "transfer" -> expected; "mixed" -> amount(transferText) ?: return null; else -> BigDecimal.ZERO }
+    if (listOf(expected, cash, transfer).any { it.remainder(rounding).signum() != 0 }) return null
+    val received = cash.add(transfer)
+    if (method == "mixed" && (cash.signum() <= 0 || transfer.signum() <= 0)) return null
+    if (method != "credit" && received.compareTo(expected) != 0) return null
+    return CollectionPreview(received, cash, transfer, expected.subtract(received))
+}
+
 // The current form captures the net receipt; historical receipts may still have change.
 internal fun paymentCapturePreview(method: String, receivedText: String, expectedText: String?, roundingText: String?): PaymentPreview? =
     paymentPreview(method, receivedText, "0", expectedText, roundingText)

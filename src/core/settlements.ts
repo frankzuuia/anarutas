@@ -57,7 +57,7 @@ export async function requestSettlement(
         throw new AppError("COMMAND_REUSED", 409);
       return { id: prior.id, duplicate: true };
     }
-    if (!route.completed_at)
+    if (shipmentId === null && !route.completed_at)
       throw new AppError("SETTLEMENT_ROUTE_NOT_FINISHED", 409);
     const all = await paymentRecords(sql, route.id),
       requests = await settlementRecords(sql, route.id);

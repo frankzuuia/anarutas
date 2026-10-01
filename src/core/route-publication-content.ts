@@ -48,20 +48,71 @@ export function routePublicationSnapshot(
 
 type Snapshot = Partial<ReturnType<typeof routePublicationSnapshot>>;
 
-export function routePublicationContentChanged(previous: Snapshot, next: Snapshot) {
+/** Before first start, source products must still match the frozen publication. */
+export function routePublicationSourceChanged(
+  previous: Snapshot,
+  shipments: Pick<
+    OrderBoard["shipments"][number],
+    "id" | "lines" | "fulfillmentStatus"
+  >[],
+) {
+  if (!previous.orders || previous.orders.length !== shipments.length)
+    return true;
+  const current = new Map(shipments.map((shipment) => [shipment.id, shipment]));
+  return previous.orders.some((order) => {
+    const shipment = current.get(order.id);
+    if (
+      !shipment ||
+      shipment.fulfillmentStatus === "cancelled" ||
+      !shipment.lines.length
+    )
+      return true;
+    const lines = shipment.lines.map((line) => ({
+      name: line.name,
+      quantity: line.quantity,
+      unit: line.unit,
+      pickerNote: line.pickerNote ?? null,
+    }));
+    return !isDeepStrictEqual(
+      order.lines.map((line) => ({
+        ...line,
+        pickerNote: line.pickerNote ?? null,
+      })),
+      lines,
+    );
+  });
+}
+
+export function routePublicationContentChanged(
+  previous: Snapshot,
+  next: Snapshot,
+) {
   const comparable = (value: Snapshot) => ({
     plan: value.plan
-      ? { id: value.plan.id, label: value.plan.label, serviceDate: value.plan.serviceDate }
+      ? {
+          id: value.plan.id,
+          label: value.plan.label,
+          serviceDate: value.plan.serviceDate,
+        }
       : null,
     vehicle: value.vehicle,
     // Positions are global slots in the draft; only this vehicle's sequence matters.
-    orders: value.orders?.map((order, index) => ({ ...order, position: index + 1 })),
+    orders: value.orders?.map((order, index) => ({
+      ...order,
+      position: index + 1,
+    })),
     routeStatus: value.routeStatus,
     route: value.route,
   });
   // JSONB changes object key order; optional undefined fields are absent on the wire.
-  return !isDeepStrictEqual(
-    JSON.parse(JSON.stringify(comparable(previous))),
-    JSON.parse(JSON.stringify(comparable(next))),
-  ) || Boolean(previous.routingInputHash && previous.routingInputHash !== next.routingInputHash);
+  return (
+    !isDeepStrictEqual(
+      JSON.parse(JSON.stringify(comparable(previous))),
+      JSON.parse(JSON.stringify(comparable(next))),
+    ) ||
+    Boolean(
+      previous.routingInputHash &&
+      previous.routingInputHash !== next.routingInputHash,
+    )
+  );
 }

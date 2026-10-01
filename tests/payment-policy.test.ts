@@ -103,6 +103,24 @@ it("preserves the note boundary, normalizes whitespace and rejects non-string me
     paymentInput(raw({ method: { toString: () => "cash" } })),
   ).toThrow("PAYMENT_METHOD_REQUIRED");
 });
+it("validates both legacy tendered/change quanta even when net cash is exact and rejects negative source totals", () => {
+  const rounded = {
+    ...view,
+    currency: { ...view.currency!, rounding: "0.05" },
+  };
+  expect(() =>
+    calculatePayment(
+      rounded,
+      paymentInput(raw({ tendered: "123.46", change: "0.01" })),
+    ),
+  ).toThrow("PAYMENT_AMOUNT_INVALID");
+  expect(() =>
+    calculatePayment(
+      { ...view, totals: { ...view.totals!, net: "-0.01" } },
+      paymentInput(raw()),
+    ),
+  ).toThrow("PAYMENT_AMOUNT_INVALID");
+});
 it("blocks unready/stale/errored sources and accepts exact zero after full return", () => {
   for (const patch of [
     { status: "pending_validation" },
@@ -164,4 +182,179 @@ it("does not combine currencies or credit with physical cash", () => {
       deferred: "10",
     },
   ]);
+});
+
+it("captures the official full net amount and explicit components for each version-two method", () => {
+  for (const method of ["cash", "transfer", "credit", "mixed"]) {
+    const result = calculatePayment(
+      view,
+      paymentInput(
+        raw({
+          captureVersion: 2,
+          method,
+          tendered: method === "credit" ? "0" : "123.45",
+          cashReceived: "50",
+          transferReceived: "73.45",
+        }),
+      ),
+    );
+    expect(result).toEqual({
+      expected: "123.45",
+      tendered: method === "credit" ? "0" : "123.45",
+      change: "0",
+      received: method === "credit" ? "0" : "123.45",
+      balance: method === "credit" ? "123.45" : "0",
+      deferred: "10",
+      cashReceived:
+        method === "cash" ? "123.45" : method === "mixed" ? "50" : "0",
+      transferReceived:
+        method === "transfer" ? "123.45" : method === "mixed" ? "73.45" : "0",
+    });
+  }
+  expect(paymentInput(raw())).not.toHaveProperty("captureVersion");
+  expect(
+    paymentInput(
+      raw({
+        captureVersion: 2,
+        method: "mixed",
+        cashReceived: "50.00",
+        transferReceived: "73.450",
+      }),
+    ),
+  ).toMatchObject({
+    captureVersion: 2,
+    cashReceived: "50",
+    transferReceived: "73.45",
+  });
+});
+it.each([
+  [{ captureVersion: 1 }, "PAYMENT_CAPTURE_VERSION_INVALID"],
+  [{ captureVersion: "2" }, "PAYMENT_CAPTURE_VERSION_INVALID"],
+  [{ captureVersion: null }, "PAYMENT_CAPTURE_VERSION_INVALID"],
+  [
+    { method: "mixed", cashReceived: "50", transferReceived: "73.45" },
+    "PAYMENT_CAPTURE_VERSION_INVALID",
+  ],
+  [
+    {
+      captureVersion: 2,
+      method: "mixed",
+      cashReceived: "",
+      transferReceived: "73.45",
+    },
+    "PAYMENT_AMOUNT_INVALID",
+  ],
+  [
+    {
+      captureVersion: 2,
+      method: "mixed",
+      cashReceived: "50",
+      transferReceived: null,
+    },
+    "PAYMENT_AMOUNT_INVALID",
+  ],
+  [
+    {
+      captureVersion: 2,
+      method: "mixed",
+      cashReceived: "-50",
+      transferReceived: "173.45",
+    },
+    "PAYMENT_AMOUNT_INVALID",
+  ],
+])(
+  "validates collection version and both explicit components %j",
+  (patch, code) => {
+    expect(() => paymentInput(raw(patch))).toThrow(code);
+  },
+);
+it.each([
+  [{ tendered: "100" }, "PAYMENT_FULL_AMOUNT_REQUIRED"],
+  [{ method: "transfer", tendered: "0" }, "PAYMENT_FULL_AMOUNT_REQUIRED"],
+  [{ tendered: "150", change: "26.55" }, "PAYMENT_FULL_AMOUNT_REQUIRED"],
+  [
+    { method: "mixed", cashReceived: "0", transferReceived: "123.45" },
+    "PAYMENT_SPLIT_INVALID",
+  ],
+  [
+    { method: "mixed", cashReceived: "123.45", transferReceived: "0" },
+    "PAYMENT_SPLIT_INVALID",
+  ],
+  [
+    { method: "mixed", cashReceived: "50", transferReceived: "73.44" },
+    "PAYMENT_SPLIT_INVALID",
+  ],
+  [
+    {
+      method: "mixed",
+      tendered: "100",
+      cashReceived: "50",
+      transferReceived: "50",
+    },
+    "PAYMENT_FULL_AMOUNT_REQUIRED",
+  ],
+  [
+    { method: "mixed", cashReceived: "50.001", transferReceived: "73.449" },
+    "PAYMENT_AMOUNT_INVALID",
+  ],
+  [
+    { method: "mixed", cashReceived: "50.001", transferReceived: "73.45" },
+    "PAYMENT_AMOUNT_INVALID",
+  ],
+])(
+  "never rounds or silently accepts an incomplete collection %j",
+  (patch, code) => {
+    expect(() =>
+      calculatePayment(
+        view,
+        paymentInput(raw({ captureVersion: 2, ...patch })),
+      ),
+    ).toThrow(code);
+  },
+);
+it("separates combined cash and transfers in sums and handles full returns without requiring money", () => {
+  const mixed = {
+    ...calculatePayment(
+      view,
+      paymentInput(
+        raw({
+          captureVersion: 2,
+          method: "mixed",
+          cashReceived: "50",
+          transferReceived: "73.45",
+        }),
+      ),
+    ),
+    method: "mixed" as const,
+    currency: view.currency!,
+  };
+  expect(paymentTotals([mixed, mixed])[0]).toMatchObject({
+    cash: "100",
+    transfer: "146.9",
+    credit: "0",
+    balance: "0",
+    deferred: "20",
+  });
+  for (const method of ["cash", "transfer", "credit"])
+    expect(
+      calculatePayment(
+        { ...view, totals: { ...view.totals!, net: "0" } },
+        paymentInput(raw({ captureVersion: 2, method, tendered: "0" })),
+      ),
+    ).toMatchObject({
+      received: "0",
+      cashReceived: "0",
+      transferReceived: "0",
+      balance: "0",
+    });
+  expect(() =>
+    calculatePayment(
+      {
+        ...view,
+        totals: { ...view.totals!, net: "123.43" },
+        currency: { ...view.currency!, rounding: "0.05" },
+      },
+      paymentInput(raw({ captureVersion: 2, tendered: "123.43" })),
+    ),
+  ).toThrow("PAYMENT_AMOUNT_INVALID");
 });

@@ -19,6 +19,7 @@ const methodName = {
   cash: "Efectivo",
   transfer: "Transferencia",
   credit: "Crédito",
+  mixed: "Efectivo + transferencia",
 };
 const stateName = {
   pending: "Por recibir",
@@ -223,7 +224,7 @@ export function SettlementPanel({ today }: { today: string }) {
         <>
           {!report.rows.length && (
             <div className="empty">
-              No hay rutas terminadas en estas fechas.
+              No hay pedidos cobrados en estas fechas.
             </div>
           )}
           {[...new Set(report.rows.map((r) => r.driverId as string))].map(
@@ -317,7 +318,7 @@ export function SettlementPanel({ today }: { today: string }) {
                     title="Importes de esta solicitud"
                     totals={r.totals}
                   />
-                  {r.status === "pending" ? (
+                  {r.status === "pending" && r.scope === "route" ? (
                     <div className="toolbar">
                       <button
                         className="primary"
@@ -349,6 +350,10 @@ export function SettlementPanel({ today }: { today: string }) {
                         Rechazar
                       </button>
                     </div>
+                  ) : r.status === "pending" ? (
+                    <p className="muted">
+                      Acepta este importe desde la tarjeta del cliente.
+                    </p>
                   ) : (
                     <p>
                       {r.receiver} ·{" "}
@@ -360,118 +365,200 @@ export function SettlementPanel({ today }: { today: string }) {
               ))}
             </div>
           </section>
-          {detail.orders.map((o) => (
-            <details className="panel" key={o.shipmentId}>
-              <summary className="panel-header">
-                <strong>
-                  {o.customer} · {o.orderName}
-                </strong>
-                <span>
-                  {o.payment
-                    ? `${methodName[o.payment.method]} · ${o.payment.method === "credit" ? o.payment.expected : o.payment.received} ${o.payment.currency.name}`
-                    : "Sin cobro registrado"}
-                </span>
-              </summary>
-              <div className="panel-body stack">
-                {o.payment && (
-                  <>
-                    <p>
-                      Recibido: {o.payment.received} · Cambio:{" "}
-                      {o.payment.change} · Saldo: {o.payment.balance} ·
-                      Reposición diferida: {o.payment.deferred}{" "}
-                      {o.payment.currency.name}
-                    </p>
-                    <p>{o.payment.note || "Sin notas del chofer"}</p>
+          {detail.orders.map((o) => {
+            const payment = o.payment;
+            const pending =
+              payment &&
+              detail.requests.find(
+                (r) =>
+                  r.scope === "order" &&
+                  r.status === "pending" &&
+                  r.paymentIds.includes(payment.id),
+              );
+            const accepted =
+              payment &&
+              detail.requests.find(
+                (r) =>
+                  r.status === "accepted" && r.paymentIds.includes(payment.id),
+              );
+            const frozen = payment?.snapshot.financial ?? o.financial;
+            return (
+              <section className="panel settlement-order" key={o.shipmentId}>
+                <div className="settlement-order-receipt">
+                  <div className="settlement-order-amount">
                     <small>
-                      Confirmado{" "}
-                      {new Date(o.payment.recordedAt).toLocaleString()}
+                      {accepted ? "Recibido" : "Monto a entregar"} ·{" "}
+                      {payment && methodName[payment.method]}
                     </small>
-                  </>
-                )}
-                {o.changedAfterPayment && (
-                  <p className="notice">
-                    La fuente cambió después del cobro. Se conserva el detalle
-                    confirmado que aparece a continuación.
-                  </p>
-                )}
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Producto</th>
-                        <th>Cantidad</th>
-                        <th>Unitario</th>
-                        <th>Original</th>
-                        <th>A cobrar</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(
-                        o.payment?.snapshot.financial ?? o.financial
-                      )?.lines.map((line) => (
-                        <tr key={line.moveId}>
-                          <td>
-                            {
-                              (o.payment?.snapshot.order ?? o.order)?.lines[
-                                line.lineIndex
-                              ]?.name
-                            }
-                          </td>
-                          <td>
-                            {line.quantity} {line.unit}
-                          </td>
-                          <td>{line.unitPrice}</td>
-                          <td>{line.total}</td>
-                          <td>{line.net ?? "Por revisar"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <h3>Incidencias al confirmar</h3>
-                {(o.payment?.snapshot.incidents ?? o.incidents).map((i) => (
-                  <div key={i.id}>
                     <strong>
-                      {i.product} · {i.quantity} {i.unit}
+                      {payment?.method === "credit"
+                        ? payment.expected
+                        : payment?.received}{" "}
+                      {payment?.currency.name}
                     </strong>
-                    <p>
-                      {productIncidentNames[i.kind as ProductIncidentKind] ??
-                        i.kind}{" "}
-                      ·{" "}
-                      {{
-                        open: "Abierta",
-                        pending: "Pendiente",
-                        resolved: "Resuelta",
-                        canceled: "Cancelada",
-                      }[i.status as string] ?? i.status}{" "}
-                      · {i.note}
-                    </p>
-                    {i.replacement_payment && (
-                      <p>
-                        {i.replacement_payment === "pay_full"
-                          ? "Reposición: cliente paga completo"
-                          : "Reposición: se pagará al entregar"}
+                    {payment?.method === "mixed" && (
+                      <span>
+                        💵 Efectivo {payment.cashReceived} · 🏦 Transferencia{" "}
+                        {payment.transferReceived}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    className="primary"
+                    disabled={busy || !pending || !!accepted}
+                    onClick={() => {
+                      if (!pending) return;
+                      setNote("");
+                      setConfirmation({
+                        request: pending,
+                        decision: "accepted",
+                        commandId: crypto.randomUUID(),
+                      });
+                    }}
+                  >
+                    <Check size={16} />
+                    {accepted ? "Recibido" : "Aceptar"}
+                  </button>
+                  {!pending && !accepted && (
+                    <small className="muted">
+                      Esperando que el chofer pulse Liquidar.
+                    </small>
+                  )}
+                </div>
+                <details>
+                  <summary className="panel-header">
+                    <strong>
+                      {o.customer} · {o.orderName}
+                    </strong>
+                    <span>
+                      {o.payment
+                        ? `${methodName[o.payment.method]} · ${o.payment.method === "credit" ? o.payment.expected : o.payment.received} ${o.payment.currency.name}`
+                        : "Sin cobro registrado"}
+                    </span>
+                  </summary>
+                  <div className="panel-body stack">
+                    {o.payment && (
+                      <>
+                        {o.payment.captureVersion === 1 && (
+                          <p>
+                            Recibido: {o.payment.received} · Cambio:{" "}
+                            {o.payment.change} · Saldo: {o.payment.balance}{" "}
+                            {o.payment.currency.name}
+                          </p>
+                        )}
+                        <p>{o.payment.note || "Sin notas del chofer"}</p>
+                        <small>
+                          Confirmado{" "}
+                          {new Date(o.payment.recordedAt).toLocaleString()}
+                        </small>
+                      </>
+                    )}
+                    {o.changedAfterPayment && (
+                      <p className="notice">
+                        La fuente cambió después del cobro. Se conserva el
+                        detalle confirmado que aparece a continuación.
                       </p>
                     )}
-                    <div className="toolbar">
-                      {[...new Set([i.evidence_id, ...i.evidence_ids])]
-                        .filter(Boolean)
-                        .map((photo, index) => (
-                          <a
-                            target="_blank"
-                            rel="noreferrer"
-                            key={photo}
-                            href={`/api/settlements/${detail.route.id}/evidence?incidentId=${i.id}&photoId=${photo}`}
-                          >
-                            Foto {index + 1}
-                          </a>
-                        ))}
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Producto</th>
+                            <th>Cantidad</th>
+                            <th>Unitario</th>
+                            <th>Original</th>
+                            <th>A cobrar</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(
+                            o.payment?.snapshot.financial ?? o.financial
+                          )?.lines.map((line) => (
+                            <tr key={line.moveId}>
+                              <td>
+                                {
+                                  (o.payment?.snapshot.order ?? o.order)?.lines[
+                                    line.lineIndex
+                                  ]?.name
+                                }
+                              </td>
+                              <td>
+                                {line.quantity} {line.unit}
+                              </td>
+                              <td>{line.unitPrice}</td>
+                              <td>{line.total}</td>
+                              <td>{line.net ?? "Por revisar"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
+                    {frozen?.totals && (
+                      <div className="settlement-order-totals">
+                        <span>
+                          Importe original{" "}
+                          <b>
+                            {frozen.totals.original} {frozen.currency?.name}
+                          </b>
+                        </span>
+                        <span>
+                          Devoluciones y faltantes{" "}
+                          <b>
+                            − {frozen.totals.deduction} {frozen.currency?.name}
+                          </b>
+                        </span>
+                        <strong>
+                          Total {frozen.totals.net} {frozen.currency?.name}
+                        </strong>
+                      </div>
+                    )}
+                    <h3>Incidencias al confirmar</h3>
+                    {(o.payment?.snapshot.incidents ?? o.incidents).map((i) => (
+                      <div key={i.id}>
+                        <strong>
+                          {i.product} · {i.quantity} {i.unit}
+                        </strong>
+                        <p>
+                          {productIncidentNames[
+                            i.kind as ProductIncidentKind
+                          ] ?? i.kind}{" "}
+                          ·{" "}
+                          {{
+                            open: "Abierta",
+                            pending: "Pendiente",
+                            resolved: "Resuelta",
+                            canceled: "Cancelada",
+                          }[i.status as string] ?? i.status}{" "}
+                          · {i.note}
+                        </p>
+                        {i.replacement_payment && (
+                          <p>
+                            {i.replacement_payment === "pay_full"
+                              ? "Reposición: cliente paga completo"
+                              : "Reposición: se pagará al entregar"}
+                          </p>
+                        )}
+                        <div className="toolbar">
+                          {[...new Set([i.evidence_id, ...i.evidence_ids])]
+                            .filter(Boolean)
+                            .map((photo, index) => (
+                              <a
+                                target="_blank"
+                                rel="noreferrer"
+                                key={photo}
+                                href={`/api/settlements/${detail.route.id}/evidence?incidentId=${i.id}&photoId=${photo}`}
+                              >
+                                Foto {index + 1}
+                              </a>
+                            ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </details>
-          ))}
+                </details>
+              </section>
+            );
+          })}
         </>
       )}
       {confirmation && (
@@ -501,14 +588,34 @@ export function SettlementPanel({ today }: { today: string }) {
                     o.payment &&
                     confirmation.request.paymentIds.includes(o.payment.id),
                 )
-                .map((o) => o.orderName)
+                .map((o) => `${o.customer} · ${o.orderName}`)
                 .join(" · ")}
             </strong>
             <p>
               {confirmation.decision === "accepted"
-                ? `Confirma el efectivo que recibes de ${detail?.route.driver}. Transferencias y créditos no se entregan en efectivo.`
+                ? `Estás recibiendo la liquidación de ${detail?.route.driver} para ${confirmation.request.scope === "order" ? "este cliente" : "estos clientes"}. Confirma los importes y medios de pago indicados.`
                 : "La solicitud quedará en el historial y el chofer podrá enviarla de nuevo."}
             </p>
+            {confirmation.decision === "accepted" &&
+              detail?.orders
+                .filter(
+                  (o) =>
+                    o.payment &&
+                    confirmation.request.paymentIds.includes(o.payment.id),
+                )
+                .map((o) => (
+                  <p className="settlement-order-amount" key={o.shipmentId}>
+                    <strong>
+                      {o.payment!.method === "credit"
+                        ? o.payment!.expected
+                        : o.payment!.received}{" "}
+                      {o.payment!.currency.name}
+                    </strong>
+                    <span>
+                      {methodName[o.payment!.method]} · {o.customer}
+                    </span>
+                  </p>
+                ))}
             <MoneySummary
               title="Importes exactos"
               totals={confirmation.request.totals}
@@ -536,7 +643,7 @@ export function SettlementPanel({ today }: { today: string }) {
               {busy
                 ? "Guardando…"
                 : confirmation.decision === "accepted"
-                  ? "Confirmar recepción"
+                  ? "Aceptar"
                   : "Confirmar rechazo"}
             </button>
           </div>

@@ -17,6 +17,22 @@ class WarehouseReturnPolicyTest {
         startedAt = "2026-09-29T13:00:00Z", publicationRevision = 4, departure = depot)
     private val delivered = stop("last", listOf(OrderServiceStatus.DELIVERED))
 
+    @Test fun aPricedDeliveryCannotReturnToWarehouseBeforeTheCollectionIsCommitted() {
+        val unpaid = delivered.copy(orderStates = delivered.orderStates.map { it.copy(paymentRequired = true, paymentConfirmed = false) })
+        val plan = route(listOf(unpaid))
+        assertTrue(unpaid.hasPendingCollection())
+        assertFalse(unpaid.isServiceFinished())
+        assertEquals("Entrega con cobro pendiente", unpaid.serviceSummary())
+        assertNull(warehouseReturnDestination(plan, execution(listOf(unpaid))))
+        val paid = unpaid.copy(orderStates = unpaid.orderStates.map { it.copy(paymentConfirmed = true) })
+        assertFalse(paid.hasPendingCollection())
+        assertTrue(paid.isServiceFinished())
+        assertNotNull(warehouseReturnDestination(plan, execution(listOf(paid))))
+        val rescheduled = unpaid.copy(orderStates = unpaid.orderStates.map { it.copy(status = OrderServiceStatus.RESCHEDULED) })
+        assertFalse(rescheduled.hasPendingCollection())
+        assertNotNull(warehouseReturnDestination(route(listOf(rescheduled)), execution(listOf(rescheduled))))
+    }
+
     @Test fun allOrdersMustBeTerminalEvenWithoutCoordinatesOrVisibleMarkers() {
         for (a in OrderServiceStatus.entries) for (b in OrderServiceStatus.entries) {
             val stops = listOf(stop("first", listOf(a)), stop("last", listOf(b)))

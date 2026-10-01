@@ -202,21 +202,51 @@ function CancelRouteDialog({
     >
       <header className="panel-header">
         <h2 id={title}>Cancelar ruta</h2>
-        <button type="button" className="quiet" aria-label="Cerrar confirmación" disabled={busy} onClick={onClose}>
+        <button
+          type="button"
+          className="quiet"
+          aria-label="Cerrar confirmación"
+          disabled={busy}
+          onClick={onClose}
+        >
           <X size={16} aria-hidden="true" />
         </button>
       </header>
       <div className="panel-body stack">
-        <p>¿Cancelar la ruta {target.started ? "iniciada" : "publicada"} de {target.label} con {target.orderCount} {target.orderCount === 1 ? "pedido" : "pedidos"}?</p>
-        <p className="muted">
-          Se retirará de la app del chofer y recibirá un aviso de cancelación. En el panel, los pedidos seguirán asignados a esta camioneta en el mismo orden para que puedas agregar o modificar paradas. Las fotos se conservarán. Cuando termines, publica la ruta de nuevo.
-          {target.started && " El registro del inicio se conservará. Confirma con el chofer que todavía no haya salido: el sistema aún no puede verificar su ubicación."}
+        <p>
+          ¿Cancelar la ruta {target.started ? "iniciada" : "publicada"} de{" "}
+          {target.label} con {target.orderCount}{" "}
+          {target.orderCount === 1 ? "pedido" : "pedidos"}?
         </p>
-        {error && <p className="notice error" role="alert">{error}</p>}
+        <p className="muted">
+          Se retirará de la app del chofer y recibirá un aviso de cancelación.
+          En el panel, los pedidos seguirán asignados a esta camioneta en el
+          mismo orden para que puedas agregar o modificar paradas. Las fotos se
+          conservarán. Cuando termines, publica la ruta de nuevo.
+          {target.started &&
+            " El registro del inicio se conservará. Confirma con el chofer que todavía no haya salido: el sistema aún no puede verificar su ubicación."}
+        </p>
+        {error && (
+          <p className="notice error" role="alert">
+            {error}
+          </p>
+        )}
       </div>
       <footer className="fleet-actions">
-        <button type="button" className="quiet" disabled={busy} onClick={onClose}>Conservar ruta</button>
-        <button type="button" className="lane-cancel confirm-cancel" disabled={busy} onClick={onConfirm}>
+        <button
+          type="button"
+          className="quiet"
+          disabled={busy}
+          onClick={onClose}
+        >
+          Conservar ruta
+        </button>
+        <button
+          type="button"
+          className="lane-cancel confirm-cancel"
+          disabled={busy}
+          onClick={onConfirm}
+        >
           <Ban size={15} aria-hidden="true" />
           {busy ? "Cancelando…" : "Sí, cancelar ruta"}
         </button>
@@ -1224,7 +1254,8 @@ export function OrdersBoard({
     }
   }
   async function cancelRoute() {
-    if (!cancelTarget || !board || busy || cancelTarget.planId !== plan.id) return;
+    if (!cancelTarget || !board || busy || cancelTarget.planId !== plan.id)
+      return;
     working(true);
     setCancelError("");
     try {
@@ -1236,9 +1267,15 @@ export function OrdersBoard({
           expectedRevision: cancelTarget.revision,
         },
       );
-      setPublicationState({ key: publicationKey, data: result.publications, error: "" });
+      setPublicationState({
+        key: publicationKey,
+        data: result.publications,
+        error: "",
+      });
       setCancelTarget(null);
-      setNotice(`Ruta de ${cancelTarget.label} retirada del chofer. Sus pedidos siguen asignados en el panel para editarlos y volver a publicar.`);
+      setNotice(
+        `Ruta de ${cancelTarget.label} retirada del chofer. Sus pedidos siguen asignados en el panel para editarlos y volver a publicar.`,
+      );
     } catch (caught) {
       setCancelError((caught as Error).message);
     } finally {
@@ -1297,9 +1334,11 @@ export function OrdersBoard({
             />
             <span className="shipment-tags">
               <span className="badge">
-                {s.fulfillmentStatus === "pending_validation"
-                  ? "Pendiente Odoo"
-                  : "Validado"}
+                {s.fulfillmentStatus === "cancelled"
+                  ? "Cancelado Odoo"
+                  : s.fulfillmentStatus === "pending_validation"
+                    ? "Pendiente Odoo"
+                    : "Validado"}
               </span>
               <span className="badge">
                 {s.deliveryWindows.length
@@ -1436,9 +1475,11 @@ export function OrdersBoard({
       (vehicle) =>
         (board.shipments.some(
           (shipment) => shipment.vehicle_id === vehicle.id,
-        ) || publicationByVehicle.has(vehicle.id)) &&
+        ) ||
+          publicationByVehicle.has(vehicle.id)) &&
         !publicationByVehicle.get(vehicle.id)?.started_at &&
-        (!publicationByVehicle.has(vehicle.id) || publicationByVehicle.get(vehicle.id)?.has_changes),
+        (!publicationByVehicle.has(vehicle.id) ||
+          publicationByVehicle.get(vehicle.id)?.has_changes),
     ) ?? [];
   const hasPublished = eligible.some((vehicle) =>
     publicationByVehicle.has(vehicle.id),
@@ -1523,29 +1564,31 @@ export function OrdersBoard({
               {optimizing ? "Calculando…" : "Armar ruta"}
             </span>
           </button>
-          {(!publications || eligible.length > 0) && <button
-            type="button"
-            className="route-publish"
-            disabled={
-              !board ||
-              board.plan.id !== plan.id ||
-              busy ||
-              !publications ||
-              !eligible.length
-            }
-            aria-label={globalPublishLabel}
-            onClick={() => {
-              setPublishError("");
-              setPublishTarget({
-                planId: plan.id,
-                scope: "all",
-                label: "todas las camionetas",
-              });
-            }}
-          >
-            <Send size={16} aria-hidden="true" />
-            <span className="toolbar-action-label">{globalPublishLabel}</span>
-          </button>}
+          {(!publications || eligible.length > 0) && (
+            <button
+              type="button"
+              className="route-publish"
+              disabled={
+                !board ||
+                board.plan.id !== plan.id ||
+                busy ||
+                !publications ||
+                !eligible.length
+              }
+              aria-label={globalPublishLabel}
+              onClick={() => {
+                setPublishError("");
+                setPublishTarget({
+                  planId: plan.id,
+                  scope: "all",
+                  label: "todas las camionetas",
+                });
+              }}
+            >
+              <Send size={16} aria-hidden="true" />
+              <span className="toolbar-action-label">{globalPublishLabel}</span>
+            </button>
+          )}
         </div>
       </div>
       {publicationError && (
@@ -1632,9 +1675,13 @@ export function OrdersBoard({
                       {publication && (
                         <>
                           <span className="lane-publication-state">
-                            {publication.started_at ? "Ruta iniciada" : fleetChanged
-                              ? "Requiere republicar para el nuevo chofer"
-                              : publication.has_changes ? "Cambios sin publicar" : "Ruta publicada"}
+                            {publication.started_at
+                              ? "Ruta iniciada"
+                              : fleetChanged
+                                ? "Requiere republicar para el nuevo chofer"
+                                : publication.has_changes
+                                  ? "Cambios sin publicar"
+                                  : "Ruta publicada"}
                           </span>
                           <button
                             type="button"
@@ -1657,7 +1704,8 @@ export function OrdersBoard({
                           </button>
                         </>
                       )}
-                      {!publication?.started_at && (!publication || publication.has_changes) && (
+                      {!publication?.started_at &&
+                        (!publication || publication.has_changes) && (
                           <button
                             type="button"
                             className="lane-publish"
@@ -1682,7 +1730,7 @@ export function OrdersBoard({
                               ? "Guardar y publicar"
                               : "Activar ruta"}
                           </button>
-                      )}
+                        )}
                     </div>
                   )}
                 </header>

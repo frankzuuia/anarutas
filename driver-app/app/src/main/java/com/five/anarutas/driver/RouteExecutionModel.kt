@@ -137,6 +137,24 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
     fun consumeCorrection() { state = state.copy(correctedStop = null) }
     fun consumeExit() { state = state.copy(exitDestination = null) }
     fun dismissContinuation() { state = state.copy(continuation = null) }
+    fun collectionAttention(stopId: String, shipmentId: String): JSONObject? {
+        val execution = state.execution ?: return null
+        val stop = execution.stops.find { it.id == stopId } ?: return null
+        val order = stop.orderStates.find { it.shipmentId == shipmentId } ?: return null
+        if (!routeAvailable() || !stop.canAttend() || !canDeliverOrder(order.status)) return null
+        return JSONObject().put("planId", planId).put("stopId", stop.id)
+            .put("publicationRevision", execution.publicationRevision).put("executionRevision", execution.revision)
+            .put("stopVersion", stop.version).put("visitSequence", stop.visitSequence).put("orderVersion", order.version)
+            .put("productIncidentsAcknowledged", stop.productIncidents.any { it.shipmentId == shipmentId && it.status != "canceled" })
+    }
+    fun collectionConfirmed(stopId: String, paymentId: String) {
+        viewModelScope.launch { gate.withLock {
+            loadLocked()
+            if (state.verified) state = state.copy(message = "Cobro y entrega guardados. Ya puedes consultar el pedido en Liquidación.",
+                serviceRevision = state.serviceRevision + 1,
+                continuation = confirmedStopContinuation(paymentId, "service", "deliver", state.execution?.stops?.find { it.id == stopId }))
+        } }
+    }
 
     fun submit(stopId: String, gps: DriverGps?, corrected: ExecutionPoint?, confirmedAddress: CorrectedAddressFields? = null) {
         val execution = state.execution ?: return

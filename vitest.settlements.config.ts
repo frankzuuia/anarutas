@@ -6,6 +6,7 @@ export default defineConfig({
       "tests/account-role.test.ts",
       "tests/payments-integration.test.ts",
       "tests/settlements-integration.test.ts",
+      "tests/order-collection-integration.test.ts",
     ],
     fileParallelism: false,
     testTimeout: 60000,

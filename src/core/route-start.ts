@@ -5,6 +5,8 @@ import { todayInTimezone } from "./local-date";
 import { integer, uuid } from "./orders-validation";
 import { unitPhotoRoot } from "./unit-photos";
 import { createDriverExecution } from "./driver-execution-seed";
+import { readOrderBoard } from "./orders";
+import { routePublicationSourceChanged } from "./route-publication-content";
 
 export async function startDriverRoute(
   pool: Pool,
@@ -19,14 +21,16 @@ export async function startDriverRoute(
   const revision = integer(expectedRevision, 1);
   return transaction(pool, async (sql) => {
     // Serialize against fleet reassignment/unavailability before checking ownership.
-    await sql.query("SELECT pg_advisory_xact_lock(hashtext('ana-rutas:fleet'))");
+    await sql.query(
+      "SELECT pg_advisory_xact_lock(hashtext('ana-rutas:fleet'))",
+    );
     const plan = await sql.query(
       "SELECT service_date::text FROM route_plans WHERE id=$1 FOR SHARE",
       [id],
     );
     if (!plan.rowCount) throw new AppError("NOT_FOUND", 404);
     const publication = await sql.query(
-      `SELECT pub.vehicle_id,pub.started_at,pub.revision
+      `SELECT pub.vehicle_id,pub.started_at,pub.revision,pub.snapshot
          FROM route_plan_publications pub
          JOIN route_plan_vehicles pv ON pv.plan_id=pub.plan_id AND pv.vehicle_id=pub.vehicle_id
          JOIN route_vehicles v ON v.id=pub.vehicle_id
@@ -41,7 +45,8 @@ export async function startDriverRoute(
     );
     const route = publication.rows[0];
     if (!route) throw new AppError("NOT_FOUND", 404);
-    if (route.revision !== revision) throw new AppError("VERSION_CONFLICT", 409);
+    if (route.revision !== revision)
+      throw new AppError("VERSION_CONFLICT", 409);
     if (route.started_at) {
       await createDriverExecution(sql, id, route.vehicle_id);
       return { startedAt: route.started_at as Date, alreadyStarted: true };
@@ -49,12 +54,29 @@ export async function startDriverRoute(
     await unitPhotoRoot(configuredRoot);
     if (plan.rows[0].service_date !== todayInTimezone(timezone, now))
       throw new AppError("ROUTE_DATE_MISMATCH", 409);
+    const board = await readOrderBoard(sql, id);
+    if (
+      routePublicationSourceChanged(
+        route.snapshot,
+        board.shipments.filter(
+          (shipment) => shipment.vehicle_id === route.vehicle_id,
+        ),
+      )
+    )
+      throw new AppError("ROUTE_PUBLICATION_CHANGED", 409);
     const count = await sql.query(
       `SELECT count(*)::integer AS n FROM route_unit_photos
        WHERE plan_id=$1 AND vehicle_id=$2 AND driver_id=$3
          AND expires_at>$4::timestamptz
          AND (created_at AT TIME ZONE $5)::date=$6::date`,
-      [id, route.vehicle_id, driverId, now.toISOString(), timezone, plan.rows[0].service_date],
+      [
+        id,
+        route.vehicle_id,
+        driverId,
+        now.toISOString(),
+        timezone,
+        plan.rows[0].service_date,
+      ],
     );
     if (Number(count.rows[0].n) < 5)
       throw new AppError("UNIT_PHOTOS_REQUIRED", 409);
@@ -72,6 +94,9 @@ export async function startDriverRoute(
        VALUES($1,'mobile.route.started',$2::jsonb)`,
       [driverId, JSON.stringify({ planId: id, vehicleId: route.vehicle_id })],
     );
-    return { startedAt: saved.rows[0].started_at as Date, alreadyStarted: false };
+    return {
+      startedAt: saved.rows[0].started_at as Date,
+      alreadyStarted: false,
+    };
   });
 }

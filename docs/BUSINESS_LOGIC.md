@@ -645,10 +645,23 @@ El servidor rechaza revisión vieja, fuente no validada/error/antigüedad excesi
 Validación: escenarios PF01..18 en MASTER-SPECIFICATION, unidad/contrato, PG real, HTTP, Android JVM/Compose, cobertura, mutación, regresión y APK. Permisos previos de sesión/chofer/ejecución/visita se mantienen; datos financieros se consultan sólo después de autorizar la publicación. Auditoría de cambios de incidencia incluye campos financieros y elección.
 
 ## BL-162..168 — cobro, roles y liquidación autorizados
+
 Reglas, actores, permisos, datos y aceptación definidos en BLOQUES-LIQUIDACION-3-6.md. El propietario autorizó completar todos los bloques y realizar su QA física al final. No alterar recibos confirmados por cambios posteriores de la fuente; no mezclar crédito/transferencias con efectivo recibido.
 
 ## BL-169 — captura de cobro simplificada
+
 Chofer autenticado elige un único medio mediante tarjetas grandes con emoji y selección accesible. Efectivo captura dinero neto conservado; se retira «Cambio entregado» del formulario nuevo y se envía cambio cero. Transferencia captura «Monto transferido», obligatorio; vacío no se convierte en cero. Crédito conserva recibido cero y saldo completo. No habilitar pagos mixtos, cambiar recibos históricos ni alterar autorización, cola cifrada o auditoría de servidor. Validar monto parcial/completo/cero explícito, precisión, límites, método y estado pendiente; QA física a cargo del propietario según excepción vigente.
 
 ## BL-170 — identidad de campos para cuentas internas
+
 Administrador de rutas crea cuentas routes/settlement con nombre personal y usuario de texto; ningún correo es obligatorio. Declarar semántica y secciones HTML distintas, nombre de formulario accesible, IDs únicos y ayuda de usuario interno. Conservar claves FormData name/login/password/role, normalización, permisos, hashing y auditoría existentes. No modificar preferencias globales del navegador ni evadir su gestor de contraseñas. Verificar alta y login reales sin @ para ambos roles; advertencias de alias de Brave son sugerencias externas, no validación de Ana Rutas.
+
+## BL-171..174 — corrección autorizada de Odoo, cobro y recepción por pedido
+
+Contrato y escenarios CP01..14 en CORRECCION-ODOO-COBRO-POR-PEDIDO.md. El worker
+actualiza borradores no iniciados con cantidades/partidas/estado Odoo. Aceptar
+el cobro cierra el pedido atómicamente; cancelar lo deja abierto. Efectivo,
+transferencia, crédito y combinado efectivo+transferencia, con total neto exacto.
+El pedido pagado aparece al rol settlement en ruta activa; Aceptar se habilita
+sólo tras Liquidar individual. Sustituye las restricciones anteriores de cierre
+previo al cobro/ruta completa y de exclusión de combinado en BL162..169.

@@ -11,7 +11,7 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
   request,
 }) => {
   test.setTimeout(180000);
-  const f = await paymentExecutionFixture();
+  const f = await paymentExecutionFixture({ collectAtFirstStop: true });
   const timings: number[] = [];
   page.on("response", (response) => {
     const timing = response.headers()["server-timing"];
@@ -20,7 +20,6 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
   });
   let server: ChildProcess | undefined;
   try {
-    await f.finish();
     const password = randomUUID();
     await createUser(f.db.pool, f.actor, {
       name: "Recepción QA",
@@ -86,10 +85,45 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
       ).status(),
     ).toBe(404);
     for (const [index, method] of [
-      [0, "cash"],
+      [0, "mixed"],
       [1, "transfer"],
       [2, "credit"],
     ] as const) {
+      const executionPath = `${origin}/api/mobile/plans/${f.planId}/execution`;
+      let execution = await (
+        await request.get(executionPath, { headers })
+      ).json();
+      let stop = execution.stops[index];
+      if (index > 0) {
+        const arrival = await request.post(
+          `${origin}/api/mobile/plans/${f.planId}/stops/${stop.id}/arrival`,
+          {
+            headers,
+            data: {
+              commandId: randomUUID(),
+              executionId: execution.id,
+              publicationRevision: execution.publicationRevision,
+              executionRevision: execution.revision,
+              stopVersion: stop.version,
+              visitSequence: stop.visitSequence,
+              policyVersion: execution.policy.version,
+              sample: {
+                latitude: 20.64,
+                longitude: -103.4,
+                accuracyMeters: 5,
+                ageMilliseconds: 0,
+                capturedAt: new Date().toISOString(),
+                mock: false,
+              },
+            },
+          },
+        );
+        expect(arrival.status(), await arrival.text()).toBe(200);
+        execution = await (
+          await request.get(executionPath, { headers })
+        ).json();
+        stop = execution.stops[index];
+      }
       const data = await (await request.get(path, { headers })).json(),
         order = data.orders.find(
           (o: { shipmentId: string }) =>
@@ -99,11 +133,36 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
         commandId: randomUUID(),
         shipmentId: order.shipmentId,
         basis: order.basis,
+        captureVersion: 2,
         method,
-        tendered: method === "cash" ? "15" : method === "credit" ? "0" : "20",
+        tendered: method === "credit" ? "0" : "20",
+        ...(method === "mixed"
+          ? { cashReceived: "10", transferReceived: "10" }
+          : {}),
         change: "0",
-        note: index === 0 ? "Quedan 5" : "",
+        note: index === 0 ? "Pago combinado por cliente" : "",
+        attention: {
+          planId: f.planId,
+          stopId: stop.id,
+          publicationRevision: execution.publicationRevision,
+          executionRevision: execution.revision,
+          stopVersion: stop.version,
+          visitSequence: stop.visitSequence,
+          orderVersion: stop.orderStates[0].version,
+          productIncidentsAcknowledged: true,
+        },
       };
+      if (index === 0) {
+        expect(
+          (
+            await request.post(`${path}/payments`, {
+              headers,
+              data: { ...payload, transferReceived: "9.99" },
+            })
+          ).status(),
+        ).toBe(400);
+        expect((await f.state()).stops[0].orderStates[0].status).toBe("open");
+      }
       const response = await request.post(`${path}/payments`, {
         headers,
         data: payload,
@@ -115,13 +174,6 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
         ).json(),
       ).toMatchObject({ duplicate: true });
     }
-    const individual = await (
-      await request.post(`${path}/requests`, {
-        headers,
-        data: { commandId: randomUUID(), shipmentId: f.shipmentRows[0].id },
-      })
-    ).json();
-    expect(individual.id).toBeTruthy();
     const login = await page.request.post(`${origin}/api/session`, {
       headers: { Origin: origin },
       data: { login: "settlement-http", password },
@@ -173,21 +225,53 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
     await expect(
       page.getByRole("heading", { name: "Solicitudes del chofer" }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Aceptar", exact: true }).click();
+    const firstCard = page
+      .locator(".settlement-order")
+      .filter({ hasText: "S1" });
+    await expect(
+      firstCard.getByRole("button", { name: "Aceptar", exact: true }),
+    ).toBeDisabled();
+    await firstCard.locator("summary").click();
+    await expect(firstCard).toContainText("Importe original");
+    await expect(firstCard).toContainText("Pago combinado por cliente");
+    const individual = await (
+      await request.post(`${path}/requests`, {
+        headers,
+        data: { commandId: randomUUID(), shipmentId: f.shipmentRows[0].id },
+      })
+    ).json();
+    expect(individual.id).toBeTruthy();
+    await expect(
+      firstCard.getByRole("button", { name: "Aceptar", exact: true }),
+    ).toBeEnabled({ timeout: 15000 });
+    await firstCard
+      .getByRole("button", { name: "Aceptar", exact: true })
+      .click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText("15");
+    await expect(dialog).toContainText("20");
     await expect(dialog).toContainText("S1");
+    await expect(dialog).toContainText("Efectivo + transferencia");
+    for (const name of ["Cancelar", "Aceptar"]) {
+      const bounds = await dialog
+        .getByRole("button", { name, exact: true })
+        .boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.y).toBeGreaterThanOrEqual(0);
+      expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(
+        page.viewportSize()!.height,
+      );
+    }
     await mkdir(".local/qa-settlements", { recursive: true });
     await page.screenshot({ path: ".local/qa-settlements/confirmation.png" });
     await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
     expect(
       (await (await request.get(path, { headers })).json()).requests[0].status,
     ).toBe("pending");
-    await page.getByRole("button", { name: "Aceptar", exact: true }).click();
-    await dialog
-      .getByRole("button", { name: "Confirmar recepción", exact: true })
+    await firstCard
+      .getByRole("button", { name: "Aceptar", exact: true })
       .click();
+    await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect
       .poll(
@@ -197,27 +281,32 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
           ).status,
       )
       .toBe("accepted");
+    expect((await f.state()).completedAt).toBeNull();
+    await f.finish();
     const rest = await request.post(`${path}/requests`, {
       headers,
       data: { commandId: randomUUID(), shipmentId: null },
     });
     expect(rest.status()).toBe(200);
     await expect(
-      page.getByRole("button", { name: "Aceptar", exact: true }),
+      page
+        .locator(".settlement-request")
+        .getByRole("button", { name: "Aceptar", exact: true }),
     ).toBeVisible({ timeout: 15000 });
-    await page.getByRole("button", { name: "Aceptar", exact: true }).click();
-    await expect(dialog).toContainText("20");
-    await dialog
-      .getByRole("button", { name: "Confirmar recepción", exact: true })
+    await page
+      .locator(".settlement-request")
+      .getByRole("button", { name: "Aceptar", exact: true })
       .click();
+    await expect(dialog).toContainText("20");
+    await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
     await expect(dialog).toBeHidden();
     const after = await (await request.get(path, { headers })).json();
     expect(after.outstandingTotals).toEqual([]);
     expect(after.acceptedTotals[0]).toMatchObject({
-      cash: "15",
-      transfer: "20",
+      cash: "10",
+      transfer: "30",
       credit: "20",
-      balance: "5",
+      balance: "0",
     });
     await mkdir(".local/qa-settlements", { recursive: true });
     await page.screenshot({
@@ -243,7 +332,7 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
       )
     ).json();
     expect(receiptReport.metrics).toMatchObject([
-      { stage: "accepted", cash: "15", transfer: "20", credit: "20" },
+      { stage: "accepted", cash: "10", transfer: "30", credit: "20" },
     ]);
     await page.setViewportSize({ width: 390, height: 844 });
     expect(

@@ -93,8 +93,14 @@ export async function readDriverExecution(
       shipment_id: string;
       status: DriverOrderStatus;
       version: number;
+      payment_required: boolean;
+      payment_confirmed: boolean;
     }>(
-      "SELECT stop_id,shipment_id,status,version FROM route_driver_execution_orders WHERE execution_id=$1",
+      `SELECT o.stop_id,o.shipment_id,o.status,o.version,
+       EXISTS(SELECT 1 FROM route_shipments s JOIN route_financial_targets t ON (t.source,t.picking_id,t.order_id)=(s.source,s.picking_id,s.order_id)
+         WHERE s.id=o.shipment_id AND t.revision>0) AS payment_required,
+       EXISTS(SELECT 1 FROM route_order_payments p WHERE (p.execution_id,p.shipment_id)=(o.execution_id,o.shipment_id)) AS payment_confirmed
+       FROM route_driver_execution_orders o WHERE o.execution_id=$1`,
       [route.id],
     );
     const productIncidents = (
@@ -200,6 +206,8 @@ export async function readDriverExecution(
             shipmentId: order.shipment_id,
             status: order.status,
             version: order.version,
+            paymentRequired: order.payment_required,
+            paymentConfirmed: order.payment_confirmed,
           })),
       })),
     };

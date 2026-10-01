@@ -58,6 +58,7 @@ export function financialObservation(): FinancialObservation {
         saleLineId: 10,
         pickingId: 1,
         productId: 2,
+        productName: "Producto",
         uomId: 3,
         uom: "kg",
         demand: "2",

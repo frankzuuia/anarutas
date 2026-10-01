@@ -17,13 +17,13 @@ export async function readFinanceEvidence(
   return transaction(pool, async (sql) => {
     if ("actor" in identity) {
       await assertActiveActor(sql, identity.actor, "settlement");
-      const route = await lockFinanceExecution(sql, executionId);
-      if (!route.completed_at) throw new AppError("NOT_FOUND", 404);
+      await lockFinanceExecution(sql, executionId);
     } else await mobileFinanceContext(sql, identity.authorization, executionId);
     const row = await sql.query(
       `SELECT 1 FROM route_product_incidents i WHERE i.id=$1 AND i.execution_id=$2
-     AND (i.evidence_id=$3 OR EXISTS(SELECT 1 FROM route_product_incident_photos p WHERE p.incident_id=i.id AND p.evidence_id=$3))`,
-      [incident, executionId, photo],
+     AND (i.evidence_id=$3 OR EXISTS(SELECT 1 FROM route_product_incident_photos p WHERE p.incident_id=i.id AND p.evidence_id=$3))
+     AND ($4::boolean=false OR EXISTS(SELECT 1 FROM route_order_payments p WHERE (p.execution_id,p.shipment_id)=(i.execution_id,i.shipment_id)))`,
+      [incident, executionId, photo, "actor" in identity],
     );
     if (!row.rowCount) throw new AppError("NOT_FOUND", 404);
     return readStoredIncidentEvidence(photo, root);

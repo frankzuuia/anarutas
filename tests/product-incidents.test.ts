@@ -1023,7 +1023,7 @@ it("upgrades v26, protects concurrent quantities and closed visits, and exports 
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(38);
+    ).toBe(39);
     await f.start();
     const state = () =>
       readDriverExecution(

@@ -27,7 +27,7 @@ class DriverPaymentFormUiTest {
         var method by mutableStateOf("")
         var enabled by mutableStateOf(true)
         compose.setContent { DriverTheme { PaymentMethodPicker(method, enabled) { method = it } } }
-        for (name in listOf("Efectivo", "Transferencia", "Crédito")) {
+        for (name in listOf("Efectivo", "Transferencia", "Crédito", "Efectivo + transferencia")) {
             val card = compose.onNodeWithText(name)
             card.assertIsNotSelected()
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton))
@@ -38,10 +38,12 @@ class DriverPaymentFormUiTest {
         compose.onNodeWithText("Efectivo").assertIsNotSelected()
         compose.onNodeWithText("Crédito").performClick().assertIsSelected()
         compose.onNodeWithText("Transferencia").assertIsNotSelected()
+        compose.onNodeWithText("Efectivo + transferencia").performClick().assertIsSelected()
+        compose.onNodeWithText("Crédito").assertIsNotSelected()
         compose.runOnIdle { enabled = false }
         compose.onNodeWithText("Efectivo").assertIsNotEnabled().performClick()
-        compose.onNodeWithText("Crédito").assertIsSelected()
-        compose.runOnIdle { assertEquals("credit", method) }
+        compose.onNodeWithText("Efectivo + transferencia").assertIsSelected()
+        compose.runOnIdle { assertEquals("mixed", method) }
     }
 
     @Test fun fieldsNameTheReceivedMethodNeverOfferChangeAndDoNotFillBlankTransfers() {
@@ -75,5 +77,15 @@ class DriverPaymentFormUiTest {
             assertTrue(text.left >= card.left && text.right <= card.right)
             assertTrue(text.top >= card.top && text.bottom <= card.bottom)
         }
+    }
+
+    @Test fun combinedPaymentHasTwoExplicitFieldsAndPreservesEachValue() {
+        var cash by mutableStateOf("")
+        var transfer by mutableStateOf("")
+        compose.setContent { DriverTheme { CombinedPaymentFields(cash, transfer, true, { cash = it }, { transfer = it }) } }
+        compose.onNodeWithText("Parte en efectivo").performTextInput("1000")
+        compose.onNodeWithText("Parte por transferencia").performTextInput("1383.38")
+        compose.runOnIdle { assertEquals("1000", cash); assertEquals("1383.38", transfer) }
+        compose.onNodeWithText("Cambio entregado").assertDoesNotExist()
     }
 }

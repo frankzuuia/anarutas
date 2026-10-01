@@ -24,6 +24,7 @@ private val paymentChoices = listOf(
     PaymentChoice("cash", "💵", "Dinero recibido en mano", DriverColors.lime),
     PaymentChoice("transfer", "🏦", "Pago enviado a la cuenta", DriverColors.blue),
     PaymentChoice("credit", "🧾", "El cliente pagará después", DriverColors.purple),
+    PaymentChoice("mixed", "💵🏦", "Parte en efectivo y parte por transferencia", DriverColors.amber),
 )
 
 @Composable
@@ -55,6 +56,15 @@ internal fun PaymentMethodPicker(selected: String, enabled: Boolean, onSelect: (
             }
         }
     }
+}
+
+@Composable
+internal fun CombinedPaymentFields(cash: String, transfer: String, enabled: Boolean, onCash: (String) -> Unit, onTransfer: (String) -> Unit) {
+    OutlinedTextField(cash, onCash, label = { Text("Parte en efectivo") }, modifier = Modifier.fillMaxWidth(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, enabled = enabled)
+    OutlinedTextField(transfer, onTransfer, label = { Text("Parte por transferencia") }, modifier = Modifier.fillMaxWidth(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, enabled = enabled)
+    Text("Ambos importes deben sumar el monto a recibir.", color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable

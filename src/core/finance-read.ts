@@ -106,9 +106,11 @@ export async function readSettlementDetail(
   return transaction(pool, async (sql) => {
     await assertActiveActor(sql, actor, "settlement");
     const route = await lockFinanceExecution(sql, executionId);
-    if (!route.completed_at)
-      throw new AppError("SETTLEMENT_ROUTE_NOT_FINISHED", 409);
-    return financeExecutionDetail(sql, route);
+    const detail = await financeExecutionDetail(sql, route);
+    return {
+      ...detail,
+      orders: detail.orders.filter((order) => order.payment !== null),
+    };
   });
 }
 export async function listSettlements(
@@ -130,7 +132,8 @@ export async function listSettlements(
       dateBasis === "route"
         ? `e.service_date BETWEEN $1::date AND $2::date`
         : `EXISTS(SELECT 1 FROM route_settlement_requests r WHERE r.execution_id=e.id AND r.status='accepted' AND ${receiptPeriod})`;
-    const condition = `${dates} AND ($3::uuid IS NULL OR e.driver_id=$3) AND EXISTS(SELECT 1 FROM route_driver_execution_completions c WHERE c.execution_id=e.id) AND $4::text IS NOT NULL`;
+    const condition = `${dates} AND ($3::uuid IS NULL OR e.driver_id=$3) AND (EXISTS(SELECT 1 FROM route_order_payments p WHERE p.execution_id=e.id)
+      OR EXISTS(SELECT 1 FROM route_driver_execution_completions c WHERE c.execution_id=e.id)) AND $4::text IS NOT NULL`;
     const rows = (
       await sql.query(
         `SELECT e.id,e.plan_label AS label,e.service_date::text AS date,e.driver_id AS "driverId",e.driver_name AS driver,e.vehicle_name AS vehicle,
@@ -149,8 +152,8 @@ export async function listSettlements(
      UNION ALL SELECT p.*,r.status AS stage FROM route_order_payments p JOIN route_driver_executions e ON e.id=p.execution_id
        JOIN route_settlement_claims c ON c.payment_id=p.id JOIN route_settlement_requests r ON r.id=c.request_id WHERE ${condition}
        ${dateBasis === "receipt" ? `AND r.status='accepted' AND ${receiptPeriod}` : ""}
-   ) SELECT stage,currency,COALESCE(sum(received) FILTER(WHERE method='cash'),0)::text AS cash,
-    COALESCE(sum(received) FILTER(WHERE method='transfer'),0)::text AS transfer,
+   ) SELECT stage,currency,COALESCE(sum(cash_received),0)::text AS cash,
+    COALESCE(sum(transfer_received),0)::text AS transfer,
     COALESCE(sum(expected) FILTER(WHERE method='credit'),0)::text AS credit,
     COALESCE(sum(balance) FILTER(WHERE method<>'credit'),0)::text AS balance,COALESCE(sum(deferred),0)::text AS deferred
     FROM entries GROUP BY stage,currency ORDER BY stage,currency->>'name'`,

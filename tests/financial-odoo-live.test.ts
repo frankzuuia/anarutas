@@ -74,6 +74,12 @@ it.skipIf(!process.env.RUTAS_TEST_FINANCIAL_TARGETS)(
           customerName: "QA read-only",
           address: "",
           validatedAt: snapshot.picking.validatedAt,
+          odooPickingState: snapshot.picking.state,
+          fulfillmentStatus:
+            snapshot.picking.state === "done" && snapshot.picking.validatedAt
+              ? "validated"
+              : "pending_validation",
+          sourceUpdatedAt: snapshot.picking.writeDate,
           promisedAt: null,
           backorderId: null,
           lines: snapshot.lines.map((line) => ({

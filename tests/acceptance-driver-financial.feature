@@ -1,6 +1,6 @@
 Feature: Importes e incidencias de producto del chofer
   Scenario: Cantidades finales sin cambiar la publicación
-    Given una ruta publicada con una partida y sus identificadores de importación
+    Given una ruta publicada e iniciada con una partida y sus identificadores de importación
     When Odoo valida una cantidad final distinta de la publicada
     Then el chofer ve la cantidad final y los importes oficiales
     And la publicación original permanece intacta

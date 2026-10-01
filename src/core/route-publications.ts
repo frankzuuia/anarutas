@@ -4,10 +4,16 @@ import { assertActiveActor, audit, transaction, type Sql } from "./database";
 import { AppError } from "./errors";
 import { readOrderBoard } from "./orders";
 import { integer, uuid } from "./orders-validation";
-import { routeFingerprint, vehicleRouteFingerprints } from "./route-fingerprint";
+import {
+  routeFingerprint,
+  vehicleRouteFingerprints,
+} from "./route-fingerprint";
 import { readPlanOptimization, lockRouteInputs } from "./route-optimization";
 import { getRoutingSettings } from "./routing-settings";
-import { routePublicationContentChanged, routePublicationSnapshot } from "./route-publication-content";
+import {
+  routePublicationContentChanged,
+  routePublicationSnapshot,
+} from "./route-publication-content";
 import { nextPublicationRevision } from "./route-publication-revisions";
 
 type PublicationRow = {
@@ -32,22 +38,42 @@ export async function listRoutePublications(sql: Sql, planId: string) {
   const settings = await getRoutingSettings(sql);
   const hashes = vehicleRouteFingerprints(board, settings.version);
   const optimization = await readPlanOptimization(sql, planId);
-  const calculated = optimization ? await sql.query(
-    "SELECT vehicle_input_hashes FROM route_optimization_runs WHERE id=$1", [optimization.runId],
-  ) : null;
+  const calculated = optimization
+    ? await sql.query(
+        "SELECT vehicle_input_hashes FROM route_optimization_runs WHERE id=$1",
+        [optimization.runId],
+      )
+    : null;
   const calculatedHashes = calculated?.rows[0]?.vehicle_input_hashes ?? {};
   return rows.map(({ snapshot, ...publication }) => {
-    const vehicle = board.vehicles.find((item) => item.id === publication.vehicle_id);
-    const previousInput = snapshot.routingInputHash ?? calculatedHashes[publication.vehicle_id];
-    const hasChanges = !publication.started_at && (
-      !vehicle || vehicle.fleet_driver_id !== publication.driver_id ||
-      Boolean(previousInput && previousInput !== hashes[publication.vehicle_id]) ||
-      routePublicationContentChanged(snapshot, routePublicationSnapshot(
-        board, vehicle, optimization?.routes.find((route) => route.vehicleId === vehicle.id) ?? null,
-        hashes[vehicle.id],
-      ))
+    const vehicle = board.vehicles.find(
+      (item) => item.id === publication.vehicle_id,
     );
-    return { ...publication, has_changes: hasChanges, published_order_count: snapshot.orders?.length ?? 0 } as PublicationRow;
+    const previousInput =
+      snapshot.routingInputHash ?? calculatedHashes[publication.vehicle_id];
+    const hasChanges =
+      !publication.started_at &&
+      (!vehicle ||
+        vehicle.fleet_driver_id !== publication.driver_id ||
+        Boolean(
+          previousInput && previousInput !== hashes[publication.vehicle_id],
+        ) ||
+        routePublicationContentChanged(
+          snapshot,
+          routePublicationSnapshot(
+            board,
+            vehicle,
+            optimization?.routes.find(
+              (route) => route.vehicleId === vehicle.id,
+            ) ?? null,
+            hashes[vehicle.id],
+          ),
+        ));
+    return {
+      ...publication,
+      has_changes: hasChanges,
+      published_order_count: snapshot.orders?.length ?? 0,
+    } as PublicationRow;
   });
 }
 
@@ -117,12 +143,21 @@ export async function publishRoutes(
     const settings = await getRoutingSettings(sql);
     const inputHashes = vehicleRouteFingerprints(board, settings.version);
 
-    const changes: { vehicleId: string; revision: number; action: string }[] = [];
+    const changes: { vehicleId: string; revision: number; action: string }[] =
+      [];
     let assignmentChanged = false;
     for (const vehicle of active) {
       const own = board.shipments.filter(
         (shipment) => shipment.vehicle_id === vehicle.id,
       );
+      if (
+        own.some(
+          (shipment) =>
+            shipment.fulfillmentStatus === "cancelled" ||
+            !shipment.lines.length,
+        )
+      )
+        throw new AppError("ODOO_DELIVERY_UNAVAILABLE", 409);
       const previous = published.get(vehicle.id);
       if (!own.length) {
         if (previous && !previous.revoked_at) {
@@ -164,7 +199,12 @@ export async function publishRoutes(
         );
         assignmentChanged = true;
       }
-      const snapshot = routePublicationSnapshot(board, vehicle, route, inputHashes[vehicle.id]);
+      const snapshot = routePublicationSnapshot(
+        board,
+        vehicle,
+        route,
+        inputHashes[vehicle.id],
+      );
       const serialized = JSON.stringify(snapshot);
       const hash = createHash("sha256").update(serialized).digest("hex");
       if (
@@ -173,7 +213,12 @@ export async function publishRoutes(
         previous.driver_id === currentAssignment.fleet_driver_id
       )
         continue;
-      const revision = await nextPublicationRevision(sql, id, vehicle.id, previous?.revision ?? 0);
+      const revision = await nextPublicationRevision(
+        sql,
+        id,
+        vehicle.id,
+        previous?.revision ?? 0,
+      );
       const saved = await sql.query(
         `INSERT INTO route_plan_publications
            (plan_id,vehicle_id,driver_id,source_plan_version,snapshot,snapshot_hash,published_by,revision)
@@ -208,7 +253,10 @@ export async function publishRoutes(
       });
     }
     if (assignmentChanged && optimization) {
-      const fingerprint = routeFingerprint(await readOrderBoard(sql, id), settings.version);
+      const fingerprint = routeFingerprint(
+        await readOrderBoard(sql, id),
+        settings.version,
+      );
       await sql.query(
         "UPDATE route_optimization_runs SET input_fingerprint=$2 WHERE id=$1",
         [optimization.runId, fingerprint],
@@ -266,14 +314,22 @@ export async function cancelPublishedRoute(
       [id, vehicle, expectedRevision],
     );
     if (!saved.rowCount) throw new AppError("VERSION_CONFLICT", 409);
-    await audit(sql, actor, publication.started_at ? "route.start.cancelled" : "route.publication.cancelled", id, {
-      vehicleId: vehicle,
-      driverId: publication.driver_id,
-      previousRevision: expectedRevision,
-      revision: Number(saved.rows[0].revision),
-      startedAt: publication.started_at,
-      revokedAt: saved.rows[0].revoked_at,
-    });
+    await audit(
+      sql,
+      actor,
+      publication.started_at
+        ? "route.start.cancelled"
+        : "route.publication.cancelled",
+      id,
+      {
+        vehicleId: vehicle,
+        driverId: publication.driver_id,
+        previousRevision: expectedRevision,
+        revision: Number(saved.rows[0].revision),
+        startedAt: publication.started_at,
+        revokedAt: saved.rows[0].revoked_at,
+      },
+    );
     return { publications: await listRoutePublications(sql, id) };
   });
 }

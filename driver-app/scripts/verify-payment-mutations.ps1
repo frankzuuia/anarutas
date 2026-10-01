@@ -20,7 +20,7 @@ $cases = @(
     @{ name='cash_overpayment'; from='received > expected'; to='false' },
     @{ name='reject_exact_zero'; from='received.signum() < 0'; to='received.signum() <= 0' },
     @{ name='partial_with_change'; from='change.signum() != 0 && balance.signum() != 0'; to='false' },
-    @{ name='currency_quantum'; from='.any { it.remainder(rounding).signum() != 0 }'; to='.all { it.remainder(rounding).signum() != 0 }' },
+    @{ name='currency_quantum'; from='listOf(expected, tendered, change).any { it.remainder(rounding).signum() != 0 }'; to='listOf(expected, tendered, change).all { it.remainder(rounding).signum() != 0 }' },
     @{ name='credit_has_no_cash'; from='if (method == "credit") BigDecimal.ZERO'; to='if (false) BigDecimal.ZERO' },
     @{ name='transfer_has_no_change'; from='if (method == "cash") amount(changeText)'; to='if (true) amount(changeText)' },
     @{ name='retain_unauthenticated'; from='status == 401'; to='false' },
@@ -29,7 +29,13 @@ $cases = @(
     @{ name='reject_terminal_conflict'; from='status !in 400..499'; to='status !in 400..408' },
     @{ name='stale_route'; from='requested == current'; to='requested.page == current.page' },
     @{ name='stale_page'; from='requested == current'; to='requested.executionId == current.executionId' },
-    @{ name='foreign_device'; from='requestedDevice == currentDevice'; to='true' }
+    @{ name='foreign_device'; from='requestedDevice == currentDevice'; to='true' },
+    @{ name='collection_cash'; from='"cash" -> expected;'; to='"cash" -> BigDecimal.ZERO;' },
+    @{ name='collection_transfer'; from='"transfer" -> expected;'; to='"transfer" -> BigDecimal.ZERO;' },
+    @{ name='collection_split_positive'; from='method == "mixed" && (cash.signum() <= 0 || transfer.signum() <= 0)'; to='false' },
+    @{ name='collection_split_exact'; from='method != "credit" && received.compareTo(expected) != 0'; to='false' },
+    @{ name='collection_quantum'; from='listOf(expected, cash, transfer).any { it.remainder(rounding).signum() != 0 }'; to='false' },
+    @{ name='collection_credit'; from='val received = cash.add(transfer)'; to='val received = expected' }
 )
 if ($Only.Count) { $cases = @($cases | Where-Object { $Only -contains $_.name }); if ($cases.Count -ne $Only.Count) { throw 'Unknown mutation filter' } }
 $arguments = @('testDebugUnitTest', '--tests', 'com.five.anarutas.driver.DriverPaymentPolicyTest', '--console=plain')

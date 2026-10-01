@@ -89,7 +89,7 @@ describe("fleet / real PostgreSQL", () => {
     expect(
       (await db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(38);
+    ).toBe(39);
     expect((await db.pool.query("SELECT * FROM route_users")).rows).toEqual(
       users,
     );

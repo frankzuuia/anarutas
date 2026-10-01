@@ -757,3 +757,11 @@ Los bloques2..6 están implementados; la evidencia de cobros, roles, solicitudes
 ## BL-170 — formularios de cuentas sin correo obligatorio
 - [x] AC-T01 (AC01..03): semántica HTML explícita, secciones/IDs únicos y ayuda de usuario interno en ambos roles, contrato intacto.
 - [x] AC-T02 (AC01..05): alta/login y permisos E2E real para ambos roles1/1(21.4s), validación HTML, typecheck/lint/build aprobados. Causa Brave y límite documentados en QA-CAMPOS-CUENTAS-2026-09-30.md; commit/push develop, deploy manual.
+
+## BL-171..174 — sincronización y cobro antes del cierre
+
+- [x] CP-T01 (BL171, CP01..04): actualizar borrador desde worker Odoo con identidad, locks, conservación y eventos; unidad/PG/Odoo lectura.
+- [x] CP-T02 (BL172, CP05..07,13): atención+cobro atómicos, recuperación histórica, guardas bodega y outbox; PG/HTTP/JVM.
+- [x] CP-T03 (BL173, CP08,12): combinado, versión de captura, SQL/componentes/totales exactos y migración compatible; unidad/PG/mutación.
+- [x] CP-T04 (BL174, CP09..12,14): recepción individual durante ruta activa, tarjetas/detalle/modales/estado en tiempo real; permisos y E2E.
+- [x] CP-T05 (todos): Gherkin y QA reproducible; 894 regresión/0 fallos/3 omisiones externas identificadas, Odoo real aprobado aparte, 55 financieras/14 origen/131 JVM y HTTP completo. Cobertura financiera99.60% líneas, origen100%; mutación254/255 monetaria (superviviente equivalente),139/139 origen,20/20 PG financiera,9/9 PG origen y22/22 Android. Typecheck/lint/build/audit/migrador y APK0.8.11/code33 verificados. Evidencia y límites en QA-COBRO-POR-PEDIDO-2026-09-30.md; entrega a develop autorizada, deploy manual y QA física a cargo del propietario según excepción vigente.

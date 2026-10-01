@@ -15,6 +15,10 @@ import {
   releaseFinancialSync,
 } from "./financial-store";
 import type { FinancialTarget } from "./financial-contract";
+import {
+  lockDraftSourcePlans,
+  refreshDraftSourceShipments,
+} from "./draft-source-sync";
 
 export function financialError(error: unknown) {
   // Persist only our stable code, never supplier response bodies, URLs or credentials.
@@ -106,6 +110,7 @@ export async function syncFinancialSources(
         throw new AppError("FINANCIAL_SYNC_CONNECTION_LOST", 503);
       const durationMs = Math.ceil(performance.now() - start);
       await client.query("BEGIN");
+      const draftPlans = await lockDraftSourcePlans(client, snapshots);
       let changed = 0;
       for (const snapshot of snapshots) {
         const result = await persistFinancialSnapshot(
@@ -116,6 +121,11 @@ export async function syncFinancialSources(
         );
         if (result.changed) changed++;
       }
+      const draftUpdated = await refreshDraftSourceShipments(
+        client,
+        snapshots,
+        draftPlans,
+      );
       await client.query(
         `UPDATE route_financial_sync_state SET failures=0,last_error=NULL,last_checked_at=now(),last_success_at=now(),
         last_duration_ms=$2,attempts=attempts+1,next_attempt_at=now() WHERE source=$1`,
@@ -126,6 +136,7 @@ export async function syncFinancialSources(
         status: "synced" as const,
         inspected: snapshots.length,
         changed,
+        draftUpdated,
         durationMs,
       };
     } catch (error) {

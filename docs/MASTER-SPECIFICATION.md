@@ -1744,3 +1744,10 @@ Corrección: type=text/inputMode=text, IDs por rol, label htmlFor, autocomplete 
 | AC05 | Popup propio de Brave no tratado como validación del servidor | Código oficial Brave; límite documentado, no simular popup |
 
 Referencias: guía Next instalada forms/RouteHandlers; [autocomplete](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/autocomplete); [Brave AddEmailAliasSuggestsion](https://github.com/brave/brave-core/blob/master/chromium_src/chrome/browser/ui/autofill/chrome_autofill_client.cc); [Email Aliases](https://brave.com/privacy-updates/39-email-aliases/). GREEN LIGHT, INTEGRITY TOTAL, MATCH PERFECT con AC-T01..02. Cambio de marcado sin lógica crítica nueva: mutación monetaria/auth no aplicable; se conserva evidencia previa y repiten contratos de cuenta mediante E2E real.
+
+## BL-171..174 — corrección del flujo por pedido
+
+Autopsia, datos/locks/contratos, permisos, matriz CP01..14, migración aditiva,
+compatibilidad y puertas en CORRECCION-ODOO-COBRO-POR-PEDIDO.md. Sustituye
+explícitamente el orden y exclusiones anteriores de BL162..169. GREEN LIGHT,
+INTEGRITY TOTAL y MATCH PERFECT con CP-T01..05; implementación por bloques.

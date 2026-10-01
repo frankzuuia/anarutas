@@ -12,7 +12,9 @@ import { saveRoutingSettings } from "../../src/core/routing-settings";
 import { readDriverPlan } from "../../src/core/driver-mobile-route";
 
 // Real PG and operational commands. Domain observations are persisted unit inputs, not Odoo API mocks.
-export async function paymentExecutionFixture() {
+export async function paymentExecutionFixture(
+  options: { collectAtFirstStop?: boolean } = {},
+) {
   const f = await executionFixture();
   try {
     await f.start();
@@ -88,6 +90,7 @@ export async function paymentExecutionFixture() {
       );
       route = await state();
       stop = route.stops[index];
+      if (options.collectAtFirstStop) break;
       await executeDriverOrderCommand(
         f.db.pool,
         f.members[0].authorization,
@@ -104,18 +107,21 @@ export async function paymentExecutionFixture() {
       );
     }
     const executionId = (await state()).id;
+    let depotConfigured = false;
     const finish = async () => {
-      await saveRoutingSettings(f.db.pool, f.actor, {
-        expectedVersion: 0,
-        depotAddress: "Bodega QA",
-        depotLocation: {
-          latitude: 20.64,
-          longitude: -103.4,
-          placeId: "qa-depot",
-        },
-        departureTime: "08:00",
-        serviceMinutes: 10,
-      });
+      if (!depotConfigured)
+        await saveRoutingSettings(f.db.pool, f.actor, {
+          expectedVersion: 0,
+          depotAddress: "Bodega QA",
+          depotLocation: {
+            latitude: 20.64,
+            longitude: -103.4,
+            placeId: "qa-depot",
+          },
+          departureTime: "08:00",
+          serviceMinutes: 10,
+        });
+      depotConfigured = true;
       const route = await state(),
         plan = await readDriverPlan(
           f.db.pool,
@@ -140,7 +146,7 @@ export async function paymentExecutionFixture() {
         f.now,
       );
     };
-    return { ...f, executionId, shipmentRows, finish };
+    return { ...f, executionId, shipmentRows, finish, state };
   } catch (error) {
     await f.close();
     throw error;

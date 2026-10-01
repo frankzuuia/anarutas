@@ -4,6 +4,33 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DriverPaymentPolicyTest {
+    @Test fun collectionUsesTheOfficialAmountWithoutAnEditablePurePaymentAmount() {
+        for (method in listOf("cash", "transfer", "credit")) {
+            val result = collectionPaymentPreview(method, "invalid", "", "2383.38", "0.01")!!
+            assertEquals(if (method == "credit") "0" else "2383.38", result.tendered.toPlainString())
+            assertEquals(if (method == "cash") "2383.38" else "0", result.cash.toPlainString())
+            assertEquals(if (method == "transfer") "2383.38" else "0", result.transfer.toPlainString())
+            assertEquals(if (method == "credit") "2383.38" else "0.00", result.balance.toPlainString())
+            assertNotNull(collectionPaymentPreview(method, "", "", "0", "0.01"))
+        }
+    }
+    @Test fun combinedCollectionRequiresTwoPositiveExactComponents() {
+        val result = collectionPaymentPreview("mixed", "1000", "1383.38", "2383.38", "0.01")!!
+        assertEquals("2383.38", result.tendered.toPlainString())
+        assertEquals("1000", result.cash.toPlainString())
+        assertEquals("1383.38", result.transfer.toPlainString())
+        for ((cash, transfer) in listOf("" to "2383.38", "2383.38" to "", "0" to "2383.38", "2383.38" to "0", "1000" to "1383.37", "1000.001" to "1383.379", "-1" to "2384.38", "NaN" to "0", "1e1000000" to "1", "9".repeat(81) to "1"))
+            assertNull("$cash/$transfer", collectionPaymentPreview("mixed", cash, transfer, "2383.38", "0.01"))
+        assertNull(collectionPaymentPreview("mixed", "0", "0", "0", "0.01"))
+    }
+    @Test fun collectionRejectsUnknownMethodsAndInvalidSourceWithoutTruncation() {
+        for (method in listOf("", "other")) assertNull(collectionPaymentPreview(method, "", "", "20", "0.01"))
+        for (expected in listOf(null, "", "-1", "Infinity", "20.001", "1e1000000", "9".repeat(81)))
+            assertNull(collectionPaymentPreview("cash", "", "", expected, "0.01"))
+        for (step in listOf(null, "0", "-1", "NaN")) assertNull(collectionPaymentPreview("cash", "", "", "20", step))
+        assertNull(collectionPaymentPreview("cash", "", "", "1.01", "0.05"))
+        assertNotNull(collectionPaymentPreview("mixed", "1.05", "1.10", "2.15", "0.05"))
+    }
     @Test fun netCaptureRequiresExplicitCashOrTransferAndPreservesExactBalances() {
         for (method in listOf("cash", "transfer")) {
             for (invalid in listOf("", " ", "-1", "20.001", "21", "NaN"))

@@ -26,7 +26,7 @@ export type SourceShipment = {
   address: string;
   validatedAt: string | null;
   odooPickingState?: string;
-  fulfillmentStatus?: "validated" | "pending_validation";
+  fulfillmentStatus?: "validated" | "pending_validation" | "cancelled";
   scheduledAt?: string | null;
   sourceUpdatedAt?: string | null;
   promisedAt: string | null;

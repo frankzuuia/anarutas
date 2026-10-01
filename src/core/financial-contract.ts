@@ -33,6 +33,7 @@ export type FinancialMove = {
   saleLineId: number | null;
   pickingId: number | null;
   productId: number;
+  productName?: string;
   uomId: number;
   uom: string;
   demand: string;

@@ -128,12 +128,13 @@ internal fun AppIconButton(icon: DriverIcon, label: String, enabled: Boolean = t
 }
 
 @Composable
-internal fun AppAction(label: String, icon: DriverIcon, modifier: Modifier = Modifier, enabled: Boolean = true, quiet: Boolean = false, onClick: () -> Unit) {
+internal fun AppAction(label: String, icon: DriverIcon, modifier: Modifier = Modifier, enabled: Boolean = true, quiet: Boolean = false,
+    accent: Color = DriverColors.lime, onClick: () -> Unit) {
     Button(
         onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 48.dp),
         shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (quiet) DriverColors.raised else DriverColors.lime,
+            containerColor = if (quiet) DriverColors.raised else accent,
             contentColor = if (quiet) DriverColors.ink else DriverColors.limeInk,
             disabledContainerColor = DriverColors.raised, disabledContentColor = DriverColors.muted,
         ),

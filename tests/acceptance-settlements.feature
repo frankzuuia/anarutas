@@ -14,25 +14,26 @@ Feature: Cobro y liquidación histórica por rol
     And un usuario vacío continúa siendo inválido
 
   Scenario: Captura neta sin cambio y selección accesible
-    Given el formulario de cobro con tarjetas Efectivo Transferencia y Crédito
-    When selecciona Efectivo y escribe 15.25 para un pedido de 20
+    Given el formulario de cobro con tarjetas Efectivo Transferencia Crédito y Combinado
+    When selecciona Efectivo para un pedido con monto oficial de 20
     Then no existe el campo Cambio entregado
-    And el comando conserva recibido 15.25 cambio 0 y saldo 4.75
+    And el comando conserva recibido 20 cambio 0 y saldo 0
     And sólo una tarjeta está seleccionada y no cambia durante un envío pendiente
 
-  Scenario: Transferencia vacía no inventa un pago
-    Given un pedido entregado con importe vigente
-    When el chofer selecciona Transferencia y deja Monto transferido vacío
-    Then no puede confirmar ni convertir el vacío en cero
-    And una transferencia válida se registra separada del efectivo
+  Scenario: Transferencia conserva el importe oficial sin captura manual
+    Given un pedido atendible con importe vigente de 20
+    When el chofer selecciona Transferencia y acepta el modal de cobro
+    Then se registra transferencia de 20 y entrega en la misma transacción
+    And no requiere una cantidad recibida introducida por el chofer
 
   Scenario: Crédito después de otro medio
-    Given un importe escrito previamente en Efectivo o Transferencia
+    Given un importe escrito previamente en Combinado
     When selecciona Crédito
     Then no se muestra un campo de importe recibido
     And la confirmación conserva recibido cero y saldo completo
 
-  Scenario: Efectivo parcial conserva saldo sin interpretar notas
+  @legacy_capture_v1
+  Scenario: Recibo histórico parcial conserva saldo sin interpretar notas
     Given un pedido entregado con importe vigente de 20
     When su chofer confirma efectivo recibido de 15
     Then el recibo inmutable guarda efectivo 15 y saldo 5
@@ -102,6 +103,6 @@ Feature: Cobro y liquidación histórica por rol
 
   Scenario: Migración de una instalación con recorridos iniciados
     Given el esquema 35 con cuentas y ejecuciones existentes
-    When el arranque aplica las migraciones 36 a 38 y vuelve a ejecutarse
+    When el arranque aplica las migraciones 36 a 39 y vuelve a ejecutarse
     Then conserva los datos y asigna routes a las cuentas anteriores
     And no duplica cobros ni cambia el rol de una cuenta existente

@@ -40,7 +40,8 @@ internal fun parseExecution(raw: String, receivedElapsed: Long): DriverExecution
                 if (s.isNull("phone")) null else s.getString("phone"), s.getInt("customerVersion"),
                 s.getJSONArray("orderStates").let { list -> (0 until list.length()).map { orderIndex ->
                     val order = list.getJSONObject(orderIndex)
-                    ExecutionOrderState(order.getString("shipmentId"), OrderServiceStatus.parse(order.getString("status")), order.getInt("version"))
+                    ExecutionOrderState(order.getString("shipmentId"), OrderServiceStatus.parse(order.getString("status")), order.getInt("version"),
+                        order.optBoolean("paymentRequired"), order.optBoolean("paymentConfirmed"))
                 } }, s.getInt("closedReportedVisitSequence"), s.optJSONArray("productIncidents")?.let { list ->
                     (0 until list.length()).map { i -> val record = list.getJSONObject(i)
                         ProductIncidentRecord(record.getString("id"), record.getString("shipmentId"),

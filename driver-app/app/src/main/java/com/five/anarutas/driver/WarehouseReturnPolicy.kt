@@ -24,7 +24,8 @@ internal fun warehouseReturnDestination(route: AssignedPlan?, execution: DriverE
         val states = stop.orderStates
         if (stop.shipmentIds.isEmpty() || states.size != stop.shipmentIds.size ||
             states.map { it.shipmentId }.toSet() != stop.shipmentIds.toSet() ||
-            states.any { it.status !in listOf(OrderServiceStatus.DELIVERED, OrderServiceStatus.RESCHEDULED) }) return null
+            states.any { it.status !in listOf(OrderServiceStatus.DELIVERED, OrderServiceStatus.RESCHEDULED) ||
+                (it.status == OrderServiceStatus.DELIVERED && it.paymentRequired && !it.paymentConfirmed) }) return null
     }
     return WarehouseDestination(execution.id, departure)
 }

@@ -15,102 +15,46 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = join(root, ".local");
 await mkdir(scratch, { recursive: true });
-const sandbox = await mkdtemp(join(scratch, "settlement-mutants-"));
+const sandbox = await mkdtemp(join(scratch, "draft-source-mutants-"));
 const cases = [
   [
-    "payment-owner",
-    "finance-context.ts",
-    "driverId && row.driver_id !== driverId",
-    "false",
+    "plan-lock",
+    "draft-source-sync.ts",
+    "ORDER BY p.id FOR UPDATE",
+    "ORDER BY p.id",
   ],
+  ["archive-guard", "draft-source-sync.ts", "p.archived_at IS NULL", "true"],
+  ["started-lane", "draft-source-sync.ts", "AND NOT EXISTS (", "AND EXISTS ("],
   [
-    "payment-replay-payload",
-    "payments.ts",
-    "previous.request_hash !== hash",
-    "false",
-  ],
-  [
-    "payment-reviewed-basis",
-    "payments.ts",
-    "detail.basis !== input.basis",
-    "false",
-  ],
-  ["payment-delivery", "payments.ts", 'detail.status !== "delivered"', "false"],
-  [
-    "receipt-change-warning",
-    "finance-read.ts",
-    "p.basis !== order.basis",
-    "false",
-  ],
-  ["finished-route", "settlements.ts", "!route.completed_at", "false"],
-  [
-    "pending-reservation",
-    "settlements.ts",
-    "selected.some((p) => pending.has(p.id))",
-    "false",
-  ],
-  [
-    "complete-payments",
-    "settlements.ts",
-    "if (missing.rowCount)",
-    "if (false)",
-  ],
-  ["accepted-exclusion", "settlements.ts", "!accepted.has(p.id)", "true"],
-  [
-    "reviewed-reception",
-    "settlements.ts",
-    "financialHash(row.snapshot) !== raw.basis",
-    "false",
-  ],
-  [
-    "decision-replay-payload",
-    "settlements.ts",
-    "row.decision_hash !== hash",
-    "false",
-  ],
-  [
-    "reject-releases-reservation",
-    "settlements.ts",
-    'if (raw.decision === "rejected")',
-    "if (false)",
-  ],
-  [
-    "receipt-immutable",
-    "payment-schema.ts",
-    "BEFORE UPDATE OR DELETE ON route_order_payments",
-    "BEFORE DELETE ON route_order_payments",
-  ],
-  [
-    "claim-preserves-accepted",
-    "settlement-schema.ts",
-    "id=OLD.request_id AND status='rejected'",
-    "id=OLD.request_id",
-  ],
-  ["atomic-attention", "payments.ts", "service && attention", "false"],
-  ["post-delivery-basis", "payments.ts", "if (delivery) {", "if (false) {"],
-  [
-    "incident-acknowledgement",
-    "driver-order-command.ts",
-    "!acknowledged",
-    "false",
-  ],
-  [
-    "completion-collection",
-    "driver-route-completion.ts",
-    "if (unpaid.rowCount)",
-    "if (false)",
-  ],
-  [
-    "split-component-quantum",
-    "order-collection-schema.ts",
-    "OR mod(amount,(NEW.currency->>'rounding')::numeric)<>0",
+    "unstarted-lane",
+    "draft-source-sync.ts",
+    "AND pub.started_at IS NOT NULL",
     "",
   ],
   [
-    "full-capture-database",
-    "order-collection-schema.ts",
-    "(change=0 AND (method='credit' OR balance=0))",
-    "true",
+    "identity-selection",
+    "draft-source-sync.ts",
+    "AND (s.source,s.picking_id,s.order_id)=($2,$3,$4)",
+    "AND s.source=$2",
+  ],
+  [
+    "repeated-source",
+    "draft-source-sync.ts",
+    "if (hash === financialHash(row.snapshot))",
+    "if (false)",
+  ],
+  [
+    "plan-version",
+    "draft-source-sync.ts",
+    "SET version=version+1,updated_at=now()",
+    "SET version=version,updated_at=now()",
+  ],
+  ["change-count", "draft-source-sync.ts", "updated++;", "updated += 0;"],
+  [
+    "publication-start-guard",
+    "route-start.ts",
+    "if (\n      routePublicationSourceChanged(",
+    "if (\n      false && routePublicationSourceChanged(",
   ],
 ];
 const results = [];
@@ -118,9 +62,8 @@ try {
   for (const path of [
     "src/core",
     "tests/helpers",
-    "tests/payments-integration.test.ts",
-    "tests/settlements-integration.test.ts",
-    "tests/order-collection-integration.test.ts",
+    "tests/draft-source-sync.test.ts",
+    "tests/draft-source-policy.test.ts",
     "package.json",
   ])
     await cp(join(root, path), join(sandbox, path), { recursive: true });
@@ -131,7 +74,7 @@ try {
   );
   await writeFile(
     join(sandbox, "vitest.config.mjs"),
-    'export default {test:{include:["tests/payments-integration.test.ts","tests/settlements-integration.test.ts","tests/order-collection-integration.test.ts"],fileParallelism:false,testTimeout:120000,hookTimeout:120000}};',
+    'export default {test:{include:["tests/draft-source-sync.test.ts","tests/draft-source-policy.test.ts"],fileParallelism:false,testTimeout:120000,hookTimeout:120000}};',
   );
   const originals = new Map(
     await Promise.all(
@@ -170,7 +113,7 @@ try {
   }
   const baseline = await run("baseline");
   console.log(JSON.stringify(baseline));
-  if (baseline.code !== 0 || baseline.passed !== 15)
+  if (baseline.code !== 0 || baseline.passed !== 10)
     throw new Error("BASELINE_FAILED");
   for (const [name, file, from, to] of cases) {
     const original = originals.get(file);
@@ -190,14 +133,14 @@ try {
   }
   await mkdir(join(root, "reports/mutation"), { recursive: true });
   await writeFile(
-    join(root, "reports/mutation/settlements-integration.json"),
+    join(root, "reports/mutation/draft-source-integration.json"),
     JSON.stringify({ baseline, results }, null, 2),
   );
   if (results.some((r) => !r.killed)) process.exitCode = 1;
 } finally {
   const within = relative(scratch, sandbox);
   if (
-    !within.startsWith("settlement-mutants-") ||
+    !within.startsWith("draft-source-mutants-") ||
     within.includes("..") ||
     resolve(sandbox) === resolve(scratch)
   )

@@ -2,7 +2,8 @@ Feature: Regreso a la bodega sin alterar entregas ni liquidación
   Scenario: Último pedido entregado con confirmación del servidor
     Given una publicación iniciada autorizada con punto de salida configurado
     And todos sus pedidos anteriores están entregados sin reintentos
-    When el servidor confirma la entrega del último pedido y se relee la ejecución completa
+    And las entregas con fuente financiera tienen un cobro confirmado
+    When el servidor confirma cobro y entrega del último pedido y se relee la ejecución completa
     Then el aviso ofrece "Ir a bodega" con la dirección del punto de salida
     And sólo al pulsarlo comienza la guía Google al punto de salida real
     And el tracking transmite stopId nulo sin registrar una llegada o entrega adicional
@@ -38,6 +39,7 @@ Feature: Regreso a la bodega sin alterar entregas ni liquidación
     Examples:
       | falla                       |
       | pedidos pendientes          |
+      | entrega con cobro pendiente |
       | GPS lejano                  |
       | GPS antiguo                 |
       | GPS impreciso               |
@@ -47,7 +49,7 @@ Feature: Regreso a la bodega sin alterar entregas ni liquidación
       | sesión de otro chofer       |
 
   Scenario: Confirmación en bodega y recuperación sin duplicación
-    Given todos los pedidos están entregados o reprogramados y GPS válido en bodega
+    Given todos los pedidos están entregados con cobro confirmado o reprogramados y GPS válido en bodega
     When pulsa Terminar ruta
     Then el modal pregunta ¿Estás seguro de que terminaste tu ruta? con Aceptar y Cancelar
     And Cancelar no envía ni termina nada

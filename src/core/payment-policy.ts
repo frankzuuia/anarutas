@@ -7,7 +7,7 @@ import {
 import type { DriverFinancialView } from "./driver-financial-contract";
 import type { FinancialCurrency } from "./financial-contract";
 
-export type PaymentMethod = "cash" | "transfer" | "credit";
+export type PaymentMethod = "cash" | "transfer" | "credit" | "mixed";
 export type PaymentAmounts = {
   expected: string;
   received: string;
@@ -15,6 +15,8 @@ export type PaymentAmounts = {
   change: string;
   balance: string;
   deferred: string;
+  cashReceived?: string;
+  transferReceived?: string;
 };
 export type PaymentSummaryItem = PaymentAmounts & {
   method: PaymentMethod;
@@ -23,7 +25,7 @@ export type PaymentSummaryItem = PaymentAmounts & {
 export function paymentInput(raw: Record<string, unknown>) {
   if (
     typeof raw.method !== "string" ||
-    !["cash", "transfer", "credit"].includes(raw.method)
+    !["cash", "transfer", "credit", "mixed"].includes(raw.method)
   )
     throw new AppError("PAYMENT_METHOD_REQUIRED");
   const amount = (value: unknown) => {
@@ -40,12 +42,23 @@ export function paymentInput(raw: Record<string, unknown>) {
     throw new AppError("PAYMENT_NOTE_INVALID");
   if (typeof raw.basis !== "string" || raw.basis.length !== 64)
     throw new AppError("PAYMENT_BASIS_REQUIRED");
+  if (raw.captureVersion !== undefined && raw.captureVersion !== 2)
+    throw new AppError("PAYMENT_CAPTURE_VERSION_INVALID");
+  if (raw.method === "mixed" && raw.captureVersion !== 2)
+    throw new AppError("PAYMENT_CAPTURE_VERSION_INVALID");
   return {
     method: raw.method as PaymentMethod,
     tendered: amount(raw.tendered),
     change: amount(raw.change),
     note: raw.note.trim(),
     basis: raw.basis,
+    ...(raw.captureVersion === 2 ? { captureVersion: 2 as const } : {}),
+    ...(raw.method === "mixed"
+      ? {
+          cashReceived: amount(raw.cashReceived),
+          transferReceived: amount(raw.transferReceived),
+        }
+      : {}),
   };
 }
 export function calculatePayment(
@@ -80,6 +93,32 @@ export function calculatePayment(
     throw new AppError("PAYMENT_CHANGE_INVALID");
   if (!change.isZero() && !received.eq(expected))
     throw new AppError("PAYMENT_CHANGE_INVALID");
+  const cash =
+    input.method === "mixed"
+      ? new D(input.cashReceived!)
+      : input.method === "cash"
+        ? received
+        : new D(0);
+  const transfer =
+    input.method === "mixed"
+      ? new D(input.transferReceived!)
+      : input.method === "transfer"
+        ? received
+        : new D(0);
+  if (
+    [cash, transfer].some((value) => value.lt(0) || !value.mod(step).isZero())
+  )
+    throw new AppError("PAYMENT_AMOUNT_INVALID");
+  if (
+    input.method === "mixed" &&
+    (cash.lte(0) || transfer.lte(0) || !cash.plus(transfer).eq(received))
+  )
+    throw new AppError("PAYMENT_SPLIT_INVALID");
+  if (
+    input.captureVersion === 2 &&
+    (!change.isZero() || (input.method !== "credit" && !received.eq(expected)))
+  )
+    throw new AppError("PAYMENT_FULL_AMOUNT_REQUIRED");
   return {
     expected: expected.toFixed(),
     tendered: tendered.toFixed(),
@@ -87,6 +126,9 @@ export function calculatePayment(
     received: received.toFixed(),
     balance: expected.minus(received).toFixed(),
     deferred: view.totals.deferred,
+    ...(input.captureVersion === 2
+      ? { cashReceived: cash.toFixed(), transferReceived: transfer.toFixed() }
+      : {}),
   };
 }
 export function paymentTotals(items: PaymentSummaryItem[]) {
@@ -103,10 +145,22 @@ export function paymentTotals(items: PaymentSummaryItem[]) {
     return {
       currency,
       cash: sumFinancial(
-        rows.filter((r) => r.method === "cash").map((r) => r.received),
+        rows.map((r) =>
+          r.method === "cash"
+            ? r.received
+            : r.method === "mixed"
+              ? r.cashReceived!
+              : "0",
+        ),
       ).toFixed(),
       transfer: sumFinancial(
-        rows.filter((r) => r.method === "transfer").map((r) => r.received),
+        rows.map((r) =>
+          r.method === "transfer"
+            ? r.received
+            : r.method === "mixed"
+              ? r.transferReceived!
+              : "0",
+        ),
       ).toFixed(),
       credit: sumFinancial(
         rows.filter((r) => r.method === "credit").map((r) => r.expected),

@@ -106,7 +106,7 @@ it("keeps existing accounts operational and enforces each role in domain and ses
     readSettlementDetail(f.db.pool, f.actor, f.executionId),
   ).rejects.toMatchObject({ code: "ROLE_DENIED" });
 });
-it("requires operational finish and every delivered payment before route-wide settlement", async () => {
+it("receives individual orders during an active route while guarding route-wide settlement and unpaid completion", async () => {
   const ownFingerprint = await driverPublicationFingerprint(
     f.db.pool,
     f.members[0].driverId,
@@ -115,9 +115,9 @@ it("requires operational finish and every delivered payment before route-wide se
     f.db.pool,
     f.members[1].driverId,
   );
-  await expect(
-    readSettlementDetail(f.db.pool, receiver, f.executionId),
-  ).rejects.toMatchObject({ code: "SETTLEMENT_ROUTE_NOT_FINISHED" });
+  expect(
+    (await readSettlementDetail(f.db.pool, receiver, f.executionId)).orders,
+  ).toEqual([]);
   const invalidDecision = {
     commandId: randomUUID(),
     version: 1,
@@ -166,7 +166,12 @@ it("requires operational finish and every delivered payment before route-wide se
     },
     f.timezone,
   );
-  await f.finish();
+  await expect(f.finish()).rejects.toMatchObject({
+    code: "ROUTE_PAYMENTS_MISSING",
+  });
+  const active = await readSettlementDetail(f.db.pool, receiver, f.executionId);
+  expect(active.route.completedAt).toBeNull();
+  expect(active.orders.map((o) => o.shipmentId)).toEqual([first.shipmentId]);
   expect(
     await driverPublicationFingerprint(f.db.pool, f.members[0].driverId),
   ).not.toBe(ownFingerprint);
@@ -174,7 +179,7 @@ it("requires operational finish and every delivered payment before route-wide se
     await driverPublicationFingerprint(f.db.pool, f.members[1].driverId),
   ).toBe(otherFingerprint);
   await expect(request(null)).rejects.toMatchObject({
-    code: "SETTLEMENT_PAYMENTS_MISSING",
+    code: "SETTLEMENT_ROUTE_NOT_FINISHED",
   });
   const commandId = randomUUID();
   const results = await Promise.all([
@@ -190,7 +195,7 @@ it("requires operational finish and every delivered payment before route-wide se
     code: "COMMAND_REUSED",
   });
   await expect(request(null)).rejects.toMatchObject({
-    code: "SETTLEMENT_REQUEST_PENDING",
+    code: "SETTLEMENT_ROUTE_NOT_FINISHED",
   });
   await expect(
     decision(results[0].id, "accepted", f.actor),
@@ -251,6 +256,7 @@ it("excludes accepted cash, releases rejected reservations and records transfer/
       f.timezone,
     );
   }
+  await f.finish();
   const req = await request(null);
   const pending = (await mobile()).requests.find((r) => r.id === req.id)!;
   expect(pending.paymentIds).toHaveLength(2);
@@ -383,3 +389,131 @@ it("filters receipts by the actual local acceptance day and preserves archived-r
     code: "MOBILE_UNAUTHENTICATED",
   });
 });
+
+it("upgrades historical schema-38 cash/transfer/credit receipts without changing accepted evidence or totals", async () => {
+  const existing = (
+    await f.db.pool.query(
+      "SELECT to_jsonb(p)-ARRAY['cash_received','transfer_received','capture_version'] AS receipt FROM route_order_payments p ORDER BY id",
+    )
+  ).rows;
+  const accepted = await readSettlementDetail(
+    f.db.pool,
+    receiver,
+    f.executionId,
+  );
+  await f.db.pool.query(`
+    DROP TRIGGER verify_payment_components ON route_order_payments;
+    ALTER TABLE route_order_payments DROP COLUMN cash_received, DROP COLUMN transfer_received, DROP COLUMN capture_version;
+    ALTER TABLE route_order_payments DROP CONSTRAINT route_order_payments_method_check;
+    ALTER TABLE route_order_payments ADD CONSTRAINT route_order_payments_method_check CHECK(method IN ('cash','transfer','credit'));
+    UPDATE rutas_installation SET schema_version=38 WHERE singleton=true;
+  `);
+  await migrate(f.db.pool, f.db.config.instanceId);
+  await migrate(f.db.pool, f.db.config.instanceId);
+  const migrated = (
+    await f.db.pool.query(
+      "SELECT to_jsonb(p) AS receipt FROM route_order_payments p ORDER BY id",
+    )
+  ).rows;
+  expect(
+    migrated.map(({ receipt }) => {
+      const historical = { ...receipt };
+      for (const field of [
+        "cash_received",
+        "transfer_received",
+        "capture_version",
+      ])
+        delete historical[field];
+      return { receipt: historical };
+    }),
+  ).toEqual(existing);
+  for (const { receipt } of migrated) {
+    expect(receipt.capture_version).toBe(1);
+    expect(receipt.cash_received).toBe(
+      receipt.method === "cash" ? receipt.received : 0,
+    );
+    expect(receipt.transfer_received).toBe(
+      receipt.method === "transfer" ? receipt.received : 0,
+    );
+  }
+  const preserved = await readSettlementDetail(
+    f.db.pool,
+    receiver,
+    f.executionId,
+  );
+  expect(preserved.acceptedTotals).toEqual(accepted.acceptedTotals);
+  expect(preserved.requests).toEqual(accepted.requests);
+  expect(preserved.acceptedTotals[0]).toMatchObject({
+    cash: "15",
+    transfer: "20",
+    credit: "20",
+  });
+  await expect(
+    f.db.pool.query(
+      "UPDATE route_order_payments SET cash_received=0 WHERE method='cash'",
+    ),
+  ).rejects.toBeTruthy();
+});
+
+it("still refuses route-wide reception of missing receipts from routes completed by pre-collection clients", async () => {
+  const legacy = await paymentExecutionFixture();
+  try {
+    // Reconstruct a real schema-38 completed route in this isolated PG instance.
+    await legacy.db.pool.query(
+      "ALTER TABLE route_driver_execution_completions DISABLE TRIGGER require_route_collections",
+    );
+    try {
+      await legacy.db.pool.query(
+        `INSERT INTO route_driver_execution_completions(execution_id,driver_id,device_id,command_id,completed_at,depot_version,details)
+       VALUES($1,$2,$3,$4,$5,1,$6)`,
+        [
+          legacy.executionId,
+          legacy.members[0].driverId,
+          legacy.members[0].deviceId,
+          randomUUID(),
+          legacy.now,
+          JSON.stringify({
+            orders: (await legacy.state()).stops.flatMap((s) => s.orderStates),
+            source: "schema-38 QA reconstruction",
+          }),
+        ],
+      );
+    } finally {
+      await legacy.db.pool.query(
+        "ALTER TABLE route_driver_execution_completions ENABLE TRIGGER require_route_collections",
+      );
+    }
+    const order = (
+      await readMobileFinanceDetail(
+        legacy.db.pool,
+        legacy.members[0].authorization,
+        legacy.executionId,
+      )
+    ).orders[0];
+    await confirmOrderPayment(
+      legacy.db.pool,
+      legacy.members[0].authorization,
+      legacy.executionId,
+      {
+        commandId: randomUUID(),
+        shipmentId: order.shipmentId,
+        basis: order.basis,
+        method: "cash",
+        tendered: "20",
+        change: "0",
+        note: "Recibo legado",
+      },
+      legacy.timezone,
+    );
+    await expect(
+      requestSettlement(
+        legacy.db.pool,
+        legacy.members[0].authorization,
+        legacy.executionId,
+        { commandId: randomUUID(), shipmentId: null },
+      ),
+    ).rejects.toMatchObject({ code: "SETTLEMENT_PAYMENTS_MISSING" });
+  } finally {
+    await legacy.close();
+  }
+}, 120000);

@@ -291,6 +291,27 @@ it("serializes payment confirmation and recovers the identical receipt without d
       message: "PAYMENT_AMOUNT_INVALID",
     });
   }
+  for (const amount of ["NaN", "Infinity", "-Infinity", "-1", "0.001"])
+    await expect(
+      f.db.pool.query(
+        `INSERT INTO route_order_payments SELECT (jsonb_populate_record(NULL::route_order_payments,
+      to_jsonb(p)||jsonb_build_object('id',$1::text,'command_id',$2::text,'cash_received',$3::text))).* FROM route_order_payments p LIMIT 1`,
+        [randomUUID(), randomUUID(), amount],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      message: "PAYMENT_COMPONENT_INVALID",
+    });
+  await expect(
+    f.db.pool.query(
+      `INSERT INTO route_order_payments SELECT (jsonb_populate_record(NULL::route_order_payments,
+      to_jsonb(p)||jsonb_build_object('id',$1::text,'command_id',$2::text,'capture_version',2))).* FROM route_order_payments p LIMIT 1`,
+      [randomUUID(), randomUUID()],
+    ),
+  ).rejects.toMatchObject({
+    code: "23514",
+    constraint: "payment_full_capture",
+  });
   await migrate(f.db.pool, f.db.config.instanceId);
   expect(
     (await detail()).orders.find((o) => o.shipmentId === shipmentId)!.payment!
@@ -308,16 +329,15 @@ it("retains original receipts and restricts real evidence after financial source
     password: randomUUID(),
     role: "settlement",
   });
-  await expect(
-    readFinanceEvidence(
-      f.db.pool,
-      { actor: receiver.id },
-      executionId,
-      incident.id,
-      incident.evidence_id,
-      f.photoRoot,
-    ),
-  ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  const receiverPhoto = await readFinanceEvidence(
+    f.db.pool,
+    { actor: receiver.id },
+    executionId,
+    incident.id,
+    incident.evidence_id,
+    f.photoRoot,
+  );
+  expect((await sharp(receiverPhoto).metadata()).format).toBe("webp");
   expect(incident.replacement_payment).toBe("pay_full");
   const photo = await readFinanceEvidence(
     f.db.pool,
