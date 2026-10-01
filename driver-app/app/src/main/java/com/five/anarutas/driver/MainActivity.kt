@@ -94,6 +94,8 @@ internal val DriverDestination.icon: DriverIcon get() = when (this) {
 @Composable
 private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
     val context = LocalContext.current
+    val financeCredentials = remember { DeviceCredentials(context.applicationContext) }
+    val financeModel: DriverFinanceModel = viewModel(key = "driver-finance", factory = DriverFinanceModel.factory(financeCredentials))
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val view = LocalView.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -229,7 +231,9 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
                         Spacer(Modifier.width(6.dp))
                         Wordmark()
                         Spacer(Modifier.weight(1f))
-                        if (state.destination != DriverDestination.FINANCE) AppIconButton(DriverIcon.REFRESH, "Actualizar datos", enabled = !state.busy) { model.syncDashboard(manual = true) }
+                        if (state.destination == DriverDestination.FINANCE) FinanceRefreshButton(
+                            loading = financeModel.state.refreshing || financeModel.state.busy, enabled = !financeModel.state.busy, onRefresh = financeModel::refresh)
+                        else AppIconButton(DriverIcon.REFRESH, "Actualizar datos", enabled = !state.busy) { model.syncDashboard(manual = true) }
                     }
                 }
             },
@@ -248,7 +252,7 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
                         DriverDestination.ORDERS -> ordersContent(state, model, orderQuery) { orderQuery = it }
                         DriverDestination.UNIT -> item { UnitScreen(state, model) }
                         DriverDestination.HISTORY -> historyContent(state, model)
-                        DriverDestination.FINANCE -> item { FinanceScreen() }
+                        DriverDestination.FINANCE -> item { FinanceScreen(financeModel) }
                         DriverDestination.PROFILE -> item { ProfileScreen(state, model) }
                         DriverDestination.SETTINGS -> item { PreferencesScreen(keepAwake) { keepAwake = it; preferences.keepRouteAwake = it } }
                     }

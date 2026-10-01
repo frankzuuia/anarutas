@@ -200,3 +200,85 @@ Reproducción: ejecutar las dos unidades `driver-financial-policy.test.ts` y
 `npx playwright test tests/e2e/settlements.spec.ts`. Captura verificada actualizada:
 `.local/qa-settlements/return-discount-modal.png`. Entrega develop, deploy del
 propietario; no requiere cambiar configuración ni modificar el pedido existente.
+
+## LC-T07..08 — orden de incorporación y tarjetas compactas
+
+Petición explícita de 2026-10-01: flecha roja de retorno, cobros nuevos al final,
+actualizar sólo en la cabecera Android, retorno con borde lima y tarjetas menores.
+
+Autopsia: `financeExecutionDetail` conserva el orden de las paradas; el panel
+lo estaba reutilizando. La proyección de liquidación ahora ordena por fecha
+del recibo confirmado ascendente y por id en empate. Android ordena sólo los
+pedidos entregados/cobrados de esa pantalla. El contrato móvil operativo sigue
+incluyendo pedidos antes del cobro en orden de paradas. No cambiar importes,
+snapshot, permisos, comandos, locks, bases históricas, esquema ni origen Odoo.
+
+Interfaz: flecha web roja de20px, tarjeta con14px de margen interno, separación
+de10px y acciones de44px. App: tarjeta específica con14dp/8dp de separación,
+acciones juntas de48dp, sin altura fija ni truncado de nombres/importes. Botón
+de retorno negro con borde/texto lima. El mismo DriverFinanceModel controla
+toolbar y pantalla; el icono muestra progreso en lectura/recuperación y no usa
+el refresco del dashboard. `finally` restablece la lectura al fallar/cancelar;
+se conservan guardas de visibilidad, identidad de dispositivo y exclusión mutua.
+Actualizar sigue siendo una lectura disponible tras un fallo de envío pendiente.
+
+Evidencia:
+
+- 9 unidades de formato/incidencias/orden, cobertura100% de líneas, ramas,
+ funciones y sentencias; comparador con complejidad estimada2.
+- 55 pruebas financieras/política/roles sobre PostgreSQL real,0 fallos;
+ cobertura99.61% líneas,98.03% ramas,100% funciones. Contratos de permisos,
+ concurrencia, reintento/idempotencia, congelación de recibos y lectura intactos.
+- Stryker: nuevo orden5/5 mutantes detectados; agregado130/133=97.74%, sin
+ timeout ni ruta sin cobertura. Los3 equivalentes previos de Intl siguen
+ documentados, no son nuevos supervivientes. Descuentos79/79.
+- Android:134 pruebas JVM,0 fallos; orden con100% de líneas/ramas y complejidad2.
+ Mutación en copia temporal aislada3/3: invertir orden, ignorar fecha y perder
+ desempate. El script conserva alcance financiero como opción predeterminada.
+- E2E real de recepción/roles1/1 en1.1min, conserva devolución y
+ cantidad final, solicitud/aceptación, cancelación, reintentos y separación de roles.
+ Volumen1/1 en1.2min:49 cobros en orden inverso a ruta, incorporación50 por evento
+ PostgreSQL/SSE sin Actualizar en374ms, posiciones previas exactas, reentrada,
+ página12 y última tarjeta nueva al final. Tarjeta285px, botones>=44px,
+ flecha roja rgb(255,121,121), modal390px sin desbordamiento y foco recuperado.
+- Next/TypeScript y ESLint verdes (0 errores,1 aviso previo ajeno);14 artefactos
+ cliente sin credenciales locales. No cambios de dependencias ni superficie de auth.
+
+Incidencias de QA corregidas: la nueva prueba Compose requería indicar rango
+indeterminado en `hasProgressBarRangeInfo`; no fallo de UI productiva. La primera
+prueba de reentrada no reponía la fecha QA después de reload; corrigió el recorrido
+de prueba para seleccionar de nuevo la ruta, sin persistencia artificial de filtros.
+
+Reproducción: `npx vitest run --config vitest.financial-display.config.ts --coverage`,
+`npx vitest run --config vitest.settlements.config.ts --coverage`,
+`npx stryker run stryker.financial-display.config.mjs`, `npm run build`,
+`npm run lint`, `node --import tsx scripts/quality-metrics.ts` y
+`npx playwright test tests/e2e/settlements.spec.ts tests/e2e/settlement-volume.spec.ts --workers=1`.
+Android: `gradlew.bat testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest createDebugUnitTestCoverageReport`;
+`scripts/verify-financial-mutations.ps1 -Scope receipt` con ANDROID_HOME real.
+
+Logs en `.local/qa-settlements/compact-*`; captura revisada
+`compact-receipts-desktop.png` y `volume-modal-mobile.png`. Rendimiento374ms es
+evidencia local de1 evento, no SLO ni prueba de carga de producción. Ordenación
+en memoria O(n log n), sin consulta adicional. No repetir la regresión general
+de902 casos para un cambio de presentación y orden de lectura; se repite el
+dominio financiero completo afectado y los recorridos HTTP críticos.
+
+QA física Android sigue a cargo del propietario según autorización/ excepción
+vigente: spinner real con conexión lenta/error, retorno, tap en ambas acciones,
+nombre largo/tipografía150%, recibo nuevo después del anterior y sólo entregados.
+Las3 nuevas pruebas Compose se compilan en APK instrumentada; compilación no
+equivale a ejecución en dispositivo. GPS/Navigation y proveedor Odoo intactos.
+
+Verificación final Android: `compact-android-verified.log`, BUILD SUCCESSFUL
+en2m35s;134JVM/0 errores/0 fallos, lint0 errores/35 avisos previos. APK y APK
+instrumentada compiladas. Versión0.8.13/code35, aplicación
+`com.five.anarutas.driver`, targetSdk36. Artefacto final69,908,881 bytes:
+`.local/releases/ana-rutas-driver-0.8.13-liquidacion-compacta.apk`.
+SHA256 `9AD7EDE7316D91A7FEA8108708DE474D2432FDBAAE5E420FB869DD75341BBED2`;
+coincide exactamente con el resultado de assembleDebug. Firma verificada con
+apksigner, certificado SHA256
+`f92d2160eccdadb8b72ac5573ef07dc09eb8fdd57c10621d33afaeb7dd4c2e35`,
+idéntico al de0.8.12: actualizar sobre la anterior conserva datos.
+Entrega develop bajo autorización permanente y excepción física vigente;
+deploy y prueba física del propietario. Sin migración ni configuración nueva.

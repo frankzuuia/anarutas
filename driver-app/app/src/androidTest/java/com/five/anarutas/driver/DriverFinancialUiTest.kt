@@ -12,11 +12,59 @@ import org.junit.runner.RunWith
 import java.time.Instant
 import org.json.JSONObject
 import org.junit.Assert.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 
 /** Real Compose rendering and semantics; these domain values do not substitute a provider. */
 @RunWith(AndroidJUnit4::class)
 class DriverFinancialUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @Test fun refreshControlShowsProgressAndPreventsDuplicateTaps() {
+        var loading by mutableStateOf(false)
+        var refreshes = 0
+        compose.setContent { DriverTheme { FinanceRefreshButton(loading, true) { refreshes++; loading = true } } }
+        compose.onNodeWithContentDescription("Actualizar liquidación").assertIsEnabled().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp).performClick()
+        compose.onNodeWithContentDescription("Actualizar liquidación").assertIsNotEnabled()
+            .assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Actualizando liquidación"))
+        compose.onNode(hasProgressBarRangeInfo(androidx.compose.ui.semantics.ProgressBarRangeInfo.Indeterminate)).assertIsDisplayed()
+        compose.runOnIdle { assertEquals(1, refreshes); loading = false }
+        compose.onNodeWithContentDescription("Actualizar liquidación").assertIsEnabled()
+    }
+    @Test fun compactCardsKeepActionsSideBySideAndReturnIsAnOutlinedButton() {
+        var opened = 0
+        var liquidated = 0
+        var returned = 0
+        compose.setContent { DriverTheme { Column(Modifier.width(320.dp)) {
+            FinanceBackButton(true) { returned++ }
+            CompactFinanceOrderCard("ABARROTES FRANCO", "S00096", "Sin liquidar", "cash", "$321.19 MXN", null, true, { opened++ }, { liquidated++ })
+        } } }
+        val open = compose.onNodeWithText("Ver pedido y cobro").assertIsDisplayed()
+        val liquidate = compose.onNodeWithText("Liquidar").assertIsDisplayed()
+        val openBounds = open.fetchSemanticsNode().boundsInRoot
+        val liquidateBounds = liquidate.fetchSemanticsNode().boundsInRoot
+        assertEquals(openBounds.center.y, liquidateBounds.center.y, 2f)
+        assertTrue(openBounds.right <= liquidateBounds.left)
+        open.performClick(); liquidate.performClick()
+        compose.onNodeWithText("Volver a mis rutas").assertHasClickAction().performClick()
+        compose.runOnIdle { assertEquals(1, opened); assertEquals(1, liquidated); assertEquals(1, returned) }
+    }
+    @Test fun compactCardsGrowForLargeFontsInsteadOfTruncatingAmountsOrNames() {
+        compose.setContent { DriverTheme { CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.5f)) {
+            Column(Modifier.width(320.dp)) {
+                CompactFinanceOrderCard("ABARROTES FRANCO SUCURSAL PRINCIPAL", "S00096", "Sin liquidar", "mixed", "$1,318.06 MXN",
+                    "Efectivo: $321.19 MXN · Transferencia: $996.87 MXN", true, {}, {})
+            }
+        } } }
+        compose.onNodeWithText("ABARROTES FRANCO SUCURSAL PRINCIPAL").assertIsDisplayed()
+        compose.onNodeWithText("$1,318.06 MXN").assertIsDisplayed()
+        compose.onNodeWithText("Ver pedido y cobro").assertIsDisplayed()
+        compose.onNodeWithText("Liquidar").assertIsDisplayed()
+    }
     @Test fun liquidationReadsTheActualAndroidJsonContract() {
         val order = JSONObject().put("status", "open").put("payment", JSONObject.NULL)
         assertFalse(liquidationOrderVisible(order))

@@ -1757,3 +1757,10 @@ INTEGRITY TOTAL y MATCH PERFECT con CP-T01..05; implementación por bloques.
 Plan aprobado, autopsia, datos, proyección de descuentos, accesibilidad y
 escenarios LC01..12 en PROPUESTA-LIQUIDACION-CLARA-2026-10-01.md. No filtrar
 el contrato operativo usado antes del cobro ni alterar bases/hashes históricos.
+
+LC-T07..08: petición explícita del propietario de 2026-10-01. Liquidación ordena
+los cobros por recordedAt ascendente, con id como desempate estable; incorpora
+los nuevos después de los existentes sin cambiar el orden operativo de ruta.
+Web: flecha roja de retorno y tarjetas compactas. Android: actualizar en toolbar
+del mismo modelo financiero, indicador de lectura, retorno negro/borde lima y
+acciones juntas en tarjetas compactas, conservando 48dp y expansión por texto.

@@ -4,6 +4,7 @@ const config = {
   mutate: [
     "src/core/financial-display.ts",
     "src/core/incident-financial-display.ts",
+    "src/core/collection-receipt-order.ts",
   ],
   testRunner: "vitest",
   vitest: { configFile: "vitest.financial-display.config.ts" },

@@ -1,4 +1,4 @@
-param([string[]]$Only = @())
+param([string[]]$Only = @(), [ValidateSet('financial', 'receipt')][string]$Scope = 'financial')
 $ErrorActionPreference = 'Stop'
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $taskTempRoot = [IO.Path]::GetTempPath()
@@ -11,7 +11,8 @@ New-Item -ItemType Directory -Path (Join-Path $workRoot 'app') | Out-Null
 foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
     Copy-Item -LiteralPath (Join-Path $sourceRoot ('app/' + $entry)) -Destination (Join-Path $workRoot 'app') -Recurse
 }
-$policy = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver/DriverFinancial.kt'
+$policyFile = if ($Scope -eq 'receipt') { 'DriverReceiptOrder.kt' } else { 'DriverFinancial.kt' }
+$policy = Join-Path $workRoot ('app/src/main/java/com/five/anarutas/driver/' + $policyFile)
 $original = [IO.File]::ReadAllText($policy)
 $cases = @(
     @{ name='ignore_source_error'; from='view.error != null ||'; to='false ||' },
@@ -26,8 +27,16 @@ $cases = @(
     @{ name='lose_exact_cents'; from='}.format(amount.abs())'; to='}.format(amount.abs().toDouble())' },
     @{ name='remove_currency_symbol'; from='Currency.getInstance(currency.name).getSymbol(Locale.forLanguageTag("es-MX"))'; to='""' }
 )
+if ($Scope -eq 'receipt') {
+    $cases = @(
+        @{ name='prepend_new_collection'; from='Instant.parse(leftAt).compareTo(Instant.parse(rightAt))'; to='Instant.parse(rightAt).compareTo(Instant.parse(leftAt))' },
+        @{ name='ignore_collection_time'; from='chronology != 0'; to='false' },
+        @{ name='unstable_simultaneous_collection'; from='else leftId.compareTo(rightId)'; to='else 0' }
+    )
+}
 if ($Only.Count) { $cases = @($cases | Where-Object { $Only -contains $_.name }); if ($cases.Count -ne $Only.Count) { throw 'Unknown mutation filter' } }
-$arguments = @('testDebugUnitTest', '--tests', 'com.five.anarutas.driver.DriverFinancialTest', '--console=plain')
+$testClass = if ($Scope -eq 'receipt') { 'DriverReceiptOrderTest' } else { 'DriverFinancialTest' }
+$arguments = @('testDebugUnitTest', '--tests', ('com.five.anarutas.driver.' + $testClass), '--console=plain')
 $results = @()
 Push-Location $workRoot
 try {
@@ -37,7 +46,7 @@ try {
         if ($original.Split($case.from).Count -ne 2) { throw ('Non-unique anchor: ' + $case.name) }
         [IO.File]::WriteAllText($policy, $original.Replace($case.from, $case.to), [Text.UTF8Encoding]::new($false))
         & .\gradlew.bat @arguments *> (Join-Path $workRoot ($case.name + '.log'))
-        [xml]$xml = Get-Content -LiteralPath (Join-Path $workRoot 'app/build/test-results/testDebugUnitTest/TEST-com.five.anarutas.driver.DriverFinancialTest.xml') -Raw
+        [xml]$xml = Get-Content -LiteralPath (Join-Path $workRoot ('app/build/test-results/testDebugUnitTest/TEST-com.five.anarutas.driver.' + $testClass + '.xml')) -Raw
         $killed = $LASTEXITCODE -ne 0 -and [int]$xml.testsuite.failures -gt 0
         $result = [PSCustomObject]@{ name=$case.name; killed=$killed; failures=[int]$xml.testsuite.failures }
         $results += $result

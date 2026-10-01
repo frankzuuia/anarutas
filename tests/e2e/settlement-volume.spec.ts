@@ -5,10 +5,13 @@ import { mkdir } from "node:fs/promises";
 import { paymentExecutionFixture } from "../helpers/payment-execution";
 import { freePort } from "../helpers/postgres";
 import { createUser } from "../../src/core/auth";
-import { readMobileFinanceDetail } from "../../src/core/finance-read";
+import {
+  readMobileFinanceDetail,
+  readSettlementDetail,
+} from "../../src/core/finance-read";
 import { confirmOrderPayment } from "../../src/core/payments";
 
-test("fifty real collected orders stay paginated and open accessible independent modals", async ({
+test("live collections append without moving previous cards and fifty receipts keep compact accessible modals", async ({
   page,
   request,
 }) => {
@@ -17,7 +20,7 @@ test("fifty real collected orders stay paginated and open accessible independent
   let server: ChildProcess | undefined;
   try {
     const password = randomUUID();
-    await createUser(f.db.pool, f.actor, {
+    const receiver = await createUser(f.db.pool, f.actor, {
       name: "Recepción de volumen",
       login: "volume-receiver",
       password,
@@ -29,7 +32,9 @@ test("fifty real collected orders stay paginated and open accessible independent
       f.executionId,
     );
     expect(detail.orders).toHaveLength(50);
-    for (const order of detail.orders) {
+    // Collection chronology deliberately opposes the route's operational order.
+    const receipts = [...detail.orders].reverse();
+    const collect = async (order: (typeof detail.orders)[number]) => {
       await confirmOrderPayment(
         f.db.pool,
         f.members[0].authorization,
@@ -46,7 +51,8 @@ test("fifty real collected orders stay paginated and open accessible independent
         },
         f.timezone,
       );
-    }
+    };
+    for (const order of receipts.slice(0, -1)) await collect(order);
     const origin = `http://127.0.0.1:${await freePort()}`;
     server = spawn(
       process.execPath,
@@ -101,6 +107,74 @@ test("fifty real collected orders stay paginated and open accessible independent
       .getByRole("button", { name: /Ejecución QA.*2026-09-24/ })
       .click();
     await expect(page.locator(".settlement-order")).toHaveCount(12);
+    const folios = page.locator(".settlement-client > small");
+    await expect(folios.first()).toHaveText(receipts[0].orderName);
+    const previousFolios = await folios.allTextContents();
+    const firstPosition = await page
+      .locator(".settlement-order")
+      .first()
+      .boundingBox();
+    const back = page.getByRole("button", { name: "Volver a choferes" });
+    expect(
+      await back
+        .locator("svg")
+        .evaluate((icon) => getComputedStyle(icon).color),
+    ).toBe("rgb(255, 121, 121)");
+    const oldCard = page.locator(".settlement-order").first();
+    expect((await oldCard.boundingBox())!.height).toBeLessThan(310);
+    expect(
+      await oldCard
+        .getByRole("button", { name: "Ver pedido y cobro" })
+        .evaluate((button) => button.getBoundingClientRect().height),
+    ).toBeGreaterThanOrEqual(44);
+    const started = Date.now();
+    await collect(receipts.at(-1)!);
+    // No manual refresh: PostgreSQL event -> SSE -> visible panel update.
+    await expect(
+      page.getByRole("status").filter({ hasText: /^50 pedidos$/ }),
+    ).toBeVisible({ timeout: 20000 });
+    const reflectedMs = Date.now() - started;
+    expect(await folios.allTextContents()).toEqual(previousFolios);
+    const updatedPosition = await page
+      .locator(".settlement-order")
+      .first()
+      .boundingBox();
+    expect(updatedPosition!.x).toBe(firstPosition!.x);
+    expect(updatedPosition!.y).toBe(firstPosition!.y);
+    const collected = await readSettlementDetail(
+      f.db.pool,
+      receiver.id,
+      f.executionId,
+    );
+    expect(collected.orders.map((order) => order.shipmentId)).toEqual(
+      receipts.map((order) => order.shipmentId),
+    );
+    // The shared mobile operating contract must still follow route stops.
+    expect(
+      (
+        await readMobileFinanceDetail(
+          f.db.pool,
+          f.members[0].authorization,
+          f.executionId,
+        )
+      ).orders.map((order) => order.shipmentId),
+    ).toEqual(detail.orders.map((order) => order.shipmentId));
+    await page.reload();
+    await page.getByLabel("Desde", { exact: true }).fill("2026-09-24");
+    await page.getByLabel("Hasta", { exact: true }).fill("2026-09-24");
+    await page
+      .getByRole("button", { name: /Ejecución QA.*2026-09-24/ })
+      .click();
+    await expect(folios.first()).toHaveText(receipts[0].orderName);
+    expect(await folios.allTextContents()).toEqual(previousFolios);
+    await mkdir(".local/qa-settlements", { recursive: true });
+    await page.screenshot({
+      path: ".local/qa-settlements/compact-receipts-desktop.png",
+      fullPage: true,
+    });
+    console.log(
+      `Collection event reflected in ${reflectedMs}ms; first card height=${(await oldCard.boundingBox())!.height}px`,
+    );
     await expect(
       page.getByText("Página 1 de 5", { exact: true }),
     ).toBeVisible();
@@ -162,6 +236,9 @@ test("fifty real collected orders stay paginated and open accessible independent
         .getByRole("button", { name: "Más pedidos", exact: true })
         .click();
     await expect(page.locator(".settlement-order")).toHaveCount(2);
+    await expect(page.locator(".settlement-client > small").last()).toHaveText(
+      receipts.at(-1)!.orderName,
+    );
     await expect(
       page.getByRole("button", { name: "Más pedidos", exact: true }),
     ).toBeDisabled();

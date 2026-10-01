@@ -28,10 +28,7 @@ import org.json.JSONObject
 internal fun paymentMethodLabel(method: String) = when (method) { "cash" -> "Efectivo"; "transfer" -> "Transferencia"; "credit" -> "Crédito"; "mixed" -> "Efectivo + transferencia"; else -> method }
 internal fun settlementStatusLabel(status: String) = when(status) { "pending" -> "Por recibir"; "accepted" -> "Recibida"; "rejected" -> "Rechazada"; else -> "Sin liquidar" }
 @Composable
-internal fun FinanceScreen(initialExecutionId: String? = null, initialShipmentId: String? = null) {
-    val context = LocalContext.current
-    val credentials = remember { DeviceCredentials(context.applicationContext) }
-    val model: DriverFinanceModel = viewModel(key = "driver-finance", factory = DriverFinanceModel.factory(credentials))
+internal fun FinanceScreen(model: DriverFinanceModel, initialExecutionId: String? = null, initialShipmentId: String? = null) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(model, lifecycle) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
         model.observe(); try { awaitCancellation() } finally { model.stopObserving() }
@@ -51,7 +48,6 @@ internal fun FinanceScreen(initialExecutionId: String? = null, initialShipmentId
         Text("Liquidación de rutas", style = MaterialTheme.typography.headlineSmall)
         if (state.message.isNotBlank()) Text(state.message, color = DriverColors.amber)
         if (state.pending) AppAction("Recuperar confirmación pendiente", DriverIcon.REFRESH, enabled = !state.busy, onClick = model::recover)
-        AppAction("Actualizar", DriverIcon.REFRESH, quiet = true, enabled = !state.busy, onClick = model::refresh)
         val detail = state.detail
         if (state.executionId == null) {
             if (state.routes.none { it.optInt("payments") > 0 }) EmptyPanel("Aún no tienes pedidos para liquidar", "Aparecerán aquí automáticamente cuando completes la entrega y confirmes el cobro.")
@@ -66,16 +62,19 @@ internal fun FinanceScreen(initialExecutionId: String? = null, initialShipmentId
                 TextButton(enabled = state.hasMore && !state.busy, onClick = { model.page(1) }) { Text("Siguiente") }
             }
         } else if (detail == null) {
-            TextButton(onClick = { selectedOrder = null; model.select(null) }, enabled = !state.busy) { Text("Volver a mis rutas") }
+            FinanceBackButton(enabled = !state.busy) { selectedOrder = null; model.select(null) }
             Text(if (state.message.isBlank()) "Cargando pedidos…" else "El detalle no está disponible. Puedes actualizar o volver a tus rutas.")
         } else {
             val route = detail.getJSONObject("route")
-            TextButton(onClick = { selectedOrder = null; model.select(null) }, enabled = !state.busy) { Text("Volver a mis rutas") }
+            FinanceBackButton(enabled = !state.busy) { selectedOrder = null; model.select(null) }
             Text("${route.getString("label")} · ${route.getString("date")}", style = MaterialTheme.typography.titleMedium)
             FinanceMoneySummary("Por entregar a liquidación", detail.getJSONArray("outstandingTotals").objects())
             FinanceMoneySummary("Recibido por liquidación", detail.getJSONArray("acceptedTotals").objects())
             if (route.isNull("completedAt")) Text("Puedes liquidar cada pedido cobrado durante el recorrido.", color = DriverColors.muted)
-            val orders = detail.getJSONArray("orders").objects().filter(::liquidationOrderVisible)
+            val orders = detail.getJSONArray("orders").objects().filter(::liquidationOrderVisible).sortedWith { left, right ->
+                val a = left.getJSONObject("payment"); val b = right.getJSONObject("payment")
+                compareCollectionReceipts(a.getString("recordedAt"), a.getString("id"), b.getString("recordedAt"), b.getString("id"))
+            }
             if (orders.isEmpty()) EmptyPanel("Sin pedidos finalizados", "Los pedidos aparecerán al completar la entrega y confirmar su cobro.")
             if (orders.isNotEmpty()) {
                 OutlinedTextField(search, { search = it; orderPage = 0 }, label = { Text("Buscar cliente o pedido") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -91,21 +90,15 @@ internal fun FinanceScreen(initialExecutionId: String? = null, initialShipmentId
             val currentPage = orderPage.coerceAtMost(lastPage)
             if (orders.isNotEmpty()) Text("${filtered.size} pedidos", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
             filtered.drop(currentPage * 12).take(12).forEach { order ->
-                val payment = order.objectOrNull("payment")
-                AppCard {
-                    TextButton(onClick = { selectedOrder = if (selectedOrder == order.getString("shipmentId")) null else order.getString("shipmentId") }) {
-                        Text("${order.getString("customer")} · ${order.getString("orderName")}", style = MaterialTheme.typography.titleMedium)
-                    }
-                    if (payment == null) Text(if (order.getString("status") == "delivered") "Cobro por registrar" else "Pedido aún sin entrega", color = DriverColors.amber)
-                    else {
-                        PaymentMoneyCard(payment)
-                        Text(settlementStatusLabel(order.optString("settlementStatus")), color = DriverColors.muted)
-                    }
-                    AppAction(if (selectedOrder == order.getString("shipmentId")) "Cerrar detalle" else "Ver pedido y cobro", DriverIcon.ORDERS, quiet = true) {
-                        selectedOrder = if (selectedOrder == order.getString("shipmentId")) null else order.getString("shipmentId")
-                    }
-                    if (payment != null && order.optString("settlementStatus") == "unsettled") AppAction("Liquidar", DriverIcon.CHECK,
-                        Modifier.fillMaxWidth(), enabled = !state.busy && !state.pending, accent = DriverColors.amber) { requestShipment = order.getString("shipmentId"); requestRoute = false }
+                val payment = order.getJSONObject("payment")
+                val method = payment.getString("method")
+                key(order.getString("shipmentId")) {
+                    CompactFinanceOrderCard(customer = order.getString("customer"), orderName = order.getString("orderName"),
+                        status = settlementStatusLabel(order.optString("settlementStatus")), method = method,
+                        amount = paymentMoney(payment, if (method == "credit") "expected" else "received"),
+                        split = if (method == "mixed") "Efectivo: ${paymentMoney(payment, "cashReceived")} · Transferencia: ${paymentMoney(payment, "transferReceived")}" else null,
+                        enabled = !state.busy && !state.pending, onOpen = { selectedOrder = order.getString("shipmentId") },
+                        onLiquidate = if (order.optString("settlementStatus") == "unsettled") ({ requestShipment = order.getString("shipmentId"); requestRoute = false }) else null)
                 }
             }
             orders.find { it.getString("shipmentId") == selectedOrder }?.let { order ->
@@ -152,21 +145,6 @@ internal fun FinanceScreen(initialExecutionId: String? = null, initialShipmentId
                 } },
                 confirmButton = { TextButton(enabled = !state.busy && !state.pending, onClick = { model.submit(route.getString("id"), "requests", JSONObject().put("shipmentId", requestShipment ?: JSONObject.NULL)) }) { Text("Aceptar") } },
                 dismissButton = { TextButton(enabled = !state.busy, onClick = { requestRoute = false; requestShipment = null }) { Text("Cancelar") } })
-        }
-    }
-}
-@Composable
-internal fun PaymentMoneyCard(payment: JSONObject) {
-    val method = payment.getString("method")
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        HorizontalDivider(color = DriverColors.line)
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(if (method == "credit") "Importe a crédito" else "Monto a entregar", color = DriverColors.lime, style = MaterialTheme.typography.labelLarge)
-            Text(paymentMoney(payment, if (method == "credit") "expected" else "received"),
-                color = DriverColors.lime, style = MaterialTheme.typography.headlineSmall)
-            Text(paymentMethodLabel(method), style = MaterialTheme.typography.titleSmall)
-            if (method == "mixed") Text("Efectivo: ${paymentMoney(payment, "cashReceived")} · Transferencia: ${paymentMoney(payment, "transferReceived")}",
-                style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
         }
     }
 }

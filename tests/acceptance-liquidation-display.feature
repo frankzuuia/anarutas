@@ -67,3 +67,20 @@ Característica: Liquidación legible y limitada a pedidos finalizados
     Entonces recupera el mismo comando pendiente sin duplicarlo
     Y el pedido aparece en liquidación cuando se confirma entrega y cobro
     Y el formulario operativo puede consultar el pedido antes de cerrarlo
+
+  Escenario: LC13 Los cobros nuevos se agregan después de los existentes
+    Dado que el chofer cobró la segunda parada antes que la primera
+    Cuando confirma el cobro de la primera parada
+    Entonces el panel y la app colocan el nuevo cobro después del anterior
+    Y las tarjetas anteriores conservan su posición al refrescar y volver a entrar
+    Y un empate de fecha se ordena por identidad del recibo
+    Y el formulario operativo conserva el orden de las paradas
+
+  Escenario: LC14 Retorno visible y actualización en la cabecera
+    Cuando se abre la liquidación en web
+    Entonces Volver a choferes tiene una flecha roja visible
+    Cuando se abre en la app
+    Entonces Actualizar liquidación está solamente en la parte superior derecha
+    Y al pulsarlo muestra progreso y bloquea otro toque mientras carga
+    Y Volver a mis rutas es un botón negro con contorno y letras lima
+    Y las tarjetas compactas conservan acciones táctiles de 48dp y texto ampliado

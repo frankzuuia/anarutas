@@ -14,6 +14,7 @@ import { incidentFilters } from "./driver-incidents";
 import { integer } from "./orders-validation";
 import { AppError } from "./errors";
 import { incidentFinancialDisplay } from "./incident-financial-display";
+import { compareCollectionReceipts } from "./collection-receipt-order";
 
 export async function financeExecutionDetail(sql: Sql, route: ExecutionRow) {
   const orders = await financeOrders(sql, route),
@@ -131,7 +132,11 @@ export async function readSettlementDetail(
     const detail = await financeExecutionDetail(sql, route);
     return {
       ...detail,
-      orders: detail.orders.filter((order) => order.payment !== null),
+      orders: detail.orders
+        .filter((order) => order.payment !== null)
+        .sort((left, right) =>
+          compareCollectionReceipts(left.payment!, right.payment!),
+        ),
     };
   });
 }

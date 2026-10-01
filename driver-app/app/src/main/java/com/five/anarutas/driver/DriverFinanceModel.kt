@@ -14,7 +14,7 @@ import java.util.UUID
 internal fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
 internal fun JSONObject.objectOrNull(key: String) = if (isNull(key)) null else getJSONObject(key)
 internal data class FinanceUiState(val routes: List<JSONObject> = emptyList(), val detail: JSONObject? = null,
-    val executionId: String? = null, val busy: Boolean = false, val pending: Boolean = false,
+    val executionId: String? = null, val busy: Boolean = false, val refreshing: Boolean = false, val pending: Boolean = false,
     val message: String = "", val page: Int = 0, val hasMore: Boolean = false, val receiptRevision: Int = 0)
 internal class DriverFinanceModel(private val credentials: DeviceCredentials) : ViewModel() {
     var state by mutableStateOf(FinanceUiState()); private set
@@ -57,8 +57,10 @@ internal class DriverFinanceModel(private val credentials: DeviceCredentials) : 
         state = state.copy(routes = routes, hasMore = routes.size == 50, detail = detail)
     }
     fun refresh() { viewModelScope.launch { gate.withLock {
+        state = state.copy(refreshing = true)
         try { loadLocked() } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) { state = state.copy(message = friendlyError(error)) }
+        finally { state = state.copy(refreshing = false) }
     } } }
     fun select(executionId: String?) { state = state.copy(executionId = executionId, detail = null, message = ""); refresh() }
     fun page(delta: Int) { state = state.copy(page = (state.page + delta).coerceAtLeast(0)); refresh() }

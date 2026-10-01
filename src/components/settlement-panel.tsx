@@ -220,12 +220,13 @@ export function SettlementPanel({ today }: { today: string }) {
       )}
       {selected && (
         <button
+          className="settlement-back"
           onClick={() => {
             setSelected(null);
             setDetail(null);
           }}
         >
-          <ArrowLeft size={16} />
+          <ArrowLeft size={20} aria-hidden="true" />
           Volver a choferes
         </button>
       )}

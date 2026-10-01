@@ -3349,16 +3349,18 @@ button.confirm-cancel {
 .settlement-method.credit { color:#d9c4ff; background:linear-gradient(145deg,#292335,#181721); }
 .settlement-routes,.settlement-orders { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr)); gap:16px; }
 .settlement-routes .settlement-route { align-items:flex-start; flex-direction:column; padding:20px; border-radius:16px; min-height:160px; background:linear-gradient(145deg,#14231b,#101813); }
-.settlement-orders .settlement-order { padding:18px; display:flex; flex-direction:column; gap:16px; border-radius:18px; }
-.settlement-client { border:0; background:none; text-align:left; padding:0; display:flex; align-items:flex-start; flex-direction:column; gap:8px; width:100%; }
+.settlement-orders { grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr)); gap:12px; }
+.settlement-orders .settlement-order { padding:14px; display:flex; flex-direction:column; gap:10px; border-radius:14px; }
+.settlement-client { border:0; background:none; text-align:left; padding:0; display:flex; align-items:flex-start; flex-direction:column; gap:4px; width:100%; }
 .settlement-client strong { font-size:16px; }
 .settlement-client small { color:var(--muted); }
 .settlement-client .badge.pending { color:#f1d48e; border-color:#765c2b; }
 .settlement-client .badge.accepted { color:#a6f4c7; border-color:#326849; }
 .settlement-order-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:auto; }
-.settlement-order-actions button { flex:1 1 auto; min-height:42px; }
-.settlement-orders .settlement-order-amount { flex:0 0 auto; padding:14px 0 0; border:0; border-top:1px solid #29382f; border-radius:0; background:transparent; gap:8px; }
-.settlement-orders .settlement-order-amount strong { font-size:24px; font-variant-numeric:tabular-nums; }
+.settlement-order-actions button { flex:1 1 auto; min-height:44px; padding-inline:10px; }
+.settlement-orders .settlement-order-amount { flex:0 0 auto; padding:10px 0 0; border:0; border-top:1px solid #29382f; border-radius:0; background:transparent; gap:4px; }
+.settlement-orders .settlement-order-amount strong { font-size:22px; font-variant-numeric:tabular-nums; }
+.settlement-back svg { color:#ff7979; flex-shrink:0; }
 .settlement-history>summary { padding:16px; cursor:pointer; }
 .settlement-detail-dialog { width:min(920px,calc(100vw - 24px)); }
 .settlement-detail-dialog .modal-header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
