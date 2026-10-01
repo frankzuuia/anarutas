@@ -748,3 +748,8 @@ Los bloques2..6 están implementados; la evidencia de cobros, roles, solicitudes
 - [x] CF-T04 (bloque5, CF04,05,09..13,15): tarjeta móvil, detalle y recuperación durable, cambios automáticos.
 - [x] CF-T05 (bloque6, CF01..16): 855 pruebas de regresión aprobadas/0 fallos/3 omisiones externas, 28 dirigidas, 125 JVM y E2E HTTP completo; cobertura 99.55% líneas/98.78% ramas, mutación 164/165 políticas +14/14 PG +13/13 Android. Typecheck/lint/build, seguridad, migrador y APK0.8.9/code31 verificados; entrega develop bajo autorización permanente. Evidencia y límites en QA-LIQUIDACION-COMPLETA-0.8.9.md; sin deploy.
 - [ ] CF-T06: QA física final a cargo del propietario; excepción informada aprobada, no certificación de producción.
+
+## BL-169 — simplificar captura y ampliar tarjetas de pago
+- [x] PC-T01 (PC01,04,05): tarjetas grandes con emojis, selección accesible y campo por medio.
+- [x] PC-T02 (PC02,03,06): captura neta sin cambio, payload validado y regresiones de vacío/precisión/saldo.
+- [x] PC-T03: 127JVM, 28contrato/PG, 6mutantes detectados, política100%líneas/95.71%ramas, Compose compilado, lint/build y APK0.8.10 compatibles. Evidencia en QA-CAPTURA-COBRO-0.8.10.md; QA física del propietario, commit/push develop autorizado sin deploy.

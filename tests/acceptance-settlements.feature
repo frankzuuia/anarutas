@@ -1,4 +1,23 @@
 Feature: Cobro y liquidación histórica por rol
+  Scenario: Captura neta sin cambio y selección accesible
+    Given el formulario de cobro con tarjetas Efectivo Transferencia y Crédito
+    When selecciona Efectivo y escribe 15.25 para un pedido de 20
+    Then no existe el campo Cambio entregado
+    And el comando conserva recibido 15.25 cambio 0 y saldo 4.75
+    And sólo una tarjeta está seleccionada y no cambia durante un envío pendiente
+
+  Scenario: Transferencia vacía no inventa un pago
+    Given un pedido entregado con importe vigente
+    When el chofer selecciona Transferencia y deja Monto transferido vacío
+    Then no puede confirmar ni convertir el vacío en cero
+    And una transferencia válida se registra separada del efectivo
+
+  Scenario: Crédito después de otro medio
+    Given un importe escrito previamente en Efectivo o Transferencia
+    When selecciona Crédito
+    Then no se muestra un campo de importe recibido
+    And la confirmación conserva recibido cero y saldo completo
+
   Scenario: Efectivo parcial conserva saldo sin interpretar notas
     Given un pedido entregado con importe vigente de 20
     When su chofer confirma efectivo recibido de 15

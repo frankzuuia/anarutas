@@ -1712,3 +1712,20 @@ Auditoría de diseño: GREEN LIGHT para construir; INTEGRITY TOTAL con BL157..16
 
 ## BL-162..168 — especificación integrada
 Contrato, esquema36..38, flujos, permisos, fallos/recuperación y matriz CF01..16 en BLOQUES-LIQUIDACION-3-6.md. Correspondencia CF-T01..06 en PROGRESS. Plan completo autorizado. Autopsia comprobó que cierre operativo prohíbe comandos de visita; operaciones financieras históricas usan autorización propia sin reabrir ejecución. Revisiones de importes y solicitudes confirmadas se conservan inmutables.
+
+## BL-169 — ajuste Android solicitado tras QA del propietario
+
+Autopsia: PaymentCapture usa FilterChip estrechos y comparte «Cantidad recibida» entre cash/transfer. Su variable change permite introducir cambio, aunque el propietario solicita capturar sólo dinero neto. Contrato actual es un medio por recibo; transferencia no representa pago combinado. Campo vacío falla la política decimal y bloquea Confirmar; fuente ausente también bloquea.
+
+Flujo: PaymentMethodPicker de ancho completo, mínimo88dp, emoji decorativo solicitado, texto, radio y acentos lima/azul/morado del tema. Radio accesible exclusivo y estado deshabilitado durante busy/pending. PaymentReceivedField identifica efectivo/transferencia y explica crédito sin ingreso. paymentCapturePreview reutiliza la política vigente con cambio cero; JSON se forma con importes validados, conservando basis, nota, ID de comando y outbox. Se elimina únicamente el estado/entrada de cambio nuevo; esquema38, endpoints y recibos históricos conservan compatibilidad.
+
+| Caso | Evento y resultado | Validación |
+|---|---|---|
+| PC01 | Seleccionar cada tarjeta cambia un único medio; busy/pending no permite cambiarlo | Compose real; semántica radio |
+| PC02 | Efectivo neto parcial/completo/cero explícito produce saldo exacto y cambio cero | JVM/contrato/mutación |
+| PC03 | Transferencia vacía, inválida, excesiva o sin fuente no confirma; valor válido no se suma a efectivo | JVM/PG existente/Compose |
+| PC04 | Crédito no pide importe y conserva deuda completa sin dinero recibido | JVM/Compose |
+| PC05 | Letra grande/320dp mantiene texto y tarjetas legibles, sin altura fija ni truncamiento | Compose compilado y QA física del propietario |
+| PC06 | Historial con cambio anterior, reintentos, precisión, fuente actualizada y permisos intactos | Regresión JVM y contrato PG existentes |
+
+Referencias: DriverDesign.kt e IncidentFormDesign.kt reales; [Compose: controles accesibles](https://developer.android.com/develop/ui/compose/accessibility/api-defaults). Consulta UI/UX y patrones21st revisados; se conserva el sistema existente y se usan emojis por petición explícita. Sin dependencias, backend, migraciones ni costes externos nuevos. GREEN LIGHT, INTEGRITY TOTAL y MATCH PERFECT con PC-T01..03. Rollback APK compatible con esquema38; excepción de ejecución física vigente, sin inventar evidencia visual.

@@ -646,3 +646,6 @@ Validación: escenarios PF01..18 en MASTER-SPECIFICATION, unidad/contrato, PG re
 
 ## BL-162..168 — cobro, roles y liquidación autorizados
 Reglas, actores, permisos, datos y aceptación definidos en BLOQUES-LIQUIDACION-3-6.md. El propietario autorizó completar todos los bloques y realizar su QA física al final. No alterar recibos confirmados por cambios posteriores de la fuente; no mezclar crédito/transferencias con efectivo recibido.
+
+## BL-169 — captura de cobro simplificada
+Chofer autenticado elige un único medio mediante tarjetas grandes con emoji y selección accesible. Efectivo captura dinero neto conservado; se retira «Cambio entregado» del formulario nuevo y se envía cambio cero. Transferencia captura «Monto transferido», obligatorio; vacío no se convierte en cero. Crédito conserva recibido cero y saldo completo. No habilitar pagos mixtos, cambiar recibos históricos ni alterar autorización, cola cifrada o auditoría de servidor. Validar monto parcial/completo/cero explícito, precisión, límites, método y estado pendiente; QA física a cargo del propietario según excepción vigente.

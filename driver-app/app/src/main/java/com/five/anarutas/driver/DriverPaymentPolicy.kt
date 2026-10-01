@@ -5,6 +5,10 @@ import java.math.BigDecimal
 // Preview only. The server revalidates source revision, authorization and all amounts.
 internal data class PaymentPreview(val tendered: BigDecimal, val change: BigDecimal, val received: BigDecimal, val balance: BigDecimal)
 
+// The current form captures the net receipt; historical receipts may still have change.
+internal fun paymentCapturePreview(method: String, receivedText: String, expectedText: String?, roundingText: String?): PaymentPreview? =
+    paymentPreview(method, receivedText, "0", expectedText, roundingText)
+
 internal fun paymentPreview(method: String, tenderedText: String, changeText: String, expectedText: String?, roundingText: String?): PaymentPreview? {
     if (method !in setOf("cash", "transfer", "credit")) return null
     fun amount(text: String?): BigDecimal? = text?.takeIf { it.length <= 80 }?.toBigDecimalOrNull()

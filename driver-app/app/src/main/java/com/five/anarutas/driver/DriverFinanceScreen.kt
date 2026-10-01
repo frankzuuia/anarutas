@@ -3,7 +3,6 @@ package com.five.anarutas.driver
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,7 +11,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -186,7 +184,6 @@ private fun PaymentCapture(order: JSONObject, executionId: String, financial: Dr
     val shipmentId = order.getString("shipmentId")
     var method by rememberSaveable(shipmentId) { mutableStateOf("") }
     var tendered by rememberSaveable(shipmentId) { mutableStateOf("") }
-    var change by rememberSaveable(shipmentId) { mutableStateOf("0") }
     var note by rememberSaveable(shipmentId) { mutableStateOf("") }
     var basis by rememberSaveable(shipmentId) { mutableStateOf(order.getString("basis")) }
     var confirm by rememberSaveable(shipmentId) { mutableStateOf(false) }
@@ -194,7 +191,7 @@ private fun PaymentCapture(order: JSONObject, executionId: String, financial: Dr
     val changed = basis != order.getString("basis")
     val fresh = financialFresh(financial, financialClock())
     val ready = financial?.status == "ready" && financial.totals != null && financial.issues.isEmpty() && fresh
-    val preview = paymentPreview(method, tendered, change, financial?.totals?.net, financial?.currency?.rounding)
+    val preview = paymentCapturePreview(method, tendered, financial?.totals?.net, financial?.currency?.rounding)
     val valid = preview != null
     Text("Registrar cobro", style = MaterialTheme.typography.titleMedium)
     Text("A cobrar: ${financial?.totals?.net?.let { financialMoney(it, financial.currency) } ?: "Por confirmar"}", color = DriverColors.lime)
@@ -203,20 +200,21 @@ private fun PaymentCapture(order: JSONObject, executionId: String, financial: Dr
         Text("Los importes cambiaron. Revisa el pedido antes de confirmar.", color = DriverColors.amber)
         TextButton(onClick = { basis = order.getString("basis"); confirm = false }) { Text("Revisé los importes actualizados") }
     }
-    listOf("cash", "transfer", "credit").forEach { choice -> FilterChip(selected = method == choice, onClick = { method = choice; if (tendered.isBlank()) tendered = financial?.totals?.net.orEmpty() }, label = { Text(paymentMethodLabel(choice)) }, enabled = !state.busy && !state.pending) }
-    if (method.isNotBlank() && method != "credit") OutlinedTextField(tendered, { tendered = it }, label = { Text("Cantidad recibida") }, singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth(), enabled = !state.busy && !state.pending)
-    if (method == "cash") OutlinedTextField(change, { change = it }, label = { Text("Cambio entregado") }, singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth(), enabled = !state.busy && !state.pending)
+    PaymentMethodPicker(method, !state.busy && !state.pending) { choice ->
+        method = choice
+        if (tendered.isBlank()) tendered = financial?.totals?.net.orEmpty()
+    }
+    PaymentReceivedField(method, tendered, !state.busy && !state.pending) { tendered = it }
     if (preview != null) Text("Saldo pendiente: ${preview.balance.toPlainString()}", color = DriverColors.amber)
-    else if (method.isNotBlank() && ready) Text("Revisa la cantidad recibida y el cambio. Usa punto decimal; el neto no puede superar el total del pedido.", color = DriverColors.amber)
+    else if (method.isNotBlank() && ready) Text("Escribe un importe válido con punto decimal, sin superar el total del pedido.", color = DriverColors.amber)
     OutlinedTextField(note, { note = it.take(2000) }, label = { Text("Notas del chofer · opcionales") }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy && !state.pending)
     AppAction("Confirmar cobro", DriverIcon.CHECK, enabled = ready && !changed && valid && !state.busy && !state.pending) { confirm = true }
     if (confirm) AlertDialog(onDismissRequest = { if (!state.busy) confirm = false }, title = { Text("¿Confirmar el cobro?") },
         text = { Text("${paymentMethodLabel(method)} · Recibido neto ${preview?.received?.toPlainString()} ${financial?.currency?.name}. Se guardará junto al pedido y sus incidencias.") },
         confirmButton = { TextButton(enabled = ready && !changed && valid && !state.busy && !state.pending, onClick = {
+            val amounts = preview ?: return@TextButton
             model.submit(executionId, "payments", JSONObject().put("shipmentId", shipmentId).put("basis", basis).put("method", method)
-                .put("tendered", if (method == "credit") "0" else tendered).put("change", if (method == "cash") change else "0").put("note", note))
+                .put("tendered", amounts.tendered.toPlainString()).put("change", amounts.change.toPlainString()).put("note", note))
         }) { Text("Confirmar") } }, dismissButton = { TextButton(enabled = !state.busy, onClick = { confirm = false }) { Text("Volver") } })
 }
 @OptIn(ExperimentalMaterial3Api::class)

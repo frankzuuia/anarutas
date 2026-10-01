@@ -14,6 +14,9 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 $policy = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver/DriverPaymentPolicy.kt'
 $original = [IO.File]::ReadAllText($policy)
 $cases = @(
+    @{ name='capture_zero_change'; from='paymentPreview(method, receivedText, "0", expectedText, roundingText)'; to='paymentPreview(method, receivedText, receivedText, expectedText, roundingText)' },
+    @{ name='capture_no_blank_default'; from='paymentPreview(method, receivedText, "0", expectedText, roundingText)'; to='paymentPreview(method, receivedText.ifBlank { "0" }, "0", expectedText, roundingText)' },
+    @{ name='capture_preserves_method'; from='paymentPreview(method, receivedText, "0", expectedText, roundingText)'; to='paymentPreview("credit", receivedText, "0", expectedText, roundingText)' },
     @{ name='cash_overpayment'; from='received > expected'; to='false' },
     @{ name='reject_exact_zero'; from='received.signum() < 0'; to='received.signum() <= 0' },
     @{ name='partial_with_change'; from='change.signum() != 0 && balance.signum() != 0'; to='false' },
@@ -54,3 +57,5 @@ try {
         ![IO.Path]::GetFileName($resolved).StartsWith('ana-rutas-payment-mutations-')) { throw 'Unsafe cleanup path' }
     Remove-Item -LiteralPath $resolved -Recurse -Force
 }
+# Gradle must fail for a killed mutant; do not expose that expected last exit as a failed audit.
+exit 0

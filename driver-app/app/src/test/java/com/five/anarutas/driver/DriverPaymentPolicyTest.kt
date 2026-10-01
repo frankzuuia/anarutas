@@ -4,6 +4,33 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DriverPaymentPolicyTest {
+    @Test fun netCaptureRequiresExplicitCashOrTransferAndPreservesExactBalances() {
+        for (method in listOf("cash", "transfer")) {
+            for (invalid in listOf("", " ", "-1", "20.001", "21", "NaN"))
+                assertNull("$method/$invalid", paymentCapturePreview(method, invalid, "20", "0.01"))
+            val partial = paymentCapturePreview(method, "15.25", "20", "0.01")!!
+            assertEquals("15.25", partial.tendered.toPlainString())
+            assertEquals("15.25", partial.received.toPlainString())
+            assertEquals("0", partial.change.toPlainString())
+            assertEquals("4.75", partial.balance.toPlainString())
+            assertEquals("0", paymentCapturePreview(method, "20", "20", "0.01")!!.balance.toPlainString())
+            assertEquals("20", paymentCapturePreview(method, "0", "20", "0.01")!!.balance.toPlainString())
+            assertEquals("0", paymentCapturePreview(method, "0", "0", "0.01")!!.received.toPlainString())
+            assertNull(paymentCapturePreview(method, "20", null, "0.01"))
+            assertNull(paymentCapturePreview(method, "20", "20", null))
+        }
+        assertNull(paymentCapturePreview("", "20", "20", "0.01"))
+        assertNull(paymentCapturePreview("mixed", "20", "20", "0.01"))
+    }
+    @Test fun netCaptureCreditDoesNotReuseAnAmountFromThePreviousMethod() {
+        for (previous in listOf("", "15.25", "20", "invalid")) {
+            val credit = paymentCapturePreview("credit", previous, "20", "0.01")!!
+            assertEquals("0", credit.tendered.toPlainString())
+            assertEquals("0", credit.received.toPlainString())
+            assertEquals("0", credit.change.toPlainString())
+            assertEquals("20", credit.balance.toPlainString())
+        }
+    }
     private fun preview(method: String = "cash", tendered: String = "20", change: String = "0", expected: String? = "20", step: String? = "0.01") =
         paymentPreview(method, tendered, change, expected, step)
     @Test fun exactCashPartialCashAndChange() {
