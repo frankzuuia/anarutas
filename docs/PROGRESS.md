@@ -782,7 +782,8 @@ Los bloques2..6 están implementados; la evidencia de cobros, roles, solicitudes
 
 Liquidación completa: reglas confirmadas por el propietario; especificación en
 PROPUESTA-LIQUIDACION-RUTA-2026-10-01.md, CP12 conservado.
-- [ ] FW-T01: previsualización revisada, cierre durable separado, esquema40 aditivo, servidor/SQL/roles/idempotencia/eventos; LR02..12,14..24.
-- [ ] FW-T02: tarjeta visible de recepción de ruta y modal con pedidos/tickets, confirmación completa y actualización automática; LR02,04..06,09..14,17,22.
-- [ ] FW-T03: acción de ruta al final, modal/recuperación, Finalizar trabajo tras recepción y Buen trabajo con resumen real; LR02..08,13,16..20,24.
-- [ ] FW-T04: Gherkin, unidad/PG/HTTP/E2E/JVM, cobertura/mutación, seguridad/migración/build/APK/firma y QA reproducible; QA física del propietario.
+- [x] FW-T01: previsualización revisada, cierre durable separado, esquema40 aditivo, servidor/SQL/roles/idempotencia/eventos; LR02..12,14..24. Política y comando100% líneas/ramas, 93/93 mutaciones de política y10/10 guards PG nuevos detectados; migración repetible y aislamiento comprobados.
+- [x] FW-T02: tarjeta visible de recepción de ruta y modal con pedidos/tickets, confirmación completa y actualización automática; LR02,04..06,09..14,17,22. Tres E2E HTTP/Chrome/PG aprobados, incluyendo50 pedidos y recepción individual después de rechazo agrupado.
+- [x] FW-T03: acción de ruta al final, modal/recuperación, Finalizar trabajo tras recepción y Buen trabajo con resumen real; LR02..08,13,16..20,24. 140JVM verdes, app/instrumentación compiladas y APK0.8.16/code38 firmada con certificado compatible; ejecución Compose física por excepción vigente del propietario.
+- [x] FW-T04: Gherkin y QA reproducible en QA-LIQUIDACION-RUTA-0.8.16.md; 922 regresión/0 fallos/3 omisiones externas preexistentes, 72 financieras/PG, cobertura99.69% líneas/98.34% ramas y20/20 guards PG anteriores detectados. Seguridad, typecheck/lint/build/migrador/audit0 y métricas locales verificados. Entrega develop autorizada; sin deploy.
+- [ ] FW-T05: QA física Android y despliegue a cargo del propietario según excepción informada vigente; seguir QA-LIQUIDACION-RUTA-0.8.16.md. La compilación no certifica ejecución en dispositivo.

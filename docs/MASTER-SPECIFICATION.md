@@ -1779,5 +1779,10 @@ La ampliación de liquidación completa está en
 PROPUESTA-LIQUIDACION-RUTA-2026-10-01.md. El propietario confirmó cierre en bodega
 (CP12 conservado), acción al final de Android, tarjeta del paquete en panel con
 tickets navegables y Finalizar trabajo después de recepción completa. Resumen
-durable separado del cierre operativo; LR01..24 y FW-T01..04. Especificación
-confirmada no equivale a implementación ni pruebas verdes.
+durable separado del cierre operativo; LR01..24 y FW-T01..04 implementados y
+verificados en QA-LIQUIDACION-RUTA-0.8.16.md: política/comando100% líneas y ramas,
+93/93 mutaciones de política,10/10 guards PG nuevos,20/20 guards PG financieros
+anteriores,922 regresión/0 fallos y3 E2E reales. APK0.8.16/code38 compatible;
+instrumentación compilada, ejecución física por excepción vigente del propietario
+(FW-T05). Sin despliegue. El resumen preserva todos los recibos, incluido crédito
+y recepción individual anterior, con totales separados por moneda y cierre único.

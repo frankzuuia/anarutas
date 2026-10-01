@@ -15,6 +15,8 @@ import { integer } from "./orders-validation";
 import { AppError } from "./errors";
 import { incidentFinancialDisplay } from "./incident-financial-display";
 import { compareCollectionReceipts } from "./collection-receipt-order";
+import { routeSettlementReview } from "./route-work-policy";
+import { readRouteWork } from "./route-work";
 
 export async function financeExecutionDetail(sql: Sql, route: ExecutionRow) {
   const orders = await financeOrders(sql, route),
@@ -79,6 +81,21 @@ export async function financeExecutionDetail(sql: Sql, route: ExecutionRow) {
       ),
     })),
     totals: paymentTotals(payments),
+    routeSettlement: routeSettlementReview(
+      route.id,
+      Boolean(route.completed_at),
+      orders,
+      payments,
+      requests,
+    ),
+    work: await readRouteWork(
+      sql,
+      route.id,
+      Boolean(route.completed_at),
+      orders,
+      payments,
+      requests,
+    ),
     requests,
     acceptedTotals: paymentTotals(payments.filter((p) => accepted.has(p.id))),
     pendingTotals: paymentTotals(payments.filter((p) => pending.has(p.id))),

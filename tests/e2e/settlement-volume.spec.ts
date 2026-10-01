@@ -10,6 +10,7 @@ import {
   readSettlementDetail,
 } from "../../src/core/finance-read";
 import { confirmOrderPayment } from "../../src/core/payments";
+import { requestSettlement } from "../../src/core/settlements";
 
 test("live collections append without moving previous cards and fifty receipts keep compact accessible modals", async ({
   page,
@@ -249,6 +250,90 @@ test("live collections append without moving previous cards and fifty receipts k
         )
       ).rows[0].n,
     ).toBe(0);
+    await f.finish();
+    const routeReview = (
+      await readMobileFinanceDetail(
+        f.db.pool,
+        f.members[0].authorization,
+        f.executionId,
+      )
+    ).routeSettlement;
+    expect(routeReview.paymentIds).toHaveLength(50);
+    await requestSettlement(
+      f.db.pool,
+      f.members[0].authorization,
+      f.executionId,
+      {
+        commandId: randomUUID(),
+        shipmentId: null,
+        basis: routeReview.basis,
+      },
+    );
+    const routeCard = page.locator(".settlement-route-card");
+    await expect(
+      routeCard.getByRole("button", {
+        name: "Aceptar liquidación de ruta",
+        exact: true,
+      }),
+    ).toBeEnabled({ timeout: 20000 });
+    await routeCard.locator(".settlement-route-open").click();
+    const packet = page.getByRole("dialog", { name: /Liquidación de ruta/ });
+    await expect(packet.locator(".settlement-packet-order")).toHaveCount(50);
+    const body = packet.locator(".modal-body");
+    expect(await body.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(
+      true,
+    );
+    await packet.locator(".settlement-packet-order").last().click();
+    await expect(dialog).toContainText("$20.00 MXN");
+    await page.keyboard.press("Escape");
+    await expect(packet.locator(".settlement-packet-order")).toHaveCount(50);
+    await body.evaluate((e) => {
+      e.scrollTop = e.scrollHeight;
+    });
+    const acceptRoute = packet.getByRole("button", {
+      name: "Aceptar liquidación de ruta",
+      exact: true,
+    });
+    const footerBounds = await acceptRoute.boundingBox();
+    expect(footerBounds!.y + footerBounds!.height).toBeLessThanOrEqual(
+      page.viewportSize()!.height,
+    );
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: ".local/qa-settlements/route-packet-fifty-mobile.png",
+    });
+    await acceptRoute.click();
+    const confirmation = page.getByRole("dialog", {
+      name: "Confirmar recepción",
+      exact: true,
+    });
+    const accept = confirmation.getByRole("button", {
+      name: "Aceptar",
+      exact: true,
+    });
+    expect(
+      (await accept.boundingBox())!.y + (await accept.boundingBox())!.height,
+    ).toBeLessThanOrEqual(page.viewportSize()!.height);
+    await accept.click();
+    await expect(
+      packet.getByRole("button", { name: "Recibida", exact: true }),
+    ).toBeDisabled();
+    const received = await readSettlementDetail(
+      f.db.pool,
+      receiver.id,
+      f.executionId,
+    );
+    expect(
+      received.orders.filter((o) => o.settlementStatus === "accepted"),
+    ).toHaveLength(50);
+    expect(received.work).toMatchObject({
+      eligible: true,
+      summary: { deliveredOrders: 50, totals: [{ total: "1000" }] },
+    });
   } finally {
     if (server && server.exitCode === null)
       await new Promise<void>((resolve) => {

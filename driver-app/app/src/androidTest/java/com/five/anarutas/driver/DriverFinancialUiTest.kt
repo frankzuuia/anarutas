@@ -26,6 +26,17 @@ import androidx.compose.ui.unit.dp
 @RunWith(AndroidJUnit4::class)
 class DriverFinancialUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @Test fun workSummaryShowsRealCountsAndExactTotalsInEveryCurrency() {
+        compose.setContent { DriverTheme { Column(Modifier.width(320.dp)) {
+            FinanceWorkSummary(25, 4, listOf(DriverCurrency("MXN", 2) to "996.87", DriverCurrency("USD", 2) to "0.000001"))
+        } } }
+        compose.onNodeWithText("Pedidos entregados").assertIsDisplayed()
+        compose.onNodeWithText("25").assertIsDisplayed()
+        compose.onNodeWithText("Incidencias").assertIsDisplayed()
+        compose.onNodeWithText("4").assertIsDisplayed()
+        compose.onNodeWithText("$996.87 MXN").assertIsDisplayed()
+        compose.onNodeWithText("0.000001 USD", substring = true).assertIsDisplayed()
+    }
     @Test fun routeReturnSitsToTheRightOfTheRouteName() {
         var returned = false
         compose.setContent { DriverTheme { Column(Modifier.width(320.dp)) {

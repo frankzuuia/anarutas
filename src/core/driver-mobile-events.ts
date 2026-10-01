@@ -23,7 +23,8 @@ export async function driverPublicationFingerprint(
     await pool.query(
       `SELECT
     (SELECT count(*) FROM route_order_payments WHERE driver_id=$1) AS payments,
-    (SELECT COALESCE(sum(version),0) FROM route_settlement_requests WHERE driver_id=$1) AS requests`,
+    (SELECT COALESCE(sum(version),0) FROM route_settlement_requests WHERE driver_id=$1) AS requests,
+    (SELECT count(*) FROM route_driver_work_completions WHERE driver_id=$1) AS work`,
       [driverId],
     )
   ).rows;

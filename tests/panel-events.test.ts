@@ -54,7 +54,7 @@ describe("panel events with real PostgreSQL", () => {
       "SELECT event_object_table FROM information_schema.triggers WHERE trigger_name='panel_changed'",
     );
     const tables = new Set(rows.map((r) => r.event_object_table));
-    expect(tables.size).toBe(26);
+    expect(tables.size).toBe(27);
     for (const name of [
       "route_plans",
       "route_plan_publications",
@@ -69,6 +69,7 @@ describe("panel events with real PostgreSQL", () => {
       "route_product_incidents",
       "route_order_payments",
       "route_settlement_requests",
+      "route_driver_work_completions",
       "route_driver_incident_orders",
       "route_driver_incident_evidence",
       "route_driver_stop_events",

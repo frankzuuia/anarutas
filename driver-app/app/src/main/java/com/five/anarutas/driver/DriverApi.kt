@@ -441,7 +441,7 @@ class DriverApi(private val server: String) {
     internal suspend fun financeList(token: String, page: Int) = org.json.JSONArray(exchange("GET", "/api/mobile/finance?page=$page", token))
     internal suspend fun financeDetail(token: String, executionId: String) = JSONObject(exchange("GET", "/api/mobile/finance/$executionId", token))
     internal suspend fun financeCommand(token: String, executionId: String, kind: String, payload: JSONObject): JSONObject {
-        require(kind == "payments" || kind == "requests")
+        require(kind == "payments" || kind == "requests" || kind == "work")
         return JSONObject(exchange("POST", "/api/mobile/finance/$executionId/$kind", token, payload))
     }
 

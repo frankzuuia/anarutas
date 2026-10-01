@@ -40,6 +40,8 @@ internal fun FinanceScreen(model: DriverFinanceModel, initialExecutionId: String
     var orderFilter by rememberSaveable(state.executionId) { mutableStateOf("all") }
     var orderPage by rememberSaveable(state.executionId) { mutableIntStateOf(0) }
     var showHistory by rememberSaveable(state.executionId) { mutableStateOf(false) }
+    var showWorkSummary by rememberSaveable(state.executionId) { mutableStateOf(false) }
+    var routeRequestReview by rememberSaveable(state.executionId) { mutableStateOf<String?>(null) }
     var requestShipment by rememberSaveable { mutableStateOf<String?>(null) }
     var requestRoute by rememberSaveable { mutableStateOf(false) }
     var requestRevision by rememberSaveable { mutableIntStateOf(state.receiptRevision) }
@@ -122,9 +124,6 @@ internal fun FinanceScreen(model: DriverFinanceModel, initialExecutionId: String
                 TextButton(enabled = currentPage < lastPage, onClick = { orderPage = currentPage + 1 }) { Text("Siguiente") }
             }
             val eligible = orders.any { it.objectOrNull("payment") != null && it.optString("settlementStatus") == "unsettled" }
-            if (!route.isNull("completedAt") && eligible) AppAction("Liquidar toda la ruta", DriverIcon.CHECK, Modifier.fillMaxWidth(), enabled = !route.isNull("completedAt") && eligible && !state.busy && !state.pending) {
-                requestRoute = true; requestShipment = null
-            }
             if (detail.getJSONArray("requests").length() > 0) TextButton(onClick = { showHistory = !showHistory }) { Text(if (showHistory) "Ocultar historial" else "Ver historial de liquidación") }
             if (showHistory) detail.getJSONArray("requests").objects().forEach { request -> AppCard {
                 Text("${if (request.getString("scope") == "route") "Toda la ruta" else "Por pedido"} · ${settlementStatusLabel(request.getString("status"))}", style = MaterialTheme.typography.titleMedium)
@@ -132,18 +131,75 @@ internal fun FinanceScreen(model: DriverFinanceModel, initialExecutionId: String
                 Text(request.getString("requestedAt"), style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
                 if (!request.isNull("receiver")) Text("${request.getString("receiver")} · ${request.optString("note")}")
             } }
+            val routeReview = detail.objectOrNull("routeSettlement")
+            val work = detail.objectOrNull("work")
+            val workCompletion = work?.objectOrNull("completion")
+            if (!route.isNull("completedAt") && orders.isNotEmpty()) {
+                if (workCompletion == null) {
+                    val canRequest = routeReview?.optBoolean("eligible") ?: eligible
+                    val alreadyReceived = routeReview?.optString("reason") == "SETTLEMENT_NOTHING_PENDING"
+                    AppAction(if (alreadyReceived) "Liquidación recibida" else "Liquidar toda la ruta", DriverIcon.MONEY, Modifier.fillMaxWidth(), enabled = canRequest && !state.busy && !state.pending, accent = DriverColors.amber) {
+                        routeRequestReview = (routeReview ?: JSONObject().put("totals", detail.getJSONArray("outstandingTotals")).put("paymentIds", org.json.JSONArray(orders.filter { it.optString("settlementStatus") != "accepted" }.map { it.getJSONObject("payment").getString("id") }))).toString()
+                        requestRoute = true; requestShipment = null
+                    }
+                    if (routeReview != null && !routeReview.isNull("reason") && !alreadyReceived)
+                        Text(friendlyError(DriverApiException(409, routeReview.getString("reason"))), style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+                    if (work != null) {
+                        AppAction("Finalizar trabajo", DriverIcon.CHECK, Modifier.fillMaxWidth(), enabled = work.getBoolean("eligible") && !state.busy && !state.pending) {
+                            showWorkSummary = true
+                            model.submit(route.getString("id"), "work", JSONObject().put("basis", work.getString("basis")))
+                        }
+                        if (!work.getBoolean("eligible")) Text("Disponible cuando el liquidador reciba todos tus cobros.", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+                    }
+                } else {
+                    Text("Trabajo finalizado", color = DriverColors.lime, style = MaterialTheme.typography.titleSmall)
+                    AppAction("Ver resumen de mi trabajo", DriverIcon.MONEY, Modifier.fillMaxWidth(), quiet = true) { showWorkSummary = true }
+                }
+            }
+            if (showWorkSummary && workCompletion != null) {
+                val summary = workCompletion.getJSONObject("summary")
+                ServiceFormSurface(onDismiss = { showWorkSummary = false }, header = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Buen trabajo", style = MaterialTheme.typography.titleLarge, color = DriverColors.lime)
+                        Text("${route.getString("label")} · ${route.getString("date")}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+                    }
+                }, footer = {
+                    AppAction("Volver a mis rutas", DriverIcon.ARROW, Modifier.fillMaxWidth()) { showWorkSummary = false; model.select(null) }
+                    TextButton(onClick = { showWorkSummary = false }) { Text("Cerrar resumen") }
+                }) {
+                    FinanceWorkSummary(summary.getInt("deliveredOrders"), summary.getInt("incidents"), summary.getJSONArray("totals").objects().map { financeCurrency(it.getJSONObject("currency")) to it.getString("total") })
+                    Text("Todos los cobros fueron recibidos por liquidación.", color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
             if (requestRoute || requestShipment != null) AlertDialog(onDismissRequest = { if (!state.busy) { requestRoute = false; requestShipment = null } },
                 title = { Text(if (requestRoute) "¿Liquidar toda la ruta pendiente?" else "¿Solicitar liquidación del pedido?") },
-                text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("El liquidador revisará y confirmará la recepción. Transferencias y créditos no se entregan en efectivo.")
-                    if (requestRoute) FinanceMoneySummary("Pendiente", detail.getJSONArray("outstandingTotals").objects())
+                    if (requestRoute) {
+                        val reviewed = routeRequestReview?.let(::JSONObject)
+                        Text("${route.getString("label")} · ${route.getString("date")}")
+                        FinanceMoneySummary("Importes de esta liquidación", (reviewed?.optJSONArray("totals") ?: detail.getJSONArray("outstandingTotals")).objects())
+                        val included = reviewed?.optJSONArray("paymentIds")?.let { ids -> (0 until ids.length()).map(ids::getString).toSet() }.orEmpty()
+                        val includedOrders = orders.filter { it.getJSONObject("payment").getString("id") in included }
+                        Text("${includedOrders.size} pedidos incluidos", style = MaterialTheme.typography.titleSmall)
+                        includedOrders.forEach { o ->
+                            val p = o.getJSONObject("payment")
+                            Text("${o.getString("customer")} · ${o.getString("orderName")}", style = MaterialTheme.typography.bodySmall)
+                            Text("${paymentMethodLabel(p.getString("method"))} · ${paymentMoney(p, if (p.getString("method") == "credit") "expected" else "received")}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+                        }
+                    }
                     else orders.find { it.getString("shipmentId") == requestShipment }?.let { o ->
                         Text("${o.getString("customer")} · ${o.getString("orderName")}")
                         val p = o.getJSONObject("payment")
                         Text("${paymentMethodLabel(p.getString("method"))} · ${paymentMoney(p, if (p.getString("method") == "credit") "expected" else "received")}")
                     }
+                    if (state.message.isNotBlank()) Text(state.message, color = DriverColors.amber, style = MaterialTheme.typography.bodySmall)
                 } },
-                confirmButton = { TextButton(enabled = !state.busy && !state.pending, onClick = { model.submit(route.getString("id"), "requests", JSONObject().put("shipmentId", requestShipment ?: JSONObject.NULL)) }) { Text("Aceptar") } },
+                confirmButton = { TextButton(enabled = !state.busy && !state.pending, onClick = {
+                    val payload = JSONObject().put("shipmentId", requestShipment ?: JSONObject.NULL)
+                    if (requestRoute) routeRequestReview?.let(::JSONObject)?.optString("basis")?.takeIf { it.isNotBlank() }?.let { payload.put("basis", it) }
+                    model.submit(route.getString("id"), "requests", payload)
+                }) { Text("Aceptar") } },
                 dismissButton = { TextButton(enabled = !state.busy, onClick = { requestRoute = false; requestShipment = null }) { Text("Cancelar") } })
         }
     }

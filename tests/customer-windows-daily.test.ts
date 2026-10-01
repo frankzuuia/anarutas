@@ -54,7 +54,7 @@ it("converts legacy weekdays into auditable daily clock intervals under concurre
           "SELECT schema_version FROM rutas_installation",
         )
       ).rows[0].schema_version,
-    ).toBe(39);
+    ).toBe(40);
     const windows = (
       await listCustomers(fixture.db.pool, { archived: false })
     ).customers.find((item) => item.id === customer.id)!.windows;
@@ -120,7 +120,7 @@ it("converts legacy weekdays into auditable daily clock intervals under concurre
           "SELECT schema_version FROM rutas_installation",
         )
       ).rows[0].schema_version,
-    ).toBe(39);
+    ).toBe(40);
     await fixture.db.pool.query(
       "ALTER TABLE route_customer_windows DROP CONSTRAINT route_customer_windows_clock_unique",
     );

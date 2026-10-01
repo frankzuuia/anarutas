@@ -131,3 +131,10 @@ Auditoría local de especificación: reglas de cierre vigentes conservadas,
 recepción transaccional reutilizada, nuevo cierre separado e inmutable; no
 confundir confirmación de plan con evidencia de implementación. Construcción
 por bloques y puertas antes de commit/push; revisión física del propietario.
+
+## Evidencia de implementación
+
+FW-T01..04 terminados; resultados, cobertura, mutaciones, E2E reales,
+compatibilidad APK y límites en [QA-LIQUIDACION-RUTA-0.8.16.md](QA-LIQUIDACION-RUTA-0.8.16.md).
+El despliegue y la ejecución física Android corresponden al propietario bajo
+la excepción vigente; la instrumentación está compilada, no ejecutada.

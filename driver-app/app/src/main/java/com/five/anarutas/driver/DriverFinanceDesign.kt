@@ -81,6 +81,22 @@ internal fun FinanceMethodTiles(cash: String, transfer: String, credit: String, 
     }
 }
 
+@Composable
+internal fun FinanceWorkSummary(deliveredOrders: Int, incidents: Int, totals: List<Pair<DriverCurrency, String>>) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        listOf("Pedidos entregados" to deliveredOrders, "Incidencias" to incidents).forEach { (label, count) ->
+            Surface(Modifier.weight(1f), color = DriverColors.surface, shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, DriverColors.line)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(label, style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+                    Text(count.toString(), style = MaterialTheme.typography.headlineSmall)
+                }
+            }
+        }
+    }
+    Text("Monto total de la ruta", style = MaterialTheme.typography.titleSmall)
+    totals.forEach { (currency, amount) -> Text(financialMoney(amount, currency), style = MaterialTheme.typography.headlineSmall, color = DriverColors.lime) }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun CompactFinanceOrderCard(customer: String, orderName: String, status: String, method: String,

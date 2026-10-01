@@ -1,12 +1,23 @@
 export const errors: Record<string, string> = {
   ROLE_DENIED: "Tu cuenta no tiene acceso a esta sección.",
-  SETTLEMENT_VERSION_CHANGED: "La solicitud cambió o ya fue atendida. Actualiza para consultar la recepción guardada.",
+  SETTLEMENT_VERSION_CHANGED:
+    "La solicitud cambió o ya fue atendida. Actualiza para consultar la recepción guardada.",
   SETTLEMENT_ROUTE_NOT_FINISHED: "El chofer aún no termina esta ruta.",
   SETTLEMENT_DECISION_INVALID: "Selecciona aceptar o rechazar la solicitud.",
+  SETTLEMENT_REVIEW_REQUIRED:
+    "Revisa los pedidos e importes antes de confirmar la liquidación.",
+  WORK_SETTLEMENT_PENDING:
+    "Primero deben recibirse todos los cobros de la ruta.",
+  WORK_REVIEW_REQUIRED: "Revisa el resumen antes de finalizar tu trabajo.",
+  WORK_VERSION_CHANGED:
+    "El resumen cambió. Revisa de nuevo los importes antes de finalizar.",
   RESOLUTION_NOTE_REQUIRED: "Indica cómo se resolvió la incidencia.",
-  INVALID_PRODUCT_INCIDENT: "Completa Departamento y Concepto con hasta 120 caracteres cada uno.",
-  PRODUCT_EVIDENCE_REQUIRED: "Esta reposición o devolución requiere una fotografía de evidencia.",
-  DRIVER_RETRY_REQUIRED: "Cliente cerrado sólo puede resolverlo el chofer mediante reintento o reprogramación.",
+  INVALID_PRODUCT_INCIDENT:
+    "Completa Departamento y Concepto con hasta 120 caracteres cada uno.",
+  PRODUCT_EVIDENCE_REQUIRED:
+    "Esta reposición o devolución requiere una fotografía de evidencia.",
+  DRIVER_RETRY_REQUIRED:
+    "Cliente cerrado sólo puede resolverlo el chofer mediante reintento o reprogramación.",
   MOBILE_PHONE_INVALID:
     "Para acceder a la APK, el teléfono del chofer debe ser un número mexicano válido de 10 dígitos.",
   MOBILE_PIN_INVALID: "Escribe exactamente cuatro dígitos para el PIN.",
@@ -66,7 +77,8 @@ export const errors: Record<string, string> = {
     "El recorrido no contiene todos los pedidos de esta camioneta. Revisa el plan y vuelve a armar la ruta.",
   ROUTE_ALREADY_STARTED:
     "El chofer ya inició esta ruta; no se puede cambiar su camioneta ni sus pedidos.",
-  ROUTE_NOT_STARTED: "La ruta ya no figura como iniciada. Actualiza el tablero.",
+  ROUTE_NOT_STARTED:
+    "La ruta ya no figura como iniciada. Actualiza el tablero.",
   ROUTING_DEPARTURE_INVALID:
     "Escribe una hora de salida válida en formato de 24 horas: HH:mm.",
   ROUTING_DEPARTURE_REQUIRED:

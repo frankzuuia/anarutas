@@ -423,24 +423,97 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
       .toBe("accepted");
     expect((await f.state()).completedAt).toBeNull();
     await f.finish();
+    const reviewed = await (await request.get(path, { headers })).json();
+    expect(reviewed.routeSettlement.paymentIds).toHaveLength(2);
+    expect(
+      (
+        await request.post(`${path}/work`, {
+          headers,
+          data: { commandId: randomUUID(), basis: reviewed.work.basis },
+        })
+      ).status(),
+    ).toBe(409);
     const rest = await request.post(`${path}/requests`, {
       headers,
-      data: { commandId: randomUUID(), shipmentId: null },
+      data: {
+        commandId: randomUUID(),
+        shipmentId: null,
+        basis: reviewed.routeSettlement.basis,
+      },
     });
     expect(rest.status()).toBe(200);
-    await page.locator(".settlement-history > summary").click();
+    const routeCard = page.locator(".settlement-route-card");
     await expect(
-      page
-        .locator(".settlement-request")
-        .getByRole("button", { name: "Aceptar", exact: true }),
-    ).toBeVisible({ timeout: 15000 });
-    await page
-      .locator(".settlement-request")
-      .getByRole("button", { name: "Aceptar", exact: true })
+      routeCard.getByRole("button", {
+        name: "Aceptar liquidación de ruta",
+        exact: true,
+      }),
+    ).toBeEnabled({ timeout: 15000 });
+    await routeCard.locator(".settlement-route-open").click();
+    const packetDialog = page.getByRole("dialog", {
+      name: /Liquidación de ruta/,
+    });
+    await expect(packetDialog.locator(".settlement-packet-order")).toHaveCount(
+      2,
+    );
+    await expect(packetDialog).not.toContainText("S1");
+    const closePacketBounds = await packetDialog
+      .getByRole("button", { name: "Cerrar liquidación de ruta" })
+      .boundingBox();
+    const packetTitleBounds = await packetDialog
+      .getByRole("heading", { name: /Liquidación de ruta/ })
+      .boundingBox();
+    expect(closePacketBounds!.x).toBeGreaterThan(packetTitleBounds!.x);
+    expect(Math.abs(closePacketBounds!.y - packetTitleBounds!.y)).toBeLessThan(
+      44,
+    );
+    await packetDialog
+      .locator(".settlement-packet-order")
+      .filter({ hasText: "S3" })
+      .click();
+    await expect(
+      orderDetail
+        .getByRole("row")
+        .filter({ hasText: "Producto 3" })
+        .getByRole("cell")
+        .nth(1),
+    ).toHaveText("1 kg");
+    await expect(orderDetail.locator(".settlement-incident")).toContainText(
+      "− $10.00 MXN",
+    );
+    await page.keyboard.press("Escape");
+    await expect(packetDialog).toBeVisible();
+    await page.screenshot({ path: ".local/qa-settlements/route-packet.png" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: ".local/qa-settlements/route-packet-mobile.png",
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await packetDialog
+      .getByRole("button", { name: "Cancelar", exact: true })
+      .click();
+    expect(
+      (await (await request.get(path, { headers })).json()).requests.find(
+        (r: { scope: string }) => r.scope === "route",
+      ).status,
+    ).toBe("pending");
+    await routeCard.locator(".settlement-route-open").click();
+    await packetDialog
+      .getByRole("button", { name: "Aceptar liquidación de ruta", exact: true })
       .click();
     await expect(dialog).toContainText("20");
     await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
-    await expect(dialog).toBeHidden();
+    await expect(
+      packetDialog.getByRole("button", { name: "Recibida", exact: true }),
+    ).toBeDisabled();
+    await packetDialog
+      .getByRole("button", { name: "Cancelar", exact: true })
+      .click();
     const after = await (await request.get(path, { headers })).json();
     expect(after.outstandingTotals).toEqual([]);
     expect(after.acceptedTotals[0]).toMatchObject({
@@ -449,7 +522,75 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
       credit: "10",
       balance: "0",
     });
+    expect(after.work).toMatchObject({
+      eligible: true,
+      completion: null,
+      summary: { deliveredOrders: 3, incidents: 1, totals: [{ total: "50" }] },
+    });
+    const workPayload = { commandId: randomUUID(), basis: after.work.basis };
+    expect(
+      (await request.post(`${path}/work`, { data: workPayload })).status(),
+    ).toBe(401);
+    expect(
+      (
+        await request.post(`${path}/work`, {
+          headers: { Authorization: f.members[1].authorization },
+          data: workPayload,
+        })
+      ).status(),
+    ).toBe(404);
+    expect(
+      (
+        await request.post(`${path}/work`, {
+          headers,
+          data: { ...workPayload, basis: "0".repeat(64) },
+        })
+      ).status(),
+    ).toBe(409);
+    const workTimings: number[] = [];
+    const completeWork = async () => {
+      const started = performance.now();
+      const response = await request.post(`${path}/work`, {
+        headers,
+        data: workPayload,
+      });
+      workTimings.push(performance.now() - started);
+      return response;
+    };
+    const completedWork = await Promise.all([completeWork(), completeWork()]);
+    for (const response of completedWork)
+      expect(response.status(), await response.text()).toBe(200);
+    const summaries = await Promise.all(
+      completedWork.map((response) => response.json()),
+    );
+    expect(summaries.map((s) => s.duplicate).sort()).toEqual([false, true]);
+    expect(summaries[0].summary).toEqual(after.work.summary);
+    await writeFile(
+      ".local/qa-settlements/work-command-timing.json",
+      JSON.stringify(
+        {
+          samples: workTimings,
+          maximumMs: Math.max(...workTimings),
+          environment:
+            "two concurrent same-command HTTP requests, isolated local PostgreSQL and Next production build; not a load test or production SLO",
+        },
+        null,
+        2,
+      ),
+    );
+    expect(
+      (
+        await (
+          await request.post(`${path}/work`, { headers, data: workPayload })
+        ).json()
+      ).duplicate,
+    ).toBe(true);
+    expect(
+      (await (await request.get(path, { headers })).json()).work.completion
+        .summary,
+    ).toEqual(after.work.summary);
     await mkdir(".local/qa-settlements", { recursive: true });
+    await page.locator(".settlement-history > summary").click();
     await page.screenshot({
       path: ".local/qa-settlements/receiver.png",
       fullPage: true,

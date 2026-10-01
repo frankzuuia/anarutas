@@ -3,6 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw, ArrowLeft, Wallet, Check, X } from "lucide-react";
 import { api } from "./api";
 import { usePanelRealtime } from "./use-panel-realtime";
+import {
+  SettlementRouteCard,
+  SettlementRoutePacketModal,
+} from "./settlement-route-packet";
 import type {
   readSettlementDetail,
   listSettlements,
@@ -39,6 +43,7 @@ export function SettlementPanel({ today }: { today: string }) {
     } | null>(null),
     [note, setNote] = useState("");
   const [openedOrder, setOpenedOrder] = useState<string | null>(null);
+  const [openedRoutePacket, setOpenedRoutePacket] = useState(false);
   const [search, setSearch] = useState("");
   const [orderStatus, setOrderStatus] = useState("all");
   const [orderPage, setOrderPage] = useState(0);
@@ -125,6 +130,8 @@ export function SettlementPanel({ today }: { today: string }) {
               setDateBasis(e.target.value);
               setPage(0);
               setSelected(null);
+              setOpenedRoutePacket(false);
+              setOpenedOrder(null);
               setDetail(null);
             }}
           >
@@ -223,6 +230,8 @@ export function SettlementPanel({ today }: { today: string }) {
           className="settlement-back"
           onClick={() => {
             setSelected(null);
+            setOpenedRoutePacket(false);
+            setOpenedOrder(null);
             setDetail(null);
           }}
         >
@@ -254,6 +263,7 @@ export function SettlementPanel({ today }: { today: string }) {
                         key={r.id}
                         onClick={() => {
                           setSelected(r.id);
+                          setOpenedRoutePacket(false);
                           setSearch("");
                           setOrderStatus("all");
                           setOrderPage(0);
@@ -294,6 +304,19 @@ export function SettlementPanel({ today }: { today: string }) {
       {selected && !detail && <p role="status">Cargando liquidación…</p>}
       {detail && (
         <>
+          <SettlementRouteCard
+            detail={detail}
+            busy={busy}
+            open={() => setOpenedRoutePacket(true)}
+            receive={(request) => {
+              setNote("");
+              setConfirmation({
+                request,
+                decision: "accepted",
+                commandId: crypto.randomUUID(),
+              });
+            }}
+          />
           <h2>
             {detail.route.driver} · {detail.route.label} · {detail.route.date}
           </h2>
@@ -530,6 +553,22 @@ export function SettlementPanel({ today }: { today: string }) {
             </div>
           </details>
         </>
+      )}
+      {openedRoutePacket && detail && !selectedOrder && !confirmation && (
+        <SettlementRoutePacketModal
+          detail={detail}
+          busy={busy}
+          close={() => setOpenedRoutePacket(false)}
+          openOrder={setOpenedOrder}
+          receive={(request) => {
+            setNote("");
+            setConfirmation({
+              request,
+              decision: "accepted",
+              commandId: crypto.randomUUID(),
+            });
+          }}
+        />
       )}
       {selectedOrder && selected && (
         <SettlementOrderModal

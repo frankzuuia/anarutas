@@ -7,6 +7,8 @@ import { financialHash } from "./financial-policy";
 import { paymentTotals } from "./payment-policy";
 import { paymentRecords } from "./payments";
 import { lockFinanceExecution, mobileFinanceContext } from "./finance-context";
+import { financeOrders } from "./finance-context";
+import { routeSettlementReview } from "./route-work-policy";
 
 export async function settlementRecords(sql: Sql, executionId: string) {
   const rows = (
@@ -39,7 +41,18 @@ export async function requestSettlement(
 ) {
   const commandId = uuid(raw.commandId),
     shipmentId = raw.shipmentId === null ? null : uuid(raw.shipmentId);
-  const hash = financialHash({ executionId, shipmentId });
+  if (
+    raw.basis !== undefined &&
+    (shipmentId !== null ||
+      typeof raw.basis !== "string" ||
+      raw.basis.length !== 64)
+  )
+    throw new AppError("SETTLEMENT_REVIEW_REQUIRED");
+  const hash = financialHash({
+    executionId,
+    shipmentId,
+    ...(raw.basis === undefined ? {} : { basis: raw.basis }),
+  });
   return transaction(pool, async (sql) => {
     const { driver, route } = await mobileFinanceContext(
       sql,
@@ -61,6 +74,18 @@ export async function requestSettlement(
       throw new AppError("SETTLEMENT_ROUTE_NOT_FINISHED", 409);
     const all = await paymentRecords(sql, route.id),
       requests = await settlementRecords(sql, route.id);
+    if (raw.basis !== undefined) {
+      const orders = await financeOrders(sql, route);
+      const review = routeSettlementReview(
+        route.id,
+        Boolean(route.completed_at),
+        orders,
+        all,
+        requests,
+      );
+      if (review.basis !== raw.basis)
+        throw new AppError("SETTLEMENT_VERSION_CHANGED", 409);
+    }
     const accepted = new Set(
       requests
         .filter((r) => r.status === "accepted")
