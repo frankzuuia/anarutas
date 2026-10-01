@@ -10,11 +10,23 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Instant
+import org.json.JSONObject
+import org.junit.Assert.*
 
 /** Real Compose rendering and semantics; these domain values do not substitute a provider. */
 @RunWith(AndroidJUnit4::class)
 class DriverFinancialUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @Test fun liquidationReadsTheActualAndroidJsonContract() {
+        val order = JSONObject().put("status", "open").put("payment", JSONObject.NULL)
+        assertFalse(liquidationOrderVisible(order))
+        order.put("status", "delivered")
+        assertFalse(liquidationOrderVisible(order))
+        order.put("payment", JSONObject().put("id", "confirmed"))
+        assertTrue(liquidationOrderVisible(order))
+        order.put("status", "open")
+        assertFalse(liquidationOrderVisible(order))
+    }
     @Test fun summaryUpdatesItsAmountsAndShowsUnpricedIncidents() {
         val instant = Instant.now()
         var view by mutableStateOf(DriverFinancialView(1, "ready", true, null, instant, instant,
@@ -23,10 +35,10 @@ class DriverFinancialUiTest {
         compose.setContent { DriverTheme {
             ServiceFormSurface({}, header = { Text("Pedido") }, footer = {}) { FinancialOrderSummary(view) }
         } }
-        compose.onNodeWithText("41.20 MXN").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("$41.20 MXN").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { view = view.copy(revision = 2, totals = view.totals!!.copy(deferred = "5", net = "36.2")) }
-        compose.onNodeWithText("36.20 MXN").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("41.20 MXN").assertDoesNotExist()
+        compose.onNodeWithText("$36.20 MXN").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("$41.20 MXN").assertDoesNotExist()
         compose.onNodeWithText("1 faltante(s) sin partida asociada · sin descuento automático").performScrollTo().assertIsDisplayed()
     }
     @Test fun replacementChoiceStartsEmptyAndRequiresAnExplicitSelection() {

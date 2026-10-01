@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,7 +26,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 internal fun paymentMethodLabel(method: String) = when (method) { "cash" -> "Efectivo"; "transfer" -> "Transferencia"; "credit" -> "Crédito"; "mixed" -> "Efectivo + transferencia"; else -> method }
-internal fun settlementStatusLabel(status: String) = when(status) { "pending" -> "Por recibir"; "accepted" -> "Aceptada"; "rejected" -> "Rechazada"; else -> "Sin liquidar" }
+internal fun settlementStatusLabel(status: String) = when(status) { "pending" -> "Por recibir"; "accepted" -> "Recibida"; "rejected" -> "Rechazada"; else -> "Sin liquidar" }
 @Composable
 internal fun FinanceScreen(initialExecutionId: String? = null, initialShipmentId: String? = null) {
     val context = LocalContext.current
@@ -38,6 +39,10 @@ internal fun FinanceScreen(initialExecutionId: String? = null, initialShipmentId
     LaunchedEffect(initialExecutionId) { if (initialExecutionId != null) model.select(initialExecutionId) }
     val state = model.state
     var selectedOrder by rememberSaveable(initialExecutionId, initialShipmentId) { mutableStateOf(initialShipmentId) }
+    var search by rememberSaveable(state.executionId) { mutableStateOf("") }
+    var orderFilter by rememberSaveable(state.executionId) { mutableStateOf("all") }
+    var orderPage by rememberSaveable(state.executionId) { mutableIntStateOf(0) }
+    var showHistory by rememberSaveable(state.executionId) { mutableStateOf(false) }
     var requestShipment by rememberSaveable { mutableStateOf<String?>(null) }
     var requestRoute by rememberSaveable { mutableStateOf(false) }
     var requestRevision by rememberSaveable { mutableIntStateOf(state.receiptRevision) }
@@ -49,11 +54,11 @@ internal fun FinanceScreen(initialExecutionId: String? = null, initialShipmentId
         AppAction("Actualizar", DriverIcon.REFRESH, quiet = true, enabled = !state.busy, onClick = model::refresh)
         val detail = state.detail
         if (state.executionId == null) {
-            if (state.routes.isEmpty()) EmptyPanel("Sin recorridos iniciados", "Aquí aparecerán tus cobros y liquidaciones.")
-            state.routes.forEach { route -> AppCard {
+            if (state.routes.none { it.optInt("payments") > 0 }) EmptyPanel("Aún no tienes pedidos para liquidar", "Aparecerán aquí automáticamente cuando completes la entrega y confirmes el cobro.")
+            state.routes.filter { it.optInt("payments") > 0 }.forEach { route -> AppCard {
                 Text(route.getString("label"), style = MaterialTheme.typography.titleMedium)
                 Text("${route.getString("date")} · ${route.getString("vehicle")}", color = DriverColors.muted)
-                Text("${route.getInt("payments")}/${route.getInt("delivered")} cobros registrados")
+                Text("${route.getInt("payments")} pedidos cobrados", color = DriverColors.lime)
                 AppAction("Ver pedidos y liquidación", DriverIcon.ARROW, enabled = !state.busy) { selectedOrder = null; model.select(route.getString("id")) }
             } }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -67,11 +72,25 @@ internal fun FinanceScreen(initialExecutionId: String? = null, initialShipmentId
             val route = detail.getJSONObject("route")
             TextButton(onClick = { selectedOrder = null; model.select(null) }, enabled = !state.busy) { Text("Volver a mis rutas") }
             Text("${route.getString("label")} · ${route.getString("date")}", style = MaterialTheme.typography.titleMedium)
-            FinanceMoneySummary("Pendiente de entregar", detail.getJSONArray("outstandingTotals").objects())
-            FinanceMoneySummary("Ya aceptado", detail.getJSONArray("acceptedTotals").objects())
+            FinanceMoneySummary("Por entregar a liquidación", detail.getJSONArray("outstandingTotals").objects())
+            FinanceMoneySummary("Recibido por liquidación", detail.getJSONArray("acceptedTotals").objects())
             if (route.isNull("completedAt")) Text("Puedes liquidar cada pedido cobrado durante el recorrido.", color = DriverColors.muted)
-            val orders = detail.getJSONArray("orders").objects()
-            orders.forEach { order ->
+            val orders = detail.getJSONArray("orders").objects().filter(::liquidationOrderVisible)
+            if (orders.isEmpty()) EmptyPanel("Sin pedidos finalizados", "Los pedidos aparecerán al completar la entrega y confirmar su cobro.")
+            if (orders.isNotEmpty()) {
+                OutlinedTextField(search, { search = it; orderPage = 0 }, label = { Text("Buscar cliente o pedido") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("all" to "Todos", "unsettled" to "Por liquidar", "pending" to "En revisión", "accepted" to "Recibidos").forEach { (key, label) ->
+                        FilterChip(selected = orderFilter == key, onClick = { orderFilter = key; orderPage = 0 }, label = { Text(label) })
+                    }
+                }
+            }
+            val filtered = orders.filter { (orderFilter == "all" || it.optString("settlementStatus") == orderFilter) &&
+                (it.getString("customer") + " " + it.getString("orderName")).contains(search.trim(), ignoreCase = true) }
+            val lastPage = ((filtered.size - 1) / 12).coerceAtLeast(0)
+            val currentPage = orderPage.coerceAtMost(lastPage)
+            if (orders.isNotEmpty()) Text("${filtered.size} pedidos", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+            filtered.drop(currentPage * 12).take(12).forEach { order ->
                 val payment = order.objectOrNull("payment")
                 AppCard {
                     TextButton(onClick = { selectedOrder = if (selectedOrder == order.getString("shipmentId")) null else order.getString("shipmentId") }) {
@@ -85,16 +104,36 @@ internal fun FinanceScreen(initialExecutionId: String? = null, initialShipmentId
                     AppAction(if (selectedOrder == order.getString("shipmentId")) "Cerrar detalle" else "Ver pedido y cobro", DriverIcon.ORDERS, quiet = true) {
                         selectedOrder = if (selectedOrder == order.getString("shipmentId")) null else order.getString("shipmentId")
                     }
-                    if (selectedOrder == order.getString("shipmentId")) FinanceOrderDetail(order, route.getString("id"), model)
                     if (payment != null && order.optString("settlementStatus") == "unsettled") AppAction("Liquidar", DriverIcon.CHECK,
                         Modifier.fillMaxWidth(), enabled = !state.busy && !state.pending, accent = DriverColors.amber) { requestShipment = order.getString("shipmentId"); requestRoute = false }
                 }
             }
+            orders.find { it.getString("shipmentId") == selectedOrder }?.let { order ->
+                ServiceFormSurface(onDismiss = { selectedOrder = null }, header = {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f)) { Text(order.getString("orderName"), color = DriverColors.lime, style = MaterialTheme.typography.labelLarge); Text(order.getString("customer"), style = MaterialTheme.typography.titleLarge) }
+                        AppIconButton(DriverIcon.CLOSE, "Cerrar detalle del pedido", onClick = { selectedOrder = null })
+                    }
+                }, footer = {
+                    if (order.optString("settlementStatus") == "unsettled") AppAction("Liquidar", DriverIcon.CHECK, Modifier.fillMaxWidth(), enabled = !state.busy && !state.pending, accent = DriverColors.amber) {
+                        selectedOrder = null; requestShipment = order.getString("shipmentId"); requestRoute = false
+                    }
+                    AppAction("Cerrar detalle", DriverIcon.CLOSE, Modifier.fillMaxWidth(), quiet = true) { selectedOrder = null }
+                }) {
+                    FinanceOrderDetail(order, route.getString("id"), model)
+                }
+            }
+            if (filtered.size > 12) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(enabled = currentPage > 0, onClick = { orderPage = currentPage - 1 }) { Text("Anterior") }
+                Text("${currentPage + 1} / ${lastPage + 1}")
+                TextButton(enabled = currentPage < lastPage, onClick = { orderPage = currentPage + 1 }) { Text("Siguiente") }
+            }
             val eligible = orders.any { it.objectOrNull("payment") != null && it.optString("settlementStatus") == "unsettled" }
-            AppAction("Liquidar toda la ruta", DriverIcon.CHECK, Modifier.fillMaxWidth(), enabled = !route.isNull("completedAt") && eligible && !state.busy && !state.pending) {
+            if (!route.isNull("completedAt") && eligible) AppAction("Liquidar toda la ruta", DriverIcon.CHECK, Modifier.fillMaxWidth(), enabled = !route.isNull("completedAt") && eligible && !state.busy && !state.pending) {
                 requestRoute = true; requestShipment = null
             }
-            detail.getJSONArray("requests").objects().forEach { request -> AppCard {
+            if (detail.getJSONArray("requests").length() > 0) TextButton(onClick = { showHistory = !showHistory }) { Text(if (showHistory) "Ocultar historial" else "Ver historial de liquidación") }
+            if (showHistory) detail.getJSONArray("requests").objects().forEach { request -> AppCard {
                 Text("${if (request.getString("scope") == "route") "Toda la ruta" else "Por pedido"} · ${settlementStatusLabel(request.getString("status"))}", style = MaterialTheme.typography.titleMedium)
                 FinanceMoneySummary("Solicitud", request.getJSONArray("totals").objects())
                 Text(request.getString("requestedAt"), style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
@@ -108,7 +147,7 @@ internal fun FinanceScreen(initialExecutionId: String? = null, initialShipmentId
                     else orders.find { it.getString("shipmentId") == requestShipment }?.let { o ->
                         Text("${o.getString("customer")} · ${o.getString("orderName")}")
                         val p = o.getJSONObject("payment")
-                        Text("${paymentMethodLabel(p.getString("method"))} · ${p.getString(if (p.getString("method") == "credit") "expected" else "received")} ${p.getJSONObject("currency").getString("name")}")
+                        Text("${paymentMethodLabel(p.getString("method"))} · ${paymentMoney(p, if (p.getString("method") == "credit") "expected" else "received")}")
                     }
                 } },
                 confirmButton = { TextButton(enabled = !state.busy && !state.pending, onClick = { model.submit(route.getString("id"), "requests", JSONObject().put("shipmentId", requestShipment ?: JSONObject.NULL)) }) { Text("Aceptar") } },
@@ -119,29 +158,36 @@ internal fun FinanceScreen(initialExecutionId: String? = null, initialShipmentId
 @Composable
 internal fun PaymentMoneyCard(payment: JSONObject) {
     val method = payment.getString("method")
-    Surface(color = DriverColors.lime.copy(alpha = .09f), shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, DriverColors.lime.copy(alpha = .4f)), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        HorizontalDivider(color = DriverColors.line)
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(if (method == "credit") "Importe a crédito" else "Monto a entregar", color = DriverColors.lime, style = MaterialTheme.typography.labelLarge)
-            Text("${payment.getString(if (method == "credit") "expected" else "received")} ${payment.getJSONObject("currency").getString("name")}",
+            Text(paymentMoney(payment, if (method == "credit") "expected" else "received"),
                 color = DriverColors.lime, style = MaterialTheme.typography.headlineSmall)
             Text(paymentMethodLabel(method), style = MaterialTheme.typography.titleSmall)
-            if (method == "mixed") Text("Efectivo: ${payment.getString("cashReceived")} · Transferencia: ${payment.getString("transferReceived")}",
+            if (method == "mixed") Text("Efectivo: ${paymentMoney(payment, "cashReceived")} · Transferencia: ${paymentMoney(payment, "transferReceived")}",
                 style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
         }
     }
 }
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FinanceMoneySummary(title: String, totals: List<JSONObject>) {
-    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    if (totals.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall)
-        if (totals.isEmpty()) Text("Sin importes registrados", color = DriverColors.muted)
         totals.forEach { total ->
-            val currency = total.getJSONObject("currency").getString("name")
-            Text("Efectivo: ${total.getString("cash")} $currency", color = DriverColors.lime)
-            Text("Transferencias: ${total.getString("transfer")} $currency", color = DriverColors.blue)
-            Text("Créditos: ${total.getString("credit")} $currency", color = DriverColors.purple)
-            Text("Saldo pendiente: ${total.getString("balance")} · Reposición diferida: ${total.getString("deferred")} $currency", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+            val currency = financeCurrency(total.getJSONObject("currency"))
+            listOf(Triple("cash", "💵 Efectivo", DriverColors.lime), Triple("transfer", "🏦 Transferencias", DriverColors.blue), Triple("credit", "🗓️ Crédito", DriverColors.purple)).forEach { (key, label, accent) ->
+                Surface(color = accent.copy(alpha = .06f), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, accent.copy(alpha = .22f)), modifier = Modifier.fillMaxWidth()) {
+                    FlowRow(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(label, color = accent, style = MaterialTheme.typography.labelLarge)
+                        Text(financialMoney(total.getString(key), currency), color = accent, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+            }
+            if (total.getString("balance").toBigDecimal().signum() != 0) Text("Pago parcial pendiente del cliente: ${financialMoney(total.getString("balance"), currency)}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+            if (total.getString("deferred").toBigDecimal().signum() != 0) Text("Por cobrar al entregar reposiciones: ${financialMoney(total.getString("deferred"), currency)}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
         }
     }
 }
@@ -152,31 +198,72 @@ private fun FinanceOrderDetail(order: JSONObject, executionId: String, model: Dr
     val financial = remember(source.toString()) { parseDriverFinancial(source.objectOrNull("financial")) }
     val lines = source.objectOrNull("order")?.optJSONArray("lines")?.objects().orEmpty()
     if (order.optBoolean("changedAfterPayment")) Text("La fuente cambió después del cobro. Se conserva el detalle confirmado.", color = DriverColors.amber)
-    financial?.lines?.forEach { line -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(lines.getOrNull(line.lineIndex)?.optString("name") ?: "Partida ${line.lineIndex + 1}")
-        Text("${line.quantity} ${line.unit}", color = DriverColors.lime)
-        FinancialLineDetails(line, financial.currency)
+    if (payment != null) Text(paymentMethodLabel(payment.getString("method")), color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
+    Text("Pedido completo · ${financial?.lines?.size ?: 0} ${if (financial?.lines?.size == 1) "partida" else "partidas"}", style = MaterialTheme.typography.titleSmall)
+    financial?.lines?.forEach { line -> Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(lines.getOrNull(line.lineIndex)?.optString("name") ?: "Partida ${line.lineIndex + 1}", style = MaterialTheme.typography.titleSmall)
+        Text("${productQuantityText(line.quantity)} ${line.unit} · ${financialMoney(line.unitPrice, financial.currency)} / ${line.unit}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+        if (line.discount.toBigDecimal().signum() != 0) Text("Descuento del pedido: ${productQuantityText(line.discount)}%", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+        FinanceReceiptValue("Original", financialMoney(line.total, financial.currency))
+        if (line.net != null && line.net.toBigDecimal().compareTo(line.total.toBigDecimal()) != 0)
+            FinanceReceiptValue("Final", financialMoney(line.net, financial.currency))
+        HorizontalDivider(color = DriverColors.line)
     } }
-    FinancialOrderSummary(financial)
-    if (payment != null) {
-        Text("Cobro confirmado · ${paymentMethodLabel(payment.getString("method"))}", style = MaterialTheme.typography.titleMedium)
-        Text("Recibido: ${payment.getString("received")} · Saldo: ${payment.getString("balance")}")
-        if (payment.getString("change").toBigDecimal().signum() > 0) Text("Cambio del recibo anterior: ${payment.getString("change")}", color = DriverColors.muted)
-        Text(payment.getString("note").ifBlank { "Sin notas" }, color = DriverColors.muted)
-    } else if (order.getString("status") == "delivered") PaymentCapture(order, executionId, financial, model)
-    Text("Incidencias", style = MaterialTheme.typography.titleSmall)
-    if (source.getJSONArray("incidents").length() == 0) Text("Sin incidencias registradas", color = DriverColors.muted)
+    financial?.totals?.let { totals -> Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        FinanceReceiptValue("Total original", financialMoney(totals.original, financial.currency))
+        if (totals.deduction.toBigDecimal().signum() != 0) FinanceReceiptValue("Devoluciones y faltantes", "− ${financialMoney(totals.deduction, financial.currency)}", deduction = true)
+        if (totals.deferred.toBigDecimal().signum() != 0) FinanceReceiptValue("Reposiciones por cobrar después", "− ${financialMoney(totals.deferred, financial.currency)}")
+        HorizontalDivider(color = DriverColors.line)
+        FinanceReceiptValue("Total final", financialMoney(totals.net, financial.currency))
+        if (payment != null) {
+            val credit = payment.getString("method") == "credit"
+            FinanceReceiptValue(if (credit) "Total a crédito" else "Total cobrado", paymentMoney(payment, if (credit) "expected" else "received"), emphasis = true)
+            if (payment.getString("method") == "mixed") Text("Efectivo ${paymentMoney(payment, "cashReceived")} · Transferencia ${paymentMoney(payment, "transferReceived")}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+            if (payment.getString("balance").toBigDecimal().signum() != 0) Text("${if (credit) "Crédito" else "Saldo"} del cliente: ${paymentMoney(payment, "balance")}", style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+        }
+    } }
+    if (payment == null && order.getString("status") == "delivered") PaymentCapture(order, executionId, financial, model)
+    if (source.getJSONArray("incidents").length() > 0) {
+        HorizontalDivider(color = DriverColors.line)
+        Text("Devoluciones e incidencias", style = MaterialTheme.typography.titleSmall, color = DriverColors.amber)
+    }
     source.getJSONArray("incidents").objects().forEach { incident ->
-        Text("${ProductIncidentKind.entries.firstOrNull { it.wire == incident.getString("kind") }?.label ?: incident.getString("kind")} · ${incident.getString("product")} · ${incident.getString("quantity")} ${incident.getString("unit")}", color = DriverColors.amber)
-        Text(when (incident.getString("status")) { "open" -> "Abierta"; "pending" -> "Pendiente"; "resolved" -> "Resuelta"; "canceled" -> "Cancelada"; else -> incident.getString("status") }, style = MaterialTheme.typography.bodySmall)
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        val amount = order.optJSONObject("incidentDisplay")?.optJSONArray("amounts")?.objects()?.find { it.getString("id") == incident.getString("id") }
+        FinanceReceiptValue("${incident.getString("product")} · ${productQuantityText(incident.getString("quantity"))} ${incident.getString("unit")}",
+            if (amount == null || amount.isNull("deduction")) "Descuento por revisar" else if (amount.getString("deduction").toBigDecimal().signum() == 0) "Sin descuento" else "− ${financialMoney(amount.getString("deduction"), financial?.currency)}", deduction = true)
+        val kind = ProductIncidentKind.entries.firstOrNull { it.wire == incident.getString("kind") }?.label ?: incident.getString("kind")
+        Text(buildString { append(kind); if (incident.getString("status") == "canceled") append(" · Cancelada"); if (!incident.isNull("note") && incident.getString("note").isNotBlank()) append(" · ${incident.getString("note")}") }, style = MaterialTheme.typography.bodySmall, color = DriverColors.amber)
+        if (amount != null && !amount.isNull("deferred") && amount.getString("deferred").toBigDecimal().signum() != 0) Text("Por cobrar al entregar la reposición: ${financialMoney(amount.getString("deferred"), financial?.currency)}", color = DriverColors.amber)
         if (!incident.isNull("replacement_payment")) Text(if (incident.getString("replacement_payment") == "pay_full") "Reposición: cliente paga completo" else "Reposición: se pagará al entregar", color = DriverColors.muted)
-        if (!incident.isNull("note")) Text(incident.getString("note"), style = MaterialTheme.typography.bodySmall)
         val photos = buildList {
             if (!incident.isNull("evidence_id")) add(incident.getString("evidence_id"))
             val extras = incident.getJSONArray("evidence_ids")
             for (index in 0 until extras.length()) add(extras.getString(index))
         }.distinct()
         photos.forEachIndexed { index, photo -> FinanceEvidence(executionId, incident.getString("id"), photo, index + 1) }
+        }
+    }
+    val incidentDisplay = order.optJSONObject("incidentDisplay")
+    listOf("deductionRounding" to "Redondeo incluido en las devoluciones", "deferredRounding" to "Redondeo de reposiciones").forEach { (key, label) ->
+        if (incidentDisplay != null && !incidentDisplay.isNull(key) && incidentDisplay.getString(key).toBigDecimal().signum() != 0)
+            Text("$label: ${financialMoney(incidentDisplay.getString(key), financial?.currency)}", style = MaterialTheme.typography.bodySmall, color = DriverColors.amber)
+    }
+    if (payment != null) {
+        if (payment.getString("change").toBigDecimal().signum() > 0) Text("Cambio del recibo anterior: ${paymentMoney(payment, "change")}", color = DriverColors.muted)
+        if (payment.getString("note").isNotBlank()) {
+            Text("Notas del chofer", style = MaterialTheme.typography.titleSmall)
+            Text(payment.getString("note"), style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
+        }
+    }
+}
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FinanceReceiptValue(label: String, value: String, emphasis: Boolean = false, deduction: Boolean = false) {
+    val color = if (deduction) DriverColors.amber else MaterialTheme.colorScheme.onSurface
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, modifier = Modifier.padding(end = 12.dp), color = color, style = MaterialTheme.typography.bodyMedium)
+        Text(value, color = color, style = if (emphasis) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleSmall)
     }
 }
 @Composable
@@ -237,9 +324,9 @@ internal fun PaymentCapture(order: JSONObject, executionId: String, financial: D
     AppAction("Confirmar cobro", DriverIcon.CHECK, Modifier.fillMaxWidth(), enabled = ready && !changed && valid && active && !state.busy && !state.pending) { confirm = true }
     if (confirm) AlertDialog(onDismissRequest = { if (!state.busy) confirm = false }, title = { Text("¿Confirmar el cobro?") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(if (method == "credit") "Registra a crédito ${financial?.totals?.net} ${financial?.currency?.name}."
-                else "Recibe ${preview?.tendered?.toPlainString()} ${financial?.currency?.name} por ${paymentMethodLabel(method)}.")
-            if (method == "mixed") Text("Efectivo: ${preview?.cash?.toPlainString()} · Transferencia: ${preview?.transfer?.toPlainString()}")
+            Text(if (method == "credit") "Registra a crédito ${financial?.totals?.net?.let { financialMoney(it, financial.currency) }}."
+                else "Recibe ${preview?.tendered?.toPlainString()?.let { financialMoney(it, financial?.currency) }} por ${paymentMethodLabel(method)}.")
+            if (method == "mixed") Text("Efectivo: ${preview?.cash?.toPlainString()?.let { financialMoney(it, financial?.currency) }} · Transferencia: ${preview?.transfer?.toPlainString()?.let { financialMoney(it, financial?.currency) }}")
             Text(if (attention != null) "Al aceptar se guarda el cobro y se cierra este pedido." else "Se guardará el cobro pendiente de este pedido.")
         } },
         confirmButton = { TextButton(enabled = ready && !changed && valid && active && !state.busy && !state.pending, onClick = {
@@ -251,10 +338,25 @@ internal fun PaymentCapture(order: JSONObject, executionId: String, financial: D
             model.submit(executionId, "payments", payload)
         }) { Text("Aceptar") } }, dismissButton = { TextButton(enabled = !state.busy, onClick = { confirm = false }) { Text("Cancelar") } })
 }
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun FinanceSheet(executionId: String, shipmentId: String, close: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = close) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp).navigationBarsPadding()) { FinanceScreen(executionId, shipmentId) }
+    val context = LocalContext.current
+    val credentials = remember { DeviceCredentials(context.applicationContext) }
+    val model: DriverFinanceModel = viewModel(key = "finance-detail-$executionId", factory = DriverFinanceModel.factory(credentials))
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(model, lifecycle) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+        model.observe(); try { awaitCancellation() } finally { model.stopObserving() }
+    } }
+    LaunchedEffect(executionId) { model.select(executionId) }
+    val order = model.state.detail?.getJSONArray("orders")?.objects()?.find { it.getString("shipmentId") == shipmentId && liquidationOrderVisible(it) }
+    ServiceFormSurface(onDismiss = close, header = {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.weight(1f)) { Text(order?.optString("orderName") ?: "Pedido y cobro", color = DriverColors.lime); Text(order?.optString("customer").orEmpty(), style = MaterialTheme.typography.titleLarge) }
+            AppIconButton(DriverIcon.CLOSE, "Cerrar detalle del pedido", onClick = close)
+        }
+    }, footer = { AppAction("Cerrar detalle", DriverIcon.CLOSE, Modifier.fillMaxWidth(), quiet = true, onClick = close) }) {
+        if (order != null) FinanceOrderDetail(order, executionId, model)
+        else Text(if (model.state.message.isNotBlank()) model.state.message else "Esperando el pedido finalizado y su cobro…", color = DriverColors.muted)
+        if (order == null) AppAction("Actualizar", DriverIcon.REFRESH, quiet = true, onClick = model::refresh)
     }
 }

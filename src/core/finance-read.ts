@@ -13,6 +13,7 @@ import { settlementRecords } from "./settlements";
 import { incidentFilters } from "./driver-incidents";
 import { integer } from "./orders-validation";
 import { AppError } from "./errors";
+import { incidentFinancialDisplay } from "./incident-financial-display";
 
 export async function financeExecutionDetail(sql: Sql, route: ExecutionRow) {
   const orders = await financeOrders(sql, route),
@@ -40,6 +41,27 @@ export async function financeExecutionDetail(sql: Sql, route: ExecutionRow) {
     },
     orders: orders.map((order) => ({
       ...order,
+      incidentDisplay: (() => {
+        const snapshot = payments.find(
+          (p) => p.shipmentId === order.shipmentId,
+        )?.snapshot;
+        return incidentFinancialDisplay(
+          snapshot?.financial ?? order.financial,
+          (snapshot?.incidents ?? order.incidents).map((i) => ({
+            id: i.id,
+            kind: i.kind,
+            status: i.status,
+            quantity: i.quantity,
+            financialMoveId:
+              i.financial_move_id == null ? null : Number(i.financial_move_id),
+            financialSaleLineId:
+              i.financial_sale_line_id == null
+                ? null
+                : Number(i.financial_sale_line_id),
+            replacementPayment: i.replacement_payment,
+          })),
+        );
+      })(),
       payment: payments.find((p) => p.shipmentId === order.shipmentId) ?? null,
       settlementStatus:
         payments

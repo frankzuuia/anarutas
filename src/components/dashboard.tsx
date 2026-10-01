@@ -450,14 +450,16 @@ export function Dashboard({
                                       : "Métricas y cargos reales publicados por Google Cloud Billing, sin estimaciones internas."}
                   </p>
                 </div>
-                <button
-                  className="quiet"
-                  onClick={() => void refresh()}
-                  disabled={loading || busy}
-                >
-                  <RefreshCw size={16} />
-                  Actualizar
-                </button>
+                {section !== "settlements" && (
+                  <button
+                    className="quiet"
+                    onClick={() => void refresh()}
+                    disabled={loading || busy}
+                  >
+                    <RefreshCw size={16} />
+                    Actualizar
+                  </button>
+                )}
               </header>
             )}
           {error && (

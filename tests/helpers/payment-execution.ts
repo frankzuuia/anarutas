@@ -13,9 +13,9 @@ import { readDriverPlan } from "../../src/core/driver-mobile-route";
 
 // Real PG and operational commands. Domain observations are persisted unit inputs, not Odoo API mocks.
 export async function paymentExecutionFixture(
-  options: { collectAtFirstStop?: boolean } = {},
+  options: { collectAtFirstStop?: boolean; orderCount?: number } = {},
 ) {
-  const f = await executionFixture();
+  const f = await executionFixture({ orderCount: options.orderCount });
   try {
     await f.start();
     const state = () =>

@@ -229,7 +229,7 @@ private fun DriverShell(state: DriverUiState, model: DriverViewModel) {
                         Spacer(Modifier.width(6.dp))
                         Wordmark()
                         Spacer(Modifier.weight(1f))
-                        AppIconButton(DriverIcon.REFRESH, "Actualizar datos", enabled = !state.busy) { model.syncDashboard(manual = true) }
+                        if (state.destination != DriverDestination.FINANCE) AppIconButton(DriverIcon.REFRESH, "Actualizar datos", enabled = !state.busy) { model.syncDashboard(manual = true) }
                     }
                 }
             },

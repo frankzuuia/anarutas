@@ -765,3 +765,11 @@ Los bloques2..6 están implementados; la evidencia de cobros, roles, solicitudes
 - [x] CP-T03 (BL173, CP08,12): combinado, versión de captura, SQL/componentes/totales exactos y migración compatible; unidad/PG/mutación.
 - [x] CP-T04 (BL174, CP09..12,14): recepción individual durante ruta activa, tarjetas/detalle/modales/estado en tiempo real; permisos y E2E.
 - [x] CP-T05 (todos): Gherkin y QA reproducible; 894 regresión/0 fallos/3 omisiones externas identificadas, Odoo real aprobado aparte, 55 financieras/14 origen/131 JVM y HTTP completo. Cobertura financiera99.60% líneas, origen100%; mutación254/255 monetaria (superviviente equivalente),139/139 origen,20/20 PG financiera,9/9 PG origen y22/22 Android. Typecheck/lint/build/audit/migrador y APK0.8.11/code33 verificados. Evidencia y límites en QA-COBRO-POR-PEDIDO-2026-09-30.md; entrega a develop autorizada, deploy manual y QA física a cargo del propietario según excepción vigente.
+
+## BL-175..178 — liquidación clara, aprobado 2026-10-01
+
+- [x] LC-T01 (LC01..03): worker/PG/SSE/DOM con pedido sin asignar, Odoo real sólo lectura; actualización automática verificada y cadencia normal aproximada1–2min documentada.
+- [x] LC-T02 (LC04..07): formato exacto y descuentos por identidad, snapshot intacto; 7 pruebas, cobertura100%, mutación125/128 (reparto79/79).
+- [x] LC-T03 (LC08..11): tarjetas compactas sin recuadro interior, una actualización, filtros/página12, modal con pedido completo/totales/incidencias amarillas; 2/2 E2E incluyendo50 pedidos, rol y geometría real.
+- [x] LC-T04 (LC04..12): Android equivalente, sólo entregados/cobrados; 132JVM, 11mutantes, lint/build/APK0.8.12/code34 y firma compatible; Compose compilado, ejecución física pendiente por excepción del propietario.
+- [x] LC-T05 (todos): 902 regresión/0 fallos/3 omisiones externas identificadas, Odoo real aprobado aparte; Gherkin, typecheck/lint/build/audit0 y métricas/QA reproducible en QA-LIQUIDACION-CLARA-2026-10-01.md. Entrega develop/APK autorizada; QA física y deploy del propietario.

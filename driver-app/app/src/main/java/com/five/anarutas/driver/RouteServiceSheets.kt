@@ -102,6 +102,10 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
             { paymentId -> collectionOpen = false; model.collectionConfirmed(stop.id, paymentId); close() }, { collectionOpen = false })
         return
     }
+    if (financeOpen && order != null && state.execution != null && status?.status == OrderServiceStatus.DELIVERED) {
+        FinanceSheet(state.execution.id, order.id) { financeOpen = false }
+        return
+    }
     ServiceFormSurface({ if (!state.busy) close() }, header = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -158,16 +162,20 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
             if (status.status == OrderServiceStatus.DELIVERED) AppAction(if (status.paymentRequired && !status.paymentConfirmed) "Registrar cobro pendiente" else "Ver pedido y cobro", DriverIcon.CHECK, Modifier.fillMaxWidth()) {
                 if (status.paymentRequired && !status.paymentConfirmed) collectionOpen = true else financeOpen = true
             }
-            if (financeOpen && state.execution != null && status.status == OrderServiceStatus.DELIVERED) FinanceSheet(state.execution.id, order.id) { financeOpen = false }
             productCases.forEach { incident -> Row(Modifier.fillMaxWidth().heightIn(min = 44.dp)
                 .clickable(enabled = available && stop.canAttend() && canDeliverOrder(status.status),
                     onClickLabel = "Ver incidencia de ${incident.product}") { editingProductIncidentId = incident.id }
                 .padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 AppIcon(DriverIcon.ALERT, Modifier.size(16.dp), tint = DriverColors.amber)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("${ProductIncidentKind.entries.firstOrNull { it.wire == incident.kind }?.label ?: incident.kind} · ${incident.product}" +
                     when (incident.replacementPayment) { "pay_full" -> " · Paga completo"; "defer" -> " · Pago pendiente"; else -> "" },
-                    Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = DriverColors.amber)
+                    style = MaterialTheme.typography.bodySmall, color = DriverColors.amber)
+                val amount = order.financial?.incidentAmounts?.find { it.id == incident.id }
+                Text(if (amount?.deduction == null) "Descuento pendiente de revisión" else if (amount.deduction.toBigDecimal().signum() != 0) "Descontado: − ${financialMoney(amount.deduction, order.financial?.currency)}" else "Sin descuento al cobro",
+                    style = MaterialTheme.typography.labelSmall, color = DriverColors.amber)
+                }
                 Text("${productQuantityText(incident.quantity)} ${incident.unit}", style = MaterialTheme.typography.labelSmall, color = DriverColors.amber)
             } }
             if (confirmation == null) {

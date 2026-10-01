@@ -1,3 +1,4 @@
+param([string[]]$Only = @())
 $ErrorActionPreference = 'Stop'
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $taskTempRoot = [IO.Path]::GetTempPath()
@@ -18,8 +19,14 @@ $cases = @(
     @{ name='ignore_monotonic_clock'; from='nowNanos < view.receivedNanos'; to='false' },
     @{ name='accept_future_source'; from='initialAge >= 0 &&'; to='true &&' },
     @{ name='ignore_expiry'; from='<= view.maxAgeSeconds * 1000'; to='<= Long.MAX_VALUE' },
-    @{ name='reject_exact_expiry'; from='<= view.maxAgeSeconds * 1000'; to='< view.maxAgeSeconds * 1000' }
+    @{ name='reject_exact_expiry'; from='<= view.maxAgeSeconds * 1000'; to='< view.maxAgeSeconds * 1000' },
+    @{ name='show_undelivered'; from='status == "delivered" && paymentConfirmed'; to='paymentConfirmed' },
+    @{ name='show_unpaid'; from='status == "delivered" && paymentConfirmed'; to='status == "delivered"' },
+    @{ name='hide_finalized'; from='status == "delivered" && paymentConfirmed'; to='false' },
+    @{ name='lose_exact_cents'; from='}.format(amount.abs())'; to='}.format(amount.abs().toDouble())' },
+    @{ name='remove_currency_symbol'; from='Currency.getInstance(currency.name).getSymbol(Locale.forLanguageTag("es-MX"))'; to='""' }
 )
+if ($Only.Count) { $cases = @($cases | Where-Object { $Only -contains $_.name }); if ($cases.Count -ne $Only.Count) { throw 'Unknown mutation filter' } }
 $arguments = @('testDebugUnitTest', '--tests', 'com.five.anarutas.driver.DriverFinancialTest', '--console=plain')
 $results = @()
 Push-Location $workRoot
@@ -45,3 +52,4 @@ try {
         ![IO.Path]::GetFileName($resolved).StartsWith('ana-rutas-financial-mutations-')) { throw 'Unsafe cleanup path' }
     Remove-Item -LiteralPath $resolved -Recurse -Force
 }
+exit 0

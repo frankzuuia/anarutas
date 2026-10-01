@@ -6,6 +6,7 @@ import java.text.NumberFormat
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
+import java.util.Currency
 
 data class IncidentFinancialReference(val revision: Int, val moveId: Long, val saleLineId: Long) {
     fun json(): JSONObject = JSONObject().put("revision", revision).put("moveId", moveId).put("saleLineId", saleLineId)
@@ -17,10 +18,11 @@ data class DriverFinancialLine(val lineIndex: Int, val moveId: Long, val saleLin
     val total: String, val physicalRemaining: String, val net: String?, val deduction: String?, val deferred: String?)
 data class DriverFinancialTotals(val original: String, val deduction: String, val deferred: String,
     val net: String, val roundingAdjustment: String, val remainingRoundingAdjustment: String)
+data class DriverIncidentAmount(val id: String, val deduction: String?, val deferred: String?)
 data class DriverFinancialView(val revision: Int, val status: String, val fresh: Boolean, val error: String?,
     val checkedAt: Instant?, val serverTime: Instant, val maxAgeSeconds: Long, val receivedNanos: Long,
     val currency: DriverCurrency?, val lines: List<DriverFinancialLine>, val issues: List<String>,
-    val unpricedIncidentCount: Int, val totals: DriverFinancialTotals?) {
+    val unpricedIncidentCount: Int, val totals: DriverFinancialTotals?, val incidentAmounts: List<DriverIncidentAmount> = emptyList()) {
     fun line(index: Int?) = lines.singleOrNull { it.lineIndex == index }
     fun reference(index: Int?) = line(index)?.let { IncidentFinancialReference(revision, it.moveId, it.saleLineId) }
 }
@@ -44,7 +46,8 @@ internal fun parseDriverFinancial(json: JSONObject?, receivedNanos: Long = Syste
                 line.nullableText("deduction"), line.nullableText("deferred")) },
         (0 until issues.length()).map(issues::getString), json.getInt("unpricedIncidentCount"),
         json.optJSONObject("totals")?.let { DriverFinancialTotals(it.getString("original"), it.getString("deduction"),
-            it.getString("deferred"), it.getString("net"), it.getString("roundingAdjustment"), it.getString("remainingRoundingAdjustment")) })
+            it.getString("deferred"), it.getString("net"), it.getString("roundingAdjustment"), it.getString("remainingRoundingAdjustment")) },
+        json.optJSONObject("incidentDisplay")?.optJSONArray("amounts")?.objects()?.map { DriverIncidentAmount(it.getString("id"), it.nullableText("deduction"), it.nullableText("deferred")) }.orEmpty())
 }
 internal fun financialFresh(view: DriverFinancialView?, nowNanos: Long = System.nanoTime()): Boolean {
     if (view == null || !view.fresh || view.error != null || view.checkedAt == null || nowNanos < view.receivedNanos) return false
@@ -52,13 +55,19 @@ internal fun financialFresh(view: DriverFinancialView?, nowNanos: Long = System.
     return initialAge >= 0 && initialAge + (nowNanos - view.receivedNanos) / 1_000_000 <= view.maxAgeSeconds * 1000
 }
 internal fun financialMoney(value: String, currency: DriverCurrency?): String {
-    val amount = BigDecimal(value)
-    val digits = currency?.decimalPlaces ?: 2
+    if (currency == null) return "Por confirmar"
+    val amount = BigDecimal(value).stripTrailingZeros()
+    val digits = currency.decimalPlaces
     val formatted = NumberFormat.getNumberInstance(Locale.forLanguageTag("es-MX")).apply {
         minimumFractionDigits = digits; maximumFractionDigits = maxOf(digits, amount.scale())
-    }.format(amount)
-    return "$formatted ${currency?.name.orEmpty()}".trim()
+    }.format(amount.abs())
+    val symbol = runCatching { Currency.getInstance(currency.name).getSymbol(Locale.forLanguageTag("es-MX")) }.getOrDefault(currency.name)
+    return "${if (amount.signum() < 0) "−" else ""}$symbol$formatted ${currency.name}"
 }
+internal fun financeCurrency(json: JSONObject) = DriverCurrency(json.getString("name"), json.getInt("decimalPlaces"), json.optString("rounding"))
+internal fun paymentMoney(payment: JSONObject, field: String) = financialMoney(payment.getString(field), financeCurrency(payment.getJSONObject("currency")))
+internal fun liquidationOrderVisible(status: String, paymentConfirmed: Boolean) = status == "delivered" && paymentConfirmed
+internal fun liquidationOrderVisible(order: JSONObject) = liquidationOrderVisible(order.optString("status"), order.objectOrNull("payment") != null)
 internal fun financialStatus(view: DriverFinancialView?, nowNanos: Long = System.nanoTime()): String = when {
     view == null || view.status == "unavailable" -> "Importes pendientes de sincronizar"
     view.status == "cancelled" -> "Entrega cancelada en Odoo · revisar con administración"

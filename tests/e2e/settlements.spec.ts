@@ -5,6 +5,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { paymentExecutionFixture } from "../helpers/payment-execution";
 import { freePort } from "../helpers/postgres";
 import { createUser } from "../../src/core/auth";
+import { reportProductIncidentWithEvidence } from "../../src/core/product-incidents-evidence";
+import sharp from "sharp";
 
 test("real HTTP collection to settlement, UI roles, individual acceptance and remaining route", async ({
   page,
@@ -124,6 +126,55 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
         ).json();
         stop = execution.stops[index];
       }
+      if (index === 2) {
+        await reportProductIncidentWithEvidence(
+          f.db.pool,
+          f.members[0].authorization,
+          f.planId,
+          stop.id,
+          f.shipmentRows[index].id,
+          {
+            commandId: randomUUID(),
+            executionId: execution.id,
+            publicationRevision: execution.publicationRevision,
+            executionRevision: execution.revision,
+            stopVersion: stop.version,
+            visitSequence: stop.visitSequence,
+            policyVersion: execution.policy.version,
+            orderVersion: stop.orderStates[0].version,
+            kind: "return",
+            department: "Operaciones",
+            concept: "Picking",
+            comments: [],
+            formVersion: 2,
+            financialContractVersion: 1,
+            financial: {
+              revision: 1,
+              moveId: Number(f.shipmentRows[index].picking_id),
+              saleLineId: 10,
+            },
+            lineIndex: 0,
+            quantity: "1",
+          },
+          f.timezone,
+          await sharp({
+            create: {
+              width: 24,
+              height: 24,
+              channels: 3,
+              background: "#334455",
+            },
+          })
+            .jpeg()
+            .toBuffer(),
+          "image/jpeg",
+          f.photoRoot,
+        );
+        execution = await (
+          await request.get(executionPath, { headers })
+        ).json();
+        stop = execution.stops[index];
+      }
       const data = await (await request.get(path, { headers })).json(),
         order = data.orders.find(
           (o: { shipmentId: string }) =>
@@ -223,7 +274,7 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
       .getByRole("button", { name: /Ejecución QA.*2026-09-24/ })
       .click();
     await expect(
-      page.getByRole("heading", { name: "Solicitudes del chofer" }),
+      page.getByRole("heading", { name: /Solicitudes e historial/ }),
     ).toBeVisible();
     const firstCard = page
       .locator(".settlement-order")
@@ -231,9 +282,88 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
     await expect(
       firstCard.getByRole("button", { name: "Aceptar", exact: true }),
     ).toBeDisabled();
-    await firstCard.locator("summary").click();
-    await expect(firstCard).toContainText("Importe original");
-    await expect(firstCard).toContainText("Pago combinado por cliente");
+    await expect(
+      page.getByRole("button", { name: "Actualizar", exact: true }),
+    ).toHaveCount(1);
+    await firstCard.getByRole("button", { name: "Ver pedido y cobro" }).click();
+    const orderDetail = page.getByRole("dialog");
+    await expect(orderDetail).toContainText("Total original");
+    await expect(orderDetail).toContainText("Pago combinado por cliente");
+    await expect(orderDetail).toContainText("$20.00 MXN");
+    expect(
+      await orderDetail
+        .locator(".settlement-receipt-heading")
+        .evaluate((element) => getComputedStyle(element).backgroundColor),
+    ).toBe("rgba(0, 0, 0, 0)");
+    await expect(firstCard).not.toContainText("Importe original");
+    await mkdir(".local/qa-settlements", { recursive: true });
+    await page.screenshot({ path: ".local/qa-settlements/order-modal.png" });
+    await page.keyboard.press("Escape");
+    await expect(orderDetail).toBeHidden();
+    await expect(
+      firstCard.getByRole("button", { name: "Ver pedido y cobro" }),
+    ).toBeFocused();
+    await page.getByLabel("Buscar pedido o cliente").fill("ninguno");
+    await expect(page.locator(".settlement-order")).toHaveCount(0);
+    await page.getByLabel("Buscar pedido o cliente").fill("S1");
+    await expect(page.locator(".settlement-order")).toHaveCount(1);
+    await page.getByLabel("Buscar pedido o cliente").fill("");
+    const returnCard = page
+      .locator(".settlement-order")
+      .filter({ hasText: "S3" });
+    await returnCard
+      .getByRole("button", { name: "Ver pedido y cobro" })
+      .click();
+    await expect(orderDetail.locator(".settlement-incident")).toContainText(
+      "Producto 3",
+    );
+    await expect(orderDetail.locator(".settlement-incident")).toContainText(
+      "1 kg",
+    );
+    await expect(orderDetail.locator(".settlement-incident")).not.toContainText(
+      "1.000000",
+    );
+    await expect(orderDetail.locator(".settlement-incident")).toContainText(
+      "− $10.00 MXN",
+    );
+    await expect(
+      orderDetail.getByRole("cell", { name: "Producto 3", exact: true }),
+    ).toBeVisible();
+    await expect(orderDetail.locator(".settlement-order-totals")).toContainText(
+      "Total final $10.00 MXN",
+    );
+    const receiptLayout = await orderDetail.evaluate((dialog) => {
+      const products = dialog.querySelector(".settlement-products")!;
+      const table = products.querySelector("table")!;
+      const wrapper = products.querySelector(".table-wrap")!;
+      const totals = dialog.querySelector(".settlement-order-totals")!;
+      const incidents = dialog.querySelector(".settlement-incidents")!;
+      const row = dialog.querySelector(".settlement-incident")!;
+      return {
+        tableHeight: table.getBoundingClientRect().height,
+        wrapperHeight: wrapper.getBoundingClientRect().height,
+        productBottom: products.getBoundingClientRect().bottom,
+        totalsTop: totals.getBoundingClientRect().top,
+        totalsBottom: totals.getBoundingClientRect().bottom,
+        incidentsTop: incidents.getBoundingClientRect().top,
+        incidentBackground: getComputedStyle(row).backgroundColor,
+      };
+    });
+    expect(receiptLayout.tableHeight).toBeGreaterThan(60);
+    expect(receiptLayout.wrapperHeight).toBeGreaterThanOrEqual(
+      receiptLayout.tableHeight,
+    );
+    expect(receiptLayout.productBottom).toBeLessThanOrEqual(
+      receiptLayout.totalsTop,
+    );
+    expect(receiptLayout.totalsBottom).toBeLessThanOrEqual(
+      receiptLayout.incidentsTop,
+    );
+    expect(receiptLayout.incidentBackground).toBe("rgba(0, 0, 0, 0)");
+    await page.screenshot({
+      path: ".local/qa-settlements/return-discount-modal.png",
+    });
+    await page.keyboard.press("Escape");
     const individual = await (
       await request.post(`${path}/requests`, {
         headers,
@@ -288,6 +418,7 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
       data: { commandId: randomUUID(), shipmentId: null },
     });
     expect(rest.status()).toBe(200);
+    await page.locator(".settlement-history > summary").click();
     await expect(
       page
         .locator(".settlement-request")
@@ -305,12 +436,17 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
     expect(after.acceptedTotals[0]).toMatchObject({
       cash: "10",
       transfer: "30",
-      credit: "20",
+      credit: "10",
       balance: "0",
     });
     await mkdir(".local/qa-settlements", { recursive: true });
     await page.screenshot({
       path: ".local/qa-settlements/receiver.png",
+      fullPage: true,
+    });
+    await page.locator(".settlement-history > summary").click();
+    await page.screenshot({
+      path: ".local/qa-settlements/receiver-compact.png",
       fullPage: true,
     });
     await page
@@ -332,7 +468,7 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
       )
     ).json();
     expect(receiptReport.metrics).toMatchObject([
-      { stage: "accepted", cash: "10", transfer: "30", credit: "20" },
+      { stage: "accepted", cash: "10", transfer: "30", credit: "10" },
     ]);
     await page.setViewportSize({ width: 390, height: 844 });
     expect(

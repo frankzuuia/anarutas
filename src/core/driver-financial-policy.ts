@@ -11,6 +11,7 @@ import { FinancialDecimal as D, sumFinancial } from "./financial-values";
 import { financialHash } from "./financial-policy";
 import { allocateFinancialAmount } from "./financial-allocation";
 import { AppError } from "./errors";
+import { incidentFinancialDisplay } from "./incident-financial-display";
 
 /** Ordered import is verified against the immutable publication before its IDs are used. */
 export function financialLineIdentity(
@@ -160,6 +161,16 @@ function sourceLineAmounts(snapshot: FinancialSnapshot) {
 }
 
 export function projectDriverFinancials(
+  input: FinancialProjectionInput,
+): DriverFinancialView {
+  const view = projectFinancialView(input);
+  return {
+    ...view,
+    incidentDisplay: incidentFinancialDisplay(view, input.incidents),
+  };
+}
+
+function projectFinancialView(
   input: FinancialProjectionInput,
 ): DriverFinancialView {
   const { snapshot, now } = input;

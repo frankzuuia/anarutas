@@ -3,6 +3,7 @@ import type {
   FinancialSnapshot,
 } from "./financial-contract";
 import type { ShipmentLine } from "./orders-contract";
+import type { incidentFinancialDisplay } from "./incident-financial-display";
 
 export type ReplacementPayment = "pay_full" | "defer";
 export type IncidentFinancialReference = {
@@ -46,6 +47,7 @@ export type DriverFinancialLine = {
   net: string | null;
 };
 export type DriverFinancialView = {
+  incidentDisplay?: ReturnType<typeof incidentFinancialDisplay>;
   contractVersion: 1;
   revision: number;
   status: FinancialSnapshot["status"] | "unavailable";

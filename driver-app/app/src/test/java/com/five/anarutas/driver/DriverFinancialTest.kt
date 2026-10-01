@@ -22,10 +22,22 @@ class DriverFinancialTest {
         assertFalse(financialFresh(null, v.receivedNanos))
     }
     @Test fun monetaryPresentationPreservesSourcePrecisionAndCurrency() {
-        assertEquals("3,538.00 MXN", financialMoney("3538", DriverCurrency("MXN", 2)))
-        assertEquals("0.000001 MXN", financialMoney("0.000001", DriverCurrency("MXN", 2)))
-        assertEquals("1,000 JPY", financialMoney("1000", DriverCurrency("JPY", 0)))
-        assertEquals("-0.01 MXN", financialMoney("-0.01", DriverCurrency("MXN", 2)))
+        assertEquals("$3,538.00 MXN", financialMoney("3538", DriverCurrency("MXN", 2)))
+        assertEquals("$0.000001 MXN", financialMoney("0.000001", DriverCurrency("MXN", 2)))
+        assertEquals("JPY1,000 JPY", financialMoney("1000", DriverCurrency("JPY", 0)))
+        assertEquals("−$0.01 MXN", financialMoney("-0.01", DriverCurrency("MXN", 2)))
+        assertEquals("$1,086.50 MXN", financialMoney("1086.500000", DriverCurrency("MXN", 2)))
+        assertEquals("$9,007,199,254,740,993.01 MXN", financialMoney("9007199254740993.01", DriverCurrency("MXN", 2)))
+        assertEquals("$0.00 MXN", financialMoney("-0", DriverCurrency("MXN", 2)))
+        assertEquals("Por confirmar", financialMoney("1", null))
+        assertEquals("BTC0.00000001 BTC", financialMoney("0.00000001", DriverCurrency("BTC", 8)))
+    }
+    @Test fun liquidationOnlyShowsDeliveredOrdersWithConfirmedPayment() {
+        assertFalse(liquidationOrderVisible("open", false))
+        assertFalse(liquidationOrderVisible("delivered", false))
+        assertTrue(liquidationOrderVisible("delivered", true))
+        assertFalse(liquidationOrderVisible("open", true))
+        assertFalse(liquidationOrderVisible("rescheduled", true))
     }
     @Test fun linkedShortagesUseFinalDecimalQuantityAndExcludeOnlyTheEditedIncident() {
         val record = ProductIncidentRecord("one", "order", 0, "shortage_validation", "Producto", "5", "kg", "pending")

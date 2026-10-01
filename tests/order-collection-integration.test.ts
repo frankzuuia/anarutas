@@ -181,6 +181,9 @@ it("subtracts a real product return and requires explicit incident acknowledgeme
     deduction: "10",
     net: "10",
   });
+  expect(order.incidentDisplay.amounts).toMatchObject([
+    { deduction: "10", deferred: "0" },
+  ]);
   await expect(
     confirm({
       ...(await command()),
@@ -270,6 +273,9 @@ it("accept commits delivery and split receipt once, freezes the resulting basis 
   expect(receiverDetail.route.completedAt).toBeNull();
   expect(receiverDetail.orders.map((o) => o.payment!.id)).toEqual([paymentId]);
   expect(receiverDetail.requests).toEqual([]);
+  expect(receiverDetail.orders[0].incidentDisplay.amounts).toMatchObject([
+    { deduction: "10", deferred: "0" },
+  ]);
   expect(
     await driverPublicationFingerprint(f.db.pool, f.members[0].driverId),
   ).not.toBe(fingerprint);

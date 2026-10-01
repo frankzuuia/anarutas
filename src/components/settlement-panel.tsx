@@ -7,58 +7,20 @@ import type {
   readSettlementDetail,
   listSettlements,
 } from "@/core/finance-read";
-import type { paymentTotals } from "@/core/payment-policy";
+import { displayMoney as money } from "@/core/financial-display";
 import {
-  productIncidentNames,
-  type ProductIncidentKind,
-} from "@/core/product-incidents-policy";
+  MoneySummary,
+  SettlementOrderModal,
+  methodName,
+  settlementOrderStatus,
+} from "./settlement-presentation";
 type Detail = Awaited<ReturnType<typeof readSettlementDetail>>;
 type Report = Awaited<ReturnType<typeof listSettlements>>;
-type Total = ReturnType<typeof paymentTotals>[number];
-const methodName = {
-  cash: "Efectivo",
-  transfer: "Transferencia",
-  credit: "Crédito",
-  mixed: "Efectivo + transferencia",
-};
 const stateName = {
   pending: "Por recibir",
-  accepted: "Aceptada",
+  accepted: "Recibida",
   rejected: "Rechazada",
 };
-function MoneySummary({ totals, title }: { totals: Total[]; title: string }) {
-  return (
-    <section className="panel">
-      <div className="panel-header">
-        <h2>{title}</h2>
-      </div>
-      <div className="panel-body stack">
-        {!totals.length && <p className="muted">Sin importes registrados.</p>}
-        {totals.map((t) => (
-          <div
-            key={`${t.currency.id}:${t.currency.name}`}
-            className="settlement-money"
-          >
-            <strong>{t.currency.name}</strong>
-            <span className="cash">
-              Efectivo <b>{t.cash}</b>
-            </span>
-            <span className="transfer">
-              Transferencias <b>{t.transfer}</b>
-            </span>
-            <span className="credit">
-              Créditos <b>{t.credit}</b>
-            </span>
-            <small>
-              Saldo de cobros parciales: {t.balance} · Reposiciones diferidas:{" "}
-              {t.deferred}
-            </small>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
 export function SettlementPanel({ today }: { today: string }) {
   const [from, setFrom] = useState(today),
     [to, setTo] = useState(today),
@@ -76,6 +38,23 @@ export function SettlementPanel({ today }: { today: string }) {
       submittedNote?: string;
     } | null>(null),
     [note, setNote] = useState("");
+  const [openedOrder, setOpenedOrder] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [orderStatus, setOrderStatus] = useState("all");
+  const [orderPage, setOrderPage] = useState(0);
+  const [summaryStage, setSummaryStage] = useState("collected");
+  const filteredOrders = (detail?.orders ?? []).filter(
+    (order) =>
+      (orderStatus === "all" || order.settlementStatus === orderStatus) &&
+      (order.customer + " " + order.orderName)
+        .toLocaleLowerCase("es-MX")
+        .includes(search.trim().toLocaleLowerCase("es-MX")),
+  );
+  const lastOrderPage = Math.max(0, Math.ceil(filteredOrders.length / 12) - 1);
+  const visiblePage = Math.min(orderPage, lastOrderPage);
+  const selectedOrder = detail?.orders.find(
+    (order) => order.shipmentId === openedOrder,
+  );
   const generation = useRef(0);
   const refresh = useCallback(async () => {
     const current = ++generation.current;
@@ -192,23 +171,53 @@ export function SettlementPanel({ today }: { today: string }) {
           {error}
         </p>
       )}
-      <div className="grid-three">
-        {(
-          [
-            ["collected", "Cobrado por choferes"],
-            ["pending", "Solicitado por recibir"],
-            ["accepted", "Aceptado por liquidación"],
-          ] as const
-        )
-          .filter(([stage]) => dateBasis === "route" || stage === "accepted")
-          .map(([stage, title]) => (
-            <MoneySummary
-              key={stage}
-              title={title}
-              totals={report?.metrics.filter((m) => m.stage === stage) ?? []}
-            />
-          ))}
-      </div>
+      {!selected && (
+        <>
+          <div
+            className="settlement-stages"
+            aria-label="Estado de los importes"
+          >
+            {(
+              [
+                ["collected", "Cobrado por choferes"],
+                ["pending", "Por recibir"],
+                ["accepted", "Recibido por liquidación"],
+              ] as const
+            )
+              .filter(
+                ([stage]) => dateBasis === "route" || stage === "accepted",
+              )
+              .map(([stage, label]) => (
+                <button
+                  key={stage}
+                  aria-pressed={
+                    (dateBasis === "receipt" ? "accepted" : summaryStage) ===
+                    stage
+                  }
+                  onClick={() => setSummaryStage(stage)}
+                >
+                  {label}
+                </button>
+              ))}
+          </div>
+          <MoneySummary
+            title={
+              dateBasis === "receipt" || summaryStage === "accepted"
+                ? "Recibido por liquidación"
+                : summaryStage === "pending"
+                  ? "Solicitado por recibir"
+                  : "Cobrado por choferes"
+            }
+            totals={
+              report?.metrics.filter(
+                (metric) =>
+                  metric.stage ===
+                  (dateBasis === "receipt" ? "accepted" : summaryStage),
+              ) ?? []
+            }
+          />
+        </>
+      )}
       {selected && (
         <button
           onClick={() => {
@@ -235,14 +244,20 @@ export function SettlementPanel({ today }: { today: string }) {
                     {report.rows.find((r) => r.driverId === driverId)!.driver}
                   </h2>
                 </div>
-                <div className="panel-body stack">
+                <div className="panel-body settlement-routes">
                   {report.rows
                     .filter((r) => r.driverId === driverId)
                     .map((r) => (
                       <button
                         className="settlement-route"
                         key={r.id}
-                        onClick={() => setSelected(r.id)}
+                        onClick={() => {
+                          setSelected(r.id);
+                          setSearch("");
+                          setOrderStatus("all");
+                          setOrderPage(0);
+                          setOpenedOrder(null);
+                        }}
                       >
                         <Wallet size={20} />
                         <span>
@@ -281,17 +296,165 @@ export function SettlementPanel({ today }: { today: string }) {
           <h2>
             {detail.route.driver} · {detail.route.label} · {detail.route.date}
           </h2>
-          <div className="grid-two">
+          <div className="stack">
             <MoneySummary
-              title="Pendiente de entregar"
+              title="Por entregar a liquidación"
               totals={detail.outstandingTotals}
             />
-            <MoneySummary title="Ya aceptado" totals={detail.acceptedTotals} />
+            <MoneySummary
+              title="Recibido por liquidación"
+              totals={detail.acceptedTotals}
+            />
           </div>
-          <section className="panel">
-            <div className="panel-header">
-              <h2>Solicitudes del chofer</h2>
+          <div className="toolbar settlement-order-filters">
+            <label>
+              Buscar pedido o cliente
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setOrderPage(0);
+                }}
+                placeholder="Folio o nombre del cliente"
+              />
+            </label>
+            <label>
+              Estado del pedido
+              <select
+                value={orderStatus}
+                onChange={(event) => {
+                  setOrderStatus(event.target.value);
+                  setOrderPage(0);
+                }}
+              >
+                <option value="all">Todos los cobrados</option>
+                <option value="unsettled">Por liquidar</option>
+                <option value="pending">Listos para recibir</option>
+                <option value="accepted">Recibidos</option>
+              </select>
+            </label>
+            <small role="status">{filteredOrders.length} pedidos</small>
+          </div>
+          {!filteredOrders.length && (
+            <div className="empty">
+              No hay pedidos que coincidan con estos filtros.
             </div>
+          )}
+          <div className="settlement-orders">
+            {filteredOrders
+              .slice(visiblePage * 12, (visiblePage + 1) * 12)
+              .map((order) => {
+                const payment = order.payment;
+                const pending =
+                  payment &&
+                  detail.requests.find(
+                    (request) =>
+                      request.scope === "order" &&
+                      request.status === "pending" &&
+                      request.paymentIds.includes(payment.id),
+                  );
+                const accepted = order.settlementStatus === "accepted";
+                return (
+                  <section
+                    className="panel settlement-order"
+                    key={order.shipmentId}
+                  >
+                    <button
+                      className="settlement-client"
+                      onClick={() => setOpenedOrder(order.shipmentId)}
+                    >
+                      <small>{order.orderName}</small>
+                      <strong>{order.customer}</strong>
+                      <span
+                        className={"badge " + (order.settlementStatus ?? "")}
+                      >
+                        {
+                          settlementOrderStatus[
+                            order.settlementStatus ?? "unsettled"
+                          ]
+                        }
+                      </span>
+                    </button>
+                    <div className="settlement-order-amount">
+                      <small>
+                        {accepted
+                          ? "Recibido"
+                          : payment?.method === "credit"
+                            ? "Importe a crédito"
+                            : "Monto a entregar"}{" "}
+                        · {payment && methodName[payment.method]}
+                      </small>
+                      <strong>
+                        {money(
+                          payment?.method === "credit"
+                            ? payment.expected
+                            : payment?.received,
+                          payment?.currency ?? null,
+                        )}
+                      </strong>
+                      {payment?.method === "mixed" && (
+                        <small>
+                          💵 {money(payment.cashReceived, payment.currency)} ·
+                          🏦 {money(payment.transferReceived, payment.currency)}
+                        </small>
+                      )}
+                    </div>
+                    <div className="settlement-order-actions">
+                      <button onClick={() => setOpenedOrder(order.shipmentId)}>
+                        Ver pedido y cobro
+                      </button>
+                      <button
+                        className="primary"
+                        disabled={busy || !pending || accepted}
+                        onClick={() => {
+                          if (!pending) return;
+                          setNote("");
+                          setConfirmation({
+                            request: pending,
+                            decision: "accepted",
+                            commandId: crypto.randomUUID(),
+                          });
+                        }}
+                      >
+                        <Check size={16} />
+                        {accepted ? "Recibido" : "Aceptar"}
+                      </button>
+                    </div>
+                    {!pending && !accepted && (
+                      <small className="muted">
+                        {order.settlementStatus === "pending"
+                          ? "Incluido en una solicitud de toda la ruta."
+                          : "Esperando que el chofer pulse Liquidar."}
+                      </small>
+                    )}
+                  </section>
+                );
+              })}
+          </div>
+          {filteredOrders.length > 12 && (
+            <div className="toolbar">
+              <button
+                disabled={visiblePage === 0}
+                onClick={() => setOrderPage(visiblePage - 1)}
+              >
+                Pedidos anteriores
+              </button>
+              <span>
+                Página {visiblePage + 1} de {lastOrderPage + 1}
+              </span>
+              <button
+                disabled={visiblePage === lastOrderPage}
+                onClick={() => setOrderPage(visiblePage + 1)}
+              >
+                Más pedidos
+              </button>
+            </div>
+          )}
+          <details className="panel settlement-history">
+            <summary className="panel-header">
+              <h2>Solicitudes e historial · {detail.requests.length}</h2>
+            </summary>
             <div className="panel-body stack">
               {!detail.requests.length && (
                 <p className="muted">El chofer aún no solicita liquidación.</p>
@@ -364,202 +527,42 @@ export function SettlementPanel({ today }: { today: string }) {
                 </div>
               ))}
             </div>
-          </section>
-          {detail.orders.map((o) => {
-            const payment = o.payment;
-            const pending =
-              payment &&
-              detail.requests.find(
-                (r) =>
-                  r.scope === "order" &&
-                  r.status === "pending" &&
-                  r.paymentIds.includes(payment.id),
-              );
-            const accepted =
-              payment &&
-              detail.requests.find(
-                (r) =>
-                  r.status === "accepted" && r.paymentIds.includes(payment.id),
-              );
-            const frozen = payment?.snapshot.financial ?? o.financial;
-            return (
-              <section className="panel settlement-order" key={o.shipmentId}>
-                <div className="settlement-order-receipt">
-                  <div className="settlement-order-amount">
-                    <small>
-                      {accepted ? "Recibido" : "Monto a entregar"} ·{" "}
-                      {payment && methodName[payment.method]}
-                    </small>
-                    <strong>
-                      {payment?.method === "credit"
-                        ? payment.expected
-                        : payment?.received}{" "}
-                      {payment?.currency.name}
-                    </strong>
-                    {payment?.method === "mixed" && (
-                      <span>
-                        💵 Efectivo {payment.cashReceived} · 🏦 Transferencia{" "}
-                        {payment.transferReceived}
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    className="primary"
-                    disabled={busy || !pending || !!accepted}
-                    onClick={() => {
-                      if (!pending) return;
-                      setNote("");
-                      setConfirmation({
-                        request: pending,
-                        decision: "accepted",
-                        commandId: crypto.randomUUID(),
-                      });
-                    }}
-                  >
-                    <Check size={16} />
-                    {accepted ? "Recibido" : "Aceptar"}
-                  </button>
-                  {!pending && !accepted && (
-                    <small className="muted">
-                      Esperando que el chofer pulse Liquidar.
-                    </small>
-                  )}
-                </div>
-                <details>
-                  <summary className="panel-header">
-                    <strong>
-                      {o.customer} · {o.orderName}
-                    </strong>
-                    <span>
-                      {o.payment
-                        ? `${methodName[o.payment.method]} · ${o.payment.method === "credit" ? o.payment.expected : o.payment.received} ${o.payment.currency.name}`
-                        : "Sin cobro registrado"}
-                    </span>
-                  </summary>
-                  <div className="panel-body stack">
-                    {o.payment && (
-                      <>
-                        {o.payment.captureVersion === 1 && (
-                          <p>
-                            Recibido: {o.payment.received} · Cambio:{" "}
-                            {o.payment.change} · Saldo: {o.payment.balance}{" "}
-                            {o.payment.currency.name}
-                          </p>
-                        )}
-                        <p>{o.payment.note || "Sin notas del chofer"}</p>
-                        <small>
-                          Confirmado{" "}
-                          {new Date(o.payment.recordedAt).toLocaleString()}
-                        </small>
-                      </>
-                    )}
-                    {o.changedAfterPayment && (
-                      <p className="notice">
-                        La fuente cambió después del cobro. Se conserva el
-                        detalle confirmado que aparece a continuación.
-                      </p>
-                    )}
-                    <div className="table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Producto</th>
-                            <th>Cantidad</th>
-                            <th>Unitario</th>
-                            <th>Original</th>
-                            <th>A cobrar</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(
-                            o.payment?.snapshot.financial ?? o.financial
-                          )?.lines.map((line) => (
-                            <tr key={line.moveId}>
-                              <td>
-                                {
-                                  (o.payment?.snapshot.order ?? o.order)?.lines[
-                                    line.lineIndex
-                                  ]?.name
-                                }
-                              </td>
-                              <td>
-                                {line.quantity} {line.unit}
-                              </td>
-                              <td>{line.unitPrice}</td>
-                              <td>{line.total}</td>
-                              <td>{line.net ?? "Por revisar"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {frozen?.totals && (
-                      <div className="settlement-order-totals">
-                        <span>
-                          Importe original{" "}
-                          <b>
-                            {frozen.totals.original} {frozen.currency?.name}
-                          </b>
-                        </span>
-                        <span>
-                          Devoluciones y faltantes{" "}
-                          <b>
-                            − {frozen.totals.deduction} {frozen.currency?.name}
-                          </b>
-                        </span>
-                        <strong>
-                          Total {frozen.totals.net} {frozen.currency?.name}
-                        </strong>
-                      </div>
-                    )}
-                    <h3>Incidencias al confirmar</h3>
-                    {(o.payment?.snapshot.incidents ?? o.incidents).map((i) => (
-                      <div key={i.id}>
-                        <strong>
-                          {i.product} · {i.quantity} {i.unit}
-                        </strong>
-                        <p>
-                          {productIncidentNames[
-                            i.kind as ProductIncidentKind
-                          ] ?? i.kind}{" "}
-                          ·{" "}
-                          {{
-                            open: "Abierta",
-                            pending: "Pendiente",
-                            resolved: "Resuelta",
-                            canceled: "Cancelada",
-                          }[i.status as string] ?? i.status}{" "}
-                          · {i.note}
-                        </p>
-                        {i.replacement_payment && (
-                          <p>
-                            {i.replacement_payment === "pay_full"
-                              ? "Reposición: cliente paga completo"
-                              : "Reposición: se pagará al entregar"}
-                          </p>
-                        )}
-                        <div className="toolbar">
-                          {[...new Set([i.evidence_id, ...i.evidence_ids])]
-                            .filter(Boolean)
-                            .map((photo, index) => (
-                              <a
-                                target="_blank"
-                                rel="noreferrer"
-                                key={photo}
-                                href={`/api/settlements/${detail.route.id}/evidence?incidentId=${i.id}&photoId=${photo}`}
-                              >
-                                Foto {index + 1}
-                              </a>
-                            ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              </section>
-            );
-          })}
+          </details>
         </>
+      )}
+      {selectedOrder && selected && (
+        <SettlementOrderModal
+          order={selectedOrder}
+          executionId={selected}
+          close={() => setOpenedOrder(null)}
+          accept={
+            !busy &&
+            detail?.requests.some(
+              (request) =>
+                request.scope === "order" &&
+                request.status === "pending" &&
+                selectedOrder.payment &&
+                request.paymentIds.includes(selectedOrder.payment.id),
+            )
+              ? () => {
+                  const request = detail!.requests.find(
+                    (item) =>
+                      item.scope === "order" &&
+                      item.status === "pending" &&
+                      selectedOrder.payment &&
+                      item.paymentIds.includes(selectedOrder.payment.id),
+                  )!;
+                  setOpenedOrder(null);
+                  setNote("");
+                  setConfirmation({
+                    request,
+                    decision: "accepted",
+                    commandId: crypto.randomUUID(),
+                  });
+                }
+              : undefined
+          }
+        />
       )}
       {confirmation && (
         <dialog
@@ -606,10 +609,12 @@ export function SettlementPanel({ today }: { today: string }) {
                 .map((o) => (
                   <p className="settlement-order-amount" key={o.shipmentId}>
                     <strong>
-                      {o.payment!.method === "credit"
-                        ? o.payment!.expected
-                        : o.payment!.received}{" "}
-                      {o.payment!.currency.name}
+                      {money(
+                        o.payment!.method === "credit"
+                          ? o.payment!.expected
+                          : o.payment!.received,
+                        o.payment!.currency,
+                      )}
                     </strong>
                     <span>
                       {methodName[o.payment!.method]} · {o.customer}

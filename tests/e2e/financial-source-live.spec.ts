@@ -10,6 +10,7 @@ import type { CandidateBatch } from "../../src/core/order-candidates-contract";
 
 test("real HTTP import activates the financial worker without a manual sync command", async ({
   request,
+  page,
 }) => {
   test.skip(
     !process.env.ODOO_URL ||
@@ -189,6 +190,21 @@ test("real HTTP import activates the financial worker without a manual sync comm
       (row) => row.snapshot.fulfillmentStatus === "validated",
     );
     expect(validated).toBeTruthy();
+    await page.request.post(`${origin}/api/session`, {
+      headers,
+      data: { login, password },
+    });
+    await page.goto(origin);
+    await page
+      .getByRole("combobox", { name: "Abrir borrador" })
+      .selectOption(plan.id);
+    const card = page
+      .locator('[aria-label="Pedidos de Pedidos sin asignar"] .shipment-card')
+      .filter({ hasText: validated!.snapshot.orderName });
+    // Bound only the isolated QA queue so the browser can observe both states.
+    await db.pool.query(
+      "UPDATE route_financial_targets SET next_attempt_at=now()+interval '20 seconds'",
+    );
     const stale = structuredClone(validated!.snapshot);
     stale.fulfillmentStatus = "pending_validation";
     stale.odooPickingState = "assigned";
@@ -199,6 +215,7 @@ test("real HTTP import activates the financial worker without a manual sync comm
       validated!.id,
       JSON.stringify(stale),
     ]);
+    await expect(card).toContainText("Pendiente Odoo");
     const priorVersion = (
       await db.pool.query("SELECT version FROM route_plans WHERE id=$1", [
         plan.id,
@@ -216,6 +233,19 @@ test("real HTTP import activates the financial worker without a manual sync comm
         { timeout: 45000, intervals: [500] },
       )
       .toEqual(validated!.snapshot);
+    await expect(card).toContainText("Validado", { timeout: 15000 });
+    expect(
+      (
+        await db.pool.query(
+          "SELECT vehicle_id FROM route_shipments WHERE id=$1",
+          [validated!.id],
+        )
+      ).rows[0].vehicle_id,
+    ).toBeNull();
+    await page.screenshot({
+      path: ".local/qa-settlements/odoo-unassigned-automatic.png",
+      fullPage: true,
+    });
     expect(
       (
         await db.pool.query("SELECT version FROM route_plans WHERE id=$1", [

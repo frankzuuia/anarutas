@@ -665,3 +665,11 @@ transferencia, crédito y combinado efectivo+transferencia, con total neto exact
 El pedido pagado aparece al rol settlement en ruta activa; Aceptar se habilita
 sólo tras Liquidar individual. Sustituye las restricciones anteriores de cierre
 previo al cobro/ruta completa y de exclusión de combinado en BL162..169.
+
+## BL-175..178 — liquidación clara
+
+Plan aprobado 2026-10-01 en PROPUESTA-LIQUIDACION-CLARA-2026-10-01.md.
+Verificación del refresco sin asignación; importes y cantidades con formato
+legible; descuentos por incidencia derivados del recibo; resúmenes por medio
+y detalle modal web/Android. Liquidación móvil sólo muestra pedidos entregados
+con cobro confirmado. El cobro operativo mantiene su acceso a pedidos abiertos.

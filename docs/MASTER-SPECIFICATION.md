@@ -1751,3 +1751,9 @@ Autopsia, datos/locks/contratos, permisos, matriz CP01..14, migración aditiva,
 compatibilidad y puertas en CORRECCION-ODOO-COBRO-POR-PEDIDO.md. Sustituye
 explícitamente el orden y exclusiones anteriores de BL162..169. GREEN LIGHT,
 INTEGRITY TOTAL y MATCH PERFECT con CP-T01..05; implementación por bloques.
+
+## BL-175..178 — presentación y sincronización verificable
+
+Plan aprobado, autopsia, datos, proyección de descuentos, accesibilidad y
+escenarios LC01..12 en PROPUESTA-LIQUIDACION-CLARA-2026-10-01.md. No filtrar
+el contrato operativo usado antes del cobro ni alterar bases/hashes históricos.

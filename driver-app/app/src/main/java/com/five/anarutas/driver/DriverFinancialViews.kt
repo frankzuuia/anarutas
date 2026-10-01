@@ -28,16 +28,16 @@ internal fun FinancialLineDetails(line: DriverFinancialLine?, currency: DriverCu
     }
 }
 @Composable
-internal fun FinancialOrderSummary(view: DriverFinancialView?) {
+internal fun FinancialOrderSummary(view: DriverFinancialView?, confirmed: Boolean = false) {
     val now = financialClock()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(financialStatus(view, now), style = MaterialTheme.typography.bodySmall,
-            color = if (view?.totals != null && financialFresh(view, now)) DriverColors.lime else DriverColors.amber)
+        Text(if (confirmed) "Importes del cobro confirmado" else financialStatus(view, now), style = MaterialTheme.typography.bodySmall,
+            color = if (confirmed || view?.totals != null && financialFresh(view, now)) DriverColors.lime else DriverColors.amber)
         view?.totals?.let { totals ->
             HorizontalDivider(color = DriverColors.line)
             FinancialSummaryValue("Importe original", financialMoney(totals.original, view.currency))
-            FinancialSummaryValue("Devoluciones y faltantes", financialMoney(totals.deduction, view.currency))
-            FinancialSummaryValue("Reposición · pago pendiente", financialMoney(totals.deferred, view.currency))
+            if (totals.deduction.toBigDecimal().signum() != 0) FinancialSummaryValue("Devoluciones y faltantes", "− ${financialMoney(totals.deduction, view.currency)}")
+            if (totals.deferred.toBigDecimal().signum() != 0) FinancialSummaryValue("Se cobrará al entregar la reposición", "− ${financialMoney(totals.deferred, view.currency)}")
             if (totals.roundingAdjustment.toBigDecimal().signum() != 0)
                 FinancialSummaryValue("Redondeo incluido en el original", financialMoney(totals.roundingAdjustment, view.currency))
             FinancialSummaryValue("Importe actual", financialMoney(totals.net, view.currency), emphasis = true)
