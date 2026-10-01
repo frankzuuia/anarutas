@@ -7,6 +7,7 @@ import { lockFinanceExecution, financeOrders } from "./finance-context";
 import { authenticateMobile } from "./driver-mobile-auth";
 import { paymentRecords } from "./payments";
 import { settlementRecords } from "./settlements";
+import { settlementWarehouseRequired } from "./settlement-warehouse-policy";
 import {
   routeWorkReview,
   type WorkOrder,
@@ -35,9 +36,17 @@ export async function readRouteWork(
   orders: WorkOrder[],
   payments: WorkReceipt[],
   requests: WorkRequest[],
+  warehouseRequired = true,
 ) {
   return {
-    ...routeWorkReview(executionId, completed, orders, payments, requests),
+    ...routeWorkReview(
+      executionId,
+      completed,
+      orders,
+      payments,
+      requests,
+      warehouseRequired,
+    ),
     completion: await workCompletionRecord(sql, executionId),
   };
 }
@@ -82,12 +91,14 @@ export async function completeDriverWork(
     const orders = await financeOrders(sql, route);
     const payments = await paymentRecords(sql, route.id);
     const requests = await settlementRecords(sql, route.id);
+    const warehouseRequired = await settlementWarehouseRequired(sql);
     const review = routeWorkReview(
       route.id,
       Boolean(route.completed_at),
       orders,
       payments,
       requests,
+      warehouseRequired,
     );
     if (!review.eligible) throw new AppError(review.reason!, 409);
     if (review.basis !== basis) throw new AppError("WORK_VERSION_CHANGED", 409);
@@ -112,6 +123,7 @@ export async function completeDriverWork(
           executionId: route.id,
           commandId,
           completedAt: now.toISOString(),
+          warehouseRequired,
           ...review.summary,
         }),
       ],

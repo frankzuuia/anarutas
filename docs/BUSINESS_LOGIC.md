@@ -705,3 +705,10 @@ BL-182: Buen trabajo -> número de entregados e incidencias activas distintas de
 snapshot y total neto de todos los recibos por moneda, incluidos ya aceptados y
 créditos -> cálculo decimal exacto en servidor, resumen congelado, sin reprogramados
 como entregados ni fotos/canceladas como incidencias; LR17..24.
+
+BL-183: Prueba temporal de liquidación sin bodega -> excepción explícita del
+propietario para BL179/181; todos los pedidos entregados y cobrados, aceptación
+total antes de cierre de trabajo -> configuración persistida del servidor,
+guardas SQL independientes, auditar modo, no fabricar cierre GPS; TB01..10 en
+PRUEBA-LIQUIDACION-SIN-BODEGA-2026-10-01.md. Restauración automática por política,
+roles e historial intactos.

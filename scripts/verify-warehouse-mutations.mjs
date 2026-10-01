@@ -11,111 +11,53 @@ import { spawn } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Real PostgreSQL, disposable copy; never mutate the checkout or an external service.
+// Each guard is removed in a disposable copy and tested against real PostgreSQL.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = join(root, ".local");
 await mkdir(scratch, { recursive: true });
-const sandbox = await mkdtemp(join(scratch, "settlement-mutants-"));
+const sandbox = await mkdtemp(join(scratch, "warehouse-mutants-"));
 const cases = [
   [
-    "payment-owner",
-    "finance-context.ts",
-    "driverId && row.driver_id !== driverId",
+    "server-warehouse-restoration",
+    "settlement-warehouse-policy.ts",
+    "return rows[0].settlement_require_warehouse as boolean",
+    "return false",
+  ],
+  [
+    "settings-fail-closed",
+    "settlement-warehouse-policy.ts",
+    'typeof rows[0]?.settlement_require_warehouse !== "boolean"',
     "false",
   ],
   [
-    "payment-replay-payload",
-    "payments.ts",
-    "previous.request_hash !== hash",
-    "false",
-  ],
-  [
-    "payment-reviewed-basis",
-    "payments.ts",
-    "detail.basis !== input.basis",
-    "false",
-  ],
-  ["payment-delivery", "payments.ts", 'detail.status !== "delivered"', "false"],
-  [
-    "receipt-change-warning",
-    "finance-read.ts",
-    "p.basis !== order.basis",
-    "false",
-  ],
-  [
-    "finished-route",
-    "settlements.ts",
-    "!settlementRouteReady",
-    "false && settlementRouteReady",
-  ],
-  [
-    "pending-reservation",
-    "settlements.ts",
-    "selected.some((p) => pending.has(p.id))",
-    "false",
-  ],
-  [
-    "complete-payments",
-    "settlements.ts",
-    "if (missing.rowCount)",
-    "if (false)",
-  ],
-  ["accepted-exclusion", "settlements.ts", "!accepted.has(p.id)", "true"],
-  [
-    "reviewed-reception",
-    "settlements.ts",
-    "financialHash(row.snapshot) !== raw.basis",
-    "false",
-  ],
-  [
-    "decision-replay-payload",
-    "settlements.ts",
-    "row.decision_hash !== hash",
-    "false",
-  ],
-  [
-    "reject-releases-reservation",
-    "settlements.ts",
-    'if (raw.decision === "rejected")',
-    "if (false)",
-  ],
-  [
-    "receipt-immutable",
-    "payment-schema.ts",
-    "BEFORE UPDATE OR DELETE ON route_order_payments",
-    "BEFORE DELETE ON route_order_payments",
-  ],
-  [
-    "claim-preserves-accepted",
-    "settlement-schema.ts",
-    "id=OLD.request_id AND status='rejected'",
-    "id=OLD.request_id",
-  ],
-  ["atomic-attention", "payments.ts", "service && attention", "false"],
-  ["post-delivery-basis", "payments.ts", "if (delivery) {", "if (false) {"],
-  [
-    "incident-acknowledgement",
-    "driver-order-command.ts",
-    "!acknowledged",
-    "false",
-  ],
-  [
-    "completion-collection",
-    "driver-route-completion.ts",
-    "if (unpaid.rowCount)",
-    "if (false)",
-  ],
-  [
-    "split-component-quantum",
+    "sql-reception-warehouse",
     "order-collection-schema.ts",
-    "OR mod(amount,(NEW.currency->>'rounding')::numeric)<>0",
+    "NOT route_settlement_ready(NEW.execution_id)",
+    "false",
+  ],
+  [
+    "sql-work-warehouse",
+    "route-work-schema.ts",
+    "NOT route_settlement_ready(NEW.execution_id)",
+    "false",
+  ],
+  [
+    "sql-unfinished-orders",
+    "settlement-warehouse-schema.ts",
+    "AND NOT EXISTS(SELECT 1 FROM route_driver_execution_orders WHERE execution_id=target AND status<>'delivered')",
     "",
   ],
   [
-    "full-capture-database",
-    "order-collection-schema.ts",
-    "(change=0 AND (method='credit' OR balance=0))",
-    "true",
+    "sql-uncaptured-orders",
+    "settlement-warehouse-schema.ts",
+    "AND NOT EXISTS(SELECT 1 FROM route_driver_execution_orders o WHERE o.execution_id=target\n            AND NOT EXISTS(SELECT 1 FROM route_order_payments p WHERE (p.execution_id,p.shipment_id)=(o.execution_id,o.shipment_id)))",
+    "",
+  ],
+  [
+    "explicit-test-default",
+    "settlement-warehouse-schema.ts",
+    "settlement_require_warehouse boolean NOT NULL DEFAULT false",
+    "settlement_require_warehouse boolean NOT NULL DEFAULT true",
   ],
 ];
 const results = [];
@@ -123,9 +65,7 @@ try {
   for (const path of [
     "src/core",
     "tests/helpers",
-    "tests/payments-integration.test.ts",
-    "tests/settlements-integration.test.ts",
-    "tests/order-collection-integration.test.ts",
+    "tests/settlement-warehouse-integration.test.ts",
     "package.json",
   ])
     await cp(join(root, path), join(sandbox, path), { recursive: true });
@@ -136,7 +76,7 @@ try {
   );
   await writeFile(
     join(sandbox, "vitest.config.mjs"),
-    'export default {test:{include:["tests/payments-integration.test.ts","tests/settlements-integration.test.ts","tests/order-collection-integration.test.ts"],fileParallelism:false,testTimeout:120000,hookTimeout:120000}};',
+    'export default {test:{include:["tests/settlement-warehouse-integration.test.ts"],fileParallelism:false,maxWorkers:1,testTimeout:120000,hookTimeout:120000}};',
   );
   const originals = new Map(
     await Promise.all(
@@ -175,7 +115,7 @@ try {
   }
   const baseline = await run("baseline");
   console.log(JSON.stringify(baseline));
-  if (baseline.code !== 0 || baseline.passed !== 15)
+  if (baseline.code !== 0 || baseline.passed !== 2)
     throw new Error("BASELINE_FAILED");
   for (const [name, file, from, to] of cases) {
     const original = originals.get(file);
@@ -195,14 +135,14 @@ try {
   }
   await mkdir(join(root, "reports/mutation"), { recursive: true });
   await writeFile(
-    join(root, "reports/mutation/settlements-integration.json"),
+    join(root, "reports/mutation/warehouse-integration.json"),
     JSON.stringify({ baseline, results }, null, 2),
   );
   if (results.some((r) => !r.killed)) process.exitCode = 1;
 } finally {
   const within = relative(scratch, sandbox);
   if (
-    !within.startsWith("settlement-mutants-") ||
+    !within.startsWith("warehouse-mutants-") ||
     within.includes("..") ||
     resolve(sandbox) === resolve(scratch)
   )

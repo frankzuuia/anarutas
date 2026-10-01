@@ -17,11 +17,13 @@ import { incidentFinancialDisplay } from "./incident-financial-display";
 import { compareCollectionReceipts } from "./collection-receipt-order";
 import { routeSettlementReview } from "./route-work-policy";
 import { readRouteWork } from "./route-work";
+import { settlementWarehouseRequired } from "./settlement-warehouse-policy";
 
 export async function financeExecutionDetail(sql: Sql, route: ExecutionRow) {
   const orders = await financeOrders(sql, route),
     payments = await paymentRecords(sql, route.id),
-    requests = await settlementRecords(sql, route.id);
+    requests = await settlementRecords(sql, route.id),
+    warehouseRequired = await settlementWarehouseRequired(sql);
   const accepted = new Set(
     requests
       .filter((r) => r.status === "accepted")
@@ -87,6 +89,7 @@ export async function financeExecutionDetail(sql: Sql, route: ExecutionRow) {
       orders,
       payments,
       requests,
+      warehouseRequired,
     ),
     work: await readRouteWork(
       sql,
@@ -95,6 +98,7 @@ export async function financeExecutionDetail(sql: Sql, route: ExecutionRow) {
       orders,
       payments,
       requests,
+      warehouseRequired,
     ),
     requests,
     acceptedTotals: paymentTotals(payments.filter((p) => accepted.has(p.id))),

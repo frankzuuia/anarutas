@@ -106,6 +106,7 @@ internal fun friendlyError(error: Throwable): String = when (error) {
         "CREDIT_RECEIVED_MUST_BE_ZERO" -> "Un pedido a crédito no registra dinero recibido."
         "PAYMENT_NOTE_INVALID" -> "La nota debe tener como máximo 2,000 caracteres."
         "SETTLEMENT_ROUTE_NOT_FINISHED" -> "Termina la ruta antes de solicitar su liquidación."
+        "SETTLEMENT_ORDERS_NOT_DELIVERED" -> "Entrega todos los pedidos antes de probar la liquidación de toda la ruta."
         "SETTLEMENT_PAYMENTS_MISSING" -> "Registra el cobro de todos los pedidos entregados antes de liquidar la ruta completa."
         "SETTLEMENT_REQUEST_PENDING" -> "Ya hay una solicitud por recibir. Espera la respuesta del liquidador."
         "SETTLEMENT_NOTHING_PENDING" -> "Estos cobros ya fueron liquidados. Revisa el historial."

@@ -3,6 +3,8 @@ export const errors: Record<string, string> = {
   SETTLEMENT_VERSION_CHANGED:
     "La solicitud cambió o ya fue atendida. Actualiza para consultar la recepción guardada.",
   SETTLEMENT_ROUTE_NOT_FINISHED: "El chofer aún no termina esta ruta.",
+  SETTLEMENT_ORDERS_NOT_DELIVERED:
+    "Entrega todos los pedidos antes de probar la liquidación de toda la ruta.",
   SETTLEMENT_DECISION_INVALID: "Selecciona aceptar o rechazar la solicitud.",
   SETTLEMENT_REVIEW_REQUIRED:
     "Revisa los pedidos e importes antes de confirmar la liquidación.",

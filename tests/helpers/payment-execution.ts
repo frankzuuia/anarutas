@@ -13,10 +13,20 @@ import { readDriverPlan } from "../../src/core/driver-mobile-route";
 
 // Real PG and operational commands. Domain observations are persisted unit inputs, not Odoo API mocks.
 export async function paymentExecutionFixture(
-  options: { collectAtFirstStop?: boolean; orderCount?: number } = {},
+  options: {
+    collectAtFirstStop?: boolean;
+    orderCount?: number;
+    warehouseRequired?: boolean;
+  } = {},
 ) {
   const f = await executionFixture({ orderCount: options.orderCount });
   try {
+    // Financial regressions explicitly exercise the strict warehouse policy;
+    // dedicated temporary-mode tests override this real persisted setting.
+    await f.db.pool.query(
+      "UPDATE route_driver_operation_settings SET settlement_require_warehouse=$1 WHERE singleton=true",
+      [options.warehouseRequired ?? true],
+    );
     await f.start();
     const state = () =>
       readDriverExecution(

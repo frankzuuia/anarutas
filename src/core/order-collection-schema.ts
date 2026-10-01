@@ -1,5 +1,36 @@
 import type { Sql } from "./database";
 
+export const settlementVerificationSql = `
+    CREATE OR REPLACE FUNCTION verify_settlement_request() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE actual_driver uuid; actual_device uuid;
+    BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'SETTLEMENT_IMMUTABLE' USING ERRCODE='42501'; END IF;
+      IF TG_OP='INSERT' THEN
+        IF jsonb_typeof(NEW.snapshot->'paymentIds') IS DISTINCT FROM 'array' OR jsonb_typeof(NEW.snapshot->'totals') IS DISTINCT FROM 'array'
+          OR jsonb_array_length(NEW.snapshot->'paymentIds')=0 OR (NEW.scope='order' AND jsonb_array_length(NEW.snapshot->'paymentIds')<>1) THEN
+          RAISE EXCEPTION 'SETTLEMENT_SNAPSHOT_INVALID' USING ERRCODE='23514'; END IF;
+        SELECT driver_id INTO actual_driver FROM route_driver_executions WHERE id=NEW.execution_id FOR UPDATE;
+        SELECT driver_id INTO actual_device FROM route_driver_mobile_devices WHERE id=NEW.device_id;
+        IF actual_driver IS DISTINCT FROM NEW.driver_id OR actual_device IS DISTINCT FROM NEW.driver_id
+          OR (NEW.scope='route' AND NOT route_settlement_ready(NEW.execution_id))
+          OR NEW.status<>'pending' THEN RAISE EXCEPTION 'SETTLEMENT_EXECUTION_INVALID' USING ERRCODE='23514'; END IF;
+      ELSE
+        IF (to_jsonb(NEW)-ARRAY['status','version','decided_at','decided_by','decision_note','decision_command','decision_hash']) IS DISTINCT FROM
+           (to_jsonb(OLD)-ARRAY['status','version','decided_at','decided_by','decision_note','decision_command','decision_hash'])
+           OR OLD.status<>'pending' OR NEW.status='pending' OR NEW.version<>OLD.version+1 THEN
+           RAISE EXCEPTION 'SETTLEMENT_IMMUTABLE' USING ERRCODE='42501'; END IF;
+        IF NOT EXISTS(SELECT 1 FROM route_users WHERE id=NEW.decided_by AND active AND role='settlement') THEN
+          RAISE EXCEPTION 'SETTLEMENT_ACTOR_DENIED' USING ERRCODE='42501'; END IF;
+        IF NOT EXISTS(SELECT 1 FROM route_settlement_items WHERE request_id=NEW.id) OR
+          EXISTS(SELECT 1 FROM route_settlement_items i LEFT JOIN route_settlement_claims c ON c.payment_id=i.payment_id AND c.request_id=i.request_id
+            WHERE i.request_id=NEW.id AND c.payment_id IS NULL) THEN RAISE EXCEPTION 'SETTLEMENT_CLAIM_LOST' USING ERRCODE='23514'; END IF;
+        IF (SELECT jsonb_agg(payment_id::text ORDER BY payment_id::text) FROM route_settlement_items WHERE request_id=NEW.id)
+          IS DISTINCT FROM NEW.snapshot->'paymentIds' THEN RAISE EXCEPTION 'SETTLEMENT_SNAPSHOT_INVALID' USING ERRCODE='23514'; END IF;
+      END IF;
+      RETURN NEW;
+    END $$;
+`;
+
 export async function migrateOrderCollections(sql: Sql) {
   await sql.query(`
     ALTER TABLE route_order_payments ADD COLUMN IF NOT EXISTS cash_received numeric NOT NULL DEFAULT 0;
@@ -39,34 +70,7 @@ export async function migrateOrderCollections(sql: Sql) {
       RETURN NEW;
     END $$;
     CREATE OR REPLACE TRIGGER require_route_collections BEFORE INSERT ON route_driver_execution_completions FOR EACH ROW EXECUTE FUNCTION require_route_collections();
-    CREATE OR REPLACE FUNCTION verify_settlement_request() RETURNS trigger LANGUAGE plpgsql AS $$
-    DECLARE actual_driver uuid; actual_device uuid;
-    BEGIN
-      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'SETTLEMENT_IMMUTABLE' USING ERRCODE='42501'; END IF;
-      IF TG_OP='INSERT' THEN
-        IF jsonb_typeof(NEW.snapshot->'paymentIds') IS DISTINCT FROM 'array' OR jsonb_typeof(NEW.snapshot->'totals') IS DISTINCT FROM 'array'
-          OR jsonb_array_length(NEW.snapshot->'paymentIds')=0 OR (NEW.scope='order' AND jsonb_array_length(NEW.snapshot->'paymentIds')<>1) THEN
-          RAISE EXCEPTION 'SETTLEMENT_SNAPSHOT_INVALID' USING ERRCODE='23514'; END IF;
-        SELECT driver_id INTO actual_driver FROM route_driver_executions WHERE id=NEW.execution_id FOR UPDATE;
-        SELECT driver_id INTO actual_device FROM route_driver_mobile_devices WHERE id=NEW.device_id;
-        IF actual_driver IS DISTINCT FROM NEW.driver_id OR actual_device IS DISTINCT FROM NEW.driver_id
-          OR (NEW.scope='route' AND NOT EXISTS(SELECT 1 FROM route_driver_execution_completions WHERE execution_id=NEW.execution_id))
-          OR NEW.status<>'pending' THEN RAISE EXCEPTION 'SETTLEMENT_EXECUTION_INVALID' USING ERRCODE='23514'; END IF;
-      ELSE
-        IF (to_jsonb(NEW)-ARRAY['status','version','decided_at','decided_by','decision_note','decision_command','decision_hash']) IS DISTINCT FROM
-           (to_jsonb(OLD)-ARRAY['status','version','decided_at','decided_by','decision_note','decision_command','decision_hash'])
-           OR OLD.status<>'pending' OR NEW.status='pending' OR NEW.version<>OLD.version+1 THEN
-           RAISE EXCEPTION 'SETTLEMENT_IMMUTABLE' USING ERRCODE='42501'; END IF;
-        IF NOT EXISTS(SELECT 1 FROM route_users WHERE id=NEW.decided_by AND active AND role='settlement') THEN
-          RAISE EXCEPTION 'SETTLEMENT_ACTOR_DENIED' USING ERRCODE='42501'; END IF;
-        IF NOT EXISTS(SELECT 1 FROM route_settlement_items WHERE request_id=NEW.id) OR
-          EXISTS(SELECT 1 FROM route_settlement_items i LEFT JOIN route_settlement_claims c ON c.payment_id=i.payment_id AND c.request_id=i.request_id
-            WHERE i.request_id=NEW.id AND c.payment_id IS NULL) THEN RAISE EXCEPTION 'SETTLEMENT_CLAIM_LOST' USING ERRCODE='23514'; END IF;
-        IF (SELECT jsonb_agg(payment_id::text ORDER BY payment_id::text) FROM route_settlement_items WHERE request_id=NEW.id)
-          IS DISTINCT FROM NEW.snapshot->'paymentIds' THEN RAISE EXCEPTION 'SETTLEMENT_SNAPSHOT_INVALID' USING ERRCODE='23514'; END IF;
-      END IF;
-      RETURN NEW;
-    END $$;
+    ${settlementVerificationSql}
     UPDATE rutas_installation SET schema_version=39 WHERE singleton=true;
   `);
 }

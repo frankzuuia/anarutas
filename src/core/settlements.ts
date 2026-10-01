@@ -8,7 +8,11 @@ import { paymentTotals } from "./payment-policy";
 import { paymentRecords } from "./payments";
 import { lockFinanceExecution, mobileFinanceContext } from "./finance-context";
 import { financeOrders } from "./finance-context";
-import { routeSettlementReview } from "./route-work-policy";
+import {
+  routeSettlementReview,
+  settlementRouteReady,
+} from "./route-work-policy";
+import { settlementWarehouseRequired } from "./settlement-warehouse-policy";
 
 export async function settlementRecords(sql: Sql, executionId: string) {
   const rows = (
@@ -70,18 +74,32 @@ export async function requestSettlement(
         throw new AppError("COMMAND_REUSED", 409);
       return { id: prior.id, duplicate: true };
     }
-    if (shipmentId === null && !route.completed_at)
-      throw new AppError("SETTLEMENT_ROUTE_NOT_FINISHED", 409);
+    const warehouseRequired = await settlementWarehouseRequired(sql);
+    const orders = shipmentId === null ? await financeOrders(sql, route) : [];
+    if (
+      shipmentId === null &&
+      !settlementRouteReady(
+        Boolean(route.completed_at),
+        warehouseRequired,
+        orders,
+      )
+    )
+      throw new AppError(
+        warehouseRequired
+          ? "SETTLEMENT_ROUTE_NOT_FINISHED"
+          : "SETTLEMENT_ORDERS_NOT_DELIVERED",
+        409,
+      );
     const all = await paymentRecords(sql, route.id),
       requests = await settlementRecords(sql, route.id);
     if (raw.basis !== undefined) {
-      const orders = await financeOrders(sql, route);
       const review = routeSettlementReview(
         route.id,
         Boolean(route.completed_at),
         orders,
         all,
         requests,
+        warehouseRequired,
       );
       if (review.basis !== raw.basis)
         throw new AppError("SETTLEMENT_VERSION_CHANGED", 409);
@@ -101,9 +119,6 @@ export async function requestSettlement(
         (shipmentId === null || p.shipmentId === shipmentId) &&
         !accepted.has(p.id),
     );
-    if (!selected.length) throw new AppError("SETTLEMENT_NOTHING_PENDING", 409);
-    if (selected.some((p) => pending.has(p.id)))
-      throw new AppError("SETTLEMENT_REQUEST_PENDING", 409);
     if (shipmentId === null) {
       const missing = await sql.query(
         `SELECT 1 FROM route_driver_execution_orders o WHERE o.execution_id=$1 AND o.status='delivered'
@@ -113,10 +128,14 @@ export async function requestSettlement(
       if (missing.rowCount)
         throw new AppError("SETTLEMENT_PAYMENTS_MISSING", 409);
     }
+    if (!selected.length) throw new AppError("SETTLEMENT_NOTHING_PENDING", 409);
+    if (selected.some((p) => pending.has(p.id)))
+      throw new AppError("SETTLEMENT_REQUEST_PENDING", 409);
     const id = randomUUID(),
       snapshot = {
         paymentIds: selected.map((p) => p.id).sort(),
         totals: paymentTotals(selected),
+        warehouseRequired,
       };
     await sql.query(
       `INSERT INTO route_settlement_requests(id,execution_id,driver_id,device_id,command_id,request_hash,scope,snapshot,requested_at)

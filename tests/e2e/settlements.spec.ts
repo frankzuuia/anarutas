@@ -1,4 +1,9 @@
-import { test, expect } from "@playwright/test";
+import {
+  test,
+  expect,
+  type Page,
+  type APIRequestContext,
+} from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -8,12 +13,23 @@ import { createUser } from "../../src/core/auth";
 import { reportProductIncidentWithEvidence } from "../../src/core/product-incidents-evidence";
 import sharp from "sharp";
 
-test("real HTTP collection to settlement, UI roles, individual acceptance and remaining route", async ({
-  page,
-  request,
-}) => {
+for (const warehouseRequired of [true, false])
+  test(`real HTTP collection to settlement, UI roles, individual acceptance and remaining route, warehouse=${warehouseRequired}`, async ({
+    page,
+    request,
+  }) => {
+    await settlementFlow(warehouseRequired, { page, request });
+  });
+
+async function settlementFlow(
+  warehouseRequired: boolean,
+  { page, request }: { page: Page; request: APIRequestContext },
+) {
   test.setTimeout(180000);
-  const f = await paymentExecutionFixture({ collectAtFirstStop: true });
+  const f = await paymentExecutionFixture({
+    collectAtFirstStop: true,
+    warehouseRequired,
+  });
   const timings: number[] = [];
   page.on("response", (response) => {
     const timing = response.headers()["server-timing"];
@@ -422,8 +438,11 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
       )
       .toBe("accepted");
     expect((await f.state()).completedAt).toBeNull();
-    await f.finish();
+    if (warehouseRequired) await f.finish();
     const reviewed = await (await request.get(path, { headers })).json();
+    expect(reviewed.routeSettlement.warehouseRequired).toBe(warehouseRequired);
+    expect(reviewed.routeSettlement.eligible).toBe(true);
+    expect(reviewed.route.completedAt === null).toBe(!warehouseRequired);
     expect(reviewed.routeSettlement.paymentIds).toHaveLength(2);
     expect(
       (
@@ -504,7 +523,10 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
     ).toBe("pending");
     await routeCard.locator(".settlement-route-open").click();
     await packetDialog
-      .getByRole("button", { name: "Aceptar liquidación de ruta", exact: true })
+      .getByRole("button", {
+        name: "Aceptar liquidación de ruta",
+        exact: true,
+      })
       .click();
     await expect(dialog).toContainText("20");
     await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
@@ -525,7 +547,11 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
     expect(after.work).toMatchObject({
       eligible: true,
       completion: null,
-      summary: { deliveredOrders: 3, incidents: 1, totals: [{ total: "50" }] },
+      summary: {
+        deliveredOrders: 3,
+        incidents: 1,
+        totals: [{ total: "50" }],
+      },
     });
     const workPayload = { commandId: randomUUID(), basis: after.work.basis };
     expect(
@@ -611,7 +637,10 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
       page.getByRole("button", { name: /Ejecución QA.*2026-09-24/ }),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Cobrado por choferes", exact: true }),
+      page.getByRole("heading", {
+        name: "Cobrado por choferes",
+        exact: true,
+      }),
     ).toHaveCount(0);
     const receiptReport = await (
       await page.request.get(
@@ -654,7 +683,10 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
       page.getByRole("heading", { name: "Añadir liquidador", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Añadir administrador", exact: true }),
+      page.getByRole("heading", {
+        name: "Añadir administrador",
+        exact: true,
+      }),
     ).toBeVisible();
     const accountForms = [
       {
@@ -678,7 +710,10 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
       .getByLabel("Nombre completo", { exact: true })
       .fill("Borrador conservado");
     for (const account of accountForms) {
-      const form = page.getByRole("form", { name: account.title, exact: true });
+      const form = page.getByRole("form", {
+        name: account.title,
+        exact: true,
+      });
       const fullName = form.getByLabel("Nombre completo", { exact: true });
       const username = form.getByLabel("Usuario", { exact: true });
       const secret = form.getByLabel("Contraseña", { exact: true });
@@ -810,4 +845,4 @@ test("real HTTP collection to settlement, UI roles, individual acceptance and re
       });
     await f.close();
   }
-});
+}

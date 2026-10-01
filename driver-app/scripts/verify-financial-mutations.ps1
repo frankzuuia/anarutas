@@ -1,4 +1,4 @@
-param([string[]]$Only = @(), [ValidateSet('financial', 'receipt', 'navigation', 'quantity')][string]$Scope = 'financial')
+param([string[]]$Only = @(), [ValidateSet('financial', 'receipt', 'navigation', 'quantity', 'settlement')][string]$Scope = 'financial')
 $ErrorActionPreference = 'Stop'
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $taskTempRoot = [IO.Path]::GetTempPath()
@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Path (Join-Path $workRoot 'app') | Out-Null
 foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
     Copy-Item -LiteralPath (Join-Path $sourceRoot ('app/' + $entry)) -Destination (Join-Path $workRoot 'app') -Recurse
 }
-$policyFile = switch ($Scope) { 'receipt' { 'DriverReceiptOrder.kt' } 'navigation' { 'DriverBackPolicy.kt' } default { 'DriverFinancial.kt' } }
+$policyFile = switch ($Scope) { 'settlement' { 'DriverSettlementPolicy.kt' } 'receipt' { 'DriverReceiptOrder.kt' } 'navigation' { 'DriverBackPolicy.kt' } default { 'DriverFinancial.kt' } }
 $policy = Join-Path $workRoot ('app/src/main/java/com/five/anarutas/driver/' + $policyFile)
 $original = [IO.File]::ReadAllText($policy)
 $cases = @(
@@ -48,8 +48,15 @@ if ($Scope -eq 'quantity') {
         @{ name='money_instead_of_physical_units'; from='productQuantityText(line.physicalRemaining)'; to='productQuantityText(line.net ?: line.quantity)' }
     )
 }
+if ($Scope -eq 'settlement') {
+    $cases = @(
+        @{ name='show_without_real_receipts'; from='hasReceipts &&'; to='true &&' },
+        @{ name='ignore_runtime_restoration'; from='completed || !warehouseRequired'; to='true' },
+        @{ name='hide_authorized_test_action'; from='completed || !warehouseRequired'; to='completed' }
+    )
+}
 if ($Only.Count) { $cases = @($cases | Where-Object { $Only -contains $_.name }); if ($cases.Count -ne $Only.Count) { throw 'Unknown mutation filter' } }
-$testClass = switch ($Scope) { 'receipt' { 'DriverReceiptOrderTest' } 'navigation' { 'DriverBackPolicyTest' } default { 'DriverFinancialTest' } }
+$testClass = switch ($Scope) { 'settlement' { 'DriverSettlementPolicyTest' } 'receipt' { 'DriverReceiptOrderTest' } 'navigation' { 'DriverBackPolicyTest' } default { 'DriverFinancialTest' } }
 $arguments = @('testDebugUnitTest', '--tests', ('com.five.anarutas.driver.' + $testClass), '--console=plain')
 $results = @()
 Push-Location $workRoot

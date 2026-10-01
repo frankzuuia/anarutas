@@ -5,6 +5,18 @@ import { sumFinancial } from "./financial-values";
 
 export type WorkOrder = { shipmentId: string; status: string };
 export type WorkRequest = { status: string; paymentIds: string[] };
+export function settlementRouteReady(
+  completed: boolean,
+  warehouseRequired: boolean,
+  orders: { status: string }[],
+) {
+  return (
+    completed ||
+    (!warehouseRequired &&
+      orders.length > 0 &&
+      orders.every((order) => order.status === "delivered"))
+  );
+}
 export type WorkReceipt = Pick<
   PaymentRecord,
   | "id"
@@ -43,6 +55,7 @@ export function routeSettlementReview(
   orders: WorkOrder[],
   payments: WorkReceipt[],
   requests: WorkRequest[],
+  warehouseRequired = true,
 ) {
   const accepted = acceptedIds(requests);
   const pending = new Set(
@@ -53,8 +66,10 @@ export function routeSettlementReview(
   const selected = payments.filter((payment) => !accepted.has(payment.id));
   const paymentIds = selected.map((payment) => payment.id).sort();
   const totals = paymentTotals(selected);
-  const reason = !completed
-    ? "SETTLEMENT_ROUTE_NOT_FINISHED"
+  const reason = !settlementRouteReady(completed, warehouseRequired, orders)
+    ? warehouseRequired
+      ? "SETTLEMENT_ROUTE_NOT_FINISHED"
+      : "SETTLEMENT_ORDERS_NOT_DELIVERED"
     : hasMissingPayment(orders, payments)
       ? "SETTLEMENT_PAYMENTS_MISSING"
       : selected.some((payment) => pending.has(payment.id))
@@ -64,6 +79,7 @@ export function routeSettlementReview(
           : null;
   return {
     eligible: reason === null,
+    warehouseRequired,
     reason,
     paymentIds,
     totals,
@@ -110,11 +126,14 @@ export function routeWorkReview(
   orders: WorkOrder[],
   payments: WorkReceipt[],
   requests: WorkRequest[],
+  warehouseRequired = true,
 ) {
   const accepted = acceptedIds(requests);
   const summary = routeWorkSummary(orders, payments);
-  const reason = !completed
-    ? "SETTLEMENT_ROUTE_NOT_FINISHED"
+  const reason = !settlementRouteReady(completed, warehouseRequired, orders)
+    ? warehouseRequired
+      ? "SETTLEMENT_ROUTE_NOT_FINISHED"
+      : "SETTLEMENT_ORDERS_NOT_DELIVERED"
     : hasMissingPayment(orders, payments)
       ? "SETTLEMENT_PAYMENTS_MISSING"
       : !payments.length ||
@@ -123,6 +142,7 @@ export function routeWorkReview(
         : null;
   return {
     eligible: reason === null,
+    warehouseRequired,
     reason,
     summary,
     basis: financialHash({ executionId, summary }),

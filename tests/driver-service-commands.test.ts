@@ -220,7 +220,7 @@ it("reopens one rescheduled order atomically, preserves history and requires a n
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(40);
+    ).toBe(41);
     expect(
       (
         await f.db.pool.query(

@@ -134,7 +134,10 @@ internal fun FinanceScreen(model: DriverFinanceModel, initialExecutionId: String
             val routeReview = detail.objectOrNull("routeSettlement")
             val work = detail.objectOrNull("work")
             val workCompletion = work?.objectOrNull("completion")
-            if (!route.isNull("completedAt") && orders.isNotEmpty()) {
+            val warehouseRequired = routeReview?.optBoolean("warehouseRequired", true) ?: true
+            if (routeLiquidationActionsVisible(!route.isNull("completedAt"), warehouseRequired, orders.isNotEmpty())) {
+                if (!warehouseRequired && route.isNull("completedAt"))
+                    Text("Modo de prueba · liquidación sin regreso a bodega", style = MaterialTheme.typography.bodySmall, color = DriverColors.amber)
                 if (workCompletion == null) {
                     val canRequest = routeReview?.optBoolean("eligible") ?: eligible
                     val alreadyReceived = routeReview?.optString("reason") == "SETTLEMENT_NOTHING_PENDING"

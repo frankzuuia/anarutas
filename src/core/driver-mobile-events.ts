@@ -24,7 +24,8 @@ export async function driverPublicationFingerprint(
       `SELECT
     (SELECT count(*) FROM route_order_payments WHERE driver_id=$1) AS payments,
     (SELECT COALESCE(sum(version),0) FROM route_settlement_requests WHERE driver_id=$1) AS requests,
-    (SELECT count(*) FROM route_driver_work_completions WHERE driver_id=$1) AS work`,
+    (SELECT count(*) FROM route_driver_work_completions WHERE driver_id=$1) AS work,
+    (SELECT settlement_require_warehouse FROM route_driver_operation_settings WHERE singleton=true) AS warehouse_required`,
       [driverId],
     )
   ).rows;

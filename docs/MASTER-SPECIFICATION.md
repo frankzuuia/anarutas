@@ -1786,3 +1786,15 @@ anteriores,922 regresión/0 fallos y3 E2E reales. APK0.8.16/code38 compatible;
 instrumentación compilada, ejecución física por excepción vigente del propietario
 (FW-T05). Sin despliegue. El resumen preserva todos los recibos, incluido crédito
 y recepción individual anterior, con totales separados por moneda y cierre único.
+
+BL183: excepción temporal explícita posterior a FW-T04. Contrato, matriz,
+configuración reversible, límites y bloques TB-T01..03 en
+PRUEBA-LIQUIDACION-SIN-BODEGA-2026-10-01.md. Sólo modo false permite liquidar
+y cerrar trabajo sin bodega cuando todos los pedidos están entregados/cobrados.
+Aceptación completa e invariantes financieros conservados; Terminar ruta/GPS
+permanecen operativos sin fabricar una llegada. true restaura la regla sin APK.
+TB-T01..03 verificados en QA-LIQUIDACION-PRUEBA-0.8.17.md: 930 regresión/0 fallos,
+80 financieras,143JVM y cuatro E2E reales; cobertura de nuevas guardas100% y
+mutaciones detectadas115/115 políticas,7/7 SQL/configuración,1/1 guarda previa
+modificada,3/3 Android. APK0.8.17/code39 compatible; QA física por excepción
+vigente del propietario, despliegue manual y restauración posterior pendiente.

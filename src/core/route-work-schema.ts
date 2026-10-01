@@ -1,24 +1,13 @@
 import type { Sql } from "./database";
 
-export async function migrateRouteWork(sql: Sql) {
-  await sql.query(`
-    CREATE TABLE IF NOT EXISTS route_driver_work_completions (
-      execution_id uuid PRIMARY KEY REFERENCES route_driver_executions(id),
-      driver_id uuid NOT NULL REFERENCES route_drivers(id),
-      device_id uuid NOT NULL REFERENCES route_driver_mobile_devices(id),
-      command_id uuid NOT NULL, request_hash text NOT NULL CHECK(length(request_hash)=64),
-      completed_at timestamptz NOT NULL,
-      snapshot jsonb NOT NULL CHECK(jsonb_typeof(snapshot)='object'),
-      UNIQUE(device_id,command_id)
-    );
-    CREATE INDEX IF NOT EXISTS driver_work_owner ON route_driver_work_completions(driver_id);
+export const routeWorkVerificationSql = `
     CREATE OR REPLACE FUNCTION verify_driver_work_completion() RETURNS trigger LANGUAGE plpgsql AS $$
     DECLARE actual_driver uuid; actual_device uuid;
     BEGIN
       SELECT driver_id INTO actual_driver FROM route_driver_executions WHERE id=NEW.execution_id FOR UPDATE;
       SELECT driver_id INTO actual_device FROM route_driver_mobile_devices WHERE id=NEW.device_id;
       IF actual_driver IS DISTINCT FROM NEW.driver_id OR actual_device IS DISTINCT FROM NEW.driver_id
-        OR NOT EXISTS(SELECT 1 FROM route_driver_execution_completions WHERE execution_id=NEW.execution_id)
+        OR NOT route_settlement_ready(NEW.execution_id)
         OR NOT EXISTS(SELECT 1 FROM route_order_payments WHERE execution_id=NEW.execution_id)
         OR EXISTS(SELECT 1 FROM route_driver_execution_orders o WHERE o.execution_id=NEW.execution_id AND o.status='delivered'
           AND NOT EXISTS(SELECT 1 FROM route_order_payments p WHERE (p.execution_id,p.shipment_id)=(o.execution_id,o.shipment_id)))
@@ -55,6 +44,21 @@ export async function migrateRouteWork(sql: Sql) {
       FOR EACH ROW EXECUTE FUNCTION preserve_driver_event();
     CREATE OR REPLACE TRIGGER panel_changed AFTER INSERT ON route_driver_work_completions
       FOR EACH STATEMENT EXECUTE FUNCTION notify_panel_change();
+`;
+
+export async function migrateRouteWork(sql: Sql) {
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS route_driver_work_completions (
+      execution_id uuid PRIMARY KEY REFERENCES route_driver_executions(id),
+      driver_id uuid NOT NULL REFERENCES route_drivers(id),
+      device_id uuid NOT NULL REFERENCES route_driver_mobile_devices(id),
+      command_id uuid NOT NULL, request_hash text NOT NULL CHECK(length(request_hash)=64),
+      completed_at timestamptz NOT NULL,
+      snapshot jsonb NOT NULL CHECK(jsonb_typeof(snapshot)='object'),
+      UNIQUE(device_id,command_id)
+    );
+    CREATE INDEX IF NOT EXISTS driver_work_owner ON route_driver_work_completions(driver_id);
+    ${routeWorkVerificationSql}
     UPDATE rutas_installation SET schema_version=40 WHERE singleton=true;
   `);
 }

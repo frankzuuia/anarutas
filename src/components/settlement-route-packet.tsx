@@ -78,7 +78,9 @@ export function SettlementRouteCard({
             ? "El chofer confirmó este paquete de cobros."
             : received
               ? "Recepción guardada. Puedes consultar cada ticket."
-              : "Disponible cuando el chofer envíe la liquidación desde bodega."}
+              : detail.routeSettlement.warehouseRequired
+                ? "Disponible cuando el chofer envíe la liquidación desde bodega."
+                : "Modo de prueba: disponible cuando el chofer envíe todos sus cobros."}
         </span>
         <button
           className="primary"

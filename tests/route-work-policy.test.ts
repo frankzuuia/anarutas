@@ -20,6 +20,81 @@ const receipt = (patch: Partial<WorkReceipt> = {}): WorkReceipt => ({
   ...patch,
 });
 const orders = [{ shipmentId: "s1", status: "delivered" }];
+it("allows the explicit temporary mode only when every order is delivered and captured", () => {
+  expect(
+    routeSettlementReview("e1", false, orders, [receipt()], [], false),
+  ).toMatchObject({ eligible: true, warehouseRequired: false });
+  expect(
+    routeWorkReview(
+      "e1",
+      false,
+      orders,
+      [receipt()],
+      [{ status: "accepted", paymentIds: ["p1"] }],
+      false,
+    ),
+  ).toMatchObject({ eligible: true, warehouseRequired: false });
+  expect(routeSettlementReview("e1", false, orders, [], [], false).reason).toBe(
+    "SETTLEMENT_PAYMENTS_MISSING",
+  );
+  expect(routeWorkReview("e1", false, orders, [], [], false).reason).toBe(
+    "SETTLEMENT_PAYMENTS_MISSING",
+  );
+  expect(
+    routeWorkReview("e1", false, orders, [receipt()], [], false).reason,
+  ).toBe("WORK_SETTLEMENT_PENDING");
+});
+it.each(["pending", "in_service", "rescheduled", "rejected"])(
+  "blocks temporary full-route closure with an uncompleted order %s",
+  (status) => {
+    const incomplete = [...orders, { shipmentId: "s2", status }];
+    expect(
+      routeSettlementReview("e1", false, incomplete, [receipt()], [], false)
+        .reason,
+    ).toBe("SETTLEMENT_ORDERS_NOT_DELIVERED");
+    expect(
+      routeWorkReview(
+        "e1",
+        false,
+        incomplete,
+        [receipt()],
+        [{ status: "accepted", paymentIds: ["p1"] }],
+        false,
+      ).reason,
+    ).toBe("SETTLEMENT_ORDERS_NOT_DELIVERED");
+  },
+);
+it("fails closed for an empty execution and restores the strict warehouse rule", () => {
+  expect(routeSettlementReview("e1", false, [], [], [], false).reason).toBe(
+    "SETTLEMENT_ORDERS_NOT_DELIVERED",
+  );
+  expect(routeWorkReview("e1", false, [], [], [], false).reason).toBe(
+    "SETTLEMENT_ORDERS_NOT_DELIVERED",
+  );
+  expect(
+    routeSettlementReview("e1", false, orders, [receipt()], [], true).reason,
+  ).toBe("SETTLEMENT_ROUTE_NOT_FINISHED");
+  expect(
+    routeWorkReview(
+      "e1",
+      false,
+      orders,
+      [receipt()],
+      [{ status: "accepted", paymentIds: ["p1"] }],
+      true,
+    ).reason,
+  ).toBe("SETTLEMENT_ROUTE_NOT_FINISHED");
+  expect(
+    routeSettlementReview(
+      "e1",
+      true,
+      [{ shipmentId: "s1", status: "rescheduled" }],
+      [receipt()],
+      [],
+      false,
+    ).eligible,
+  ).toBe(true);
+});
 it("reserves only the remaining route receipts and keeps already accepted totals out of the preview", () => {
   const payments = [
     receipt(),
