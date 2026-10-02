@@ -154,7 +154,7 @@ al recibir Navigator y al comenzar cálculo. Los pines pendientes son independie
 | NC01 | Ir a 2 o reabrir app con guía activa | Sólo camino SDK al destino; puntos restantes intactos | Política JVM/mutación; QA físico de restauración |
 | NC02 | Entrega confirmada y todos los pedidos terminales en parada | Aviso siguiente/Cerrar; nunca liquidación automática | Unitarios y Compose; parcial no adelanta |
 | NC03 | Cliente cerrado confirmado con recibo | Aviso tras releer estado, punto naranja sigue pendiente | Reutiliza contrato recibo/idempotencia; error no anuncia éxito |
-| NC04 | Aceptar siguiente | Siguiente elegible por posición, saltando terminales/sin punto; al final vuelve a anterior pendiente, nunca misma parada | Destino se revalida al pulsar; usa salida de visita + guía existentes |
+| NC04 | Aceptar siguiente | Siguiente normal por posición, saltando terminales/sin punto; vuelve a normales anteriores pendientes, nunca misma parada; sólo reintentos → elección manual (BL190) | Destino se revalida al pulsar; usa salida de visita + guía existentes |
 | NC05 | Cerrar/atrás/rotar/refrescar | Cerrar no navega ni cambia atención; no reabrir aviso consumido; rotación conserva evento ViewModel | Política + instrumentación compilada, físico pendiente |
 | NC06 | No siguiente/red perdida/ruta retirada | Sin navegación inventada; mensaje y Cerrar; sólo se habilita con ruta verificada | Unitarios/regresión contratos, autorización sin cambios |
 
@@ -1841,3 +1841,14 @@ NM01..12 verificados en QA-MENU-LATERAL-MOVIL-2026-10-01.md:26/26 unitarias,
 verificados (3 menú/táctil,7 regresión). Límites de teclado y cierre táctil
 corregidos; foco, scroll, roles, SSE y paneles embebidos preservados. Entrega
 autorizada a develop, sin despliegue ni cambios financieros/Android.
+
+BL190: continuación y elección manual de reintentos aprobadas el2026-10-02,
+conservando operaciones existentes. Contrato/matriz CN01..10 y tareas CN-T01..03
+en CONTINUACION-REINTENTOS-2026-10-02.md. Refina únicamente la sugerencia de NC04:
+la vuelta a pendientes anteriores conserva el recorrido normal; los reintentos
+requieren elección explícita. Sin endpoints, esquema ni permisos nuevos.
+
+CN01..10 verificados conforme a QA-CONTINUACION-REINTENTOS-0.8.20.md:161JVM,
+100% líneas/ramas de políticas,34/34 mutaciones,20 PG y2 HTTP/E2E reales. App e
+instrumentación compiladas; firma0.8.20 compatible. QA física bajo excepción
+vigente. Entrega develop autorizada; ningún deploy ni cambio financiero.

@@ -28,7 +28,9 @@ internal fun CollectionPaymentSheet(executionId: String, shipmentId: String, att
     val state = model.state
     val order = state.detail?.getJSONArray("orders")?.objects()?.find { it.getString("shipmentId") == shipmentId }
     val payment = order?.objectOrNull("payment")
-    LaunchedEffect(payment?.optString("id")) { payment?.getString("id")?.let(onSaved) }
+    val paymentId = collectionPaymentId(state.lastPayment, executionId, shipmentId)
+        ?: payment?.optString("id")?.takeIf(String::isNotBlank)
+    LaunchedEffect(paymentId) { paymentId?.let(onSaved) }
     ServiceFormSurface({ if (!state.busy && !state.pending) close() }, header = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {

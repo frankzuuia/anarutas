@@ -13,6 +13,7 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 }
 $sourceFolder = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver'
 $originals = @{}
+if ($ContinuationOnly) { $originals['CollectionContinuationPolicy.kt'] = [IO.File]::ReadAllText((Join-Path $sourceFolder 'CollectionContinuationPolicy.kt')) }
 foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt', 'ProductIncidentPolicy.kt', 'IncidentCaptureStore.kt', 'ProductPhotoUpload.kt', 'ProductThumbnailStore.kt', 'WarehouseReturnPolicy.kt', 'TrackingDestinationPolicy.kt')) {
     $originals[$file] = [IO.File]::ReadAllText((Join-Path $sourceFolder $file))
 }
@@ -121,12 +122,30 @@ if ($ContinuationOnly) {
         @{ name = 'next_drop_earlier_pending'; from = '+ ordered.take(current)'; to = '+ emptyList<ExecutionStop>()' },
         @{ name = 'next_choose_last'; from = '.firstOrNull {'; to = '.lastOrNull {' },
         @{ name = 'next_ignore_missing_point'; from = 'it.isVisibleOnMap() &&'; to = 'true &&' },
-        @{ name = 'next_accept_unknown_orders'; from = 'it.orderStates.any { order -> canDeliverOrder(order.status) }'; to = 'true' },
+        @{ name = 'next_accept_unknown_orders'; from = 'it.orderStates.any { order -> canDeliverOrder(order.status) && order.status != OrderServiceStatus.CLOSED_PENDING }'; to = 'true' },
+        @{ name = 'next_automatically_choose_retry'; from = '&& order.status != OrderServiceStatus.CLOSED_PENDING'; to = '&& true' },
+        @{ name = 'retry_menu_includes_resolved'; from = 'stops.filter { it.hasPendingRetry() }'; to = 'stops' },
         @{ name = 'preview_during_guidance'; from = '!guiding &&'; to = 'true &&' },
         @{ name = 'preview_during_calculation'; from = '!calculating &&'; to = 'true &&' },
         @{ name = 'preview_during_restored_guidance'; from = '!sdkGuiding &&'; to = 'true &&' },
         @{ name = 'preview_after_repoint'; from = '&& !corrected'; to = '&& true' }
     ) | ForEach-Object { $_.file = 'StopContinuationPolicy.kt'; $_.test = 'StopContinuationPolicyTest'; $_ }
+    $cases += @(
+        @{ name = 'receipt_non_payment'; from = 'kind == "payments"'; to = 'true' },
+        @{ name = 'receipt_blank_execution'; from = 'executionId.isNotBlank()'; to = 'true' },
+        @{ name = 'receipt_blank_shipment'; from = 'shipmentId.isNotBlank()'; to = 'true' },
+        @{ name = 'receipt_blank_payment'; from = 'paymentId.isNotBlank()'; to = 'true' },
+        @{ name = 'receipt_foreign_execution'; from = 'it.executionId == executionId &&'; to = 'true &&' },
+        @{ name = 'receipt_foreign_shipment'; from = 'it.shipmentId == shipmentId'; to = 'true' },
+        @{ name = 'receipt_identity_swapped'; from = 'ConfirmedPaymentReceipt(executionId, shipmentId, paymentId)'; to = 'ConfirmedPaymentReceipt(shipmentId, executionId, paymentId)' },
+        @{ name = 'receipt_repeat_effect'; from = 'if (!seen.add(receipt.executionId to receipt.paymentId)) return'; to = 'seen.add(receipt.executionId to receipt.paymentId)' },
+        @{ name = 'receipt_wrong_dedupe_scope'; from = 'receipt.executionId to receipt.paymentId'; to = 'receipt.stopId to receipt.paymentId' },
+        @{ name = 'receipt_emit_unverified'; from = 'if (!verified) return emptyList()'; to = 'if (false) return emptyList()' },
+        @{ name = 'receipt_lost_after_failed_read'; from = 'if (!verified) return emptyList()'; to = 'if (!verified) { pending.clear(); return emptyList() }' },
+        @{ name = 'receipt_queue_foreign_execution'; from = 'pending.filter { it.executionId == executionId }'; to = 'pending.toList()' },
+        @{ name = 'receipt_not_consumed'; from = 'pending.clear()'; to = 'Unit' },
+        @{ name = 'receipt_session_dedupe_not_reset'; from = 'seen.clear()'; to = 'Unit' }
+    ) | ForEach-Object { $_.file = 'CollectionContinuationPolicy.kt'; $_.test = 'CollectionContinuationPolicyTest'; $_ }
 }
 if ($EtaOnly) {
     $cases = @(

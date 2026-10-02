@@ -99,7 +99,7 @@ internal fun StopAttentionSheet(stop: ExecutionStop, route: AssignedPlan?, timez
     if (collectionOpen && order != null && state.execution != null) {
         CollectionPaymentSheet(state.execution.id, order.id,
             if (status?.status == OrderServiceStatus.DELIVERED) null else { { model.collectionAttention(stop.id, order.id) } },
-            { paymentId -> collectionOpen = false; model.collectionConfirmed(stop.id, paymentId); close() }, { collectionOpen = false })
+            { paymentId -> collectionOpen = false; model.collectionConfirmed(state.execution.id, stop.id, paymentId); close() }, { collectionOpen = false })
         return
     }
     if (financeOpen && order != null && state.execution != null && status?.status == OrderServiceStatus.DELIVERED) {

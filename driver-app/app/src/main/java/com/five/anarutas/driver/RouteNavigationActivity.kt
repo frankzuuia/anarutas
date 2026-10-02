@@ -86,6 +86,7 @@ class RouteNavigationActivity : FragmentActivity() {
     private var postalCode by mutableStateOf("")
     private var city by mutableStateOf("")
     private var showStops by mutableStateOf(false)
+    private var chooseRetries by mutableStateOf(false)
     private var stopChoices by mutableStateOf<List<String>>(emptyList())
     private var orderStopId by mutableStateOf<String?>(null)
     private var incidentStopId by mutableStateOf<String?>(null)
@@ -414,12 +415,14 @@ class RouteNavigationActivity : FragmentActivity() {
             currentStop?.point?.let { map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(it.latitude, it.longitude), 16f)) }
         }
         showStops = false
+        chooseRetries = false
         stopChoices = emptyList()
     }
     private fun openStopInfo(id: String) {
         if (model.state.retired || model.state.execution?.stops?.none { it.id == id } != false) return
         orderStopId = id
         showStops = false
+        chooseRetries = false
         stopChoices = emptyList()
     }
     private fun navigationActionState(stop: ExecutionStop) = NavigationActionState(
@@ -673,6 +676,7 @@ class RouteNavigationActivity : FragmentActivity() {
                 incidentOrderId = null
                 showStops = false
                 stopChoices = emptyList()
+                chooseRetries = false
             }
         }
         Surface(color = DriverColors.surface, shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
@@ -825,14 +829,18 @@ class RouteNavigationActivity : FragmentActivity() {
                 model.completeRoute(warehouseArrival?.gps)
                 confirmFinish = false
             }, onCancel = { confirmFinish = false })
-        if (showStops && execution != null) DetailSurface({ showStops = false }) {
-            val choices = if (stopChoices.isEmpty()) execution.stops else execution.stops.filter { it.id in stopChoices }
-            SectionLabel(if (stopChoices.isEmpty()) "Tus paradas" else "Pedidos en este punto", "${choices.size}")
-            Text(if (stopChoices.isEmpty()) "Elige una parada para verla en el mapa. No reordena pedidos ni confirma entregas."
+        if (showStops && execution != null) DetailSurface({ showStops = false; chooseRetries = false }) {
+            val choices = if (chooseRetries) pendingRetryStops(execution.stops)
+                else if (stopChoices.isEmpty()) execution.stops else execution.stops.filter { it.id in stopChoices }
+            SectionLabel(if (chooseRetries) "Elige tu reintento" else if (stopChoices.isEmpty()) "Tus paradas" else "Pedidos en este punto", "${choices.size}")
+            Text(if (chooseRetries) "Elige el pedido que quieres reintentar. La llegada y la entrega se confirman como siempre."
+                else if (stopChoices.isEmpty()) "Elige una parada para verla en el mapa. No reordena pedidos ni confirma entregas."
                 else "Elige el pedido que quieres consultar.", color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
+            if (chooseRetries && choices.isEmpty()) Text("Ya no tienes reintentos pendientes.", color = DriverColors.muted)
             choices.forEach { item -> ActionRow(if (item.hasPendingRetry()) DriverIcon.ALERT else if (item.isServiceFinished() || item.arrivedAt != null) DriverIcon.CHECK else DriverIcon.PIN,
                 "${item.position} · ${item.customer}", item.serviceSummary()) {
-                    if (stopChoices.isEmpty() && !item.isServiceFinished()) selectStop(item.id) else openStopInfo(item.id)
+                    if (chooseRetries) { if (available) openStopInfo(item.id) }
+                    else if (stopChoices.isEmpty() && !item.isServiceFinished()) selectStop(item.id) else openStopInfo(item.id)
                 } }
         }
         val detailStop = execution?.stops?.find { it.id == orderStopId }
@@ -862,7 +870,16 @@ class RouteNavigationActivity : FragmentActivity() {
                     }
                 }, onClose = model::dismissContinuation, warehouse = warehouse,
                 canReturn = available && warehouse != null && navigationActionAllowed(warehouseNavigationState(warehouse)),
-                onWarehouse = ::navigateToWarehouse)
+                onWarehouse = ::navigateToWarehouse,
+                retries = execution?.stops?.let(::pendingRetryStops).orEmpty(), canChooseRetry = available,
+                onChooseRetry = {
+                    if (available && model.state.execution?.stops?.let(::pendingRetryStops)?.isNotEmpty() == true) {
+                        model.dismissContinuation()
+                        stopChoices = emptyList()
+                        chooseRetries = true
+                        showStops = true
+                    }
+                })
         }
         if (addressDialog && editing && stop != null) Dialog(onDismissRequest = { if (!state.busy) addressDialog = false }) {
             Surface(color = DriverColors.surface, shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, DriverColors.line),

@@ -735,3 +735,11 @@ cerrado al entrar, lista vertical y cierre accesible, reutilizando destinos y
 restricciones existentes de cuenta. Sólo estado local de presentación; ningún
 efecto financiero/auditoría nuevo. NM01..12 y NM-T01..03 en
 MENU-LATERAL-MOVIL-2026-10-01.md; escritorio y pantallas embebidas conservados.
+
+BL-190: Continuación de atención sin alterar operaciones -> chofer recibe la
+siguiente parada normal por posición, saltando las terminadas. Al no quedar
+paradas normales, elige sus reintentos desde el menú existente; nunca se elige
+uno automáticamente. Aviso vinculado al recibo real, deduplicado y retenido ante
+fallo de lectura en la ejecución actual. Sin nuevos permisos, escrituras,
+auditorías ni cambios de entrega/cobro/liquidación/bodega. Validación CN01..10 y
+CN-T01..03 en CONTINUACION-REINTENTOS-2026-10-02.md. Bloque aprobado por el usuario.

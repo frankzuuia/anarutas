@@ -8,7 +8,8 @@ import androidx.compose.ui.Modifier
 @Composable
 internal fun StopContinuationSheet(completion: StopCompletion, next: ExecutionStop?, canNavigate: Boolean,
     onNext: () -> Unit, onClose: () -> Unit, warehouse: WarehouseDestination? = null,
-    canReturn: Boolean = false, onWarehouse: () -> Unit = {}) {
+    canReturn: Boolean = false, onWarehouse: () -> Unit = {}, retries: List<ExecutionStop> = emptyList(),
+    canChooseRetry: Boolean = false, onChooseRetry: () -> Unit = {}) {
     DetailSurface(onClose) {
         Text(when (completion) { StopCompletion.CUSTOMER_CLOSED -> "Cliente cerrado registrado"; StopCompletion.RESCHEDULED -> "Reprogramación confirmada"; else -> "Entrega confirmada" },
             style = MaterialTheme.typography.titleLarge)
@@ -24,6 +25,12 @@ internal fun StopContinuationSheet(completion: StopCompletion, next: ExecutionSt
             AppAction("Ir a la siguiente parada", DriverIcon.ROUTE, Modifier.fillMaxWidth(), enabled = canNavigate, onClick = onNext)
             if (!canNavigate) Text("La guía aún no está disponible. Puedes cerrar y continuar manualmente cuando se recupere la conexión y la ubicación.",
                 style = MaterialTheme.typography.bodySmall, color = DriverColors.amber)
+        } else if (retries.isNotEmpty()) {
+            SectionLabel("REINTENTOS PENDIENTES", retries.size.toString())
+            Text("Tienes reintentos que realizar. Elige la parada que quieres reintentar desde tu menú de pedidos.", color = DriverColors.amber)
+            AppAction("Elegir reintento", DriverIcon.REFRESH, Modifier.fillMaxWidth(), enabled = canChooseRetry, onClick = onChooseRetry)
+            if (!canChooseRetry) Text("Esperando sincronización de tu ruta. Los pedidos pendientes se conservan.",
+                style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
         } else if (warehouse != null && completion != StopCompletion.CUSTOMER_CLOSED) {
             SectionLabel("REGRESO A BODEGA", "Sin pendientes")
             Text("Todos los pedidos están entregados o reprogramados. No tienes reintentos pendientes.", color = DriverColors.lime)

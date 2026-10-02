@@ -32,8 +32,8 @@ Feature: Guía a un destino y continuación después de atención confirmada
 
   Scenario: Última parada y cambios concurrentes
     Given entregadas y reprogramadas no son candidatas automáticas
-    When termina la última parada con pendientes anteriores
-    Then se ofrece la primera pendiente anterior distinta de la actual
+    When termina la última parada con paradas normales pendientes anteriores
+    Then se ofrece la primera normal pendiente anterior distinta de la actual
     And se revalida con la ejecución más reciente al pulsar
-    When no existe otra parada con ubicación y pedidos atendibles
-    Then sólo se ofrece Cerrar sin cerrar ni liquidar la ruta
+    When no existe otra parada con ubicación y pedidos atendibles ni reintentos
+    Then sólo se ofrece Cerrar sin cerrar ni liquidar la ruta si no hay regreso disponible

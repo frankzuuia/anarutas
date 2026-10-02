@@ -831,3 +831,18 @@ de dos contratos nuevos,33/33 mutaciones,3/3 E2E menú/táctil y7/7 regresión
 real sobre el mismo build. Foco completo, texto20px, roles403 y SSE verificados.
 Typecheck/build/lint aplicable/audit verdes;0 fallos pendientes. Entrega develop,
 sin despliegue ni cambios de liquidación.
+
+## BL190 — continuación y reintentos, autorizado 2026-10-02
+
+- [x] CN-T01 (CN01..05): continuación por posición y menú existente de reintentos.
+- [x] CN-T02 (CN06..10): conservar aviso tras lectura fallida, identidad de recibo,
+  aislamiento de ejecución, deduplicación y compatibilidad de operaciones.
+- [x] CN-T03 (CN01..10): JVM/cobertura/mutaciones, contratos reales PG/HTTP,
+  instrumentación compilada, QA y APK compatible. QA física del propietario bajo
+  excepción vigente; entrega develop autorizada, sin despliegue.
+
+Evidencia: QA-CONTINUACION-REINTENTOS-0.8.20.md. 161JVM/0 fallos;100% líneas y
+ramas en ambas políticas afectadas;34/34 mutaciones;20 contratos PG y2 E2E HTTP
+reales aprobados; lint0 errores/35 avisos previos. App e instrumentación compiladas,
+APK0.8.20/code42 con firma compatible. Ningún cambio a servidor/esquema/permisos
+ni comandos operativos/financieros. QA física del propietario, excepción vigente.

@@ -83,4 +83,40 @@ class StopContinuationUiTest {
         compose.onNodeWithText("Ir a bodega").assertDoesNotExist()
         compose.onNodeWithText("Esta parada sigue pendiente", substring = true).assertIsDisplayed()
     }
+
+    @Test fun retriesOfferManualChoiceAndNeverWarehouseOrAutomaticNavigation() {
+        var choices = 0
+        var navigation = 0
+        val retry = next.copy(orderStates = listOf(ExecutionOrderState("order", OrderServiceStatus.CLOSED_PENDING, 2)))
+        val warehouse = WarehouseDestination("execution", RouteDeparture("Bodega", 20.65, -103.42, 1))
+        compose.setContent { DriverTheme {
+            StopContinuationSheet(StopCompletion.DELIVERED, null, true, { navigation++ }, {}, warehouse, true, { navigation++ },
+                retries = listOf(retry), canChooseRetry = true, onChooseRetry = { choices++ })
+        } }
+        compose.onNodeWithText("REINTENTOS PENDIENTES").assertIsDisplayed()
+        compose.onNodeWithText("Tienes reintentos que realizar", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Ir a bodega").assertDoesNotExist()
+        compose.onNodeWithText("Ir a la siguiente parada").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(0, navigation); assertEquals(0, choices) }
+        compose.onNodeWithText("Elegir reintento").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, choices); assertEquals(0, navigation) }
+    }
+
+    @Test fun normalNextStopPrecedesRetriesAndRetryChoiceWaitsForVerifiedRoute() {
+        var normal by mutableStateOf<ExecutionStop?>(next)
+        var ready by mutableStateOf(false)
+        var choices = 0
+        val retry = next.copy(orderStates = listOf(ExecutionOrderState("order", OrderServiceStatus.CLOSED_PENDING, 2)))
+        compose.setContent { DriverTheme {
+            StopContinuationSheet(StopCompletion.CUSTOMER_CLOSED, normal, true, {}, {}, retries = listOf(retry),
+                canChooseRetry = ready, onChooseRetry = { choices++ })
+        } }
+        compose.onNodeWithText("Ir a la siguiente parada").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Elegir reintento").assertDoesNotExist()
+        compose.runOnIdle { normal = null }
+        compose.onNodeWithText("Elegir reintento").performScrollTo().assertIsNotEnabled()
+        compose.runOnIdle { assertEquals(0, choices); ready = true }
+        compose.onNodeWithText("Elegir reintento").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(1, choices) }
+    }
 }

@@ -28,6 +28,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
     private val gate = Mutex()
     private var pending: JSONObject? = null
     private var confirmed: JSONObject? = null
+    private val collectionContinuations = CollectionContinuationReceipts()
     private var recovered = false
 
     private suspend fun access() = withContext(Dispatchers.IO) { credentials.load() }
@@ -45,6 +46,7 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
     private suspend fun retire(message: String) {
         clearPending()
         confirmed = null
+        collectionContinuations.clear()
         NavigationRegistry.endSession()
         state = ExecutionUiState(loading = false, retired = true, message = message)
     }
@@ -112,6 +114,13 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                 )
                 confirmed = null
             }
+            if (execution.completedAt != null) collectionContinuations.clear()
+            collectionContinuations.consume(execution.id, state.verified).forEach { receipt ->
+                state = state.copy(message = "Cobro y entrega guardados. Ya puedes consultar el pedido en Liquidación.",
+                    serviceRevision = state.serviceRevision + 1,
+                    continuation = confirmedStopContinuation(receipt.paymentId, "service", "deliver",
+                        execution.stops.find { it.id == receipt.stopId }) ?: state.continuation)
+            }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) {
             if (failure is DriverApiException && failure.status in listOf(401, 404)) retire(friendlyError(failure))
@@ -147,12 +156,11 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
             .put("stopVersion", stop.version).put("visitSequence", stop.visitSequence).put("orderVersion", order.version)
             .put("productIncidentsAcknowledged", stop.productIncidents.any { it.shipmentId == shipmentId && it.status != "canceled" })
     }
-    fun collectionConfirmed(stopId: String, paymentId: String) {
+    fun collectionConfirmed(executionId: String, stopId: String, paymentId: String) {
         viewModelScope.launch { gate.withLock {
+            if (state.retired || state.execution?.id != executionId || state.execution?.completedAt != null) return@withLock
+            collectionContinuations.confirm(CollectionContinuationReceipt(executionId, stopId, paymentId))
             loadLocked()
-            if (state.verified) state = state.copy(message = "Cobro y entrega guardados. Ya puedes consultar el pedido en Liquidación.",
-                serviceRevision = state.serviceRevision + 1,
-                continuation = confirmedStopContinuation(paymentId, "service", "deliver", state.execution?.stops?.find { it.id == stopId }))
         } }
     }
 

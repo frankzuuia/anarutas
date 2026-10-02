@@ -15,15 +15,18 @@ internal fun confirmedStopContinuation(commandId: String, kind: String, serviceK
     return StopContinuation(commandId, stop.id, completion)
 }
 
-/** Published order, wrapping to earlier unfinished stops, never back to this stop. */
+/** Normal recorrido only. Retries remain available through the existing manual menu. */
 internal fun nextPendingStop(stops: List<ExecutionStop>, completedStopId: String): ExecutionStop? {
     val ordered = stops.sortedBy { it.position }
     val current = ordered.indexOfFirst { it.id == completedStopId }
     if (current < 0) return null
     return (ordered.drop(current + 1) + ordered.take(current)).firstOrNull {
-        it.isVisibleOnMap() && it.orderStates.any { order -> canDeliverOrder(order.status) }
+        it.isVisibleOnMap() && it.orderStates.any { order -> canDeliverOrder(order.status) && order.status != OrderServiceStatus.CLOSED_PENDING }
     }
 }
+
+internal fun pendingRetryStops(stops: List<ExecutionStop>): List<ExecutionStop> =
+    stops.filter { it.hasPendingRetry() }.sortedBy { it.position }
 
 internal fun showPublishedPreview(guiding: Boolean, calculating: Boolean, sdkGuiding: Boolean, corrected: Boolean): Boolean =
     !guiding && !calculating && !sdkGuiding && !corrected

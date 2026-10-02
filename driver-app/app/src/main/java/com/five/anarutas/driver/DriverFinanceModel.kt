@@ -15,7 +15,8 @@ internal fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { ge
 internal fun JSONObject.objectOrNull(key: String) = if (isNull(key)) null else getJSONObject(key)
 internal data class FinanceUiState(val routes: List<JSONObject> = emptyList(), val detail: JSONObject? = null,
     val executionId: String? = null, val busy: Boolean = false, val refreshing: Boolean = false, val pending: Boolean = false,
-    val message: String = "", val page: Int = 0, val hasMore: Boolean = false, val receiptRevision: Int = 0)
+    val message: String = "", val page: Int = 0, val hasMore: Boolean = false, val receiptRevision: Int = 0,
+    val lastPayment: ConfirmedPaymentReceipt? = null)
 internal class DriverFinanceModel(private val credentials: DeviceCredentials) : ViewModel() {
     var state by mutableStateOf(FinanceUiState()); private set
     private val api = DriverApi(BuildConfig.SERVER_URL)
@@ -88,9 +89,11 @@ internal class DriverFinanceModel(private val credentials: DeviceCredentials) : 
     private suspend fun sendLocked(saved: SavedAccess, command: String) {
         val value = JSONObject(command)
         try {
-            api.financeCommand(saved.token, value.getString("executionId"), value.getString("kind"), value.getJSONObject("payload"))
+            val response = api.financeCommand(saved.token, value.getString("executionId"), value.getString("kind"), value.getJSONObject("payload"))
             withContext(Dispatchers.IO) { credentials.clearFinanceCommand(saved.deviceId, command) }
-            state = state.copy(pending = false, message = "Confirmado y guardado.", receiptRevision = state.receiptRevision + 1)
+            state = state.copy(pending = false, message = "Confirmado y guardado.", receiptRevision = state.receiptRevision + 1,
+                lastPayment = confirmedPaymentReceipt(value.getString("kind"), value.getString("executionId"),
+                    value.getJSONObject("payload").optString("shipmentId"), response.optString("id")) ?: state.lastPayment)
             loadLocked()
         } catch (error: DriverApiException) {
             if (!financeCommandRetryable(error.status)) {
