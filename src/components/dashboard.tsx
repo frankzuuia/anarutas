@@ -57,7 +57,6 @@ type Section =
   | "consumption"
   | "unit_control";
 const sections = [
-  { id: "settlements" as const, label: "Liquidación de rutas", icon: History },
   {
     id: "control_center" as const,
     label: "Centro de control",
@@ -77,6 +76,7 @@ const sections = [
   },
   { id: "users" as const, label: "Usuarios y accesos", icon: Users },
   { id: "audit" as const, label: "Auditoría", icon: History },
+  { id: "settlements" as const, label: "Liquidación de rutas", icon: History },
   { id: "consumption" as const, label: "Control de consumo", icon: Gauge },
 ];
 type AuditRow = {

@@ -174,6 +174,11 @@ export async function listSettlements(
     throw new AppError("INVALID_INPUT");
   return transaction(pool, async (sql) => {
     await assertActiveActor(sql, actor, "settlement");
+    const drivers = (
+      await sql.query<{ id: string; name: string; active: boolean }>(
+        "SELECT id,name,active FROM route_drivers ORDER BY name,id",
+      )
+    ).rows;
     const args = [filter.from, filter.to, filter.driverId, timezone];
     const receiptPeriod = `(r.decided_at AT TIME ZONE $4)::date BETWEEN $1::date AND $2::date`;
     const dates =
@@ -209,6 +214,7 @@ export async function listSettlements(
       )
     ).rows;
     return {
+      drivers,
       rows: rows.slice(0, 50),
       hasMore: rows.length > 50,
       page,

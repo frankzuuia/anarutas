@@ -805,3 +805,14 @@ PROPUESTA-LIQUIDACION-RUTA-2026-10-01.md, CP12 conservado.
 - [x] MB-T01: migración42, identidad por intención/reintentos/tombstone, listado estable; MB01..11. Migración transaccional/concurrente/repetible y conservación comprobadas; creación18/18 sentencias y10/10 ramas.
 - [x] MB-T02: formulario, selector, exclusión de salida simultánea y mensaje Android; MB12..20. Segunda salida tras recepción/cierre, historial y fotos propios;22/22 mutaciones detectadas,150JVM verdes y APK0.8.19/code41 compatible.
 - [x] MB-T03: MB01..22, Gherkin y QA-MULTIPLES-BORRADORES-0.8.19.md. Regresión consolidada955 aprobadas/0 fallos pendientes/3 omisiones externas previas;39 pruebas enfocadas y8 recorridos E2E aprobados. Cobertura100% líneas/95% ramas; typecheck/lint/build/migrador/audit0. Develop autorizado, sin deploy; ejecución física bajo excepción vigente del propietario.
+
+## BL188 — filtros de liquidación, autorizado 2026-10-01
+
+- [x] FL-T01 (BL188): contrato aprobado en FILTROS-LIQUIDACION-2026-10-01.md;
+  menú debajo de Auditoría, fecha de ruta fija y controles compactos.
+- [x] FL-T02 (FL01..05): roster mínimo autorizado, filtro existente conectado,
+  alcance consistente al cambiar/volver/refrescar, comandos intactos.
+- [x] FL-T03 (FL01..07): 88/88 financieras, 2/2 E2E reales, 5/5 mutantes PG;
+  lectura100% líneas, global financiera99.70% líneas/98.46% ramas. Typecheck,
+  lint/build/audit verdes; QA-FILTROS-LIQUIDACION-2026-10-01.md. Entrega autorizada
+  a develop, sin deploy ni APK; flujo financiero intacto.

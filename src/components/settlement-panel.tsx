@@ -1,6 +1,13 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { RefreshCw, ArrowLeft, Wallet, Check, X } from "lucide-react";
+import {
+  RefreshCw,
+  ArrowLeft,
+  Wallet,
+  Check,
+  X,
+  CalendarDays,
+} from "lucide-react";
 import { api } from "./api";
 import { usePanelRealtime } from "./use-panel-realtime";
 import {
@@ -28,9 +35,10 @@ const stateName = {
 export function SettlementPanel({ today }: { today: string }) {
   const [from, setFrom] = useState(today),
     [to, setTo] = useState(today),
-    [dateBasis, setDateBasis] = useState("route"),
+    [driverId, setDriverId] = useState(""),
     [page, setPage] = useState(0),
     [report, setReport] = useState<Report | null>(null);
+  const [drivers, setDrivers] = useState<Report["drivers"]>([]);
   const [selected, setSelected] = useState<string | null>(null),
     [detail, setDetail] = useState<Detail | null>(null),
     [error, setError] = useState(""),
@@ -61,19 +69,30 @@ export function SettlementPanel({ today }: { today: string }) {
     (order) => order.shipmentId === openedOrder,
   );
   const generation = useRef(0);
+  function resetFilterView() {
+    generation.current++;
+    setPage(0);
+    setSelected(null);
+    setDetail(null);
+    setReport(null);
+    setOpenedRoutePacket(false);
+    setOpenedOrder(null);
+    setError("");
+  }
   const refresh = useCallback(async () => {
     const current = ++generation.current;
     try {
+      const query = new URLSearchParams({ from, to, page: String(page) });
+      if (driverId) query.set("driverId", driverId);
       const [nextReport, nextDetail] = await Promise.all([
-        api<Report>(
-          `/api/settlements?from=${from}&to=${to}&page=${page}&dateBasis=${dateBasis}`,
-        ),
+        api<Report>(`/api/settlements?${query}`),
         selected
           ? api<Detail>(`/api/settlements/${selected}`)
           : Promise.resolve(null),
       ]);
       if (current !== generation.current) return true;
       setReport(nextReport);
+      setDrivers(nextReport.drivers);
       setDetail(nextDetail);
       setError("");
       return true;
@@ -81,7 +100,7 @@ export function SettlementPanel({ today }: { today: string }) {
       if (current === generation.current) setError((e as Error).message);
       return false;
     }
-  }, [from, to, page, selected, dateBasis]);
+  }, [from, to, page, selected, driverId]);
   useEffect(() => {
     const requests = generation;
     const timer = setTimeout(() => void refresh(), 0);
@@ -120,25 +139,14 @@ export function SettlementPanel({ today }: { today: string }) {
   }
   return (
     <div className="stack settlement-panel">
-      <div className="toolbar">
-        <label>
-          Consultar por
-          <select
-            value={dateBasis}
-            disabled={busy}
-            onChange={(e) => {
-              setDateBasis(e.target.value);
-              setPage(0);
-              setSelected(null);
-              setOpenedRoutePacket(false);
-              setOpenedOrder(null);
-              setDetail(null);
-            }}
-          >
-            <option value="route">Fecha de ruta</option>
-            <option value="receipt">Fecha de recepción</option>
-          </select>
-        </label>
+      <div
+        className="toolbar settlement-filters"
+        aria-label="Filtros de liquidación"
+      >
+        <div className="settlement-date-basis">
+          <CalendarDays size={16} aria-hidden="true" />
+          Fecha de ruta
+        </div>
         <label>
           Desde
           <input
@@ -146,8 +154,9 @@ export function SettlementPanel({ today }: { today: string }) {
             value={from}
             disabled={busy}
             onChange={(e) => {
+              if (e.target.value === from) return;
+              resetFilterView();
               setFrom(e.target.value);
-              setPage(0);
             }}
           />
         </label>
@@ -158,10 +167,31 @@ export function SettlementPanel({ today }: { today: string }) {
             value={to}
             disabled={busy}
             onChange={(e) => {
+              if (e.target.value === to) return;
+              resetFilterView();
               setTo(e.target.value);
-              setPage(0);
             }}
           />
+        </label>
+        <label className="settlement-driver-filter">
+          Chofer
+          <select
+            value={driverId}
+            disabled={busy}
+            onChange={(e) => {
+              if (e.target.value === driverId) return;
+              resetFilterView();
+              setDriverId(e.target.value);
+            }}
+          >
+            <option value="">Todos los choferes</option>
+            {drivers.map((driver) => (
+              <option key={driver.id} value={driver.id}>
+                {driver.name}
+                {driver.active ? "" : " · Inactivo"}
+              </option>
+            ))}
+          </select>
         </label>
         <button onClick={() => void refresh()} disabled={busy}>
           <RefreshCw size={16} />
@@ -169,9 +199,8 @@ export function SettlementPanel({ today }: { today: string }) {
         </button>
       </div>
       <p className="muted">
-        {dateBasis === "route"
-          ? "Fechas de ruta. Los cobros declarados y las recepciones aceptadas se muestran por separado."
-          : "Recepciones aceptadas en estas fechas, según la zona horaria de la operación. Puede incluir rutas de días anteriores."}
+        Fechas de ruta. Los cobros declarados y las recepciones aceptadas se
+        muestran por separado.
       </p>
       {error && (
         <p role="alert" className="notice error">
@@ -190,26 +219,19 @@ export function SettlementPanel({ today }: { today: string }) {
                 ["pending", "Por recibir"],
                 ["accepted", "Recibido por liquidación"],
               ] as const
-            )
-              .filter(
-                ([stage]) => dateBasis === "route" || stage === "accepted",
-              )
-              .map(([stage, label]) => (
-                <button
-                  key={stage}
-                  aria-pressed={
-                    (dateBasis === "receipt" ? "accepted" : summaryStage) ===
-                    stage
-                  }
-                  onClick={() => setSummaryStage(stage)}
-                >
-                  {label}
-                </button>
-              ))}
+            ).map(([stage, label]) => (
+              <button
+                key={stage}
+                aria-pressed={summaryStage === stage}
+                onClick={() => setSummaryStage(stage)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           <MoneySummary
             title={
-              dateBasis === "receipt" || summaryStage === "accepted"
+              summaryStage === "accepted"
                 ? "Recibido por liquidación"
                 : summaryStage === "pending"
                   ? "Solicitado por recibir"
@@ -217,9 +239,7 @@ export function SettlementPanel({ today }: { today: string }) {
             }
             totals={
               report?.metrics.filter(
-                (metric) =>
-                  metric.stage ===
-                  (dateBasis === "receipt" ? "accepted" : summaryStage),
+                (metric) => metric.stage === summaryStage,
               ) ?? []
             }
           />

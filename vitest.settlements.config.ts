@@ -6,6 +6,7 @@ export default defineConfig({
       "tests/account-role.test.ts",
       "tests/payments-integration.test.ts",
       "tests/settlements-integration.test.ts",
+      "tests/settlement-driver-filter.test.ts",
       "tests/order-collection-integration.test.ts",
       "tests/route-work-policy.test.ts",
       "tests/route-work-integration.test.ts",

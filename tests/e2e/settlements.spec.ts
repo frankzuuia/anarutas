@@ -10,6 +10,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { paymentExecutionFixture } from "../helpers/payment-execution";
 import { freePort } from "../helpers/postgres";
 import { createUser } from "../../src/core/auth";
+import { createDriver } from "../../src/core/fleet";
 import { reportProductIncidentWithEvidence } from "../../src/core/product-incidents-evidence";
 import sharp from "sharp";
 import { todayInTimezone } from "../../src/core/local-date";
@@ -287,6 +288,27 @@ async function settlementFlow(
     await expect(
       page.getByRole("button", { name: "Liquidación de rutas", exact: true }),
     ).toBeEnabled();
+    const navigation = await page
+      .getByRole("navigation", { name: "Navegación principal" })
+      .getByRole("button")
+      .allTextContents();
+    const auditIndex = navigation.indexOf("Auditoría");
+    expect(navigation.slice(auditIndex, auditIndex + 3)).toEqual([
+      "Auditoría",
+      "Liquidación de rutas",
+      "Control de consumo",
+    ]);
+    await expect(
+      page.getByRole("combobox", { name: "Consultar por", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page
+        .getByRole("combobox", { name: "Chofer", exact: true })
+        .locator("option"),
+    ).toHaveCount(3);
+    await expect(
+      page.getByRole("combobox", { name: "Chofer", exact: true }),
+    ).toHaveValue("");
     await page.getByLabel("Desde", { exact: true }).fill(serviceDate);
     await page.getByLabel("Hasta", { exact: true }).fill(serviceDate);
     await page
@@ -602,14 +624,17 @@ async function settlementFlow(
     const closedPlan = await (
       await request.get(`${origin}/api/mobile/plans/${f.planId}`, { headers })
     ).json();
-    expect(closedPlan.publication.workCompletedAt).toBe(summaries[0].completedAt);
+    expect(closedPlan.publication.workCompletedAt).toBe(
+      summaries[0].completedAt,
+    );
     expect(closedPlan.orders).toHaveLength(3);
     const closedDashboard = await (
       await request.get(`${origin}/api/mobile/dashboard`, { headers })
     ).json();
     expect(closedDashboard.today).toBeNull();
-    expect(closedDashboard.plans.find((p: { id: string }) => p.id === f.planId))
-      .toMatchObject({ work_completed_at: summaries[0].completedAt });
+    expect(
+      closedDashboard.plans.find((p: { id: string }) => p.id === f.planId),
+    ).toMatchObject({ work_completed_at: summaries[0].completedAt });
     await writeFile(
       ".local/qa-settlements/work-command-timing.json",
       JSON.stringify(
@@ -645,21 +670,103 @@ async function settlementFlow(
       path: ".local/qa-settlements/receiver-compact.png",
       fullPage: true,
     });
-    await page
-      .getByRole("combobox", { name: "Consultar por", exact: true })
-      .selectOption("receipt");
-    const receiptDate = todayInTimezone(f.timezone);
-    await page.getByLabel("Hasta", { exact: true }).fill(receiptDate);
-    await page.getByLabel("Desde", { exact: true }).fill(receiptDate);
+    const driverFilter = page.getByRole("combobox", {
+      name: "Chofer",
+      exact: true,
+    });
+    const blocker = await f.db.pool.connect();
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query("LOCK TABLE route_drivers IN ACCESS EXCLUSIVE MODE");
+      const earlier = page.waitForRequest(
+        (r) =>
+          r.url().includes(`/api/settlements?`) &&
+          r.url().includes(f.members[0].driverId),
+      );
+      await driverFilter.selectOption(f.members[0].driverId);
+      await earlier;
+      const later = page.waitForRequest(
+        (r) =>
+          r.url().includes(`/api/settlements?`) &&
+          r.url().includes(f.members[1].driverId),
+      );
+      await driverFilter.selectOption(f.members[1].driverId);
+      await later;
+      await blocker.query("COMMIT");
+    } finally {
+      await blocker.query("ROLLBACK");
+      blocker.release();
+    }
+    await expect(driverFilter).toHaveValue(f.members[1].driverId);
+    await driverFilter.selectOption(f.members[1].driverId);
     await expect(
-      page.getByRole("button", { name: new RegExp(`Ejecución QA.*${serviceDate}`) }),
+      page.getByText("No hay pedidos cobrados en estas fechas.", {
+        exact: true,
+      }),
     ).toBeVisible();
+    await expect(page.locator(".settlement-method strong")).toHaveCount(0);
+    await driverFilter.selectOption(f.members[0].driverId);
+    const routeButton = page.getByRole("button", {
+      name: new RegExp(`Ejecución QA.*${serviceDate}`),
+    });
+    await routeButton.click();
+    await page
+      .getByRole("button", { name: "Volver a choferes", exact: true })
+      .click();
+    await expect(driverFilter).toHaveValue(f.members[0].driverId);
+    await expect(routeButton).toBeVisible();
+    const lateDriver = await createDriver(f.db.pool, f.actor, {
+      id: randomUUID(),
+      name: "Chofer registrado en vivo",
+      phone: "3310000004",
+      emergency_name: "",
+      emergency_phone: "",
+      blood_type: "",
+      active: false,
+    });
+    // Actual PG notification/SSE updates the minimal roster while keeping the selected scope.
+    await expect(
+      driverFilter.locator("option", {
+        hasText: "Chofer registrado en vivo · Inactivo",
+      }),
+    ).toHaveCount(1);
+    await expect(driverFilter).toHaveValue(f.members[0].driverId);
+    await driverFilter.selectOption(lateDriver.id);
+    await expect(
+      page.getByText("No hay pedidos cobrados en estas fechas.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await driverFilter.selectOption("");
+    await expect(routeButton).toBeVisible();
+    await routeButton.click();
+    const nextDay = new Date(`${serviceDate}T12:00:00.000Z`);
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    const nextDate = nextDay.toISOString().slice(0, 10);
+    await page.getByLabel("Hasta", { exact: true }).fill(nextDate);
+    await expect(
+      page.getByRole("button", { name: "Volver a choferes", exact: true }),
+    ).toHaveCount(0);
+    await page.getByLabel("Desde", { exact: true }).fill(nextDate);
+    await expect(
+      page.getByText("No hay pedidos cobrados en estas fechas.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.locator(".settlement-method strong")).toHaveCount(0);
+    await expect(driverFilter).toHaveValue("");
+    await page.getByLabel("Desde", { exact: true }).fill(serviceDate);
+    await page.getByLabel("Hasta", { exact: true }).fill(serviceDate);
+    await expect(routeButton).toBeVisible();
+    await expect(page.getByText("Página 1", { exact: true })).toBeVisible();
+    // Preserve the existing API compatibility for receipt dates without exposing another UI choice.
+    const receiptDate = todayInTimezone(f.timezone);
     await expect(
       page.getByRole("heading", {
         name: "Cobrado por choferes",
         exact: true,
       }),
-    ).toHaveCount(0);
+    ).toBeVisible();
     const receiptReport = await (
       await page.request.get(
         `${origin}/api/settlements?dateBasis=receipt&from=${receiptDate}&to=${receiptDate}`,
@@ -668,6 +775,38 @@ async function settlementFlow(
     expect(receiptReport.metrics).toMatchObject([
       { stage: "accepted", cash: "10", transfer: "30", credit: "10" },
     ]);
+    expect(
+      (
+        await page.request.get(`${origin}/api/settlements?driverId=invalid`)
+      ).status(),
+    ).toBe(400);
+    expect(
+      receiptReport.drivers.every(
+        (d: Record<string, unknown>) =>
+          Object.keys(d).sort().join(",") === "active,id,name",
+      ),
+    ).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const controls = page.locator(".settlement-filters");
+    const bounds = await controls.locator("label").evaluateAll((elements) =>
+      elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        return { x: box.x, y: box.y, width: box.width };
+      }),
+    );
+    expect(bounds.map((b) => Math.round(b.width))).toEqual([160, 160, 220]);
+    expect(new Set(bounds.map((b) => Math.round(b.y))).size).toBe(1);
+    expect(bounds[2].x).toBeGreaterThan(bounds[1].x);
+    const heights = await controls
+      .locator("input,select,button")
+      .evaluateAll((elements) =>
+        elements.map((e) => e.getBoundingClientRect().height),
+      );
+    expect(heights.every((h) => h >= 44)).toBe(true);
+    await page.screenshot({
+      path: `.local/qa-settlements/filters-desktop-${warehouseRequired}.png`,
+      fullPage: true,
+    });
     await page.setViewportSize({ width: 390, height: 844 });
     expect(
       await page.evaluate(
@@ -675,7 +814,7 @@ async function settlementFlow(
       ),
     ).toBe(true);
     await page.screenshot({
-      path: ".local/qa-settlements/receipt-mobile.png",
+      path: `.local/qa-settlements/filters-mobile-${warehouseRequired}.png`,
       fullPage: true,
     });
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -697,15 +836,22 @@ async function settlementFlow(
     const closedLive = await (
       await page.request.get(`${origin}/api/live-routes`)
     ).json();
-    expect(closedLive.routes.some((r: { id: string }) => r.id === f.executionId))
-      .toBe(false);
-    await page.getByRole("button", { name: "Planificar rutas", exact: true }).click();
-    await page.getByRole("combobox", { name: "Abrir borrador", exact: true })
+    expect(
+      closedLive.routes.some((r: { id: string }) => r.id === f.executionId),
+    ).toBe(false);
+    await page
+      .getByRole("button", { name: "Planificar rutas", exact: true })
+      .click();
+    await page
+      .getByRole("combobox", { name: "Abrir borrador", exact: true })
       .selectOption(f.planId);
-    const finalizedLane = page.locator(".lane.order-lane").filter({ hasText: "Unidad 0" });
+    const finalizedLane = page
+      .locator(".lane.order-lane")
+      .filter({ hasText: "Unidad 0" });
     await expect(finalizedLane).toContainText("Ruta finalizada");
-    await expect(finalizedLane.getByRole("button", { name: "Cancelar ruta", exact: true }))
-      .toHaveCount(0);
+    await expect(
+      finalizedLane.getByRole("button", { name: "Cancelar ruta", exact: true }),
+    ).toHaveCount(0);
     await page.screenshot({
       path: `.local/qa-settlements/closure-planner-${warehouseRequired}.png`,
       fullPage: true,

@@ -1820,3 +1820,13 @@ verificadas mediante corrida completa y revalidación de su único fixture falli
 0 fallos pendientes/3 omisiones externas previas;39 enfocadas,8 E2E y150JVM.
 Cobertura100% líneas/95% ramas;22/22 mutaciones detectadas. APK0.8.19/code41
 compatible. QA física bajo excepción vigente; entrega develop sin despliegue.
+
+BL188: filtro por chofer y barra compacta aprobados el 2026-10-01, sin cambios
+al flujo de liquidar. Contrato/autopsia/matriz FL01..07 en
+FILTROS-LIQUIDACION-2026-10-01.md; seguimiento FL-T01..03. Selección por fecha de
+ruta en web, API de recepción conservada. Roster mínimo autorizado sin datos
+privados; mismos predicados financieros, comandos y permisos.
+
+FL01..07 verificados en QA-FILTROS-LIQUIDACION-2026-10-01.md:88/88 financieras,
+2/2 E2E,5/5 mutantes PG y todas las líneas nuevas cubiertas. Entrega develop
+autorizada, sin despliegue ni cambios a APK o al flujo de liquidación.
