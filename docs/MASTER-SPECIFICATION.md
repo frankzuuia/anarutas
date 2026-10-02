@@ -1875,3 +1875,12 @@ Validación en QA-ACTIVACION-VALIDADA-PANEL-2026-10-02.md:10 unidad/PG,2 recorri
 Chrome/HTTP reales aprobados,10/10 mutantes detectados; política100% líneas/ramas,
 publicaciones99.18% líneas/91.08% ramas; typecheck/lint/build verdes. Sin esquema,
 APK ni deploy nuevos. Entrega develop autorizada; despliega el propietario.
+
+## ZD01..09 — zonas automáticas y duración de descarga
+
+BLOQUE-ZONAS-DESCARGA.md define el alcance autorizado el 2026-10-02, escenarios,
+contratos y riesgos. Migración43 agrega minutos nullable; omisión HTTP preserva
+valor; huellas normalizadas preservan cálculos anteriores sin servicio. Google
+recibe duración por visita y allowedVehicleIndices por zona geográfica.
+La recuperación conserva esas mismas zonas y mide el recorrido; recálculo
+manual añade descarga sin reordenar. Snapshots iniciados permanecen congelados.

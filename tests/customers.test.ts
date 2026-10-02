@@ -92,6 +92,7 @@ describe("customer directory / real PostgreSQL", () => {
       displayName: "Sucursal Centro",
       phone: "3399999999",
       deliveryNote: "Usar puerta verde",
+      unloadingMinutes: 14,
       priority: "high",
       fulfillmentMode: "delivery",
       deliveryAddress: "Calle Reforma 20, Guadalajara",
@@ -141,6 +142,7 @@ describe("customer directory / real PostgreSQL", () => {
       deliveryAddress: "Calle Reforma 20, Guadalajara",
       deliveryNote: "Usar puerta verde",
       odooName: "Café Árbol renombrado en Odoo",
+      unloadingMinutes: 14,
       odooPhone: "3300000000",
       version: updated.version,
     });
@@ -187,6 +189,7 @@ describe("customer directory / real PostgreSQL", () => {
       priority: "high",
       latitude: 20.6736,
       longitude: -103.344,
+      unloadingMinutes: 14,
     });
     expect(resolved.deliveryWindows).toEqual([
       { startMinute: 660, endMinute: 780 },

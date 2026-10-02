@@ -750,3 +750,10 @@ publicación de pendientes, worker Odoo y comandos operativos permanecen intacto
 Guarda transaccional contra datos actuales, proyección móvil y aviso automático;
 inicio idempotente conserva recibo anterior. IV01..08 en
 INICIO-VALIDADO-CAMIONETA-2026-10-02.md. Bloque aprobado por el propietario.
+
+## BL-ZD01..03 — zonas y descarga, autorizado 2026-10-02
+
+Contrato en BLOQUE-ZONAS-DESCARGA.md: minutos locales por visita/cliente, zonas
+automáticas de proximidad por camioneta y restricciones Google; conserva
+ventanas, prioridades y orden vial dentro de cada zona. Sustituye sólo la
+libertad de asignación entre zonas de FD01/07. Odoo, app y liquidación intactos.

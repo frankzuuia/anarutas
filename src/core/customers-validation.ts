@@ -6,6 +6,7 @@ import {
   type FulfillmentMode,
 } from "./customers-contract";
 import { integer } from "./orders-validation";
+import { unloadingMinutesInput } from "./route-service-time";
 
 export function normalizeSearch(value: string) {
   return value
@@ -120,6 +121,7 @@ export function customerInput(input: Record<string, unknown>) {
     "phone",
     "deliveryNote",
     "priority",
+    "unloadingMinutes",
     "fulfillmentMode",
     "deliveryAddress",
     "mapUrl",
@@ -135,6 +137,7 @@ export function customerInput(input: Record<string, unknown>) {
       input.phone === null || input.phone === "" ? null : text(input.phone, 80),
     deliveryNote: text(input.deliveryNote, 2000),
     priority: selected(input.priority, customerPriorities) as CustomerPriority,
+    unloadingMinutes: unloadingMinutesInput(input.unloadingMinutes),
     fulfillmentMode: selected(
       input.fulfillmentMode,
       fulfillmentModes,

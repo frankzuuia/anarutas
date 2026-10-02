@@ -68,7 +68,7 @@ export async function readOrderBoard(
     `SELECT s.id,s.vehicle_id,s.position,s.snapshot,
               s.window_start::text,s.window_end::text,s.high_priority,
               c.id AS customer_id,c.display_name,c.phone,c.delivery_note,
-              c.priority,c.fulfillment_mode,c.delivery_address,c.map_url,
+              c.priority,c.unloading_minutes,c.fulfillment_mode,c.delivery_address,c.map_url,
               c.latitude,c.longitude,c.location_status,c.archived_at
        FROM route_shipments s
        LEFT JOIN route_customers c
@@ -123,6 +123,7 @@ export async function readOrderBoard(
           (deliveryWindows[0] ? time(deliveryWindows[0].endMinute) : null),
         high_priority: row.high_priority,
         priority,
+        unloadingMinutes: row.unloading_minutes == null ? null : Number(row.unloading_minutes),
         deliveryWindows,
         deliveryNote: row.delivery_note || "",
         phone: row.phone || null,

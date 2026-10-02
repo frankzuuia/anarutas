@@ -16,6 +16,7 @@ import {
   directFleetDiagnostics,
   directFleetPolicy,
   expandDirectFleetResult,
+  assertDirectFleetResponse,
 } from "./route-google-direct";
 import {
   parseGoogleOptimizationResponse,
@@ -23,7 +24,6 @@ import {
   type GoogleOptimizationResult,
 } from "./route-optimization-google";
 import {
-  geographicClusterCandidate,
   spatialSequenceCandidate,
 } from "./route-geographic-planner";
 import {
@@ -151,7 +151,7 @@ export async function planRouteDeterministically(
     );
     if (started.rowCount)
       throw new AppError("ROUTE_ALREADY_STARTED", 409);
-    const { request, groups } = buildDirectFleetRequest(
+    const { request, groups, zones } = buildDirectFleetRequest(
       board,
       settings,
       timezone,
@@ -174,7 +174,7 @@ export async function planRouteDeterministically(
       "routing.batch.prepared",
       "Ana Rutas",
       "preparación",
-      "Modelo preparado con los pedidos y las camionetas actuales. Incluye prioridades, ventanas flexibles, balance y regreso a bodega.",
+      "Modelo preparado por zonas con las camionetas del plan. Incluye descarga por cliente, prioridades, ventanas flexibles y regreso a bodega.",
       {
         expectedVersion,
         orders: deliveries.length,
@@ -241,6 +241,7 @@ export async function planRouteDeterministically(
           groups.length,
           board.vehicles.length,
         );
+        assertDirectFleetResponse(request, response);
         result = expandDirectFleetResult(board, groups, response, timezone);
         progress(
           "info",
@@ -282,11 +283,7 @@ export async function planRouteDeterministically(
         );
         const candidate = spatialSequenceCandidate(
           board.shipments,
-          geographicClusterCandidate(
-            board.shipments,
-            board.vehicles.map((v) => v.id),
-            settings.depotLocation!,
-          ),
+          zones,
           settings.depotLocation!,
         );
         let segmentsCompleted = 0;
@@ -366,6 +363,7 @@ export async function planRouteDeterministically(
           evaluatedCandidates: 1,
           candidateSources: [chosenSource],
           chosenSource,
+          zones: zones.routes.map(route => ({ vehicleId: route.vehicleId, orders: route.shipmentIds.length })),
           deliveryGroups: groups.length,
           fleetRoutingRequests,
           fleetRoutingRequestLimit: maximumFleetRoutingRequests,

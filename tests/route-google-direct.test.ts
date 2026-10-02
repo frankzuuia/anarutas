@@ -117,7 +117,7 @@ function response(sequence = [2, 0, 1]): GoogleOptimizationResult {
 
 describe("single global model, no paid calls", () => {
   it("pins the cost equations, coordinates, identifiers and priority tags of the one request", () => {
-    expect(directFleetPolicy).toBe("google-direct-v1-priority-transitions");
+    expect(directFleetPolicy).toBe("google-zones-v2-service-time");
     const current = board();
     const { request, groups } = buildDirectFleetRequest(
       current,
@@ -227,7 +227,7 @@ describe("single global model, no paid calls", () => {
       for (const item of request.model.shipments) {
         expect(item.loadDemands.destinations).toEqual({ amount: "1" });
         expect(item).not.toHaveProperty("penaltyCost");
-        expect(item).not.toHaveProperty("allowedVehicleIndices");
+        expect(item.allowedVehicleIndices).toHaveLength(1);
       }
       for (const vehicle of request.model.vehicles) {
         expect(vehicle.loadLimits.orders).not.toHaveProperty("maxLoad");

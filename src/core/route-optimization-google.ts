@@ -1,5 +1,6 @@
 import { GoogleAuth } from "google-auth-library";
 import { AppError } from "./errors";
+import { visitServiceSeconds } from "./route-service-time";
 import { localMidnight } from "./orders-validation";
 import type { OrderBoard } from "./orders-contract";
 import { assertDeliveryGroups } from "./route-delivery-groups";
@@ -56,6 +57,7 @@ export type GoogleOptimizationRequest = {
       deliveries: {
         label: string;
         arrivalLocation: { latitude: number; longitude: number };
+        duration?: string;
         tags?: string[];
         timeWindows?: GoogleTimeWindow[];
       }[];
@@ -259,6 +261,7 @@ export function buildGoogleOptimizationRequest(
           deliveries: [
             {
               label: group.id,
+              duration: `${visitServiceSeconds(group.shipmentIds.map(id => byId.get(id)!))}s`,
               arrivalLocation: {
                 latitude: shipment.latitude!,
                 longitude: shipment.longitude!,

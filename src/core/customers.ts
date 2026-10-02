@@ -59,6 +59,7 @@ function toCustomer(row: Row, windows: Row[] = []): Customer {
     phone: row.phone === null ? null : String(row.phone),
     deliveryNote: String(row.delivery_note),
     priority: row.priority as Customer["priority"],
+    unloadingMinutes: row.unloading_minutes == null ? null : Number(row.unloading_minutes),
     fulfillmentMode: row.fulfillment_mode as Customer["fulfillmentMode"],
     deliveryAddress: String(row.delivery_address),
     mapUrl: row.map_url === null ? null : String(row.map_url),
@@ -407,7 +408,8 @@ export async function updateCustomer(
         fulfillment_mode=$6,delivery_address=$7,address_overridden=true,
         map_url=$8,latitude=$9,longitude=$10,place_id=$11,
         location_status=$12,location_version=$13,search_key=$14,
-        version=version+1,updated_by=$15,updated_by_driver=NULL,updated_at=now()
+        version=version+1,updated_by=$15,updated_by_driver=NULL,updated_at=now(),
+        unloading_minutes=CASE WHEN $16::boolean THEN $17::integer ELSE unloading_minutes END
        WHERE id=$1`,
       [
         id,
@@ -425,6 +427,8 @@ export async function updateCustomer(
         locationVersion,
         key,
         actor,
+        input.unloadingMinutes !== undefined,
+        input.unloadingMinutes ?? null,
       ],
     );
     await sql.query("DELETE FROM route_customer_windows WHERE customer_id=$1", [
@@ -465,6 +469,7 @@ export async function updateCustomer(
       version: input.expectedVersion + 1,
       windows: input.windows.length,
       priority: input.priority,
+      unloadingMinutes: input.unloadingMinutes === undefined ? previous.unloading_minutes : input.unloadingMinutes,
       locationStatus: confirmed ? "confirmed" : "pending",
       locationVersion,
     });

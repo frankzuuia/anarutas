@@ -41,6 +41,7 @@ export type Shipment = SourceShipment & {
   window_end: string | null;
   high_priority: boolean | null;
   priority: CustomerPriority;
+  unloadingMinutes?: number | null;
   deliveryWindows: EffectiveDeliveryWindow[];
   deliveryNote: string;
   phone: string | null;

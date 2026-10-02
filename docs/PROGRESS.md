@@ -874,3 +874,12 @@ Evidencia: QA-ACTIVACION-VALIDADA-PANEL-2026-10-02.md. Corrige la interpretació
 de publicación permitida de BL191. Última validación→botón habilitado por SSE
 221ms local, sin modificar el intervalo de Odoo. No cambia Android, liquidación,
 recorrido ni esquema; no se genera APK ni se despliega producción.
+
+## BL-ZD01..03 — zonas y descarga, autorizado 2026-10-02
+
+- [x] ZD-T01: migración43/contrato/editor, permisos/versionado y compatibilidad.
+- [x] ZD-T02: duración de visitas, recálculo, huellas e invalidación.
+- [x] ZD-T03: zonas de proximidad, modelo Google y recuperación con la misma asignación.
+- [x] ZD-T04: regresión consolidada 1,004 aprobadas/3 omisiones externas;
+  cobertura nueva 100%, mutaciones14/14, E2E2/2, lint/typecheck/build aprobados.
+  Evidencia: QA-ZONAS-DESCARGA-2026-10-02.md. Entrega develop, sin deploy.

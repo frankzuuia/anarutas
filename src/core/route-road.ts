@@ -1,4 +1,5 @@
 import { AppError } from "./errors";
+import { consecutiveServiceSeconds } from "./route-service-time";
 import type { OrderBoard } from "./orders-contract";
 import { priorityConflictIds } from "./route-logistics-policy";
 import { createRequestCache, roadLegCacheKey } from "./route-request-cache";
@@ -249,6 +250,7 @@ export async function calculateManualRoutes(
         if (leg.trafficMode === "static") route.trafficMode = "static";
         point = to;
       };
+      const serviceSeconds = consecutiveServiceSeconds(shipments);
       for (const shipment of shipments) {
         if (
           shipment.latitude === null ||
@@ -294,6 +296,7 @@ export async function calculateManualRoutes(
           priorityConflict: false,
         };
         route.stops.push(stop);
+        instant += (serviceSeconds.get(shipment.id) ?? 0) * 1000;
       }
       if (shipments.length) await drive(depot);
       route.finishedAt = new Date(instant).toISOString();

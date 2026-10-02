@@ -30,6 +30,7 @@ export type Customer = {
   phone: string | null;
   deliveryNote: string;
   priority: CustomerPriority;
+  unloadingMinutes?: number | null;
   fulfillmentMode: FulfillmentMode;
   deliveryAddress: string;
   mapUrl: string | null;

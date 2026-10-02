@@ -37,6 +37,7 @@ type FormState = {
   phone: string;
   deliveryNote: string;
   priority: Customer["priority"];
+  unloadingMinutes: string;
   fulfillmentMode: Customer["fulfillmentMode"];
   deliveryAddress: string;
   mapUrl: string;
@@ -53,6 +54,7 @@ function formState(customer: Customer): FormState {
     phone: customer.phone || "",
     deliveryNote: customer.deliveryNote,
     priority: customer.priority,
+    unloadingMinutes: customer.unloadingMinutes == null ? "" : String(customer.unloadingMinutes),
     fulfillmentMode: customer.fulfillmentMode,
     deliveryAddress: customer.deliveryAddress,
     mapUrl: customer.mapUrl || "",
@@ -224,6 +226,7 @@ export function CustomerPanel({ revision }: { revision: number }) {
           phone: form.phone || null,
           deliveryNote: form.deliveryNote,
           priority: form.priority,
+          unloadingMinutes: form.unloadingMinutes === "" ? null : Number(form.unloadingMinutes),
           fulfillmentMode: form.fulfillmentMode,
           deliveryAddress: form.deliveryAddress,
           mapUrl: form.mapUrl || null,
@@ -580,6 +583,17 @@ export function CustomerPanel({ revision }: { revision: number }) {
                       </button>
                     ))}
                   </div>
+                </fieldset>
+                <fieldset>
+                  <legend>Tiempo de descarga</legend>
+                  <label>
+                    Minutos por visita
+                    <input type="number" min="0" step="1"
+                      placeholder="Sin configurar"
+                      value={form.unloadingMinutes}
+                      onChange={(event) => setForm({ ...form, unloadingMinutes: event.target.value })}
+                    />
+                  </label>
                 </fieldset>
                 <fieldset>
                   <legend>Modalidad</legend>
