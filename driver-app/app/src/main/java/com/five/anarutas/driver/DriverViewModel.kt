@@ -148,6 +148,7 @@ internal fun friendlyError(error: Throwable): String = when (error) {
         "EXECUTION_NOT_READY" -> "El servidor aún no tiene disponible la ejecución. Contacta a administración."
         "ROUTE_DATE_MISMATCH" -> "Esta ruta no corresponde al día de hoy."
         "ROUTE_ALREADY_STARTED" -> "Esta ruta ya inició y no admite más fotos ni cambios."
+        "DRIVER_ROUTE_IN_PROGRESS" -> "Tú o la camioneta aún tienen otro trabajo abierto. Liquida y finaliza esa ruta antes de iniciar otra."
         "ROUTE_COMPLETED" -> "Esta ruta ya terminó. Puedes consultar su historial, pero no cambiar sus pedidos."
         "ROUTE_HAS_PENDING_ORDERS" -> "Aún hay pedidos por atender o reintentos pendientes. Entrégalos o reprograma los reintentos antes de regresar."
         "ROUTING_ORIGIN_REQUIRED" -> "Administración debe configurar el punto de salida de bodega."

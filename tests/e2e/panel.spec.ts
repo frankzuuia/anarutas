@@ -629,11 +629,16 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
   await page
     .getByRole("button", { name: "Usuarios y accesos", exact: true })
     .click();
-  await page.getByLabel("Nombre completo").fill("Segunda cuenta QA");
-  await expect(page.getByLabel("Contraseña", { exact: true })).toHaveAttribute(
-    "minlength",
-    "6",
-  );
+  const routesAccountsForm = page.getByRole("form", {
+    name: "Crear administrador de rutas",
+    exact: true,
+  });
+  await routesAccountsForm
+    .getByLabel("Nombre completo")
+    .fill("Segunda cuenta QA");
+  await expect(
+    routesAccountsForm.getByLabel("Contraseña", { exact: true }),
+  ).toHaveAttribute("minlength", "6");
   const rejectedUser = await first.request.post(`${origin}/api/users`, {
     headers: { Origin: origin },
     data: {
@@ -652,9 +657,15 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
       (account: { login: string }) => account.login === "rejected-qa",
     ),
   ).toBe(false);
-  await page.getByLabel("Usuario", { exact: true }).fill("qa-second-browser");
-  await page.getByLabel("Contraseña", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Crear cuenta", exact: true }).click();
+  await routesAccountsForm
+    .getByLabel("Usuario", { exact: true })
+    .fill("qa-second-browser");
+  await routesAccountsForm
+    .getByLabel("Contraseña", { exact: true })
+    .fill(password);
+  await routesAccountsForm
+    .getByRole("button", { name: "Crear cuenta", exact: true })
+    .click();
   await expect(page.getByRole("status")).toContainText("Cuenta creada");
   await page.screenshot({
     path: "reports/screenshots/compact-users.png",

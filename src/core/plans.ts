@@ -4,6 +4,7 @@ import { assertActiveActor, audit, transaction } from "./database";
 import { AppError } from "./errors";
 import { textField } from "./auth";
 import { versionMatches } from "./policy";
+import { uuid } from "./orders-validation";
 
 export type Plan = {
   id: string;
@@ -29,7 +30,7 @@ export function serviceDate(value: unknown) {
 }
 export async function listPlans(pool: Pool): Promise<Plan[]> {
   const { rows } = await pool.query(
-    "SELECT id,service_date::text,label,version,updated_at,departure_minute FROM route_plans WHERE archived_at IS NULL ORDER BY service_date DESC LIMIT 100",
+    "SELECT id,service_date::text,label,version,updated_at,departure_minute FROM route_plans WHERE archived_at IS NULL ORDER BY service_date DESC,created_at DESC,id DESC LIMIT 100",
   );
   return rows;
 }
@@ -40,22 +41,45 @@ export async function createPlan(
 ): Promise<Plan> {
   const date = serviceDate(input.date);
   const label = textField(input.label);
+  const commandId =
+    input.commandId === undefined
+      ? randomUUID()
+      : uuid(input.commandId).toLowerCase();
   return transaction(pool, async (client) => {
     await assertActiveActor(client, actor);
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
+      `ana-rutas:plan-create:${actor}:${commandId}`,
+    ]);
+    const prior = (
+      await client.query(
+        "SELECT plan_id,requested_date::text,requested_label FROM route_plan_creation_requests WHERE actor_id=$1 AND command_id=$2",
+        [actor, commandId],
+      )
+    ).rows[0];
+    if (prior) {
+      if (prior.requested_date !== date || prior.requested_label !== label)
+        throw new AppError("PLAN_CREATION_REUSED", 409);
+      const existing = await client.query(
+        "SELECT id,service_date::text,label,version,updated_at,departure_minute FROM route_plans WHERE id=$1 FOR SHARE",
+        [prior.plan_id],
+      );
+      if (!existing.rowCount) throw new AppError("PLAN_CREATION_REMOVED", 409);
+      return existing.rows[0];
+    }
     const result = await client.query(
       `INSERT INTO route_plans(id,service_date,label,created_by,updated_by) VALUES($1,$2,$3,$4,$4)
-      ON CONFLICT(service_date) DO NOTHING RETURNING id,service_date::text,label,version,updated_at,departure_minute`,
+      RETURNING id,service_date::text,label,version,updated_at,departure_minute`,
       [randomUUID(), date, label, actor],
     );
-    if (result.rowCount) {
-      await audit(client, actor, "plan.created", result.rows[0].id, { date });
-      return result.rows[0];
-    }
-    const existing = await client.query(
-      "SELECT id,service_date::text,label,version,updated_at,departure_minute FROM route_plans WHERE service_date=$1",
-      [date],
+    await client.query(
+      "INSERT INTO route_plan_creation_requests(actor_id,command_id,plan_id,requested_date,requested_label) VALUES($1,$2,$3,$4,$5)",
+      [actor, commandId, result.rows[0].id, date, label],
     );
-    return existing.rows[0];
+    await audit(client, actor, "plan.created", result.rows[0].id, {
+      date,
+      commandId,
+    });
+    return result.rows[0];
   });
 }
 export async function editPlan(

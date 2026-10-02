@@ -37,7 +37,7 @@ export async function listDriverPlans(pool: Pool, driverId: string) {
        OR (pub.started_at IS NULL AND pub.driver_id=$1 AND pv.driver_id=$1
            AND v.driver_id=$1 AND v.available)
      )
-     ORDER BY p.service_date DESC,p.id DESC`,
+     ORDER BY p.service_date DESC,pub.published_at ASC,p.id ASC`,
     [driverId],
   );
   return rows;

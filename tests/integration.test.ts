@@ -213,8 +213,8 @@ describe("PostgreSQL real / auth / persistence", () => {
       ).rowCount,
     ).toBe(0);
   });
-  it("creates one shared plan on concurrent retries", async () => {
-    const input = { date: "2026-10-08", label: "QA plan" };
+  it("creates one plan on concurrent retries of the same creation command", async () => {
+    const input = { date: "2026-10-08", label: "QA plan", commandId: randomUUID() };
     const [one, two] = await Promise.all([
       createPlan(db.pool, actor, input),
       createPlan(db.pool, actor, input),

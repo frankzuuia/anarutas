@@ -62,6 +62,10 @@ class DriverUiPolicyTest {
             "La ruta cambió desde que la abriste. Actualízala y confirma de nuevo.",
             friendlyError(DriverApiException(409, "VERSION_CONFLICT")),
         )
+        assertEquals(
+            "Tú o la camioneta aún tienen otro trabajo abierto. Liquida y finaliza esa ruta antes de iniciar otra.",
+            friendlyError(DriverApiException(409, "DRIVER_ROUTE_IN_PROGRESS")),
+        )
     }
 
     @Test

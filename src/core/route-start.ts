@@ -7,6 +7,7 @@ import { unitPhotoRoot } from "./unit-photos";
 import { createDriverExecution } from "./driver-execution-seed";
 import { readOrderBoard } from "./orders";
 import { routePublicationSourceChanged } from "./route-publication-content";
+import { assertRouteResourcesFree } from "./route-start-resources";
 
 export async function startDriverRoute(
   pool: Pool,
@@ -60,6 +61,7 @@ export async function startDriverRoute(
     await unitPhotoRoot(configuredRoot);
     if (plan.rows[0].service_date !== todayInTimezone(timezone, now))
       throw new AppError("ROUTE_DATE_MISMATCH", 409);
+    await assertRouteResourcesFree(sql, driverId, route.vehicle_id);
     const board = await readOrderBoard(sql, id);
     if (
       routePublicationSourceChanged(

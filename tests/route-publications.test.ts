@@ -1123,12 +1123,37 @@ it("route publication lifecycle / real PostgreSQL", async () => {
   await scenario(
     "serializes a five-photo deletion against route start on the same publication",
     async () => {
+      // The main publication remains started for the subsequent lane guards.
+      // This photo race requires its own free driver and vehicle.
+      const raceDriver = await createDriver(db.pool, actor, {
+        id: randomUUID(),
+        name: "Chofer carrera de fotos QA",
+        phone: "3312345790",
+        emergency_name: "",
+        emergency_phone: "",
+        blood_type: "",
+        active: true,
+      });
+      const raceVehicle = await createVehicle(db.pool, actor, {
+        id: randomUUID(),
+        name: "Unidad carrera de fotos QA",
+        brand: "Ford",
+        model: "Transit",
+        plate: randomUUID().slice(0, 8),
+        mileage: 0,
+        fuel: "Diésel",
+        available: true,
+      });
+      await assignDriver(db.pool, actor, raceVehicle.id, {
+        driver_id: raceDriver.id,
+        expectedVersion: raceVehicle.version,
+      });
       const racePlan = await createPlan(db.pool, actor, {
         date: "2026-09-24",
         label: "Carrera inicio y foto QA",
       });
       await selectPlanVehicles(db.pool, actor, racePlan.id, {
-        vehicleIds: [vehicleId],
+        vehicleIds: [raceVehicle.id],
         expectedVersion: racePlan.version,
       });
       await persistImportPage(db.pool, actor, racePlan.id, {
@@ -1165,12 +1190,12 @@ it("route publication lifecycle / real PostgreSQL", async () => {
       const board = await orderBoard(db.pool, racePlan.id);
       await db.pool.query(
         "UPDATE route_shipments SET vehicle_id=$2 WHERE id=$1",
-        [board.shipments[0].id, vehicleId],
+        [board.shipments[0].id, raceVehicle.id],
       );
       await storeCalculatedRoute(racePlan.id);
       await publishRoutes(db.pool, actor, racePlan.id, {
         scope: "vehicle",
-        vehicleId,
+        vehicleId: raceVehicle.id,
         expectedVersion: board.plan.version,
       });
       const captureAt = new Date("2026-09-25T02:00:00.000Z");
@@ -1189,7 +1214,7 @@ it("route publication lifecycle / real PostgreSQL", async () => {
         candidateId = (
           await uploadDriverUnitPhoto(
             db.pool,
-            driverId,
+            raceDriver.id,
             racePlan.id,
             bytes,
             "image/jpeg",
@@ -1202,7 +1227,7 @@ it("route publication lifecycle / real PostgreSQL", async () => {
       const [start, deletion] = await Promise.allSettled([
         startDriverRoute(
           db.pool,
-          driverId,
+          raceDriver.id,
           racePlan.id,
           1,
           serviceTimezone,
@@ -1211,7 +1236,7 @@ it("route publication lifecycle / real PostgreSQL", async () => {
         ),
         deleteDriverUnitPhoto(
           db.pool,
-          driverId,
+          raceDriver.id,
           candidateId,
           serviceTimezone,
           photoRoot,
@@ -1222,7 +1247,7 @@ it("route publication lifecycle / real PostgreSQL", async () => {
       ).toHaveLength(1);
       const remaining = await listDriverUnitPhotos(
         db.pool,
-        driverId,
+        raceDriver.id,
         racePlan.id,
         serviceTimezone,
       );
@@ -1245,7 +1270,7 @@ it("route publication lifecycle / real PostgreSQL", async () => {
         expect(publication.started_at).toBeNull();
       }
       if (publication.started_at) {
-        await cancelStartedRoute(db.pool, actor, racePlan.id, vehicleId, {
+        await cancelStartedRoute(db.pool, actor, racePlan.id, raceVehicle.id, {
           expectedVersion: board.plan.version,
           expectedRevision: publication.revision,
         });
@@ -1865,7 +1890,7 @@ it("route publication lifecycle / real PostgreSQL", async () => {
       expect(
         (await db.pool.query("SELECT schema_version FROM rutas_installation"))
           .rows[0].schema_version,
-      ).toBe(41);
+      ).toBe(42);
       vehicle = await getVehicle(db.pool, vehicleId);
       await assignDriver(db.pool, actor, vehicleId, {
         driver_id: driverId,

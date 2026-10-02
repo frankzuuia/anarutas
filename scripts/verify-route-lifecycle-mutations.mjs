@@ -44,8 +44,8 @@ const cases = [
   [
     "prefer-finished-over-active",
     "route-lifecycle.ts",
-    "!plan.completed_at",
-    "Boolean(plan.completed_at)",
+    "plan.started_at !== null",
+    "plan.started_at === null",
   ],
   [
     "keep-closed-live",

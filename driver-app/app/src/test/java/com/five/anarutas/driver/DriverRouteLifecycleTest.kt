@@ -57,4 +57,25 @@ class DriverRouteLifecycleTest {
         assertFalse(keepFinanceSummaryOpen(DriverDestination.FINANCE, false))
         assertFalse(keepFinanceSummaryOpen(DriverDestination.HOME, true))
     }
+
+    @Test fun aNewPublicationAfterClosureBecomesTodayWithoutRestoringOldWork() {
+        val next = route.copy(id = "next", startedAt = null, publicationRevision = 1)
+        val latest = closed.copy(today = next, plans = closed.plans + plan.copy(id = next.id, publicationRevision = 1))
+        val state = DriverUiState(dashboard = closed, selected = null, destination = DriverDestination.HOME)
+        val updated = reconcilePublishedRoutes(state, latest)
+        assertEquals(next, updated.activePlan())
+        assertNull(updated.runningPlan())
+        assertEquals(DriverDestination.HOME, updated.destination)
+        assertEquals(2, updated.dashboard!!.plans.size)
+        assertEquals("Tienes una ruta nueva o actualizada. Ya aparece en tu jornada.", updated.notice)
+    }
+
+    @Test fun aQueuedPublicationDoesNotReplaceTheServerSelectedRunningRoute() {
+        val latest = dashboard.copy(plans = dashboard.plans + plan.copy(id = "queued", publicationRevision = 1))
+        val state = DriverUiState(dashboard = dashboard, selected = route, destination = DriverDestination.ROUTE)
+        val updated = reconcilePublishedRoutes(state, latest)
+        assertEquals(route, updated.activePlan())
+        assertEquals(route, updated.runningPlan())
+        assertEquals(DriverDestination.ROUTE, updated.destination)
+    }
 }

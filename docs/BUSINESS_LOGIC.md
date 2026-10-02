@@ -720,3 +720,12 @@ locks/replay/permisos intactos, CR01..10 en CORRECCION-CIERRE-RUTA-2026-10-01.md
 BL-185: Modal amplio sin recortar métodos -> tres tarjetas adaptadas al ancho,
 contenido vertical y acciones fijas -> componentes Android existentes,
 accesibilidad/precisión monetaria conservadas; CR11..12.
+
+BL-186: Cada creación nueva de borrador es independiente de la fecha -> UUID
+propio y plan vacío, ledger por actor+commandId para reintento exacto y tombstone
+durable tras borrado; migración42 conservadora y orden estable; MB01..12 en
+MULTIPLES-BORRADORES-2026-10-01.md.
+BL-187: Otra salida del día después de finalizar trabajo -> el dashboard conserva
+la salida iniciada pendiente de cierre; lock de flota impide dos inicios del
+mismo chofer o unidad, incluso al reasignar flota. Cierre recibido libera otra
+publicación con fotos y ejecución propias, sin mezclar historial; MB13..22.

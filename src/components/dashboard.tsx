@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Route,
   CalendarDays,
@@ -27,6 +27,10 @@ import { DraftName } from "./draft-name";
 import { FleetPanel } from "./fleet-panel";
 import { OrdersBoard } from "./orders-board";
 import { CreatePlanDialog } from "./create-plan-dialog";
+import {
+  planCreationAttempt,
+  type PlanCreationAttempt,
+} from "./plan-creation-attempt";
 import { DeletePlanDialog } from "./delete-plan-dialog";
 import { CustomerPanel } from "./customer-panel";
 import { GoogleConsumptionPanel } from "./google-consumption-panel";
@@ -135,6 +139,7 @@ export function Dashboard({
   const [controlRevision, setControlRevision] = useState(0);
   const [menuClosed, setMenuClosed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const creationAttempt = useRef<PlanCreationAttempt | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [nameSavedRevision, setNameSavedRevision] = useState(0);
   const [fleetRevision, setFleetRevision] = useState(0);
@@ -279,15 +284,22 @@ export function Dashboard({
   }
   function createDraft(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const input = Object.fromEntries(new FormData(event.currentTarget));
+    const form = new FormData(event.currentTarget);
+    const input = planCreationAttempt(
+      creationAttempt.current,
+      {
+        date: String(form.get("date") ?? ""),
+        label: String(form.get("label") ?? ""),
+      },
+      () => crypto.randomUUID(),
+    );
+    creationAttempt.current = input;
     void perform(async () => {
       const plan = await api<Plan>("/api/plans", "POST", input);
       setSelected(plan);
       setCreateOpen(false);
       await refresh();
-      setNotice(
-        "Borrador guardado. Si el día ya existía, abrimos ese mismo plan.",
-      );
+      setNotice("Nuevo borrador creado. Ya puedes cargar sus pedidos.");
     });
   }
   function saveDraft(event: React.FormEvent<HTMLFormElement>) {
@@ -600,7 +612,10 @@ export function Dashboard({
                   </span>
                   <button
                     className="quiet"
-                    onClick={() => setCreateOpen(true)}
+                    onClick={() => {
+                      creationAttempt.current = null;
+                      setCreateOpen(true);
+                    }}
                     disabled={busy}
                   >
                     <Plus size={16} />

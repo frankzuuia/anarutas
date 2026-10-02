@@ -12,6 +12,7 @@ export const publicationExecutionJoinSql = `
 export function driverTodayPlan<
   T extends {
     service_date: string;
+    started_at: Date | null;
     completed_at: Date | null;
     work_completed_at: Date | null;
   },
@@ -19,5 +20,10 @@ export function driverTodayPlan<
   const current = plans.filter(
     (plan) => plan.service_date === serviceDate && !plan.work_completed_at,
   );
-  return current.find((plan) => !plan.completed_at) ?? current[0] ?? null;
+  return (
+    current.find((plan) => plan.started_at !== null) ??
+    current.find((plan) => !plan.completed_at) ??
+    current[0] ??
+    null
+  );
 }

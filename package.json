@@ -16,6 +16,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:coverage:same-day": "vitest run --config vitest.same-day.config.ts --coverage",
+    "test:mutation:same-day": "node scripts/verify-same-day-mutations.mjs",
     "test:mutation": "stryker run",
     "test:mutation:vehicle-removal": "stryker run stryker.vehicle-removal.config.mjs",
     "test:mutation:order-removal": "stryker run stryker.order-removal.config.mjs",

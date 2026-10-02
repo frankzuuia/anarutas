@@ -1,6 +1,13 @@
 export const errors: Record<string, string> = {
+  PLAN_CREATION_REUSED:
+    "Esta solicitud ya creó un borrador con otros datos. Abre Nuevo borrador para crear otro.",
+  PLAN_CREATION_REMOVED:
+    "Este borrador ya fue eliminado. Abre Nuevo borrador para crear otro.",
+  DRIVER_ROUTE_IN_PROGRESS:
+    "El chofer o la camioneta aún tiene un trabajo abierto. Liquida y finaliza esa ruta antes de iniciar otra.",
   ROLE_DENIED: "Tu cuenta no tiene acceso a esta sección.",
-  ROUTE_COMPLETED: "Esta ruta ya está finalizada; su historial se conserva para consulta.",
+  ROUTE_COMPLETED:
+    "Esta ruta ya está finalizada; su historial se conserva para consulta.",
   SETTLEMENT_VERSION_CHANGED:
     "La solicitud cambió o ya fue atendida. Actualiza para consultar la recepción guardada.",
   SETTLEMENT_ROUTE_NOT_FINISHED: "El chofer aún no termina esta ruta.",

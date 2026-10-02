@@ -1809,3 +1809,14 @@ omisiones externas existentes,84 financieras/PG,148JVM y cuatro E2E reales.
 Selector/comando/transición100% líneas y ramas;13/13 mutaciones servidor y7/7
 Android detectadas. APK0.8.18/code40 compatible; QA física por excepción vigente
 del propietario. Entrega a develop, sin despliegue ni cambios a main.
+
+BL186..187: varios borradores y salidas independientes del mismo día, aprobado
+por el propietario el 2026-10-01. Autopsia, contrato, matriz MB01..22 y puertas en
+MULTIPLES-BORRADORES-2026-10-01.md. MB-T01..03: creación idempotente por intención,
+selección/inicio sin solapamiento y QA/entrega.
+
+Evidencia MB01..22 en QA-MULTIPLES-BORRADORES-0.8.19.md:955 regresiones
+verificadas mediante corrida completa y revalidación de su único fixture fallido,
+0 fallos pendientes/3 omisiones externas previas;39 enfocadas,8 E2E y150JVM.
+Cobertura100% líneas/95% ramas;22/22 mutaciones detectadas. APK0.8.19/code41
+compatible. QA física bajo excepción vigente; entrega develop sin despliegue.
