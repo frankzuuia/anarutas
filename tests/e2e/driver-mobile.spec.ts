@@ -344,6 +344,19 @@ test("admin provisioning, native device login, route isolation and revocation ov
     "UPDATE route_shipments SET snapshot=jsonb_set(snapshot,'{fulfillmentStatus}','\"pending_validation\"') WHERE id=$1",
     [firstOrder.id],
   );
+  const blockedPublication = await request.post(`${origin}/api/plans/${planId}/publications`, {
+    headers: { Origin: origin },
+    data: { scope: "vehicle", vehicleId, expectedVersion: board.plan.version },
+  });
+  expect(blockedPublication.status()).toBe(409);
+  expect(await blockedPublication.json()).toMatchObject({
+    error: "ROUTE_ORDERS_NOT_VALIDATED", unavailableFolios: ["S801"],
+  });
+  expect((await db.pool.query("SELECT 1 FROM route_plan_publications WHERE plan_id=$1", [planId])).rowCount).toBe(0);
+  await db.pool.query(
+    "UPDATE route_shipments SET snapshot=jsonb_set(snapshot,'{fulfillmentStatus}','\"validated\"') WHERE id=$1",
+    [firstOrder.id],
+  );
   const publicationStartedAt = Date.now();
   const published = await request.post(
     `${origin}/api/plans/${planId}/publications`,
@@ -403,6 +416,11 @@ test("admin provisioning, native device login, route isolation and revocation ov
     headers: authorization,
     data: { expectedRevision: 1 },
   };
+  // Existing mobile defence still rejects a later source regression after publication.
+  await db.pool.query(
+    "UPDATE route_shipments SET snapshot=jsonb_set(snapshot,'{fulfillmentStatus}','\"pending_validation\"') WHERE id=$1",
+    [firstOrder.id],
+  );
   const pendingStart = await request.post(startUrl, startRequest);
   expect(pendingStart.status()).toBe(409);
   expect(await pendingStart.json()).toMatchObject({

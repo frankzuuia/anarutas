@@ -24,6 +24,7 @@ import type {
   Shipment,
 } from "@/core/orders-contract";
 import { todayInTimezone } from "@/core/local-date";
+import { routePublicationPendingVehicles } from "@/core/route-publication-validation";
 import { api, errors } from "./api";
 import { RouteMapDialog } from "./route-map-dialog";
 import { RouteOriginDialog } from "./route-origin-dialog";
@@ -78,6 +79,8 @@ function PublishRouteDialog({
   busy,
   error,
   calculating,
+  blocked,
+  validationMessage,
   onClose,
   onConfirm,
 }: {
@@ -85,6 +88,8 @@ function PublishRouteDialog({
   busy: boolean;
   error: string;
   calculating: boolean;
+  blocked: boolean;
+  validationMessage: string;
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -134,6 +139,7 @@ function PublishRouteDialog({
           manual. Esto puede generar consumo de Google. Publicar no inicia la
           ruta.
         </p>
+        {validationMessage && <p role="status">{validationMessage}</p>}
         {error && (
           <p className="notice error" role="alert">
             {error}
@@ -152,7 +158,7 @@ function PublishRouteDialog({
         <button
           type="button"
           className="route-publish"
-          disabled={busy}
+          disabled={busy || blocked}
           onClick={onConfirm}
         >
           <Send size={15} aria-hidden="true" />
@@ -1191,6 +1197,11 @@ export function OrdersBoard({
       publishTarget.planId !== plan.id
     )
       return;
+    if (!publications) return;
+    if (publishTarget.scope === "vehicle" && targetPendingValidation.length) {
+      setPublishError(errors.ROUTE_ORDERS_NOT_VALIDATED);
+      return;
+    }
     publishing.current = true;
     working(true);
     setPublishError("");
@@ -1228,6 +1239,9 @@ export function OrdersBoard({
       const result = await api<{
         changes: { vehicleId: string; revision: number; action: string }[];
         publications: RoutePublication[];
+        skippedValidationVehicles: ReturnType<
+          typeof routePublicationPendingVehicles
+        >;
       }>(publicationEndpoint, "POST", {
         scope: publishTarget.scope,
         ...(publishTarget.vehicleId
@@ -1241,10 +1255,20 @@ export function OrdersBoard({
         error: "",
       });
       setPublishTarget(null);
+      const skipped = result.skippedValidationVehicles ?? [];
+      const savedNotice = result.changes.length
+        ? `${result.changes.length} ${result.changes.length === 1 ? "ruta actualizada" : "rutas actualizadas"} y visibles para sus choferes.`
+        : skipped.length
+          ? "No se activaron nuevas rutas."
+          : "Las rutas ya estaban publicadas; no se duplicó ninguna.";
       setNotice(
-        result.changes.length
-          ? `${result.changes.length} ${result.changes.length === 1 ? "ruta actualizada" : "rutas actualizadas"} y visibles para sus choferes.`
-          : "Las rutas ya estaban publicadas; no se duplicó ninguna.",
+        [
+          savedNotice,
+          ...skipped.map(
+            (vehicle) =>
+              `La ruta de ${vehicle.vehicleName} no se pudo activar porque falta validar en Odoo: ${vehicle.pendingValidationOrders.map((order) => order.orderName).join(", ")}.`,
+          ),
+        ].join(" "),
       );
     } catch (caught) {
       setPublishError((caught as Error).message);
@@ -1485,6 +1509,23 @@ export function OrdersBoard({
   const hasPublished = eligible.some((vehicle) =>
     publicationByVehicle.has(vehicle.id),
   );
+  const pendingValidation = routePublicationPendingVehicles(
+    board?.vehicles.filter(
+      (vehicle) => !publicationByVehicle.get(vehicle.id)?.started_at,
+    ) ?? [],
+    board?.shipments ?? [],
+  );
+  const targetPendingValidation = pendingValidation.filter(
+    (vehicle) =>
+      publishTarget?.scope === "all" ||
+      vehicle.vehicleId === publishTarget?.vehicleId,
+  );
+  const targetValidationMessage = targetPendingValidation
+    .map(
+      (vehicle) =>
+        `La ruta de ${vehicle.vehicleName} no se activará: falta validar en Odoo ${vehicle.pendingValidationOrders.map((order) => order.orderName).join(", ")}.`,
+    )
+    .join(" ");
   const globalPublishLabel = hasPublished
     ? "Guardar y publicar"
     : "Publicar rutas";
@@ -1622,6 +1663,9 @@ export function OrdersBoard({
             const publication = v.id
               ? publicationByVehicle.get(v.id)
               : undefined;
+            const vehiclePendingValidation = pendingValidation.find(
+              (vehicle) => vehicle.vehicleId === v.id,
+            );
             const fleetChanged = Boolean(
               v.id && v.driver_id !== v.fleet_driver_id,
             );
@@ -1718,7 +1762,13 @@ export function OrdersBoard({
                               busy ||
                               board.plan.id !== plan.id ||
                               !v.fleet_driver_id ||
-                              !v.available
+                              !v.available ||
+                              Boolean(vehiclePendingValidation)
+                            }
+                            aria-describedby={
+                              vehiclePendingValidation
+                                ? `route-validation-${v.id}`
+                                : undefined
                             }
                             onClick={() => {
                               setPublishError("");
@@ -1737,6 +1787,15 @@ export function OrdersBoard({
                           </button>
                         )}
                     </div>
+                  )}
+                  {vehiclePendingValidation && (
+                    <small id={`route-validation-${v.id}`} role="status">
+                      Pendientes de validación en Odoo:{" "}
+                      {vehiclePendingValidation.pendingValidationOrders
+                        .map((order) => order.orderName)
+                        .join(", ")}
+                      . La ruta se habilita cuando todos estén validados.
+                    </small>
                   )}
                 </header>
                 <div
@@ -1825,6 +1884,12 @@ export function OrdersBoard({
           busy={busy}
           error={publishError}
           calculating={calculatingManual}
+          blocked={
+            !publications ||
+            (publishTarget.scope === "vehicle" &&
+              targetPendingValidation.length > 0)
+          }
+          validationMessage={targetValidationMessage}
           onClose={() => setPublishTarget(null)}
           onConfirm={() => void publish()}
         />

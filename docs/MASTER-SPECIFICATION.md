@@ -1863,3 +1863,15 @@ IV01..08 verificados en QA-INICIO-VALIDADO-0.8.21.md:11 servidor/PG,162JVM,
 del selector/lectura y arranque; funciones Android afectadas100% líneas/ramas.
 Typecheck/lint/build y APK0.8.21/code43 compatibles; QA física bajo excepción
 vigente. Entrega autorizada develop, despliegue del propietario.
+
+BL192: corrección explícita del2026-10-02: el bloqueo solicitado corresponde a
+Activar ruta del panel. Sustituye el permiso de publicar pendientes de BL191.
+Una camioneta sólo se activa con sus pedidos validados; Publicar rutas activa
+las completas y omite las pendientes, avisando nombre y folios. No bloquea las
+demás camionetas ni pedidos sin asignar. Mantiene comandos móviles y cadencia
+Odoo, con contratos y Gherkin en ACTIVACION-VALIDADA-PANEL-2026-10-02.md.
+
+Validación en QA-ACTIVACION-VALIDADA-PANEL-2026-10-02.md:10 unidad/PG,2 recorridos
+Chrome/HTTP reales aprobados,10/10 mutantes detectados; política100% líneas/ramas,
+publicaciones99.18% líneas/91.08% ramas; typecheck/lint/build verdes. Sin esquema,
+APK ni deploy nuevos. Entrega develop autorizada; despliega el propietario.

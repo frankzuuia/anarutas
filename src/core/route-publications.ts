@@ -15,6 +15,7 @@ import {
   routePublicationSnapshot,
 } from "./route-publication-content";
 import { nextPublicationRevision } from "./route-publication-revisions";
+import { routePublicationPendingVehicles } from "./route-publication-validation";
 import {
   executionCompletionJoinsSql,
   publicationExecutionJoinSql,
@@ -139,7 +140,34 @@ export async function publishRoutes(
     );
     if (requestedVehicleId && active.length === 0)
       throw new AppError("ROUTE_ALREADY_STARTED", 409);
-    const withOrders = active.filter((vehicle) =>
+    const activeIds = new Set(active.map((vehicle) => vehicle.id));
+    if (
+      board.shipments.some(
+        (shipment) =>
+          activeIds.has(shipment.vehicle_id ?? "") &&
+          (shipment.fulfillmentStatus === "cancelled" ||
+            !shipment.lines.length),
+      )
+    )
+      throw new AppError("ODOO_DELIVERY_UNAVAILABLE", 409);
+    const pendingValidationVehicles = routePublicationPendingVehicles(
+      active,
+      board.shipments,
+    );
+    if (requestedVehicleId && pendingValidationVehicles.length)
+      throw new AppError("ROUTE_ORDERS_NOT_VALIDATED", 409, {
+        pendingValidationVehicles,
+        unavailableFolios: pendingValidationVehicles.flatMap((vehicle) =>
+          vehicle.pendingValidationOrders.map((order) => order.orderName),
+        ),
+      });
+    const pendingVehicleIds = new Set(
+      pendingValidationVehicles.map((vehicle) => vehicle.vehicleId),
+    );
+    const publishable = active.filter(
+      (vehicle) => !pendingVehicleIds.has(vehicle.id),
+    );
+    const withOrders = publishable.filter((vehicle) =>
       board.shipments.some((shipment) => shipment.vehicle_id === vehicle.id),
     );
     const optimization = withOrders.length
@@ -153,18 +181,10 @@ export async function publishRoutes(
     const changes: { vehicleId: string; revision: number; action: string }[] =
       [];
     let assignmentChanged = false;
-    for (const vehicle of active) {
+    for (const vehicle of publishable) {
       const own = board.shipments.filter(
         (shipment) => shipment.vehicle_id === vehicle.id,
       );
-      if (
-        own.some(
-          (shipment) =>
-            shipment.fulfillmentStatus === "cancelled" ||
-            !shipment.lines.length,
-        )
-      )
-        throw new AppError("ODOO_DELIVERY_UNAVAILABLE", 409);
       const previous = published.get(vehicle.id);
       if (!own.length) {
         if (previous && !previous.revoked_at) {
@@ -274,7 +294,11 @@ export async function publishRoutes(
         changes,
         sourcePlanVersion: board.plan.version,
       });
-    return { changes, publications: await listRoutePublications(sql, id) };
+    return {
+      changes,
+      publications: await listRoutePublications(sql, id),
+      skippedValidationVehicles: pendingValidationVehicles,
+    };
   });
 }
 

@@ -83,6 +83,8 @@ export const errors: Record<string, string> = {
     "Arma la ruta una vez para activar el recálculo automático de tus cambios.",
   ROUTE_NOT_CURRENT:
     "Esta ruta cambió o aún no tiene un recorrido vigente. Usa Armar ruta y espera el cálculo antes de publicarla.",
+  ROUTE_ORDERS_NOT_VALIDATED:
+    "No se puede activar la ruta hasta que todos los pedidos de esa camioneta estén validados en Odoo",
   ROUTE_INCOMPLETE:
     "El recorrido no contiene todos los pedidos de esta camioneta. Revisa el plan y vuelve a armar la ruta.",
   ROUTE_ALREADY_STARTED:

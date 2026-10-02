@@ -860,3 +860,17 @@ rechazo, inicio, seguridad y recuperación. Typecheck/lint/build verdes;
 APK0.8.21/code43 firma compatible. Fotos, publicación/armado de pendientes,
 cadencia Odoo y comandos posteriores intactos. QA física por excepción vigente;
 entrega develop sin despliegue.
+
+## BL192 — activación validada en el panel, corrección autorizada 2026-10-02
+
+- [x] AVP-T01: Activar ruta y confirmación individual bloqueados por folios propios;
+  Publicar rutas conserva activación de completas y avisa las camionetas omitidas.
+- [x] AVP-T02: guarda transaccional autoritativa; aislamiento, estados desconocidos,
+  legado, roles, revisiones, replay y worker/concurrencia verificados.
+- [x] AVP-T03:10 unidad/PG,2 recorridos HTTP/Chrome reales,100% política nueva,
+  10/10 mutantes; typecheck/lint/build y QA verdes. Entrega develop autorizada.
+
+Evidencia: QA-ACTIVACION-VALIDADA-PANEL-2026-10-02.md. Corrige la interpretación
+de publicación permitida de BL191. Última validación→botón habilitado por SSE
+221ms local, sin modificar el intervalo de Odoo. No cambia Android, liquidación,
+recorrido ni esquema; no se genera APK ni se despliega producción.
