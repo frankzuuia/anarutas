@@ -2189,6 +2189,18 @@ tr:last-child td {
   gap: 8px;
   flex-wrap: wrap;
 }
+.orders-toolbar-actions > .button-link > .lucide-file-spreadsheet {
+  color: var(--green);
+}
+.orders-toolbar-actions > button > .lucide-map-pinned {
+  color: var(--amber);
+}
+.orders-toolbar-actions > button > .lucide-truck {
+  color: #9ed4ff;
+}
+.orders-toolbar-actions > button > .lucide-map {
+  color: #cfb5ff;
+}
 .orders-section .notice {
   padding: 6px 12px;
   margin: 0;
