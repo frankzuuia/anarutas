@@ -141,3 +141,64 @@ export function zoneVehicleIndices(
     ),
   );
 }
+
+// A zone is a preference, not eligibility. Physical points receive equal weight
+// regardless of how many orders they contain. Distances are objective units in
+// km, not estimates of road travel times or a customer's monetary charge.
+export function zoneVehicleCosts(
+  groups: ZoneGroup[],
+  zones: RoutingCandidate,
+  vehicleIds: string[],
+) {
+  if (!vehicleIds.length) throw new AppError("ROUTING_VEHICLES_REQUIRED", 409);
+  const byId = new Map(
+    groups.flatMap((group) =>
+      group.shipmentIds.map((id) => [id, group] as const),
+    ),
+  );
+  const centers = new Map<string, Vector>();
+  for (const route of zones.routes) {
+    const points = new Map(
+      route.shipmentIds.map((id) => {
+        const point = byId.get(id)!;
+        return [
+          JSON.stringify([point.latitude, point.longitude]),
+          vector(point),
+        ] as const;
+      }),
+    );
+    if (!points.size) continue;
+    const sum = [0, 1, 2].map((axis) =>
+      [...points.values()].reduce((total, point) => total + point[axis], 0),
+    );
+    const length = Math.hypot(...sum);
+    centers.set(
+      route.vehicleId,
+      length > Number.EPSILON * points.size
+        ? sum.map((value) => value / length)
+        : points.values().next().value!,
+    );
+  }
+  const populated = [...centers.values()];
+  if (!populated.length) throw new AppError("ROUTING_ORDERS_REQUIRED", 409);
+  // Extra vehicles share reference centers and remain free to relieve busy zones.
+  const reference = vehicleIds.map(
+    (id, index) => centers.get(id) ?? populated[index % populated.length],
+  );
+  return new Map(
+    groups.map((group) => {
+      const point = vector(group);
+      const distances = reference.map(
+        (center) =>
+          2 *
+          6371 *
+          Math.asin(Math.min(1, Math.sqrt(distance(point, center)) / 2)),
+      );
+      const nearest = Math.min(...distances);
+      return [
+        group.shipmentIds[0],
+        distances.map((km) => Math.max(0, km - nearest)),
+      ] as const;
+    }),
+  );
+}

@@ -62,6 +62,7 @@ export type GoogleOptimizationRequest = {
         timeWindows?: GoogleTimeWindow[];
       }[];
       allowedVehicleIndices?: number[];
+      costsPerVehicle?: number[];
     }[];
     vehicles: {
       label: string;
@@ -69,6 +70,7 @@ export type GoogleOptimizationRequest = {
       startLocation: { latitude: number; longitude: number };
       endLocation: { latitude: number; longitude: number };
       costPerTraveledHour: number;
+      costPerHour?: number;
       costPerKilometer: number;
       loadLimits: {
         orders: {
@@ -261,7 +263,7 @@ export function buildGoogleOptimizationRequest(
           deliveries: [
             {
               label: group.id,
-              duration: `${visitServiceSeconds(group.shipmentIds.map(id => byId.get(id)!))}s`,
+              duration: `${visitServiceSeconds(group.shipmentIds.map((id) => byId.get(id)!))}s`,
               arrivalLocation: {
                 latitude: shipment.latitude!,
                 longitude: shipment.longitude!,

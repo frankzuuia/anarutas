@@ -23,9 +23,7 @@ import {
   requestGoogleOptimization,
   type GoogleOptimizationResult,
 } from "./route-optimization-google";
-import {
-  spatialSequenceCandidate,
-} from "./route-geographic-planner";
+import { spatialSequenceCandidate } from "./route-geographic-planner";
 import {
   acquireOptimizationLease,
   releaseOptimizationLease,
@@ -149,8 +147,7 @@ export async function planRouteDeterministically(
       "SELECT 1 FROM route_plan_publications WHERE plan_id=$1 AND started_at IS NOT NULL LIMIT 1",
       [planId],
     );
-    if (started.rowCount)
-      throw new AppError("ROUTE_ALREADY_STARTED", 409);
+    if (started.rowCount) throw new AppError("ROUTE_ALREADY_STARTED", 409);
     const { request, groups, zones } = buildDirectFleetRequest(
       board,
       settings,
@@ -363,7 +360,10 @@ export async function planRouteDeterministically(
           evaluatedCandidates: 1,
           candidateSources: [chosenSource],
           chosenSource,
-          zones: zones.routes.map(route => ({ vehicleId: route.vehicleId, orders: route.shipmentIds.length })),
+          preferredZones: zones.routes.map((route) => ({
+            vehicleId: route.vehicleId,
+            orders: route.shipmentIds.length,
+          })),
           deliveryGroups: groups.length,
           fleetRoutingRequests,
           fleetRoutingRequestLimit: maximumFleetRoutingRequests,

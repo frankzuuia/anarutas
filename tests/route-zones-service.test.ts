@@ -66,11 +66,24 @@ describe("zones — deterministic domain computation, no remote substitutes", ()
     );
   });
   it("keeps three separated neighborhoods compact rather than oscillating toward the farthest center", () => {
-    const neighborhoods = [[20.6,-103.6],[20.6,-103.2],[20.9,-103.4]];
-    const points = neighborhoods.flatMap(([latitude,longitude], zone) => Array.from({length:6},(_,i)=>({latitude:latitude+i/10000,longitude:longitude+(i%2)/10000,shipmentIds:[`${zone}:${i}`]})));
-    const result=geographicZones(points,["a","b","c"],depot);
-    expect(result.routes.map(r=>r.shipmentIds.length)).toEqual([6,6,6]);
-    for(const route of result.routes) expect(new Set(route.shipmentIds.map(id=>id.split(":")[0])).size).toBe(1);
+    const neighborhoods = [
+      [20.6, -103.6],
+      [20.6, -103.2],
+      [20.9, -103.4],
+    ];
+    const points = neighborhoods.flatMap(([latitude, longitude], zone) =>
+      Array.from({ length: 6 }, (_, i) => ({
+        latitude: latitude + i / 10000,
+        longitude: longitude + (i % 2) / 10000,
+        shipmentIds: [`${zone}:${i}`],
+      })),
+    );
+    const result = geographicZones(points, ["a", "b", "c"], depot);
+    expect(result.routes.map((r) => r.shipmentIds.length)).toEqual([6, 6, 6]);
+    for (const route of result.routes)
+      expect(
+        new Set(route.shipmentIds.map((id) => id.split(":")[0])).size,
+      ).toBe(1);
   });
   it("uses one truck per distinct zone, keeps co-located clients together and covers empty/single fleets", () => {
     const input = [...groups, { ...groups[0], shipmentIds: ["duplicate"] }];
@@ -187,9 +200,13 @@ describe("unloading contracts and clocks", () => {
     ).toEqual(["1200s", "1200s"]);
     expect(request.model.shipments[1].deliveries[0].duration).toBe("480s");
     expect(
-      new Set(request.model.shipments.flatMap((s) => s.allowedVehicleIndices!))
-        .size,
-    ).toBe(2);
+      request.model.shipments.every(
+        (s) => s.allowedVehicleIndices === undefined,
+      ),
+    ).toBe(true);
+    expect(
+      request.model.shipments.map((s) => s.costsPerVehicle?.length),
+    ).toEqual([2, 2]);
     expect(zones.routes.flatMap((r) => r.shipmentIds).sort()).toEqual([
       "s1",
       "s2",

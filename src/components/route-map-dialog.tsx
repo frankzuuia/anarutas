@@ -9,6 +9,7 @@ import type {
 } from "@/core/routing-contract";
 import { groupRouteMapStops, nextOpenMarker } from "@/core/route-map-markers";
 import { selectRouteMapView } from "@/core/route-map-selection";
+import { routeTimeConflicts } from "@/core/route-time-conflicts";
 import {
   manualPreviewDecision,
   type ManualPreviewStatus,
@@ -60,6 +61,7 @@ export function RouteMapDialog({
     () => selectRouteMapView(board, optimization, filter),
     [board, optimization, filter],
   );
+  const timeConflicts = routeTimeConflicts(board, optimization, filter);
   const laneIndex = (s: Shipment) =>
     vehicles.findIndex((v) => v.id === (s.vehicle_id || "unassigned"));
   const stopNumber = (s: Shipment) =>
@@ -520,6 +522,54 @@ export function RouteMapDialog({
           </span>
         )}
       </div>
+      {selectedRoutes.some(
+        (route) => route.calculationSource === "geographic_recovery",
+      ) && (
+        <p className="notice warning route-forecast-notice" role="status">
+          Recorrido de recuperación geográfica: Google no pudo completar la
+          optimización global. Se midieron calles, descarga y horarios; revisa
+          el reparto y los atrasos previstos antes de publicar.
+        </p>
+      )}
+      {timeConflicts.length > 0 && (
+        <details
+          className="notice warning route-forecast-notice"
+          aria-label="Pedidos fuera de horario previstos"
+        >
+          <summary>
+            {timeConflicts.length} pedidos con llegada prevista después de su
+            horario. Revisa la salida, las camionetas disponibles o las ventanas
+            del cliente.
+          </summary>
+          <ul>
+            {timeConflicts.map((conflict) => (
+              <li key={conflict.shipmentId}>
+                {conflict.vehicleName} · {conflict.customerName} ·{" "}
+                {conflict.orderName}
+                {" · "}Ventana{" "}
+                {conflict.windows
+                  .map((window) => {
+                    const text = (minute: number) =>
+                      `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+                    return `${text(window.startMinute)}–${text(window.endMinute)}`;
+                  })
+                  .join(" / ")}
+                {" · "}Llegada{" "}
+                {new Date(conflict.eta).toLocaleTimeString("es-MX", {
+                  timeZone: timezone,
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hourCycle: "h23",
+                })}{" "}
+                · {conflict.lateMinutes} min de atraso previsto
+              </li>
+            ))}
+          </ul>
+          <p>
+            Es una previsión del recorrido; no es una incidencia del chofer.
+          </p>
+        </details>
+      )}
       {(refreshError ||
         previewRequestError ||
         manualStatus?.errorCode ||
@@ -594,7 +644,7 @@ export function RouteMapDialog({
                     </small>
                   )}
                   <small>
-                    Traslados y esperas; no incluye tiempo de descarga.
+                    Tiempo previsto de salida a regreso.
                   </small>
                 </div>
               ))}

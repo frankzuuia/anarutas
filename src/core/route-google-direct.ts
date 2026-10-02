@@ -1,6 +1,6 @@
 import { AppError } from "./errors";
 import { visitServiceSeconds } from "./route-service-time";
-import { geographicZones, zoneVehicleIndices } from "./route-zones";
+import { geographicZones, zoneVehicleCosts } from "./route-zones";
 import type { OrderBoard, Shipment } from "./orders-contract";
 import { assertDeliveryGroups } from "./route-delivery-groups";
 import {
@@ -17,7 +17,7 @@ import {
 } from "./route-optimization-google";
 import type { RoutingSettings } from "./routing-contract";
 
-export const directFleetPolicy = "google-zones-v2-service-time";
+export const directFleetPolicy = "google-zones-v3-time-aware";
 
 function validCoordinate(
   value: number | null,
@@ -97,9 +97,17 @@ export function buildDirectFleetRequest(
   // soft fleet-load contract. No network calls or measured local warm start.
   const request = buildGoogleOptimizationRequest(board, settings, timezone);
   const groups = directDeliveryGroups(board.shipments);
-  const zones = geographicZones(groups, board.vehicles.map(v => v.id), settings.depotLocation!);
-  const assigned = zoneVehicleIndices(zones, board.vehicles.map(v => v.id));
-  const byId = new Map(board.shipments.map(s => [s.id, s]));
+  const zones = geographicZones(
+    groups,
+    board.vehicles.map((v) => v.id),
+    settings.depotLocation!,
+  );
+  const geographicCosts = zoneVehicleCosts(
+    groups,
+    zones,
+    board.vehicles.map((v) => v.id),
+  );
+  const byId = new Map(board.shipments.map((s) => [s.id, s]));
   const start = Date.parse(request.model.globalStartTime);
   const end = request.model.globalEndTime;
   const orders = groups.reduce(
@@ -113,7 +121,7 @@ export function buildDirectFleetRequest(
   request.timeout = `${optimizationTimeoutSeconds(groups.length)}s`;
   request.model.shipments = groups.map((group) => ({
     label: group.id,
-    allowedVehicleIndices: [assigned.get(group.id)!],
+    costsPerVehicle: geographicCosts.get(group.id)!,
     loadDemands: {
       orders: { amount: String(group.shipmentIds.length) },
       destinations: { amount: "1" },
@@ -121,7 +129,7 @@ export function buildDirectFleetRequest(
     deliveries: (group.windows.length ? group.windows : [null]).map(
       (window) => ({
         label: group.id,
-        duration: `${visitServiceSeconds(group.shipmentIds.map(id => byId.get(id)!))}s`,
+        duration: `${visitServiceSeconds(group.shipmentIds.map((id) => byId.get(id)!))}s`,
         tags: [tag(group.rank)],
         arrivalLocation: {
           latitude: group.latitude,
@@ -165,10 +173,14 @@ export function buildDirectFleetRequest(
       }),
     ),
   }));
-  for (const vehicle of request.model.vehicles)
+  for (const vehicle of request.model.vehicles) {
+    // Include unloading and waiting as well as travel, using the existing time
+    // objective's unit. Global duration still minimizes the latest depot return.
+    vehicle.costPerHour = vehicle.costPerTraveledHour;
     vehicle.loadLimits.destinations.softMaxLoad = String(
       Math.ceil(groups.length / board.vehicles.length),
     );
+  }
 
   const ranks = [...new Set(groups.map((group) => group.rank))];
   const windowHours = Math.max(
@@ -205,18 +217,39 @@ export function buildDirectFleetRequest(
   return { request, groups, zones };
 }
 
-export function assertDirectFleetResponse(request: GoogleOptimizationRequest, result: GoogleOptimizationResult) {
+export function assertDirectFleetResponse(
+  request: GoogleOptimizationRequest,
+  result: GoogleOptimizationResult,
+) {
   for (const route of result.routes) {
+    if (
+      !Number.isSafeInteger(route.vehicleIndex) ||
+      !request.model.vehicles[route.vehicleIndex]
+    )
+      throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
+        field: "route.vehicle",
+      });
     for (let index = 0; index < route.visits.length; index++) {
       const visit = route.visits[index];
       const shipment = request.model.shipments[visit.shipmentIndex];
-      if (!shipment?.allowedVehicleIndices?.includes(route.vehicleIndex))
-        throw new AppError("ROUTING_RESPONSE_INVALID", 503, { field: "route.zone" });
+      if (
+        !shipment ||
+        (shipment.allowedVehicleIndices?.length &&
+          !shipment.allowedVehicleIndices.includes(route.vehicleIndex))
+      )
+        throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
+          field: "route.zone",
+        });
       // All alternatives at a physical stop share the same service duration.
       const seconds = Number(shipment.deliveries[0].duration!.slice(0, -1));
       const next = route.visits[index + 1]?.eta ?? route.finishedAt;
-      if (next !== undefined && Date.parse(next) < Date.parse(visit.eta) + seconds * 1000)
-        throw new AppError("ROUTING_RESPONSE_INVALID", 503, { field: "route.serviceDuration" });
+      if (
+        next !== undefined &&
+        Date.parse(next) < Date.parse(visit.eta) + seconds * 1000
+      )
+        throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
+          field: "route.serviceDuration",
+        });
     }
   }
 }

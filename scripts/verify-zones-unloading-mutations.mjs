@@ -65,21 +65,21 @@ const cases = [
     "distance(point, center) > distance(point, centers[best])"
   ],
   [
-    "google-unrestricted",
+    "google-pinned",
     "route-google-direct.ts",
-    "allowedVehicleIndices: [assigned.get(group.id)!]",
-    "allowedVehicleIndices: []"
+    "costsPerVehicle: geographicCosts.get(group.id)!",
+    "allowedVehicleIndices: [0]"
   ],
   [
-    "no-zone-response-guard",
+    "no-vehicle-response-guard",
     "route-google-direct.ts",
-    "!shipment?.allowedVehicleIndices?.includes(route.vehicleIndex)",
+    "!Number.isSafeInteger(route.vehicleIndex) ||\n      !request.model.vehicles[route.vehicleIndex]",
     "false"
   ],
   [
     "lose-google-service",
     "route-google-direct.ts",
-    "duration: `${visitServiceSeconds(group.shipmentIds.map(id => byId.get(id)!))}s`",
+    "duration: `${visitServiceSeconds(group.shipmentIds.map((id) => byId.get(id)!))}s`",
     "duration: \"0s\""
   ],
   [

@@ -38,6 +38,7 @@ function publicRoutes(value: unknown): PublicOptimizedRoute[] {
       departureAt: route.departureAt,
       finishedAt: route.finishedAt,
       trafficMode: route.trafficMode,
+      calculationSource: route.calculationSource,
       metrics: route.metrics,
       stops: route.stops,
     };
@@ -179,6 +180,12 @@ export async function applyOptimizationResult(
         stops,
         transitions: route.transitions,
         trafficMode: route.trafficMode,
+        calculationSource:
+          trace.chosenSource === "Google"
+            ? "google"
+            : trace.chosenSource === "cluster"
+              ? "geographic_recovery"
+              : undefined,
       });
     }
     const skipped = result.skipped.map((item) => ({

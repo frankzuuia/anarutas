@@ -1884,3 +1884,19 @@ valor; huellas normalizadas preservan cálculos anteriores sin servicio. Google
 recibe duración por visita y allowedVehicleIndices por zona geográfica.
 La recuperación conserva esas mismas zonas y mide el recorrido; recálculo
 manual añade descarga sin reordenar. Snapshots iniciados permanecen congelados.
+
+## ZH01..07 — zonas flexibles, ventanas y duración total
+
+`BLOQUE-ZONAS-HORARIOS.md` documenta el bloque autorizado el 2026-10-02.
+Corrige el límite rígido de ZD en armado automático: zonas como preferencias
+finitas y toda la flota del plan elegible, usando duración total, ventanas y
+descarga. Conserva cobertura, prioridades, una llamada Fleet y contratos
+operativos. Los atrasos previstos se muestran desde el snapshot vigente.
+Estado y evidencia en PROGRESS y QA-ZONAS-HORARIOS.
+
+ZH01..07 verificados en QA-ZONAS-HORARIOS-2026-10-02.md: una llamada Google
+real con44/44 pedidos completos; atrasos18→4 y último regreso19:41→14:59.
+Flotas1/4/5/6/12 y extras elegibles sin reglas específicas; 66 contratos puros,
+100% cobertura crítica, 29/29 mutaciones detectadas, 1,015 regresiones y3
+recorridos HTTP/Chrome aprobados. Persistencia/snapshot/permisos comprobados;
+previsión visible y recuperación declarada. Develop, sin deploy ni APK.

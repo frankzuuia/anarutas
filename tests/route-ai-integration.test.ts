@@ -139,7 +139,11 @@ describe("deterministic Google routing with real PostgreSQL", () => {
         deliveryAddress: "Bodega",
         mapUrl: null,
         location: {
-          latitude: 20 + (Number(customer.odoo_partner_id) === 3 ? 0.02 : (Number(customer.odoo_partner_id) - 1) * 0.001),
+          latitude:
+            20 +
+            (Number(customer.odoo_partner_id) === 3
+              ? 0.02
+              : (Number(customer.odoo_partner_id) - 1) * 0.001),
           longitude: -103,
           placeId: `warehouse-${customer.odoo_partner_id}`,
         },
@@ -259,8 +263,13 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       (
         googleRequests[0].model.shipments as {
           allowedVehicleIndices?: number[];
+          costsPerVehicle?: number[];
         }[]
-      ).every((item) => item.allowedVehicleIndices?.length === 1),
+      ).every(
+        (item) =>
+          !item.allowedVehicleIndices?.length &&
+          item.costsPerVehicle?.length === before.vehicles.length,
+      ),
     ).toBe(true);
     expect(googleRequests[0].model).not.toHaveProperty("precedenceRules");
     expect(googleRequests[0].injectedFirstSolutionRoutes).toBeUndefined();
@@ -292,7 +301,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       )
     ).rows[0].details;
     expect(audit).toMatchObject({
-      planner: "google-zones-v2-service-time",
+      planner: "google-zones-v3-time-aware",
       evaluatedCandidates: 1,
       candidateSources: ["Google"],
       chosenSource: "Google",
@@ -300,7 +309,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       fleetRoutingRequests: 1,
       fleetRoutingRequestLimit: 1,
       fleetRoutingShipmentUnits: 3,
-      logisticsPolicy: "google-zones-v2-service-time",
+      logisticsPolicy: "google-zones-v3-time-aware",
       score: {
         priorityConflicts: 1,
         lateStops: 0,
@@ -347,11 +356,14 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       false,
     );
     for (const route of result!.routes) {
-      const vehicleIndex = before.vehicles.findIndex(v => v.id === route.vehicleId);
+      const vehicleIndex = before.vehicles.findIndex(
+        (v) => v.id === route.vehicleId,
+      );
       const expected = googleRequests[0].model.shipments
-        .filter(item => item.allowedVehicleIndices?.includes(vehicleIndex))
-        .map(item => item.label).reverse();
-      expect(route.stops.map(stop => stop.shipmentId)).toEqual(expected);
+        .filter((_, index) => index % before.vehicles.length === vehicleIndex)
+        .map((item) => item.label)
+        .reverse();
+      expect(route.stops.map((stop) => stop.shipmentId)).toEqual(expected);
       expect(route.encodedPolyline).toBe("provider-route-polyline");
       expect(route.segmentPolylines).toHaveLength(expected.length + 1);
     }

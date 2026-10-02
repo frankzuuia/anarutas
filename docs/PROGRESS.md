@@ -883,3 +883,19 @@ recorrido ni esquema; no se genera APK ni se despliega producción.
 - [x] ZD-T04: regresión consolidada 1,004 aprobadas/3 omisiones externas;
   cobertura nueva 100%, mutaciones14/14, E2E2/2, lint/typecheck/build aprobados.
   Evidencia: QA-ZONAS-DESCARGA-2026-10-02.md. Entrega develop, sin deploy.
+
+## ZH — zonas flexibles y horarios, autorizado 2026-10-02
+
+- [x] ZH-T01: preferencias geográficas, duración total y flota dinámica.
+- [x] ZH-T02: aviso de atrasos previstos con snapshot vigente.
+- [x] ZH-T03: comparación Google real, puertas de calidad y develop.
+
+Especificación: BLOQUE-ZONAS-HORARIOS.md. Clientes de prueba sólo en evidencia;
+ninguna regla especial ni cantidad fija de camionetas en producción.
+
+Evidencia: QA-ZONAS-HORARIOS-2026-10-02.md; 44/44 pedidos, Google real en una
+solicitud, reparto 5/10/29→13/15/16 y atrasos18→4, con +4.039km observados.
+1,015 regresiones aprobadas/3 omisiones externas; 100% cobertura crítica,
+29/29 mutaciones detectadas, 3 E2E reales y typecheck/lint/build verdes.
+El aviso distingue previsión y recuperación; no oculta atrasos. Entrega
+develop autorizada, sin guardar el experimento remoto, APK ni despliegue.

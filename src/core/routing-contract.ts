@@ -25,6 +25,7 @@ export type PublicOptimizedRoute = {
   departureAt?: string;
   finishedAt?: string;
   trafficMode?: "forecast" | "static";
+  calculationSource?: "google" | "geographic_recovery";
   metrics: RouteMetrics;
   stops: {
     shipmentId: string;

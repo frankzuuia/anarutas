@@ -2608,6 +2608,27 @@ button.confirm-cancel {
 .route-map-dialog::backdrop {
   background: #000b;
 }
+.route-map-dialog > .route-forecast-notice {
+  position: static;
+  z-index: auto;
+  flex: none;
+  margin: 0 12px 8px;
+  max-width: none;
+  max-height: 30dvh;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  box-shadow: none;
+  pointer-events: auto;
+  border-color: #6b5736;
+  background: #292317;
+  color: #efcd85;
+}
+.route-forecast-notice summary {
+  cursor: pointer;
+}
+.route-forecast-notice li + li {
+  margin-top: 6px;
+}
 .map-toolbar {
   padding: 8px 12px;
   display: flex;
