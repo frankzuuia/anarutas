@@ -340,6 +340,10 @@ test("admin provisioning, native device login, route isolation and revocation ov
       adminId,
     ],
   );
+  await db.pool.query(
+    "UPDATE route_shipments SET snapshot=jsonb_set(snapshot,'{fulfillmentStatus}','\"pending_validation\"') WHERE id=$1",
+    [firstOrder.id],
+  );
   const publicationStartedAt = Date.now();
   const published = await request.post(
     `${origin}/api/plans/${planId}/publications`,
@@ -399,6 +403,19 @@ test("admin provisioning, native device login, route isolation and revocation ov
     headers: authorization,
     data: { expectedRevision: 1 },
   };
+  const pendingStart = await request.post(startUrl, startRequest);
+  expect(pendingStart.status()).toBe(409);
+  expect(await pendingStart.json()).toMatchObject({
+    error: "ROUTE_ORDERS_NOT_VALIDATED",
+    pendingValidationOrders: [{ id: firstOrder.id, orderName: "S801" }],
+  });
+  expect(
+    (await request.post(startUrl, { data: startRequest.data })).status(),
+  ).toBe(401);
+  await db.pool.query(
+    "UPDATE route_shipments SET snapshot=jsonb_set(snapshot,'{fulfillmentStatus}','\"validated\"') WHERE id=$1",
+    [firstOrder.id],
+  );
   const missingConfirmation = await request.post(startUrl, {
     headers: authorization,
   });
@@ -537,6 +554,80 @@ test("admin provisioning, native device login, route isolation and revocation ov
   expect(await wrongRevision.json()).toMatchObject({
     error: "VERSION_CONFLICT",
   });
+  const validationAbort = new AbortController();
+  const validationStream = await fetch(`${origin}/api/mobile/events`, {
+    headers: { ...authorization, Accept: "text/event-stream" },
+    signal: validationAbort.signal,
+  });
+  const validationReader = validationStream.body!.getReader();
+  const waitValidationEvent = async (event: string) => {
+    let content = "";
+    while (!content.includes(`event: ${event}`)) {
+      const data = await Promise.race([
+        validationReader.read(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("VALIDATION_EVENT_TIMEOUT")), 5000),
+        ),
+      ]);
+      content += new TextDecoder().decode(data.value);
+    }
+  };
+  try {
+    await waitValidationEvent("reset");
+    await db.pool.query(
+      "UPDATE route_shipments SET snapshot=jsonb_set(snapshot,'{fulfillmentStatus}','\"pending_validation\"') WHERE id=$1",
+      [firstOrder.id],
+    );
+    await waitValidationEvent("change");
+    const blockedWithPhotos = await request.post(startUrl, startRequest);
+    expect(blockedWithPhotos.status()).toBe(409);
+    expect(await blockedWithPhotos.json()).toMatchObject({
+      error: "ROUTE_ORDERS_NOT_VALIDATED",
+    });
+    expect(
+      (
+        await request
+          .get(`${origin}/api/mobile/plans/${planId}`, {
+            headers: authorization,
+          })
+          .then((response) => response.json())
+      ).publication,
+    ).toMatchObject({
+      photoCount: 5,
+      startedAt: null,
+      pendingValidationOrders: [{ id: firstOrder.id, orderName: "S801" }],
+    });
+    const validationStartedAt = Date.now();
+    await db.pool.query(
+      "UPDATE route_shipments SET snapshot=jsonb_set(snapshot,'{fulfillmentStatus}','\"validated\"') WHERE id=$1",
+      [firstOrder.id],
+    );
+    await waitValidationEvent("change");
+    expect(
+      (
+        await request
+          .get(`${origin}/api/mobile/plans/${planId}`, {
+            headers: authorization,
+          })
+          .then((response) => response.json())
+      ).publication.pendingValidationOrders,
+    ).toEqual([]);
+    console.info(
+      `Validation visible over existing SSE/HTTP in ${Date.now() - validationStartedAt} ms`,
+    );
+  } finally {
+    validationAbort.abort();
+  }
+  const validationReads: number[] = [];
+  for (let sample = 0; sample < 10; sample++) {
+    const began = performance.now();
+    const current = await request.get(`${origin}/api/mobile/plans/${planId}`, { headers: authorization });
+    expect(current.status()).toBe(200);
+    expect((await current.json()).publication.pendingValidationOrders).toEqual([]);
+    validationReads.push(performance.now() - began);
+  }
+  validationReads.sort((a, b) => a - b);
+  console.info(`Route validation reads: n=10 p95=${validationReads[9].toFixed(1)}ms max=${validationReads[9].toFixed(1)}ms`);
   const firstStart = await request.post(startUrl, startRequest);
   const receivedStartAt = Date.now();
   expect(firstStart.status()).toBe(200);

@@ -66,6 +66,10 @@ class DriverUiPolicyTest {
             "Tú o la camioneta aún tienen otro trabajo abierto. Liquida y finaliza esa ruta antes de iniciar otra.",
             friendlyError(DriverApiException(409, "DRIVER_ROUTE_IN_PROGRESS")),
         )
+        assertEquals(
+            "Hay pedidos de esta camioneta pendientes de validar en Odoo. Espera la actualización antes de iniciar.",
+            friendlyError(DriverApiException(409, "ROUTE_ORDERS_NOT_VALIDATED")),
+        )
     }
 
     @Test

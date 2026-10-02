@@ -1852,3 +1852,14 @@ CN01..10 verificados conforme a QA-CONTINUACION-REINTENTOS-0.8.20.md:161JVM,
 100% líneas/ramas de políticas,34/34 mutaciones,20 PG y2 HTTP/E2E reales. App e
 instrumentación compiladas; firma0.8.20 compatible. QA física bajo excepción
 vigente. Entrega develop autorizada; ningún deploy ni cambio financiero.
+
+BL191: inicio exclusivamente con pedidos validados de la camioneta, aprobado
+el2026-10-02. Contrato, autopsia, locks y matriz IV01..08 en
+INICIO-VALIDADO-CAMIONETA-2026-10-02.md. Preserva publicación/armado de pendientes
+y cadencia Odoo; añade guarda de salida, proyección y aviso Android. IV-T01..03.
+
+IV01..08 verificados en QA-INICIO-VALIDADO-0.8.21.md:11 servidor/PG,162JVM,
+10/10 mutantes servidor y6/6 Android,1 recorrido HTTP/Chrome real.100% líneas
+del selector/lectura y arranque; funciones Android afectadas100% líneas/ramas.
+Typecheck/lint/build y APK0.8.21/code43 compatibles; QA física bajo excepción
+vigente. Entrega autorizada develop, despliegue del propietario.

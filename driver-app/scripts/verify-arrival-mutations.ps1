@@ -1,4 +1,4 @@
-param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly, [switch]$ProductCaptureOnly, [switch]$ProductPresentationOnly, [switch]$ProductThumbnailOnly, [switch]$WarehouseOnly, [switch]$TrackingDestinationOnly)
+param([string]$ServerUrl = $env:ORG_GRADLE_PROJECT_ANA_RUTAS_SERVER_URL, [switch]$RecoveryOnly, [switch]$IncidentFormOnly, [switch]$TrackingOnly, [switch]$ContinuationOnly, [switch]$EtaOnly, [switch]$ProductOnly, [switch]$ProductCaptureOnly, [switch]$ProductPresentationOnly, [switch]$ProductThumbnailOnly, [switch]$WarehouseOnly, [switch]$TrackingDestinationOnly, [switch]$RouteValidationOnly)
 $ErrorActionPreference = 'Stop'
 # Mechanical mutations occur only in an isolated copy. No ADB, HTTP stubs or credential output.
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -14,6 +14,7 @@ foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
 $sourceFolder = Join-Path $workRoot 'app/src/main/java/com/five/anarutas/driver'
 $originals = @{}
 if ($ContinuationOnly) { $originals['CollectionContinuationPolicy.kt'] = [IO.File]::ReadAllText((Join-Path $sourceFolder 'CollectionContinuationPolicy.kt')) }
+if ($RouteValidationOnly) { $originals['DriverDashboardPolicy.kt'] = [IO.File]::ReadAllText((Join-Path $sourceFolder 'DriverDashboardPolicy.kt')) }
 foreach ($file in @('DriverArrivalPolicy.kt', 'DriverExecution.kt', 'GuidanceResultPolicy.kt', 'NavigationNoticePolicy.kt', 'GpsRecoveryPolicy.kt', 'DriverServicePolicy.kt', 'RouteMarkerStyle.kt', 'IncidentReceiptPolicy.kt', 'IncidentFormPolicy.kt', 'LiveTrackingPolicy.kt', 'StopContinuationPolicy.kt', 'NavigationEtaPolicy.kt', 'ProductIncidentPolicy.kt', 'IncidentCaptureStore.kt', 'ProductPhotoUpload.kt', 'ProductThumbnailStore.kt', 'WarehouseReturnPolicy.kt', 'TrackingDestinationPolicy.kt')) {
     $originals[$file] = [IO.File]::ReadAllText((Join-Path $sourceFolder $file))
 }
@@ -264,6 +265,16 @@ if ($TrackingDestinationOnly) {
         @{ name = 'report_foreign_sdk_destination'; from = 'eta.targetStopId != target.etaId'; to = 'false' },
         @{ name = 'report_stopped_sdk_guidance'; from = 'eta.state != "calculating" && !guiding'; to = 'false' }
     ) | ForEach-Object { $_.file = 'TrackingDestinationPolicy.kt'; $_.test = 'TrackingDestinationPolicyTest'; $_ }
+}
+if ($RouteValidationOnly) {
+    $cases = @(
+        @{ name = 'validation_allow_pending'; from = 'route.pendingValidationOrders?.isEmpty() == true'; to = 'true' },
+        @{ name = 'validation_invert_empty'; from = 'route.pendingValidationOrders?.isEmpty() == true'; to = 'route.pendingValidationOrders?.isNotEmpty() == true' },
+        @{ name = 'validation_allow_unknown'; from = 'route.pendingValidationOrders?.isEmpty() == true'; to = 'route.pendingValidationOrders?.isEmpty() != false' },
+        @{ name = 'validation_hide_missing_contract'; from = '"Actualiza la ruta para consultar la validación de sus pedidos."'; to = 'null' },
+        @{ name = 'validation_hide_pending_names'; from = 'route.pendingValidationOrders.isNotEmpty() ->'; to = 'false ->' },
+        @{ name = 'validation_wrong_folio'; from = '{ it.orderName }'; to = '{ it.id }' }
+    ) | ForEach-Object { $_.file = 'DriverDashboardPolicy.kt'; $_.test = 'DriverWorkspacePolicyTest'; $_ }
 }
 $arguments = @('testDebugUnitTest', '--console=plain')
 if ($ServerUrl) { $arguments += ('-PANA_RUTAS_SERVER_URL=' + $ServerUrl) }

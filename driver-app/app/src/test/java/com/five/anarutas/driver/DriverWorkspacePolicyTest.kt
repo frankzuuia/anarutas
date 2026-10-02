@@ -6,7 +6,7 @@ import org.junit.Test
 class DriverWorkspacePolicyTest {
     private val day = "2026-09-23"
     private val order = DeliveryOrder("o1", "S00021", "Cliente Norte", "Av. Central 100", 1, null, null, "", emptyList())
-    private val route = AssignedPlan("today", label = "Ruta de hoy", date = day, vehicle = "Unidad", plate = "ABC123", routeStatus = "current", overview = null, orders = listOf(order), photoCount = 5)
+    private val route = AssignedPlan("today", label = "Ruta de hoy", date = day, vehicle = "Unidad", plate = "ABC123", routeStatus = "current", overview = null, orders = listOf(order), photoCount = 5, pendingValidationOrders = emptyList())
     private val dashboard = DriverDashboard(DriverProfile("d1", "Chofer", "3312345678"), "America/Mexico_City", day, emptyList(), route)
 
     @Test fun `departure needs five photos of todays published route and actual orders`() {
@@ -21,6 +21,19 @@ class DriverWorkspacePolicyTest {
         assertFalse(canStartRoute(route.copy(date = "2026-09-22"), day))
         assertFalse(canStartRoute(route, null))
         assertFalse(canStartRoute(null, day))
+    }
+
+    @Test fun `pending validation blocks departure with folios and unknown contract cannot authorize`() {
+        val pending = listOf(RouteValidationOrder("o1", "S00021"), RouteValidationOrder("o2", "S00022"))
+        val blocked = route.copy(pendingValidationOrders = pending)
+        assertFalse(canStartRoute(blocked, day))
+        assertEquals("No puedes iniciar: falta validar en Odoo S00021, S00022.", routeValidationMessage(blocked))
+        assertFalse(canStartRoute(blocked.copy(pendingValidationOrders = pending.take(1)), day))
+        assertTrue(canStartRoute(blocked.copy(pendingValidationOrders = emptyList()), day))
+        assertNull(routeValidationMessage(route))
+        assertFalse(canStartRoute(route.copy(pendingValidationOrders = null), day))
+        assertEquals("Actualiza la ruta para consultar la validación de sus pedidos.", routeValidationMessage(route.copy(pendingValidationOrders = null)))
+        assertTrue(canPrepareRoute(blocked, day))
     }
 
     @Test fun `historical and future routes never offer camera or departure`() {

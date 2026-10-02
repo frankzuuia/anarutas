@@ -846,3 +846,17 @@ ramas en ambas políticas afectadas;34/34 mutaciones;20 contratos PG y2 E2E HTTP
 reales aprobados; lint0 errores/35 avisos previos. App e instrumentación compiladas,
 APK0.8.20/code42 con firma compatible. Ningún cambio a servidor/esquema/permisos
 ni comandos operativos/financieros. QA física del propietario, excepción vigente.
+
+## BL191 — inicio validado por camioneta, aprobado 2026-10-02
+
+- [x] IV-T01: selección de pendientes y guarda transaccional; IV01..06.
+- [x] IV-T02: proyección/aviso móvil y actualización existente; IV07..08.
+- [x] IV-T03: unidad/PG/HTTP, cobertura/mutación, QA y APK/develop autorizados.
+
+Evidencia: QA-INICIO-VALIDADO-0.8.21.md;11 servidor/PG y162JVM verdes,
+selector/lectura y líneas de inicio100%, guardas Android100% líneas/ramas,
+10/10 mutantes servidor y6/6 Android;1 HTTP/Chrome real con validación/SSE,
+rechazo, inicio, seguridad y recuperación. Typecheck/lint/build verdes;
+APK0.8.21/code43 firma compatible. Fotos, publicación/armado de pendientes,
+cadencia Odoo y comandos posteriores intactos. QA física por excepción vigente;
+entrega develop sin despliegue.

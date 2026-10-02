@@ -743,3 +743,10 @@ uno automáticamente. Aviso vinculado al recibo real, deduplicado y retenido ant
 fallo de lectura en la ejecución actual. Sin nuevos permisos, escrituras,
 auditorías ni cambios de entrega/cobro/liquidación/bodega. Validación CN01..10 y
 CN-T01..03 en CONTINUACION-REINTENTOS-2026-10-02.md. Bloque aprobado por el usuario.
+
+BL-191: Inicio real exige validación de todos los pedidos de la camioneta
+autorizada; pendientes de otras camionetas/sin asignar no bloquean. Armado y
+publicación de pendientes, worker Odoo y comandos operativos permanecen intactos.
+Guarda transaccional contra datos actuales, proyección móvil y aviso automático;
+inicio idempotente conserva recibo anterior. IV01..08 en
+INICIO-VALIDADO-CAMIONETA-2026-10-02.md. Bloque aprobado por el propietario.

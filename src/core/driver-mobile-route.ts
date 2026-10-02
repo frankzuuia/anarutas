@@ -6,6 +6,7 @@ import { todayInTimezone } from "./local-date";
 import { getRoutingSettings } from "./routing-settings";
 import { readPublicationFinancials } from "./driver-financial-store";
 import type { FinancialPublishedLine } from "./driver-financial-contract";
+import { readRouteStartPendingOrders } from "./route-start-validation";
 import {
   driverTodayPlan,
   executionCompletedAtSql,
@@ -190,6 +191,11 @@ export async function readDriverPlan(
         completedAt: assigned.completed_at?.toISOString() ?? null,
         workCompletedAt: assigned.work_completed_at?.toISOString() ?? null,
         photoCount: Number(assigned.photo_count),
+        pendingValidationOrders: await readRouteStartPendingOrders(
+          sql,
+          id,
+          assigned.vehicle_id,
+        ),
       },
     };
   });

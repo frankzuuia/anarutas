@@ -104,6 +104,7 @@ internal fun friendlyError(error: Throwable): String = when (error) {
         "PAYMENT_CAPTURE_VERSION_INVALID", "PAYMENT_ATTENTION_INVALID" -> "Actualiza la app y vuelve a abrir el pedido."
         "ROUTE_PAYMENTS_MISSING" -> "Registra los cobros pendientes antes de volver a bodega."
         "ROUTE_PUBLICATION_CHANGED" -> "Administración actualizó el pedido. Reabre la publicación vigente."
+        "ROUTE_ORDERS_NOT_VALIDATED" -> "Hay pedidos de esta camioneta pendientes de validar en Odoo. Espera la actualización antes de iniciar."
         "PAYMENT_AMOUNT_INVALID" -> "Revisa los importes y los decimales permitidos por la moneda."
         "PAYMENT_CHANGE_INVALID" -> "El cambio debe corresponder al total del pedido y sólo se admite en efectivo."
         "CREDIT_RECEIVED_MUST_BE_ZERO" -> "Un pedido a crédito no registra dinero recibido."

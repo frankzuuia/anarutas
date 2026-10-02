@@ -8,6 +8,7 @@ import { createDriverExecution } from "./driver-execution-seed";
 import { readOrderBoard } from "./orders";
 import { routePublicationSourceChanged } from "./route-publication-content";
 import { assertRouteResourcesFree } from "./route-start-resources";
+import { routeStartPendingOrders } from "./route-start-validation";
 
 export async function startDriverRoute(
   pool: Pool,
@@ -63,15 +64,16 @@ export async function startDriverRoute(
       throw new AppError("ROUTE_DATE_MISMATCH", 409);
     await assertRouteResourcesFree(sql, driverId, route.vehicle_id);
     const board = await readOrderBoard(sql, id);
-    if (
-      routePublicationSourceChanged(
-        route.snapshot,
-        board.shipments.filter(
-          (shipment) => shipment.vehicle_id === route.vehicle_id,
-        ),
-      )
-    )
+    const ownOrders = board.shipments.filter(
+      (shipment) => shipment.vehicle_id === route.vehicle_id,
+    );
+    if (routePublicationSourceChanged(route.snapshot, ownOrders))
       throw new AppError("ROUTE_PUBLICATION_CHANGED", 409);
+    const pendingValidationOrders = routeStartPendingOrders(ownOrders);
+    if (pendingValidationOrders.length)
+      throw new AppError("ROUTE_ORDERS_NOT_VALIDATED", 409, {
+        pendingValidationOrders,
+      });
     const count = await sql.query(
       `SELECT count(*)::integer AS n FROM route_unit_photos
        WHERE plan_id=$1 AND vehicle_id=$2 AND driver_id=$3

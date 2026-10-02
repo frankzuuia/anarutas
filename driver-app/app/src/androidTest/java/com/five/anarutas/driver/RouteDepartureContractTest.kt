@@ -44,4 +44,13 @@ class RouteDepartureContractTest {
         assertEquals(RouteDeparture("Punto de salida", 20.65, -103.42, 3), parseAssignedPlan(json).departure)
         assertEquals(4, parseAssignedPlan(json).publicationRevision)
     }
+
+    @Test fun pendingValidationContractPreservesNamesAndDoesNotInventAnEmptyList() {
+        assertNull(parseAssignedPlan(payload()).pendingValidationOrders)
+        val publication = payload().getJSONObject("publication")
+        publication.put("pendingValidationOrders", org.json.JSONArray("""[{"id":"order","orderName":"S00099"}]"""))
+        assertEquals(listOf(RouteValidationOrder("order", "S00099")), parseAssignedPlan(payload().put("publication", publication)).pendingValidationOrders)
+        publication.put("pendingValidationOrders", org.json.JSONArray())
+        assertEquals(emptyList<RouteValidationOrder>(), parseAssignedPlan(payload().put("publication", publication)).pendingValidationOrders)
+    }
 }

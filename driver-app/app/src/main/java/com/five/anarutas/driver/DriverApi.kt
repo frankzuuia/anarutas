@@ -53,6 +53,8 @@ data class RouteOverview(
 )
 
 data class RouteDeparture(val address: String, val latitude: Double, val longitude: Double, val version: Int)
+
+data class RouteValidationOrder(val id: String, val orderName: String)
 data class AssignedPlan(
     val id: String,
     val vehicleId: String = "",
@@ -71,6 +73,7 @@ data class AssignedPlan(
     val completedAt: String? = null,
     val executionRevision: Int? = null,
     val workCompletedAt: String? = null,
+    val pendingValidationOrders: List<RouteValidationOrder>? = null,
 )
 data class DriverDashboard(
     val driver: DriverProfile,
@@ -164,6 +167,12 @@ internal fun parseAssignedPlan(response: JSONObject): AssignedPlan {
         publicationRevision = response.optJSONObject("publication")?.optInt("revision") ?: 0,
         completedAt = response.optJSONObject("publication")?.optString("completedAt")?.takeUnless { it.isBlank() || it == "null" },
         workCompletedAt = response.optJSONObject("publication")?.optString("workCompletedAt")?.takeUnless { it.isBlank() || it == "null" },
+        pendingValidationOrders = response.optJSONObject("publication")?.optJSONArray("pendingValidationOrders")?.let { pending ->
+            (0 until pending.length()).map { index ->
+                val order = pending.getJSONObject(index)
+                RouteValidationOrder(order.getString("id"), order.getString("orderName"))
+            }
+        },
         departure = response.optJSONObject("departure")?.let { origin ->
             RouteDeparture(origin.optString("address"), origin.optDouble("latitude"),
                 origin.optDouble("longitude"), origin.optInt("version"))

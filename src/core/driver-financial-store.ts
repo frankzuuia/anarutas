@@ -168,6 +168,7 @@ export async function publicationFinancialFingerprint(
   const rows = (
     await sql.query(
       `SELECT p.plan_id,p.vehicle_id,s.id,t.revision,t.last_error,t.last_success_at,
+      s.snapshot->>'fulfillmentStatus' AS fulfillment_status,
       (SELECT jsonb_agg(jsonb_build_array(i.id,i.version) ORDER BY i.id) FROM route_product_incidents i JOIN route_driver_executions e ON e.id=i.execution_id
         WHERE i.shipment_id=s.id AND e.plan_id=p.plan_id AND e.vehicle_id=p.vehicle_id AND e.publication_revision=p.revision) AS incident_versions
     FROM route_plan_publications p CROSS JOIN LATERAL jsonb_array_elements(p.snapshot->'orders') o
@@ -187,6 +188,7 @@ export async function publicationFinancialFingerprint(
     row.id,
     row.revision,
     row.last_error,
+    row.fulfillment_status,
     row.incident_versions,
     row.last_success_at,
     row.last_success_at !== null &&

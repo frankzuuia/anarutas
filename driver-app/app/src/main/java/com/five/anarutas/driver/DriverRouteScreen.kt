@@ -89,6 +89,7 @@ internal fun InspectionCard(route: AssignedPlan, busy: Boolean, onPhotos: () -> 
 private fun RouteDeparture(state: DriverUiState, route: AssignedPlan, model: DriverViewModel, mapAvailable: Boolean, onMap: () -> Unit) {
     var confirmStart by rememberSaveable(route.id, route.publicationRevision) { mutableStateOf(false) }
     val canStart = canStartRoute(route, state.dashboard?.serviceDate)
+    val validationMessage = routeValidationMessage(route)
     val isToday = route.date == state.dashboard?.serviceDate
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         when {
@@ -101,6 +102,7 @@ private fun RouteDeparture(state: DriverUiState, route: AssignedPlan, model: Dri
             else -> {
                 AppAction("Iniciar ruta", DriverIcon.ARROW, enabled = canStart && !state.busy) { confirmStart = true }
                 when {
+                    validationMessage != null -> Text(validationMessage, color = DriverColors.amber, style = MaterialTheme.typography.bodySmall)
                     route.photoCount < 5 -> Text("Faltan ${5 - route.photoCount} fotos de hoy para preparar tu salida.", color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
                     route.routeStatus != "current" -> Text(routeStatusMessage(route.routeStatus).orEmpty(), color = DriverColors.amber, style = MaterialTheme.typography.bodySmall)
                     else -> Text("Revisa tus pedidos antes de salir.", color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)

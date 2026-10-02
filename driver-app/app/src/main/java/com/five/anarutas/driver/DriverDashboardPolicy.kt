@@ -81,7 +81,14 @@ internal fun canPrepareRoute(route: AssignedPlan?, serviceDate: String?): Boolea
 
 internal fun canStartRoute(route: AssignedPlan?, serviceDate: String?): Boolean =
     canPrepareRoute(route, serviceDate) && route!!.photoCount >= 5 &&
-        route.orders.isNotEmpty() && route.routeStatus == "current"
+        route.orders.isNotEmpty() && route.routeStatus == "current" &&
+        route.pendingValidationOrders?.isEmpty() == true
+
+internal fun routeValidationMessage(route: AssignedPlan): String? = when {
+    route.pendingValidationOrders == null -> "Actualiza la ruta para consultar la validación de sus pedidos."
+    route.pendingValidationOrders.isNotEmpty() -> "No puedes iniciar: falta validar en Odoo ${route.pendingValidationOrders.joinToString(", ") { it.orderName }}."
+    else -> null
+}
 
 internal fun filterDriverOrders(orders: List<DeliveryOrder>, query: String): List<DeliveryOrder> {
     val term = query.trim()
