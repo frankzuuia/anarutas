@@ -816,3 +816,18 @@ PROPUESTA-LIQUIDACION-RUTA-2026-10-01.md, CP12 conservado.
   lectura100% líneas, global financiera99.70% líneas/98.46% ramas. Typecheck,
   lint/build/audit verdes; QA-FILTROS-LIQUIDACION-2026-10-01.md. Entrega autorizada
   a develop, sin deploy ni APK; flujo financiero intacto.
+
+## BL189 — menú lateral móvil, autorizado 2026-10-01
+
+- [x] NM-T01 (NM01..10): diálogo lateral nativo, navegación compartida, estado
+  móvil independiente cerrado al entrar, hit-testing y CSS acotado.
+- [x] NM-T02 (NM01..12): unidad/Gherkin/cobertura/mutación, navegador real con
+  ambos roles, foco, scroll, resize, estado y regresión de pantallas embebidas.
+- [x] NM-T03: métricas/QA reproducible, typecheck/lint/build y entrega develop
+  conforme a autorización; sin despliegue ni APK.
+
+Evidencia: QA-MENU-LATERAL-MOVIL-2026-10-01.md;26/26 unitarias,100% cobertura
+de dos contratos nuevos,33/33 mutaciones,3/3 E2E menú/táctil y7/7 regresión
+real sobre el mismo build. Foco completo, texto20px, roles403 y SSE verificados.
+Typecheck/build/lint aplicable/audit verdes;0 fallos pendientes. Entrega develop,
+sin despliegue ni cambios de liquidación.

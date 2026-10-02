@@ -541,6 +541,31 @@ small,
 .sidebar .brand {
   padding: 0 10px;
 }
+.app .mobile-menu-toggle { display: none; }
+.mobile-navigation-dialog {
+  position: fixed;
+  inset: 0 auto 0 0;
+  margin: 0;
+  width: min(300px, calc(100vw - 40px));
+  max-width: none;
+  height: 100dvh;
+  max-height: 100dvh;
+  padding: max(16px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0 16px 16px 0;
+  background: #0c130f;
+  color: var(--ink);
+  box-shadow: 12px 0 40px #0008;
+  overflow: hidden;
+}
+.mobile-navigation-dialog[open] { display: flex; flex-direction: column; gap: 16px; }
+.mobile-navigation-dialog::backdrop { background: #0009; }
+.mobile-navigation-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0; }
+.mobile-navigation-header > button { flex-shrink: 0; width: 44px; min-height: 44px; }
+.mobile-navigation-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.app .mobile-navigation-dialog .nav { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.app .mobile-navigation-dialog .nav button { min-height: 44px; width: 100%; }
 .nav {
   display: grid;
   gap: 4px;
@@ -1286,24 +1311,10 @@ tr:last-child td {
     display: block;
   }
   .sidebar {
-    padding: 18px;
-    gap: 15px;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-  .nav {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .app .nav button {
-    width: auto;
-    padding: 8px 10px;
-    font-size: 13px;
-  }
-  .nav .eyebrow {
     display: none;
   }
+  .app .desktop-menu-toggle { display: none; }
+  .app .mobile-menu-toggle { display: inline-flex; }
   .main {
     padding: 16px 12px;
   }

@@ -23,6 +23,10 @@ import type { User } from "@/core/auth";
 import type { DeletedPlan, Plan } from "@/core/plans";
 import { api, navigateAfterAuth } from "./api";
 import { SettlementPanel } from "./settlement-panel";
+import {
+  MobileNavigationDialog,
+  desktopNavigationQuery,
+} from "./mobile-navigation-dialog";
 import { DraftName } from "./draft-name";
 import { FleetPanel } from "./fleet-panel";
 import { OrdersBoard } from "./orders-board";
@@ -138,6 +142,16 @@ export function Dashboard({
   );
   const [controlRevision, setControlRevision] = useState(0);
   const [menuClosed, setMenuClosed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const desktopMenuButton = useRef<HTMLButtonElement>(null);
+  const mobileMenuButton = useRef<HTMLButtonElement>(null);
+  const closeMobileMenu = useCallback(() => setMobileMenuOpen(false), []);
+  const restoreMenuFocus = useCallback(() => {
+    const button = window.matchMedia(desktopNavigationQuery).matches
+      ? desktopMenuButton.current
+      : mobileMenuButton.current;
+    button?.focus();
+  }, []);
   const [createOpen, setCreateOpen] = useState(false);
   const creationAttempt = useRef<PlanCreationAttempt | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -349,41 +363,58 @@ export function Dashboard({
     });
   }
   const title = sections.find((item) => item.id === section)!.label;
+  const brand = (
+    <div className="brand">
+      <Route size={30} />
+      <div>
+        ANA RUTAS<small>BY FIVE</small>
+      </div>
+    </div>
+  );
+  const navigation = (
+    <nav className="nav" aria-label="Navegación principal">
+      <span className="eyebrow">Operación</span>
+      {sections.map(({ id, label, icon: Icon }) => (
+        <button
+          key={id}
+          disabled={
+            user.role === "settlement"
+              ? id !== "settlements"
+              : id === "settlements"
+          }
+          className={id === section ? "active" : ""}
+          aria-current={id === section ? "page" : undefined}
+          onClick={() => {
+            closeMobileMenu();
+            setNotice("");
+            setSection(id);
+          }}
+        >
+          <Icon size={18} />
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
   return (
     <div
       className={`app ${embeddedSection ? "embedded-dashboard" : ""} ${menuClosed ? "menu-closed" : ""} ${section === "plans" ? "planner-app" : ""} ${section === "customers" ? "customer-app" : ""} ${section === "control_center" ? "control-center-app" : ""} ${section === "live_routes" ? "live-routes-app" : ""}`}
     >
       {!embeddedSection && (
-        <aside className="sidebar" id="app-navigation" hidden={menuClosed}>
-          <div className="brand">
-            <Route size={30} />
-            <div>
-              ANA RUTAS<small>BY FIVE</small>
-            </div>
-          </div>
-          <nav className="nav" aria-label="Navegación principal">
-            <span className="eyebrow">Operación</span>
-            {sections.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                disabled={
-                  user.role === "settlement"
-                    ? id !== "settlements"
-                    : id === "settlements"
-                }
-                className={id === section ? "active" : ""}
-                aria-current={id === section ? "page" : undefined}
-                onClick={() => {
-                  setNotice("");
-                  setSection(id);
-                }}
-              >
-                <Icon size={18} />
-                {label}
-              </button>
-            ))}
-          </nav>
-        </aside>
+        <>
+          <aside className="sidebar" id="app-navigation" hidden={menuClosed}>
+            {brand}
+            {navigation}
+          </aside>
+          <MobileNavigationDialog
+            open={mobileMenuOpen}
+            brand={brand}
+            onClose={closeMobileMenu}
+            onRestoreFocus={restoreMenuFocus}
+          >
+            {navigation}
+          </MobileNavigationDialog>
+        </>
       )}
       <div className="content">
         {!embeddedSection && (
@@ -397,13 +428,25 @@ export function Dashboard({
                 {liveStatus}
               </span>
               <button
-                className="quiet"
+                className="quiet desktop-menu-toggle"
+                ref={desktopMenuButton}
                 aria-label={menuClosed ? "Abrir menú" : "Cerrar menú"}
                 aria-expanded={!menuClosed}
                 aria-controls="app-navigation"
                 onClick={() => setMenuClosed((value) => !value)}
               >
                 <Menu size={19} />
+              </button>
+              <button
+                className="quiet mobile-menu-toggle"
+                ref={mobileMenuButton}
+                aria-label="Abrir menú"
+                aria-expanded={mobileMenuOpen}
+                aria-controls="mobile-app-navigation"
+                aria-haspopup="dialog"
+                onClick={() => setMobileMenuOpen(true)}
+              >
+                <Menu size={20} aria-hidden="true" />
               </button>
               <span className="small">
                 {displayName} <span aria-hidden="true"> / </span> Administración

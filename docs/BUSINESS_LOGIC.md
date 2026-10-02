@@ -729,3 +729,9 @@ BL-187: Otra salida del día después de finalizar trabajo -> el dashboard conse
 la salida iniciada pendiente de cierre; lock de flota impide dos inicios del
 mismo chofer o unidad, incluso al reasignar flota. Cierre recibido libera otra
 publicación con fotos y ejecución propias, sin mezclar historial; MB13..22.
+
+BL-189: Menú de administración móvil fuera del flujo superior -> cajón lateral
+cerrado al entrar, lista vertical y cierre accesible, reutilizando destinos y
+restricciones existentes de cuenta. Sólo estado local de presentación; ningún
+efecto financiero/auditoría nuevo. NM01..12 y NM-T01..03 en
+MENU-LATERAL-MOVIL-2026-10-01.md; escritorio y pantallas embebidas conservados.

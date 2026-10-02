@@ -261,6 +261,8 @@ test("independent drivers, arbitrary panel screens, persistence, expand and remo
     await selector.getByRole("button", { name: "Agregar pantalla", exact: true }).click();
     await expect(cards).toHaveCount(4);
     await expect(cards.nth(3).locator(".embedded-dashboard")).toBeVisible();
+    await expect(cards.nth(3).locator(".mobile-navigation-dialog")).toHaveCount(0);
+    await expect(cards.nth(3).locator(".mobile-menu-toggle")).toHaveCount(0);
     await expect(cards.nth(3).locator("h1")).toBeVisible();
     await cards.nth(3).getByRole("button", { name: "Quitar pantalla 4" }).click();
     await expect(cards).toHaveCount(3);
@@ -278,11 +280,16 @@ test("independent drivers, arbitrary panel screens, persistence, expand and remo
   await expect(page.locator(".control-command").getByRole("button", { name: "Agregar pantalla" })).toBeVisible();
   await expect(page.locator(".control-command").getByRole("button", { name: "Actualizar" })).toBeVisible();
   await page.setViewportSize({ width: 720, height: 1000 });
-  await page.getByRole("button", { name: "Incidencias en vivo", exact: true }).click();
+  await page.getByRole("button", { name: "Abrir menú", exact: true }).click();
+  const navigation = page.getByRole("dialog", { name: "Menú de administración", exact: true });
+  await navigation.getByRole("button", { name: "Incidencias en vivo", exact: true }).click();
+  await expect(navigation).toBeHidden();
   await expect(page.locator('input[type="date"]')).toHaveCount(0);
   await expect(page.getByLabel("Chofer", { exact: true })).toBeVisible();
   await expect(page.locator(".live-incident-card")).toHaveCount(2);
-  await page.getByRole("button", { name: "Ruta en vivo", exact: true }).click();
+  await page.getByRole("button", { name: "Abrir menú", exact: true }).click();
+  await navigation.getByRole("button", { name: "Ruta en vivo", exact: true }).click();
+  await expect(navigation).toBeHidden();
   await page.getByRole("button", { name: "Ver avance" }).click();
   await expect(page.getByRole("heading", { name: "Chofer 0", exact: true })).toBeVisible();
 });

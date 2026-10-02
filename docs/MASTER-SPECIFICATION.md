@@ -1830,3 +1830,14 @@ privados; mismos predicados financieros, comandos y permisos.
 FL01..07 verificados en QA-FILTROS-LIQUIDACION-2026-10-01.md:88/88 financieras,
 2/2 E2E,5/5 mutantes PG y todas las líneas nuevas cubiertas. Entrega develop
 autorizada, sin despliegue ni cambios a APK o al flujo de liquidación.
+
+BL189: menú lateral móvil confirmado por el propietario. Autopsia, referencias,
+contrato, escenarios NM01..12 y tareas NM-T01..03 en
+MENU-LATERAL-MOVIL-2026-10-01.md. Presentación compartida con el sidebar existente,
+sin modificaciones de permisos, comandos, APIs ni esquema.
+
+NM01..12 verificados en QA-MENU-LATERAL-MOVIL-2026-10-01.md:26/26 unitarias,
+100% cobertura de contratos nuevos,33/33 mutaciones y10 recorridos únicos reales
+verificados (3 menú/táctil,7 regresión). Límites de teclado y cierre táctil
+corregidos; foco, scroll, roles, SSE y paneles embebidos preservados. Entrega
+autorizada a develop, sin despliegue ni cambios financieros/Android.
