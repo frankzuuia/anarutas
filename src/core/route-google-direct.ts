@@ -1,5 +1,6 @@
 import { AppError } from "./errors";
 import { visitServiceSeconds } from "./route-service-time";
+import { visitWindowAlternatives } from "./route-visit-windows";
 import { geographicZones, zoneVehicleCosts } from "./route-zones";
 import type { OrderBoard, Shipment } from "./orders-contract";
 import { assertDeliveryGroups } from "./route-delivery-groups";
@@ -17,7 +18,7 @@ import {
 } from "./route-optimization-google";
 import type { RoutingSettings } from "./routing-contract";
 
-export const directFleetPolicy = "google-zones-v3-time-aware";
+export const directFleetPolicy = "google-zones-v4-deadline-options";
 
 function validCoordinate(
   value: number | null,
@@ -118,71 +119,6 @@ export function buildDirectFleetRequest(
     (request.model.globalDurationCostPerHour + 1) *
     (orders + groups.length + 1);
   const tag = (rank: number) => `priority:${priorityOrder[rank]}`;
-  request.timeout = `${optimizationTimeoutSeconds(groups.length)}s`;
-  request.model.shipments = groups.map((group) => ({
-    label: group.id,
-    costsPerVehicle: geographicCosts.get(group.id)!,
-    loadDemands: {
-      orders: { amount: String(group.shipmentIds.length) },
-      destinations: { amount: "1" },
-    },
-    deliveries: (group.windows.length ? group.windows : [null]).map(
-      (window) => ({
-        label: group.id,
-        duration: `${visitServiceSeconds(group.shipmentIds.map((id) => byId.get(id)!))}s`,
-        tags: [tag(group.rank)],
-        arrivalLocation: {
-          latitude: group.latitude,
-          longitude: group.longitude,
-        },
-        ...(window
-          ? {
-              timeWindows: [
-                {
-                  startTime: new Date(
-                    Math.max(
-                      start,
-                      Date.parse(
-                        localMinuteInstant(
-                          board.plan.service_date,
-                          window.startMinute,
-                          timezone,
-                        ),
-                      ),
-                    ),
-                  ).toISOString(),
-                  endTime: end,
-                  softEndTime: new Date(
-                    Math.max(
-                      start,
-                      Date.parse(
-                        localMinuteInstant(
-                          board.plan.service_date,
-                          window.endMinute,
-                          timezone,
-                        ),
-                      ),
-                    ),
-                  ).toISOString(),
-                  costPerHourAfterSoftEndTime:
-                    lateCost * (priorityOrder.length - group.rank),
-                },
-              ],
-            }
-          : {}),
-      }),
-    ),
-  }));
-  for (const vehicle of request.model.vehicles) {
-    // Include unloading and waiting as well as travel, using the existing time
-    // objective's unit. Global duration still minimizes the latest depot return.
-    vehicle.costPerHour = vehicle.costPerTraveledHour;
-    vehicle.loadLimits.destinations.softMaxLoad = String(
-      Math.ceil(groups.length / board.vehicles.length),
-    );
-  }
-
-  const ranks = [...new Set(groups.map((group) => group.rank))];
   const windowHours = Math.max(
     1,
     ...groups.flatMap((group) =>
@@ -200,11 +136,57 @@ export function buildDirectFleetRequest(
       ),
     ),
   );
-  // A reversal costs the whole batch's reference-window lateness at the affected
-  // priority. This is a strong FINITE preference, expressed in objective units,
-  // not money, a hard time constraint, or a post-solver rejection. At most three
-  // directed tag pairs for the current tiers, independent of order/vehicle count.
-  const priorityCost = lateCost * windowHours * (groups.length + 1);
+  request.timeout = `${optimizationTimeoutSeconds(groups.length)}s`;
+  request.model.shipments = groups.map((group) => ({
+    label: group.id,
+    costsPerVehicle: geographicCosts.get(group.id)!,
+    loadDemands: {
+      orders: { amount: String(group.shipmentIds.length) },
+      destinations: { amount: "1" },
+    },
+    deliveries: visitWindowAlternatives(
+      group.windows.map((window) => ({
+        startTime: localMinuteInstant(
+          board.plan.service_date,
+          window.startMinute,
+          timezone,
+        ),
+        endTime: localMinuteInstant(
+          board.plan.service_date,
+          window.endMinute,
+          timezone,
+        ),
+      })),
+      { startTime: request.model.globalStartTime, endTime: end },
+      lateCost * (priorityOrder.length - group.rank),
+      windowHours,
+    ).map((timing) => ({
+      label: group.id,
+      duration: `${visitServiceSeconds(group.shipmentIds.map((id) => byId.get(id)!))}s`,
+      tags: [tag(group.rank)],
+      arrivalLocation: {
+        latitude: group.latitude,
+        longitude: group.longitude,
+      },
+      ...timing,
+    })),
+  }));
+  for (const vehicle of request.model.vehicles) {
+    // Include unloading and waiting as well as travel, using the existing time
+    // objective's unit. Global duration still minimizes the latest depot return.
+    vehicle.costPerHour = vehicle.costPerTraveledHour;
+    vehicle.loadLimits.destinations.softMaxLoad = String(
+      Math.ceil(groups.length / board.vehicles.length),
+    );
+  }
+
+  const ranks = [...new Set(groups.map((group) => group.rank))];
+  // Preserve the finite priority preference while accounting for both the
+  // exception charge and the reference-window delay of the batch. Neither this
+  // cost nor the visit alternatives forbid an otherwise complete solution.
+  const lateExceptionCost = lateCost * windowHours;
+  const priorityCost =
+    (lateExceptionCost + lateCost * windowHours) * (groups.length + 1);
   request.model.transitionAttributes = ranks.flatMap((from) =>
     ranks
       .filter((to) => to < from)

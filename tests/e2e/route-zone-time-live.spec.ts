@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Browser } from "@playwright/test";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, mkdir } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -28,9 +28,10 @@ import { startPostgres, freePort } from "../helpers/postgres";
 // Explicit real-case replay: actual Odoo reads, a saved receipt of the Google call
 // made for this block, actual persistence and HTTP/Chrome. No intercepted APIs,
 // fabricated routes or additional Fleet calls. Remote Odoo and plans stay read-only.
-test("real Google receipt reaches isolated PostgreSQL and current forecast UI", async ({
-  browser,
-}) => {
+async function verifyRealReceipt(
+  browser: Browser,
+  receiptKind: "new" | "deadline",
+) {
   const directory = process.env.RUTAS_QA_ZONE_TIME_CAPTURE_DIRECTORY;
   test.skip(
     !directory,
@@ -43,7 +44,7 @@ test("real Google receipt reaches isolated PostgreSQL and current forecast UI", 
     timezone: string;
   } = JSON.parse(await readFile(`${directory}/input-projection.json`, "utf8"));
   const receipt: GoogleOptimizationResult = JSON.parse(
-    await readFile(`${directory}/new-result.json`, "utf8"),
+    await readFile(`${directory}/${receiptKind}-result.json`, "utf8"),
   );
   const imported = await readFulfilledByOrderNames(
     captured.board.shipments.map((s) => s.orderName),
@@ -194,7 +195,9 @@ test("real Google receipt reaches isolated PostgreSQL and current forecast UI", 
       before,
       before.shipments,
       createHash("sha256")
-        .update(await readFile(`${directory}/new-google-request.json`))
+        .update(
+          await readFile(`${directory}/${receiptKind}-google-request.json`),
+        )
         .digest("hex"),
       mapped,
       { chosenSource: "Google" },
@@ -208,6 +211,10 @@ test("real Google receipt reaches isolated PostgreSQL and current forecast UI", 
       .flatMap((r) => r.visits)
       .filter((v) => (v.lateSeconds ?? 0) > 0).length;
     expect(conflicts).toHaveLength(expectedLate);
+    if (receiptKind === "deadline") expect(conflicts).toHaveLength(0);
+    expect(run?.routes.flatMap((r) => r.stops)).toHaveLength(
+      before.shipments.length,
+    );
     expect((await getPlanOptimization(db.pool, plan.id))?.routes).toEqual(
       run?.routes,
     );
@@ -309,19 +316,25 @@ test("real Google receipt reaches isolated PostgreSQL and current forecast UI", 
     await page
       .getByRole("button", { name: "Ver mapa de rutas", exact: true })
       .click();
+    // An absent warning is meaningful only after the saved forecast has loaded.
+    await expect(
+      page.getByText("Recorrido vigente · regreso incluido", { exact: false }),
+    ).toBeVisible();
     const warning = page.locator(
       'details[aria-label="Pedidos fuera de horario previstos"]',
     );
-    await expect(warning).toBeVisible();
-    await warning.locator("summary").click();
-    await expect(warning).toHaveAttribute("open", "");
-    await expect(warning).toHaveCSS("position", "static");
-    await expect(warning).toHaveCSS("pointer-events", "auto");
-    for (const conflict of conflicts)
-      await expect(warning).toContainText(conflict.orderName);
+    if (conflicts.length) {
+      await expect(warning).toBeVisible();
+      await warning.locator("summary").click();
+      await expect(warning).toHaveAttribute("open", "");
+      await expect(warning).toHaveCSS("position", "static");
+      await expect(warning).toHaveCSS("pointer-events", "auto");
+      for (const conflict of conflicts)
+        await expect(warning).toContainText(conflict.orderName);
+    } else await expect(warning).toBeHidden();
     await mkdir("reports/screenshots", { recursive: true });
     await page.screenshot({
-      path: "reports/screenshots/zone-time-desktop.png",
+      path: `reports/screenshots/zone-time-${receiptKind}-desktop.png`,
       fullPage: true,
     });
     await page.setViewportSize({ width: 390, height: 844 });
@@ -330,18 +343,19 @@ test("real Google receipt reaches isolated PostgreSQL and current forecast UI", 
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
-    expect(
-      await warning.evaluate((element) => {
-        const bounds = element.getBoundingClientRect();
-        return (
-          bounds.left >= 0 &&
-          bounds.right <= window.innerWidth &&
-          element.scrollWidth <= element.clientWidth
-        );
-      }),
-    ).toBe(true);
+    if (conflicts.length)
+      expect(
+        await warning.evaluate((element) => {
+          const bounds = element.getBoundingClientRect();
+          return (
+            bounds.left >= 0 &&
+            bounds.right <= window.innerWidth &&
+            element.scrollWidth <= element.clientWidth
+          );
+        }),
+      ).toBe(true);
     await page.screenshot({
-      path: "reports/screenshots/zone-time-mobile.png",
+      path: `reports/screenshots/zone-time-${receiptKind}-mobile.png`,
       fullPage: true,
     });
     await page
@@ -353,15 +367,16 @@ test("real Google receipt reaches isolated PostgreSQL and current forecast UI", 
       await expect(warning.locator("li")).toHaveCount(filtered.length);
     else await expect(warning).toBeHidden();
     await page.getByRole("dialog").getByRole("combobox").selectOption("all");
-    const firstConflict = current.shipments.find(
-      (s) => s.id === conflicts[0].shipmentId,
-    )!;
+    const changedShipment = conflicts.length
+      ? current.shipments.find((s) => s.id === conflicts[0].shipmentId)!
+      : current.shipments[0];
     await moveShipment(db.pool, actor, plan.id, {
-      shipmentId: firstConflict.id,
+      shipmentId: changedShipment.id,
       vehicleId: null,
       expectedVersion: current.plan.version,
     });
     await expect(warning).toBeHidden({ timeout: 20000 });
+    expect((await getPlanOptimization(db.pool, plan.id))?.current).toBe(false);
     expect(errors).toEqual([]);
   } finally {
     await context.close();
@@ -372,4 +387,15 @@ test("real Google receipt reaches isolated PostgreSQL and current forecast UI", 
       });
     await db.close();
   }
+}
+
+test("real Google reference receipt reaches PostgreSQL and forecast warnings", async ({
+  browser,
+}) => {
+  await verifyRealReceipt(browser, "new");
+});
+test("real Google deadline receipt preserves all orders without forecast warnings", async ({
+  browser,
+}) => {
+  await verifyRealReceipt(browser, "deadline");
 });

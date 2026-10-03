@@ -197,7 +197,7 @@ describe("unloading contracts and clocks", () => {
     expect(groups).toHaveLength(2);
     expect(
       request.model.shipments[0].deliveries.map((v) => v.duration),
-    ).toEqual(["1200s", "1200s"]);
+    ).toEqual(["1200s", "1200s", "1200s", "1200s"]);
     expect(request.model.shipments[1].deliveries[0].duration).toBe("480s");
     expect(
       request.model.shipments.every(

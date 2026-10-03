@@ -899,3 +899,21 @@ solicitud, reparto 5/10/29→13/15/16 y atrasos18→4, con +4.039km observados.
 29/29 mutaciones detectadas, 3 E2E reales y typecheck/lint/build verdes.
 El aviso distingue previsión y recuperación; no oculta atrasos. Entrega
 develop autorizada, sin guardar el experimento remoto, APK ni despliegue.
+
+## PH — corrección de atrasos y vueltas, autorizado 2026-10-02
+
+- [x] PH-T01 (PH01..08): regresión roja y opciones de visita con costo fijo
+  dinámico; servicio, prioridades, flota y cobertura conservados.
+- [x] PH-T02 (PH04,06,09..10): política versionada, contratos, persistencia y
+  seguridad existentes; una solicitud Fleet por cálculo.
+- [x] PH-T03 (PH01..11): caso real Google, cobertura/mutación, PG/HTTP,
+  regresión, lint/typecheck/build y QA reproducible antes de entregar develop.
+
+Especificación y matriz: BLOQUE-PREFERENCIA-HORARIOS.md. Sin cambios a main ni
+despliegue; el propietario despliega manualmente.
+
+Evidencia: QA-PREFERENCIA-HORARIOS-2026-10-02.md. Google real 44/44, cero atrasos,
+cero conflictos de prioridad y 228.703 km. Modelo final idéntico; 72 contratos,
+100% cobertura crítica, 26/26 mutaciones, 1,021 regresiones aprobadas/3 omisiones
+externas preexistentes y 2 E2E reales. Typecheck/lint/build y auditoría de
+dependencias aprobados; p95 del modelo 72.52 ms. Entrega develop autorizada.

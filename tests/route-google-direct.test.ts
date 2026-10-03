@@ -117,7 +117,7 @@ function response(sequence = [2, 0, 1]): GoogleOptimizationResult {
 
 describe("single global model, no paid calls", () => {
   it("pins the cost equations, coordinates, identifiers and priority tags of the one request", () => {
-    expect(directFleetPolicy).toBe("google-zones-v3-time-aware");
+    expect(directFleetPolicy).toBe("google-zones-v4-deadline-options");
     const current = board();
     const { request, groups } = buildDirectFleetRequest(
       current,
@@ -145,12 +145,14 @@ describe("single global model, no paid calls", () => {
     ]);
     expect(
       request.model.shipments.map(
-        (s) => s.deliveries[0].timeWindows![0].costPerHourAfterSoftEndTime,
+        (s) =>
+          s.deliveries.find((v) => v.cost !== undefined)!.timeWindows![0]
+            .costPerHourAfterSoftEndTime,
       ),
     ).toEqual([84, 56, 28]);
     expect(
       request.model.transitionAttributes!.map((edge) => edge.cost),
-    ).toEqual([448, 896, 448]);
+    ).toEqual([896, 1792, 896]);
   });
 
   it("sorts windows canonically, including identical openings, and promotes the physical stop's highest priority", () => {
@@ -259,7 +261,9 @@ describe("single global model, no paid calls", () => {
     ]);
     const largestLateCost = Math.max(
       ...request.model.shipments.map(
-        (s) => s.deliveries[0].timeWindows![0].costPerHourAfterSoftEndTime!,
+        (s) =>
+          s.deliveries.find((v) => v.cost !== undefined)!.timeWindows![0]
+            .costPerHourAfterSoftEndTime!,
       ),
     );
     for (const edge of request.model.transitionAttributes!) {
@@ -342,11 +346,12 @@ describe("single global model, no paid calls", () => {
     ];
     const { request } = buildDirectFleetRequest(current, settings, "UTC");
     const choices = request.model.shipments[0].deliveries;
-    expect(choices).toHaveLength(2);
-    expect(choices.map((v) => v.timeWindows![0].softEndTime)).toEqual([
-      "2026-09-12T10:00:00.000Z",
-      "2026-09-12T14:00:00.000Z",
-    ]);
+    expect(choices).toHaveLength(4);
+    expect(
+      choices
+        .filter((v) => v.cost !== undefined)
+        .map((v) => v.timeWindows![0].softEndTime),
+    ).toEqual(["2026-09-12T10:00:00.000Z", "2026-09-12T14:00:00.000Z"]);
     expect(choices.every((v) => v.timeWindows!.length === 1)).toBe(true);
     current.plan.departure_minute = 1439;
     const late = buildDirectFleetRequest(current, settings, "UTC").request;

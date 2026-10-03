@@ -17,6 +17,72 @@ await mkdir(scratch, { recursive: true });
 const sandbox = await mkdtemp(join(scratch, "zone-time-mutants-"));
 const cases = [
   [
+    "missing-fixed-deadline-charge",
+    "route-visit-windows.ts",
+    "lateRatePerHour * referenceHours +",
+    "",
+  ],
+  [
+    "on-time-horizon-instead-of-closing",
+    "route-visit-windows.ts",
+    "endTime: window.endTime",
+    "endTime: horizon.endTime",
+  ],
+  [
+    "invent-on-time-after-closing",
+    "route-visit-windows.ts",
+    "opening <= closing",
+    "true",
+  ],
+  [
+    "reject-exact-closing",
+    "route-visit-windows.ts",
+    "opening <= closing",
+    "opening < closing",
+  ],
+  [
+    "omit-already-late-departure-cost",
+    "route-visit-windows.ts",
+    "Math.max(0, departure - closing)",
+    "0",
+  ],
+  [
+    "opening-before-global-start",
+    "route-visit-windows.ts",
+    "Math.max(departure, Date.parse(window.startTime))",
+    "Date.parse(window.startTime)",
+  ],
+  [
+    "late-option-before-deadline",
+    "route-visit-windows.ts",
+    "Math.max(departure, closing)",
+    "departure",
+  ],
+  [
+    "omit-proportional-delay-cost",
+    "route-visit-windows.ts",
+    "costPerHourAfterSoftEndTime: lateRatePerHour",
+    "costPerHourAfterSoftEndTime: 0",
+  ],
+  [
+    "strict-deadline-loses-recovery",
+    "route-visit-windows.ts",
+    "  });\n}",
+    "  }).filter(visit => visit.cost === undefined);\n}",
+  ],
+  [
+    "priority-ignores-deadline-charge",
+    "route-google-direct.ts",
+    "lateExceptionCost + lateCost * windowHours",
+    "lateCost * windowHours",
+  ],
+  [
+    "reuse-previous-model-policy",
+    "route-google-direct.ts",
+    "google-zones-v4-deadline-options",
+    "google-zones-v3-time-aware",
+  ],
+  [
     "pin-all-to-first-truck",
     "route-google-direct.ts",
     "costsPerVehicle: geographicCosts.get(group.id)!",
@@ -103,6 +169,7 @@ const cases = [
   ],
 ];
 const testFiles = [
+  "route-deadline-preference.test.ts",
   "route-zone-time.test.ts",
   "route-google-direct.test.ts",
   "route-zones-service.test.ts",

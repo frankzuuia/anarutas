@@ -1900,3 +1900,16 @@ Flotas1/4/5/6/12 y extras elegibles sin reglas específicas; 66 contratos puros,
 100% cobertura crítica, 29/29 mutaciones detectadas, 1,015 regresiones y3
 recorridos HTTP/Chrome aprobados. Persistencia/snapshot/permisos comprobados;
 previsión visible y recuperación declarada. Develop, sin deploy ni APK.
+
+## PH01..11 — costo explícito de excepción de horario
+
+BLOQUE-PREFERENCIA-HORARIOS.md define causa, contrato y escenarios aprobados
+por «corrijelos» el2026-10-02. Opciones en ventana y tardías conservan carga,
+duración, coordenadas y tags; costo fijo dinámico añade preferencia de cumplir
+ventanas sin cambiar cobertura ni convertirlas en un veto. Una solicitud Fleet,
+snapshot, permisos, leases y recuperación existentes. PH-T01..03 en PROGRESS.
+
+PH01..11 verificados en QA-PREFERENCIA-HORARIOS-2026-10-02.md: Google real 44/44
+y cero atrasos, modelo final idéntico al probado, 72 contratos y 100% cobertura
+crítica; 26/26 mutaciones, 1,021 regresiones y 2 E2E reales aprobados. Desarrollo,
+sin nuevos límites por cliente/flota, sin APK, cambios históricos ni despliegue.

@@ -757,3 +757,11 @@ Contrato en BLOQUE-ZONAS-DESCARGA.md: minutos locales por visita/cliente, zonas
 automáticas de proximidad por camioneta y restricciones Google; conserva
 ventanas, prioridades y orden vial dentro de cada zona. Sustituye sólo la
 libertad de asignación entre zonas de FD01/07. Odoo, app y liquidación intactos.
+
+## BL-PH01..06 — preferencia explícita por entregas a tiempo
+
+Corrección autorizada el 2026-10-02: el administrador conserva cobertura total,
+prioridades y flota dinámica; cada entrega fuera de ventana paga una excepción
+finita además de demora proporcional. Opciones de visita válidas y tardías en
+un solo Fleet, sin inventar horarios ni descartar pedidos. Datos, autorización,
+auditoría, bordes y validación en BLOQUE-PREFERENCIA-HORARIOS.md.

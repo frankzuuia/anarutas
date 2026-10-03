@@ -38,7 +38,8 @@ describe("dynamic fleet and finite geographical preferences", () => {
         expect(Math.min(...shipment.costsPerVehicle!)).toBe(0);
         expect(shipment).not.toHaveProperty("penaltyCost");
         expect(
-          shipment.deliveries[0].timeWindows?.[0].costPerHourAfterSoftEndTime,
+          shipment.deliveries.find((v) => v.cost !== undefined)
+            ?.timeWindows?.[0].costPerHourAfterSoftEndTime,
         ).toBeGreaterThan(0);
       }
       expect(

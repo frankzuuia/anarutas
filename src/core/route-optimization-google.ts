@@ -58,6 +58,7 @@ export type GoogleOptimizationRequest = {
         label: string;
         arrivalLocation: { latitude: number; longitude: number };
         duration?: string;
+        cost?: number;
         tags?: string[];
         timeWindows?: GoogleTimeWindow[];
       }[];
