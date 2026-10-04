@@ -20,6 +20,7 @@ import {
   getPlanOptimization,
 } from "../../src/core/route-optimization";
 import { routeTimeConflicts } from "../../src/core/route-time-conflicts";
+import { priorityConflictIds } from "../../src/core/route-logistics-policy";
 import type { OrderBoard } from "../../src/core/orders-contract";
 import type { GoogleOptimizationResult } from "../../src/core/route-optimization-google";
 import type { RoutingSettings } from "../../src/core/routing-contract";
@@ -30,9 +31,12 @@ import { startPostgres, freePort } from "../helpers/postgres";
 // fabricated routes or additional Fleet calls. Remote Odoo and plans stay read-only.
 async function verifyRealReceipt(
   browser: Browser,
-  receiptKind: "new" | "deadline" | "early",
+  receiptKind: "new" | "deadline" | "early" | "strict",
 ) {
-  const directory = process.env.RUTAS_QA_ZONE_TIME_CAPTURE_DIRECTORY;
+  const directory =
+    receiptKind === "strict"
+      ? process.env.RUTAS_QA_STRICT_PRIORITY_CAPTURE_DIRECTORY
+      : process.env.RUTAS_QA_ZONE_TIME_CAPTURE_DIRECTORY;
   test.skip(
     !directory,
     "Requires a verified real Google receipt and private development Odoo configuration",
@@ -212,7 +216,7 @@ async function verifyRealReceipt(
       .filter((v) => (v.lateSeconds ?? 0) > 0).length;
     expect(conflicts).toHaveLength(expectedLate);
     if (receiptKind === "deadline") expect(conflicts).toHaveLength(0);
-    if (receiptKind === "early") {
+    if (receiptKind === "early" || receiptKind === "strict") {
       const points = new Map<string, Set<string>>();
       for (const route of run!.routes)
         for (const stop of route.stops) {
@@ -228,6 +232,24 @@ async function verifyRealReceipt(
         true,
       );
       expect(run!.metrics.waitDurationSeconds).toBe(0);
+    }
+    if (receiptKind === "strict") {
+      expect(
+        priorityConflictIds(current.shipments, {
+          routes: run!.routes.map((route) => ({
+            vehicleId: route.vehicleId,
+            shipmentIds: route.stops.map((stop) => stop.shipmentId),
+          })),
+        }).size,
+      ).toBe(0);
+      for (const route of run!.routes) {
+        const lane = current.shipments
+          .filter((s) => s.vehicle_id === route.vehicleId)
+          .sort((a, b) => a.position - b.position);
+        expect(lane.map((s) => s.id)).toEqual(
+          route.stops.map((stop) => stop.shipmentId),
+        );
+      }
     }
     expect(run?.routes.flatMap((r) => r.stops)).toHaveLength(
       before.shipments.length,
@@ -322,6 +344,32 @@ async function verifyRealReceipt(
       ).status(),
     ).toBe(403);
     await restricted.close();
+    if (receiptKind === "strict") {
+      // This server intentionally has no provider credentials. Exercise a real
+      // configuration failure, not an intercepted external response.
+      const failed = await context.request.post(endpoint, {
+        headers: { Origin: origin },
+        data: { expectedVersion: current.plan.version },
+      });
+      expect(failed.status()).toBe(503);
+      expect(await failed.json()).toMatchObject({
+        error: "ROUTING_ROADS_CONFIG_MISSING",
+      });
+      expect((await orderBoard(db.pool, plan.id)).shipments).toEqual(
+        current.shipments,
+      );
+      expect((await getPlanOptimization(db.pool, plan.id))?.runId).toBe(
+        run!.runId,
+      );
+      expect(
+        (
+          await db.pool.query(
+            "SELECT count(*) FROM route_optimization_leases WHERE plan_id=$1",
+            [plan.id],
+          )
+        ).rows[0].count,
+      ).toBe("0");
+    }
     const page = await context.newPage(),
       errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -420,4 +468,10 @@ test("real Google early reception receipt preserves one truck per point and hone
   browser,
 }) => {
   await verifyRealReceipt(browser, "early");
+});
+
+test("real Google strict-priority receipt reaches the panel with all orders, one truck per point, and honest deadlines", async ({
+  browser,
+}) => {
+  await verifyRealReceipt(browser, "strict");
 });

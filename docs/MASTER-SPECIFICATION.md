@@ -1929,3 +1929,20 @@ el déficit se traslada a tiempos y se mantienen advertencias de atraso.
 No se aceptan negativos en conducción ni se relajan cobertura/identidad.
 Pruebas y límites en QA-RECEPCION-ANTICIPADA-2026-10-04.md; entrega develop,
 sin despliegue automático ni modificación de las rutas remotas existentes.
+
+## SP01..12 — prioridad individual por camioneta
+
+Contrato confirmado el 2026-10-04: altas, después medias y finalmente por
+horario, incluso si distintos clientes comparten un punto exacto. SP sustituye
+la visita física indivisible de RA para el orden: conserva un solo vehículo
+dueño del punto y permite que ese mismo vehículo vuelva cuando la prioridad
+lo exige. Pedidos del mismo cliente permanecen juntos; no hay orden global ni
+espera entre vehículos. La compactación sólo evita vueltas que no inviertan
+ninguna prioridad individual.
+
+BLOQUE-PRIORIDAD-ESTRICTA.md documenta la autopsia de v5 y política v6.
+Se conserva asignación Fleet y se miden con Routes únicamente las secuencias
+cambiadas. La guarda final exige cobertura y prioridad completas; fallos,
+reservas y versiones impiden guardar resultados incompletos. No cambia orden
+manual, publicación, Android ni liquidación. Calidad y límites en
+QA-PRIORIDAD-ESTRICTA-2026-10-04.md; estado SP-T01..03 en PROGRESS.

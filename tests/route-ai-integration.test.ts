@@ -40,7 +40,7 @@ afterAll(async () => {
 });
 
 describe("deterministic Google routing with real PostgreSQL", () => {
-  it("preserves Google's complete sequence including a priority exception, without LLM or extra road calls", async () => {
+  it("preserves Google's complete compliant sequence without LLM or extra road calls", async () => {
     await saveRoutingSettings(db.pool, actor, {
       depotAddress: "Bodega",
       depotLocation: { latitude: 20, longitude: -103, placeId: "warehouse" },
@@ -179,18 +179,16 @@ describe("deterministic Google routing with real PostgreSQL", () => {
         (assignment, index) => assignment ?? index % before.vehicles.length,
       );
       const routes = [0, 1].map((vehicleIndex) => {
-        const visits = effectiveAssignments
-          .flatMap((assignment, index) =>
-            assignment === vehicleIndex
-              ? [
-                  {
-                    shipmentIndex: index,
-                    startTime: "2026-09-12T08:00:00Z",
-                  },
-                ]
-              : [],
-          )
-          .reverse();
+        const visits = effectiveAssignments.flatMap((assignment, index) =>
+          assignment === vehicleIndex
+            ? [
+                {
+                  shipmentIndex: index,
+                  startTime: "2026-09-12T08:00:00Z",
+                },
+              ]
+            : [],
+        );
         return visits.length
           ? {
               vehicleIndex,
@@ -301,7 +299,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       )
     ).rows[0].details;
     expect(audit).toMatchObject({
-      planner: "google-zones-v5-early-reception",
+      planner: "google-zones-v6-strict-client-priority",
       evaluatedCandidates: 1,
       candidateSources: ["Google"],
       chosenSource: "Google",
@@ -309,9 +307,9 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       fleetRoutingRequests: 1,
       fleetRoutingRequestLimit: 1,
       fleetRoutingShipmentUnits: 3,
-      logisticsPolicy: "google-zones-v5-early-reception",
+      logisticsPolicy: "google-zones-v6-strict-client-priority",
       score: {
-        priorityConflicts: 1,
+        priorityConflicts: 0,
         lateStops: 0,
         unusedVehicles: 0,
         maxOrders: 2,
@@ -361,8 +359,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       );
       const expected = googleRequests[0].model.shipments
         .filter((_, index) => index % before.vehicles.length === vehicleIndex)
-        .map((item) => item.label)
-        .reverse();
+        .map((item) => item.label);
       expect(route.stops.map((stop) => stop.shipmentId)).toEqual(expected);
       expect(route.encodedPolyline).toBe("provider-route-polyline");
       expect(route.segmentPolylines).toHaveLength(expected.length + 1);

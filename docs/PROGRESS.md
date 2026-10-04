@@ -932,3 +932,22 @@ Evidencia y límites: QA-RECEPCION-ANTICIPADA-2026-10-04.md. Política v5 sustit
 la interpretación rígida de apertura de PH. El déficit temporal que Google marca
 por tráfico se propaga a las llegadas/regreso y auditoría sin perder su reparto.
 Los cierres, clientes, descarga y prioridades conservan datos originales.
+
+## SP — prioridad individual estricta, autorizado 2026-10-04
+
+- [x] SP-T01: autopsia y regresión roja del punto mixto; altas, medias y por
+  horario por camioneta, conservando asignación y clientes contiguos.
+- [x] SP-T02: medición real de los vehículos reordenados, revisión de cobertura,
+  punto único, descarga, cierres, recuperación, reservas y versiones.
+- [x] SP-T03: escenarios SP01..12, cobertura, mutaciones, Odoo/Google/PG y
+  HTTP/Chrome reales; QA, regresión y controles estáticos antes de develop.
+
+Evidencia: QA-PRIORIDAD-ESTRICTA-2026-10-04.md. 44/44 pedidos reales, reparto
+11/16/17 conservado, una camioneta recalculada, cero inversiones y cero puntos
+compartidos entre camionetas; una revisita exigida por la prioridad individual.
+Un atraso previsto de 481 s permanece visible. Política v6 sustituye el rango
+promovido del punto de RA; el conteo v5 no certificaba prioridades individuales.
+245 contratos afectados y una prueba real aprobados, 100% cobertura nueva,
+56/56 mutantes, 1061 regresiones consolidadas, 37 contratos posteriores de
+publicación/ejecución y un E2E final. Typecheck/lint/build/audit verdes.
+Entrega a develop autorizada; despliegue y nuevo armado a cargo del propietario.

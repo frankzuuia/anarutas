@@ -1,5 +1,10 @@
 # RA — recepción anticipada y punto único por camioneta
 
+Actualización 2026-10-04: [SP — prioridad estricta](BLOQUE-PRIORIDAD-ESTRICTA.md)
+sustituye la visita indivisible del punto 2 para prioridades distintas. El punto
+mantiene una camioneta única; puede requerir visitas separadas para entregar
+altas, después medias y finalmente por horario.
+
 Autorizado por la corrección de rutas y la aclaración del propietario del
 2026-10-04: se puede entregar antes de la apertura; no se debe llegar después
 del cierre. No cambia la ficha del cliente ni sus ventanas guardadas.

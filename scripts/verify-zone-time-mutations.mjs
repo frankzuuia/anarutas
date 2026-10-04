@@ -17,6 +17,96 @@ await mkdir(scratch, { recursive: true });
 const sandbox = await mkdtemp(join(scratch, "zone-time-mutants-"));
 const cases = [
   [
+    "omit-safe-boundary-compaction",
+    "route-strict-priority.ts",
+    "shipmentIds = proposed",
+    "shipmentIds = shipmentIds",
+  ],
+  [
+    "compact-across-remaining-priorities",
+    "route-strict-priority.ts",
+    "ranks.get(proposed[index - 1])! <= ranks.get(id)!",
+    "true",
+  ],
+  [
+    "allow-shared-point-on-two-trucks",
+    "route-strict-priority.ts",
+    "owner !== undefined && owner !== route.vehicleId",
+    "false",
+  ],
+  [
+    "overwrite-duplicate-provider-vehicle",
+    "route-strict-priority.ts",
+    "routes.has(vehicle.id)",
+    "false",
+  ],
+  [
+    "accept-skipped-orders",
+    "route-strict-priority.ts",
+    "if (result.skipped.length)",
+    "if (false)",
+  ],
+  [
+    "reverse-client-priorities",
+    "route-strict-priority.ts",
+    "ranks.get(left)! - ranks.get(right)!",
+    "ranks.get(right)! - ranks.get(left)!",
+  ],
+  [
+    "disable-strict-priority-guard",
+    "route-strict-priority.ts",
+    "if (priorityConflictIds(board.shipments, candidate).size)",
+    "if (false)",
+  ],
+  [
+    "skip-needed-resequencing",
+    "route-strict-priority.ts",
+    "if (!changed.length)",
+    "if (true)",
+  ],
+  [
+    "detect-only-fully-moved-routes",
+    "route-strict-priority.ts",
+    "route.shipmentIds.some(",
+    "route.shipmentIds.every(",
+  ],
+  [
+    "measure-unchanged-trucks",
+    "route-strict-priority.ts",
+    "vehicles: board.vehicles.filter((v) => vehicleIds.has(v.id))",
+    "vehicles: board.vehicles",
+  ],
+  [
+    "include-unchanged-deliveries-in-measurement",
+    "route-strict-priority.ts",
+    "shipments: board.shipments.filter((s) => shipmentIds.has(s.id))",
+    "shipments: board.shipments",
+  ],
+  [
+    "lose-global-delivery-index",
+    "route-strict-priority.ts",
+    "deliveries.map((s, index) => [s.id, index])",
+    "deliveries.map((s) => [s.id, 0])",
+  ],
+  [
+    "lose-global-vehicle-index",
+    "route-strict-priority.ts",
+    "original.vehicles.map((v, index) => [v.id, index])",
+    "original.vehicles.map((v) => [v.id, 0])",
+  ],
+  [
+    "lose-measured-metrics",
+    "route-strict-priority.ts",
+    "metrics[key] += route.metrics[key]",
+    "metrics[key] += 0",
+  ],
+  [
+    "conceal-individual-priority-conflicts",
+    "route-google-direct.ts",
+    "conflicts.has(\n        deliveries[visit.shipmentIndex].id,\n      )",
+    "false",
+  ],
+  [
     "missing-fixed-deadline-charge",
     "route-visit-windows.ts",
     "lateRatePerHour * referenceHours +",
@@ -79,7 +169,7 @@ const cases = [
   [
     "reuse-previous-model-policy",
     "route-google-direct.ts",
-    "google-zones-v5-early-reception",
+    "google-zones-v6-strict-client-priority",
     "google-zones-v4-deadline-options",
   ],
   [
@@ -259,6 +349,7 @@ const cases = [
   ],
 ];
 const testFiles = [
+  "route-strict-priority.test.ts",
   "route-deadline-preference.test.ts",
   "route-zone-time.test.ts",
   "route-google-direct.test.ts",

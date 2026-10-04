@@ -6,6 +6,7 @@ import { geographicZones, zoneVehicleCosts } from "./route-zones";
 import type { OrderBoard, Shipment } from "./orders-contract";
 import { assertDeliveryGroups } from "./route-delivery-groups";
 import {
+  priorityConflictIds,
   priorityGroups,
   priorityOrder,
   routeLoads,
@@ -17,9 +18,10 @@ import {
   type GoogleOptimizationResult,
   type GoogleOptimizationRequest,
 } from "./route-optimization-google";
+import { expandedRoutingCandidate } from "./route-strict-priority";
 import type { RoutingSettings } from "./routing-contract";
 
-export const directFleetPolicy = "google-zones-v5-early-reception";
+export const directFleetPolicy = "google-zones-v6-strict-client-priority";
 
 function validCoordinate(
   value: number | null,
@@ -59,8 +61,8 @@ export function directDeliveryGroups(shipments: Shipment[]) {
     )
       throw new AppError("ROUTING_POINTS_REQUIRED", 409);
     const windows = receivingWindows(members);
-    // Exact confirmed point, independent of names or opening times. Early
-    // reception lets distinct clients share one visit without splitting trucks.
+    // Exact point remains indivisible for fleet allocation. The expanded
+    // sequence must separately honor each customer's priority before saving.
     const key = physicalVisitKey(members[0]);
     const existing = physical.get(key);
     if (existing) {
@@ -269,7 +271,6 @@ export function expandDirectFleetResult(
       throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
         field: "route.returnTransition",
       });
-    let previousRank = -1;
     let previousTime = Date.parse(
       route.departureAt ?? route.visits[0]?.eta ?? "",
     );
@@ -286,8 +287,6 @@ export function expandDirectFleetResult(
       )
         throw new AppError("ROUTING_RESPONSE_INVALID", 503);
       previousTime = instant;
-      const priorityConflict = group.rank < previousRank;
-      previousRank = Math.max(previousRank, group.rank);
       return group.shipmentIds.map((id, memberIndex) => {
         const shipmentIndex = indices.get(id);
         if (shipmentIndex === undefined || seen.has(id))
@@ -313,7 +312,7 @@ export function expandDirectFleetResult(
             board.plan.service_date,
             timezone,
           ),
-          priorityConflict,
+          priorityConflict: false,
         };
       });
     });
@@ -338,11 +337,21 @@ export function expandDirectFleetResult(
       ),
     })),
   );
-  return {
+  const expanded = {
     ...result,
     routes,
     metrics: { ...result.metrics, performedShipmentCount: seen.size },
   };
+  const conflicts = priorityConflictIds(
+    board.shipments,
+    expandedRoutingCandidate(board, expanded),
+  );
+  for (const route of routes)
+    for (const visit of route.visits)
+      visit.priorityConflict = conflicts.has(
+        deliveries[visit.shipmentIndex].id,
+      );
+  return expanded;
 }
 
 export function directFleetDiagnostics(
@@ -352,15 +361,8 @@ export function directFleetDiagnostics(
   const deliveries = board.shipments.filter(
     (s) => s.fulfillmentMode === "delivery" && !s.customerArchived,
   );
-  const candidate = {
-    routes: board.vehicles.map((vehicle, index) => ({
-      vehicleId: vehicle.id,
-      shipmentIds:
-        result.routes
-          .find((route) => route.vehicleIndex === index)
-          ?.visits.map((visit) => deliveries[visit.shipmentIndex].id) ?? [],
-    })),
-  };
+  const candidate = expandedRoutingCandidate(board, result);
+  const conflicts = priorityConflictIds(board.shipments, candidate);
   const load = routeLoads(board.shipments, candidate);
   const visits = new Map(
     result.routes
@@ -382,7 +384,9 @@ export function directFleetDiagnostics(
       (total, stop) => total + (stop.lateSeconds ?? 0),
       0,
     ),
-    priorityConflicts: stops.filter((stop) => stop.priorityConflict).length,
+    priorityConflicts: priorityGroups(deliveries).filter((group) =>
+      conflicts.has(group.id),
+    ).length,
     unusedVehicles: load.routes.filter((route) => route.orders === 0).length,
     operationalSeconds: result.metrics.travelDurationSeconds + makespanSeconds,
     travelSeconds: result.metrics.travelDurationSeconds,

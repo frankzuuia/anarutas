@@ -117,7 +117,7 @@ function response(sequence = [2, 0, 1]): GoogleOptimizationResult {
 
 describe("single global model, no paid calls", () => {
   it("pins the cost equations, coordinates, identifiers and priority tags of the one request", () => {
-    expect(directFleetPolicy).toBe("google-zones-v5-early-reception");
+    expect(directFleetPolicy).toBe("google-zones-v6-strict-client-priority");
     const current = board();
     const { request, groups } = buildDirectFleetRequest(
       current,
@@ -397,6 +397,31 @@ describe("single global model, no paid calls", () => {
 });
 
 describe("provider result is authoritative, adaptation is pure", () => {
+  it("detects a client's schedule priority between high deliveries at a shared point", () => {
+    const current = board(4, 2);
+    current.shipments[0].priority = "high";
+    current.shipments[1].priority = "schedule";
+    current.shipments[1].latitude = current.shipments[0].latitude;
+    current.shipments[2].priority = "high";
+    current.shipments[3].priority = "medium";
+    const expanded = expandDirectFleetResult(
+      current,
+      directDeliveryGroups(current.shipments),
+      response([0, 1, 2]),
+      "UTC",
+    );
+    expect(expanded.routes[0].visits.map((v) => v.shipmentIndex)).toEqual([
+      0, 1, 2, 3,
+    ]);
+    expect(expanded.routes[0].visits.map((v) => v.priorityConflict)).toEqual([
+      false,
+      false,
+      true,
+      true,
+    ]);
+    expect(directFleetDiagnostics(current, expanded).priorityConflicts).toBe(2);
+  });
+
   it("accepts equal timestamps and finish boundaries, with optional vehicle times", () => {
     const current = board();
     current.shipments.forEach((s) => {

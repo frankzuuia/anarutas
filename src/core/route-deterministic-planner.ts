@@ -4,7 +4,6 @@ import { assertActiveActor } from "./database";
 import { AppError } from "./errors";
 import { integer, uuid } from "./orders-validation";
 import { orderBoard } from "./orders";
-import type { OrderBoard } from "./orders-contract";
 import { evaluateRoutingCandidate } from "./route-candidate-evaluator";
 import { routeFingerprint } from "./route-fingerprint";
 import {
@@ -32,6 +31,12 @@ import {
 import { applyOptimizationResult } from "./route-optimization";
 import { createRoadLegReader } from "./route-road";
 import {
+  asOptimizationResult,
+  assertStrictPriorityResult,
+  prioritizeRoutingCandidate,
+  reconcileStrictPriorities,
+} from "./route-strict-priority";
+import {
   createRoutingLogger,
   type RoutingLogger,
   type RoutingLogSink,
@@ -53,41 +58,6 @@ const recoverableOptimizationErrors = new Set([
   "ROUTING_MODEL_INVALID",
   "ROUTING_MODEL_REJECTED",
 ]);
-
-function asOptimizationResult(
-  evaluation: Awaited<ReturnType<typeof evaluateRoutingCandidate>>,
-  original: OrderBoard,
-): GoogleOptimizationResult {
-  const deliveries = original.shipments.filter(
-    (s) => s.fulfillmentMode === "delivery" && !s.customerArchived,
-  );
-  const shipmentIndex = new Map(deliveries.map((s, index) => [s.id, index]));
-  const vehicleIndex = new Map(
-    original.vehicles.map((v, index) => [v.id, index]),
-  );
-  return {
-    metrics: evaluation.result.metrics,
-    skipped: [],
-    routes: evaluation.result.routes.map((route) => ({
-      vehicleIndex: vehicleIndex.get(route.vehicleId)!,
-      departureAt: route.departureAt,
-      finishedAt: route.finishedAt,
-      encodedPolyline: null,
-      trafficMode: route.trafficMode,
-      metrics: route.metrics,
-      transitions: route.transitions,
-      visits: route.stops.map((stop) => ({
-        shipmentIndex: shipmentIndex.get(stop.shipmentId)!,
-        eta: stop.eta,
-        travelDistanceMeters: stop.travelDistanceMeters,
-        travelDurationSeconds: stop.travelDurationSeconds,
-        waitDurationSeconds: stop.waitDurationSeconds,
-        lateSeconds: stop.lateSeconds,
-        priorityConflict: stop.priorityConflict,
-      })),
-    })),
-  };
-}
 
 export async function planRouteDeterministically(
   pool: Pool,
@@ -132,7 +102,7 @@ export async function planRouteDeterministically(
     "routing.request.received",
     "Ana Rutas",
     "recepción",
-    "Ana Rutas recibió la solicitud. Preparará un único modelo global de Google, sin OpenAI ni optimizaciones adicionales.",
+    "Ana Rutas recibió la solicitud. Preparará un único modelo global de Google y verificará el orden altas, medias y por horario de cada camioneta.",
   );
   try {
     const expectedVersion = integer(input.expectedVersion, 1);
@@ -212,7 +182,7 @@ export async function planRouteDeterministically(
           "routing.google.started",
           "Google Route Optimization",
           "optimización global única",
-          "Google está resolviendo reparto y secuencia de todas las visitas en una sola solicitud. No se están calculando rutas adicionales.",
+          "Google está resolviendo reparto y secuencia en una sola solicitud Fleet. Si el orden incumple prioridades, Routes medirá únicamente las camionetas afectadas.",
           {
             orders: deliveries.length,
             deliveryGroups: groups.length,
@@ -245,7 +215,7 @@ export async function planRouteDeterministically(
           "routing.google.completed",
           "Google Route Optimization",
           "respuesta vial completa",
-          "Google devolvió el recorrido completo. Ana Rutas conservará sus camionetas, secuencia, tiempos y trazos; no lo reordenará ni volverá a medir con Compute Routes.",
+          "Google devolvió el recorrido completo. Ana Rutas conservará el reparto y comprobará la prioridad individual antes de guardar.",
           {
             stepDurationMs: Math.round(performance.now() - started),
             assignedOrders: deliveries.length,
@@ -278,10 +248,13 @@ export async function planRouteDeterministically(
             fleetRoutingShipmentUnits,
           },
         );
-        const candidate = spatialSequenceCandidate(
-          board.shipments,
-          zones,
-          settings.depotLocation!,
+        const candidate = prioritizeRoutingCandidate(
+          board,
+          spatialSequenceCandidate(
+            board.shipments,
+            zones,
+            settings.depotLocation!,
+          ),
         );
         let segmentsCompleted = 0;
         const segmentsTotal = candidate.routes.reduce(
@@ -318,6 +291,45 @@ export async function planRouteDeterministically(
         );
         result = asOptimizationResult(evaluation, board);
       }
+      const priorityConflicts = directFleetDiagnostics(
+        board,
+        result,
+      ).priorityConflicts;
+      if (priorityConflicts)
+        progress(
+          "info",
+          "routing.priority.started",
+          "Google Routes API",
+          "orden de prioridad por camioneta",
+          "Se ordenarán altas, medias y por horario sin cambiar pedidos de camioneta. Google Routes recalculará los recorridos afectados y sus descargas.",
+          { priorityConflicts },
+        );
+      const priorityStarted = performance.now();
+      const corrected = await reconcileStrictPriorities(
+        board,
+        result,
+        settings,
+        timezone,
+        () => renewOptimizationLease(pool, planId, lease, externalTimeout),
+        dependencies.readLeg ?? createRoadLegReader(),
+      );
+      result = corrected.result;
+      const reorderedVehicleIds = corrected.reorderedVehicleIds;
+      assertStrictPriorityResult(board, result);
+      if (reorderedVehicleIds.length)
+        progress(
+          "info",
+          "routing.priority.completed",
+          "Google Routes API",
+          "recorrido de prioridad medido",
+          "Orden de prioridad y cobertura verificados. Los tiempos, kilómetros y trazos de las camionetas reordenadas corresponden al recorrido recalculado.",
+          {
+            stepDurationMs: Math.round(performance.now() - priorityStarted),
+            vehicles: reorderedVehicleIds.length,
+            distanceMeters: result.metrics.travelDistanceMeters,
+            durationSeconds: result.metrics.totalDurationSeconds,
+          },
+        );
       const diagnostics = directFleetDiagnostics(board, result);
       progress(
         diagnostics.priorityConflicts || diagnostics.lateStops
@@ -325,7 +337,7 @@ export async function planRouteDeterministically(
           : "info",
         "routing.result.validated",
         "Ana Rutas",
-        "validación sin alterar el recorrido",
+        "validación de prioridades y cobertura",
         "Cobertura completa verificada. El reparto y las excepciones se detallan a continuación; son previsiones, no incidencias reales del chofer.",
         {
           ...diagnostics,
@@ -369,7 +381,10 @@ export async function planRouteDeterministically(
           fleetRoutingRequestLimit: maximumFleetRoutingRequests,
           fleetRoutingShipmentUnits,
           score: diagnostics,
-          providerSequencePreserved: chosenSource === "Google",
+          priorityScope: "per_vehicle",
+          reorderedVehicleIds,
+          providerSequencePreserved:
+            chosenSource === "Google" && reorderedVehicleIds.length === 0,
         },
       );
       progress(

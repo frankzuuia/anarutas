@@ -1,5 +1,10 @@
 # QA — recepción anticipada y destinos compartidos
 
+Nota de autopsia posterior: el conteo de conflictos de prioridad de esta prueba
+v5 usaba el rango del punto físico. No certificaba el orden individual de sus
+clientes. [SP](BLOQUE-PRIORIDAD-ESTRICTA.md) corrige esa limitación, valida por
+cliente y conserva camioneta única aunque la prioridad exija revisitar el punto.
+
 Contrato: [BLOQUE-RECEPCION-ANTICIPADA.md](BLOQUE-RECEPCION-ANTICIPADA.md).
 Escenarios RA01..10: `tests/acceptance-early-reception.feature`.
 
