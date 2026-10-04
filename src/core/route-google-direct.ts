@@ -1,5 +1,6 @@
 import { AppError } from "./errors";
-import { visitServiceSeconds } from "./route-service-time";
+import { physicalVisitKey, visitServiceSeconds } from "./route-service-time";
+import { receivingWindows } from "./route-reception";
 import { visitWindowAlternatives } from "./route-visit-windows";
 import { geographicZones, zoneVehicleCosts } from "./route-zones";
 import type { OrderBoard, Shipment } from "./orders-contract";
@@ -18,7 +19,7 @@ import {
 } from "./route-optimization-google";
 import type { RoutingSettings } from "./routing-contract";
 
-export const directFleetPolicy = "google-zones-v4-deadline-options";
+export const directFleetPolicy = "google-zones-v5-early-reception";
 
 function validCoordinate(
   value: number | null,
@@ -26,17 +27,6 @@ function validCoordinate(
 ): value is number {
   // NaN and infinities also fail this bounded comparison; null must not coerce to zero.
   return value !== null && Math.abs(value) <= maximum;
-}
-
-function normalizedWindows(shipments: Shipment[]) {
-  const unique = new Map(
-    shipments
-      .flatMap((s) => s.deliveryWindows)
-      .map((w) => [`${w.startMinute}:${w.endMinute}`, { ...w }]),
-  );
-  return [...unique.values()].sort(
-    (a, b) => a.startMinute - b.startMinute || a.endMinute - b.endMinute,
-  );
 }
 
 export function directDeliveryGroups(shipments: Shipment[]) {
@@ -49,7 +39,7 @@ export function directDeliveryGroups(shipments: Shipment[]) {
       rank: number;
       latitude: number;
       longitude: number;
-      windows: ReturnType<typeof normalizedWindows>;
+      windows: Shipment["deliveryWindows"];
     }
   >();
   for (const group of priorityGroups(shipments).sort(
@@ -68,14 +58,17 @@ export function directDeliveryGroups(shipments: Shipment[]) {
       )
     )
       throw new AppError("ROUTING_POINTS_REQUIRED", 409);
-    const windows = normalizedWindows(members);
-    // No fuzzy distance, name matching or commercial-parent merging. Different
-    // windows can require separate visits even at exactly the same coordinate.
-    const key = JSON.stringify([latitude, longitude, windows]);
+    const windows = receivingWindows(members);
+    // Exact confirmed point, independent of names or opening times. Early
+    // reception lets distinct clients share one visit without splitting trucks.
+    const key = physicalVisitKey(members[0]);
     const existing = physical.get(key);
     if (existing) {
       existing.shipmentIds.push(...group.shipmentIds);
       existing.rank = Math.min(existing.rank, group.rank);
+      existing.windows = receivingWindows(
+        existing.shipmentIds.map((id) => byId.get(id)!),
+      );
     } else {
       physical.set(key, {
         ...group,
@@ -243,19 +236,12 @@ function lateness(
   timezone: string,
 ) {
   const arrival = Date.parse(eta);
-  const windows = shipment.deliveryWindows.map((window) => ({
-    start: Date.parse(localMinuteInstant(date, window.startMinute, timezone)),
-    end: Date.parse(localMinuteInstant(date, window.endMinute, timezone)),
-  }));
-  if (
-    !windows.length ||
-    windows.some((w) => arrival >= w.start && arrival <= w.end)
-  )
-    return 0;
-  const previous = windows.filter((w) => w.end < arrival);
-  return previous.length
-    ? Math.ceil((arrival - Math.max(...previous.map((w) => w.end))) / 1000)
-    : 0;
+  const [window] = receivingWindows([shipment]);
+  if (!window) return 0;
+  const closing = Date.parse(
+    localMinuteInstant(date, window.endMinute, timezone),
+  );
+  return Math.max(0, Math.ceil((arrival - closing) / 1000));
 }
 
 export function expandDirectFleetResult(
@@ -400,6 +386,10 @@ export function directFleetDiagnostics(
     unusedVehicles: load.routes.filter((route) => route.orders === 0).length,
     operationalSeconds: result.metrics.travelDurationSeconds + makespanSeconds,
     travelSeconds: result.metrics.travelDurationSeconds,
+    trafficAdjustmentSeconds: result.routes.reduce(
+      (total, route) => total + (route.trafficAdjustmentSeconds ?? 0),
+      0,
+    ),
     makespanSeconds,
     distanceMeters: result.metrics.travelDistanceMeters,
     maxOrders: load.maxOrders,

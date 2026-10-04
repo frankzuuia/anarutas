@@ -159,10 +159,10 @@ describe("Google road contracts / no network substitutions", () => {
 });
 
 describe("manual schedule arithmetic", () => {
-  it("waits for an opening and chooses the next available window", () => {
+  it("allows early reception before an opening or between windows without waiting", () => {
     expect(visitTiming(1000, [{ start: 5000, end: 10000 }])).toEqual({
-      eta: 5000,
-      waitDurationSeconds: 4,
+      eta: 1000,
+      waitDurationSeconds: 0,
       lateSeconds: 0,
     });
     expect(
@@ -170,13 +170,13 @@ describe("manual schedule arithmetic", () => {
         { start: 15000, end: 20000 },
         { start: 5000, end: 10000 },
       ]),
-    ).toEqual({ eta: 15000, waitDurationSeconds: 4, lateSeconds: 0 });
+    ).toEqual({ eta: 11000, waitDurationSeconds: 0, lateSeconds: 0 });
     expect(
       visitTiming(3000, [
         { start: 15000, end: 20000 },
         { start: 5000, end: 10000 },
       ]),
-    ).toEqual({ eta: 5000, waitDurationSeconds: 2, lateSeconds: 0 });
+    ).toEqual({ eta: 3000, waitDurationSeconds: 0, lateSeconds: 0 });
   });
   it("accepts the exact closing instant; reports lateness and keeps arrival rather than changing order", () => {
     const windows = [{ start: 5000, end: 10000 }];

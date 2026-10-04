@@ -16,16 +16,17 @@ export function visitWindowAlternatives(
   if (!windows.length) return [{}];
   const departure = Date.parse(horizon.startTime);
   return windows.flatMap((window) => {
-    const opening = Math.max(departure, Date.parse(window.startTime));
     const closing = Date.parse(window.endTime);
     const lateStart = new Date(Math.max(departure, closing)).toISOString();
     return [
-      ...(opening <= closing
+      ...(departure <= closing
         ? [
             {
               timeWindows: [
                 {
-                  startTime: new Date(opening).toISOString(),
+                  // The opening remains informative in the customer record;
+                  // receiving before it is allowed from the plan's departure.
+                  startTime: horizon.startTime,
                   endTime: window.endTime,
                 },
               ],

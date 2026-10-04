@@ -1,6 +1,8 @@
 import { GoogleAuth } from "google-auth-library";
 import { AppError } from "./errors";
 import { visitServiceSeconds } from "./route-service-time";
+import { receivingWindows } from "./route-reception";
+import { trafficClock } from "./route-traffic-clock";
 import { localMidnight } from "./orders-validation";
 import type { OrderBoard } from "./orders-contract";
 import { assertDeliveryGroups } from "./route-delivery-groups";
@@ -114,6 +116,7 @@ export type GoogleRouteResult = {
     routeToken: string | null;
   }[];
   trafficMode?: "forecast" | "static";
+  trafficAdjustmentSeconds?: number;
 };
 
 export type GoogleOptimizationResult = {
@@ -233,18 +236,10 @@ export function buildGoogleOptimizationRequest(
       globalDurationCostPerHour,
       shipments: groups.map((group) => {
         const shipment = byId.get(group.id)!;
-        const windows = group.shipmentIds.flatMap(
-          (id) => byId.get(id)!.deliveryWindows,
+        const windows = receivingWindows(
+          group.shipmentIds.map((id) => byId.get(id)!),
         );
-        // Google supports a soft deadline only with one window. This envelope is
-        // a seed; Routes evaluation checks every exact local window afterwards.
-        const opening = windows.length
-          ? localMinuteInstant(
-              board.plan.service_date,
-              Math.min(...windows.map((w) => w.startMinute)),
-              timezone,
-            )
-          : start;
+        // The same early-reception contract applies to sequencing seeds.
         const closing = windows.length
           ? localMinuteInstant(
               board.plan.service_date,
@@ -252,9 +247,7 @@ export function buildGoogleOptimizationRequest(
               timezone,
             )
           : end;
-        const startTime = new Date(
-          Math.max(Date.parse(start), Date.parse(opening)),
-        ).toISOString();
+        const startTime = start;
         return {
           label: group.id,
           loadDemands: {
@@ -508,11 +501,11 @@ export function buildGoogleRefinementRequest(
   return { ...request, injectedFirstSolutionRoutes };
 }
 
-function duration(value: unknown) {
+function duration(value: unknown, signed = false) {
   if (typeof value !== "string" || !value.endsWith("s"))
     throw new AppError("ROUTING_RESPONSE_INVALID", 503);
   const seconds = Number(value.slice(0, -1));
-  if (!Number.isFinite(seconds) || seconds < 0)
+  if (!Number.isFinite(seconds) || (!signed && seconds < 0))
     throw new AppError("ROUTING_RESPONSE_INVALID", 503);
   return Math.round(seconds);
 }
@@ -537,13 +530,20 @@ function responseRecord(value: unknown) {
   return value as Record<string, unknown>;
 }
 
-function metrics(value: unknown, field: string): RouteMetrics {
+function metrics(
+  value: unknown,
+  field: string,
+  trafficInfeasibilities = false,
+): RouteMetrics {
   try {
     const item = responseRecord(value);
     return {
       travelDistanceMeters: integer(item.travelDistanceMeters ?? 0),
       travelDurationSeconds: duration(item.travelDuration ?? "0s"),
-      waitDurationSeconds: duration(item.waitDuration ?? "0s"),
+      waitDurationSeconds: duration(
+        item.waitDuration ?? "0s",
+        trafficInfeasibilities,
+      ),
       totalDurationSeconds: duration(item.totalDuration ?? "0s"),
       performedShipmentCount: integer(item.performedShipmentCount ?? 0),
     };
@@ -585,6 +585,7 @@ export function parseGoogleOptimizationResponse(
   const seenVehicles = new Set<number>();
   const routes = (root.routes ?? []).map((raw: unknown) => {
     const route = responseRecord(raw);
+    const trafficInfeasibilities = route.hasTrafficInfeasibilities === true;
     const vehicleIndex = integer(route.vehicleIndex ?? 0);
     if (vehicleIndex >= vehicleCount || seenVehicles.has(vehicleIndex))
       throw new AppError("ROUTING_RESPONSE_INVALID", 503);
@@ -599,6 +600,13 @@ export function parseGoogleOptimizationResponse(
     if (routeTransitions.length < routeVisits.length)
       throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
         field: "route.transitions.count",
+      });
+    if (
+      trafficInfeasibilities &&
+      routeTransitions.length !== routeVisits.length + 1
+    )
+      throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
+        field: "route.trafficTransitions.count",
       });
     const visits = routeVisits.map((rawVisit, index) => {
       const visit = responseRecord(rawVisit);
@@ -620,7 +628,10 @@ export function parseGoogleOptimizationResponse(
         eta: new Date(visit.startTime).toISOString(),
         travelDistanceMeters: integer(transition.travelDistanceMeters ?? 0),
         travelDurationSeconds: duration(transition.travelDuration ?? "0s"),
-        waitDurationSeconds: duration(transition.waitDuration ?? "0s"),
+        waitDurationSeconds: duration(
+          transition.waitDuration ?? "0s",
+          trafficInfeasibilities,
+        ),
       };
     });
     const transitions = routeTransitions.map((rawTransition) => {
@@ -640,6 +651,7 @@ export function parseGoogleOptimizationResponse(
     const routeMetrics = metrics(
       route.metrics === undefined && visits.length === 0 ? {} : route.metrics,
       "route.metrics",
+      trafficInfeasibilities,
     );
     for (const time of [route.vehicleStartTime, route.vehicleEndTime])
       if (
@@ -651,6 +663,16 @@ export function parseGoogleOptimizationResponse(
       throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
         field: "route.metrics.performedShipmentCount",
       });
+    const corrected = trafficInfeasibilities
+      ? trafficClock(
+          visits,
+          route.vehicleEndTime as string | undefined,
+          duration(
+            responseRecord(routeTransitions.at(-1)).waitDuration ?? "0s",
+            true,
+          ),
+        )
+      : undefined;
     return {
       vehicleIndex,
       departureAt:
@@ -658,13 +680,29 @@ export function parseGoogleOptimizationResponse(
           ? new Date(route.vehicleStartTime).toISOString()
           : undefined,
       finishedAt:
-        typeof route.vehicleEndTime === "string"
+        corrected?.finishedAt ??
+        (typeof route.vehicleEndTime === "string"
           ? new Date(route.vehicleEndTime).toISOString()
-          : undefined,
+          : undefined),
       encodedPolyline:
         typeof polyline?.points === "string" ? polyline.points : null,
-      metrics: routeMetrics,
-      visits,
+      metrics: corrected
+        ? {
+            ...routeMetrics,
+            waitDurationSeconds: corrected.waitDurationSeconds,
+            totalDurationSeconds:
+              routeMetrics.totalDurationSeconds + corrected.addedSeconds,
+          }
+        : routeMetrics,
+      visits: corrected
+        ? visits.map((visit, index) => ({
+            ...visit,
+            ...corrected.clocks[index],
+          }))
+        : visits,
+      ...(corrected
+        ? { trafficAdjustmentSeconds: corrected.addedSeconds }
+        : {}),
       transitions,
     };
   });
@@ -697,6 +735,7 @@ export function parseGoogleOptimizationResponse(
     root.metrics &&
       (root.metrics as Record<string, unknown>).aggregatedRouteMetrics,
     "metrics.aggregatedRouteMetrics",
+    routes.some((route) => route.trafficAdjustmentSeconds !== undefined),
   );
   const performed = routes.reduce(
     (count, route) => count + route.visits.length,
@@ -706,6 +745,16 @@ export function parseGoogleOptimizationResponse(
     throw new AppError("ROUTING_RESPONSE_INVALID", 503, {
       field: "metrics.performedShipmentCount",
     });
+  if (routes.some((route) => route.trafficAdjustmentSeconds !== undefined)) {
+    aggregated.waitDurationSeconds = routes.reduce(
+      (sum, route) => sum + route.metrics.waitDurationSeconds,
+      0,
+    );
+    aggregated.totalDurationSeconds = routes.reduce(
+      (sum, route) => sum + route.metrics.totalDurationSeconds,
+      0,
+    );
+  }
   return {
     routes,
     skipped,

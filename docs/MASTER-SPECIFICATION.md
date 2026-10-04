@@ -1913,3 +1913,19 @@ PH01..11 verificados en QA-PREFERENCIA-HORARIOS-2026-10-02.md: Google real 44/44
 y cero atrasos, modelo final idéntico al probado, 72 contratos y 100% cobertura
 crítica; 26/26 mutaciones, 1,021 regresiones y 2 E2E reales aprobados. Desarrollo,
 sin nuevos límites por cliente/flota, sin APK, cambios históricos ni despliegue.
+
+## RA01..10 — recepción anticipada y un vehículo por punto
+
+Corrección solicitada el2026-10-04 y aclarada expresamente por el propietario:
+el inicio de ventana no prohíbe entregar antes; el cierre sigue siendo el límite.
+BLOQUE-RECEPCION-ANTICIPADA.md sustituye esa parte de PH. Una coordenada exacta
+es una visita con todos sus clientes y pedidos, cierre común más restrictivo y
+descarga por cliente. No se fusionan puntos cercanos por nombre ni proximidad.
+Recálculo y recuperación comparten la semántica, sin cambiar comandos operativos.
+
+RA09..10 recogen el defecto observado en la respuesta Google real: esperas
+negativas con `hasTrafficInfeasibilities` ya no descartan un reparto completo;
+el déficit se traslada a tiempos y se mantienen advertencias de atraso.
+No se aceptan negativos en conducción ni se relajan cobertura/identidad.
+Pruebas y límites en QA-RECEPCION-ANTICIPADA-2026-10-04.md; entrega develop,
+sin despliegue automático ni modificación de las rutas remotas existentes.

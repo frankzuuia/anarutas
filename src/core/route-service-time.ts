@@ -34,12 +34,7 @@ export function visitServiceSeconds(
 }
 
 export function physicalVisitKey(shipment: Shipment) {
-  const windows = [
-    ...new Set(
-      shipment.deliveryWindows.map((w) => `${w.startMinute}:${w.endMinute}`),
-    ),
-  ].sort();
-  return JSON.stringify([shipment.latitude, shipment.longitude, windows]);
+  return JSON.stringify([shipment.latitude, shipment.longitude]);
 }
 
 // Only consecutive visits merge: manual departures and later revisits still

@@ -283,7 +283,7 @@ describe("Google Route Optimization contract", () => {
               },
               timeWindows: [
                 {
-                  startTime: "2026-09-09T15:00:00.000Z",
+                  startTime: "2026-09-09T13:30:00.000Z",
                   endTime: "2027-09-08T13:30:00.000Z",
                   softEndTime: "2026-09-09T18:00:00.000Z",
                   costPerHourAfterSoftEndTime: expect.any(Number),

@@ -31,14 +31,14 @@ const cases = [
   [
     "invent-on-time-after-closing",
     "route-visit-windows.ts",
-    "opening <= closing",
+    "departure <= closing",
     "true",
   ],
   [
     "reject-exact-closing",
     "route-visit-windows.ts",
-    "opening <= closing",
-    "opening < closing",
+    "departure <= closing",
+    "departure < closing",
   ],
   [
     "omit-already-late-departure-cost",
@@ -47,10 +47,10 @@ const cases = [
     "0",
   ],
   [
-    "opening-before-global-start",
+    "restore-opening-wait",
     "route-visit-windows.ts",
-    "Math.max(departure, Date.parse(window.startTime))",
-    "Date.parse(window.startTime)",
+    "startTime: horizon.startTime",
+    "startTime: window.startTime",
   ],
   [
     "late-option-before-deadline",
@@ -79,8 +79,8 @@ const cases = [
   [
     "reuse-previous-model-policy",
     "route-google-direct.ts",
+    "google-zones-v5-early-reception",
     "google-zones-v4-deadline-options",
-    "google-zones-v3-time-aware",
   ],
   [
     "pin-all-to-first-truck",
@@ -167,6 +167,96 @@ const cases = [
     "optimization.appliedPlanVersion === board.plan.version",
     "true",
   ],
+  [
+    "split-same-point-by-window",
+    "route-service-time.ts",
+    "[shipment.latitude, shipment.longitude]",
+    "[shipment.latitude, shipment.longitude, shipment.deliveryWindows]",
+  ],
+  [
+    "omit-shared-closing-update",
+    "route-google-direct.ts",
+    "existing.windows = receivingWindows(\n        existing.shipmentIds.map((id) => byId.get(id)!),\n      );",
+    "",
+  ],
+  [
+    "ignore-last-client-window",
+    "route-reception.ts",
+    "window.endMinute > last.endMinute",
+    "window.endMinute < last.endMinute",
+  ],
+  [
+    "use-least-restrictive-shared-deadline",
+    "route-reception.ts",
+    "a.endMinute - b.endMinute",
+    "b.endMinute - a.endMinute",
+  ],
+  [
+    "treat-no-window-as-no-deadline-for-everyone",
+    "route-reception.ts",
+    "if (!deliveryWindows.length) return [];",
+    "if (!deliveryWindows.length) return [{startMinute:0,endMinute:0}];",
+  ],
+  [
+    "restore-manual-wait",
+    "route-road.ts",
+    "eta: arrival,\n    waitDurationSeconds: 0",
+    "eta: Math.max(arrival, ordered[0]?.start ?? arrival),\n    waitDurationSeconds: Math.max(0, ((ordered[0]?.start ?? arrival) - arrival) / 1000)",
+  ],
+  [
+    "ignore-traffic-deficit",
+    "route-traffic-clock.ts",
+    "shift = Math.max(0, shift - wait)",
+    "shift = 0",
+  ],
+  [
+    "retain-phantom-wait",
+    "route-traffic-clock.ts",
+    "Math.max(0, wait - shift)",
+    "Math.max(0, wait)",
+  ],
+  [
+    "erase-traffic-clock-change",
+    "route-traffic-clock.ts",
+    "instant + shift * 1000",
+    "instant",
+  ],
+  [
+    "drop-traffic-return",
+    "route-traffic-clock.ts",
+    "advance(finishedAt, returnWait).eta",
+    "finishedAt",
+  ],
+  [
+    "drop-traffic-wait-total",
+    "route-traffic-clock.ts",
+    "waiting += actualWait",
+    "waiting += 0",
+  ],
+  [
+    "allow-unmarked-negative-wait",
+    "route-optimization-google.ts",
+    "route.hasTrafficInfeasibilities === true",
+    "true",
+  ],
+  [
+    "allow-negative-driving",
+    "route-optimization-google.ts",
+    "(!signed && seconds < 0)",
+    "false",
+  ],
+  [
+    "ignore-traffic-return-guard",
+    "route-optimization-google.ts",
+    "trafficInfeasibilities &&\n      routeTransitions.length !== routeVisits.length + 1",
+    "false",
+  ],
+  [
+    "lose-traffic-aggregate-duration",
+    "route-optimization-google.ts",
+    "sum + route.metrics.totalDurationSeconds",
+    "sum",
+  ],
 ];
 const testFiles = [
   "route-deadline-preference.test.ts",
@@ -174,6 +264,9 @@ const testFiles = [
   "route-google-direct.test.ts",
   "route-zones-service.test.ts",
   "route-map-selection.test.ts",
+  "route-early-reception.test.ts",
+  "route-road.test.ts",
+  "route-traffic-clock.test.ts",
 ];
 const results = [];
 try {

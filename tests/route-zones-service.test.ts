@@ -197,7 +197,7 @@ describe("unloading contracts and clocks", () => {
     expect(groups).toHaveLength(2);
     expect(
       request.model.shipments[0].deliveries.map((v) => v.duration),
-    ).toEqual(["1200s", "1200s", "1200s", "1200s"]);
+    ).toEqual(["1200s", "1200s"]);
     expect(request.model.shipments[1].deliveries[0].duration).toBe("480s");
     expect(
       request.model.shipments.every(
@@ -214,7 +214,7 @@ describe("unloading contracts and clocks", () => {
       "s4",
     ]);
   });
-  it("manual recalc adds service and waiting to ETAs and depot return, no network for co-located points", async () => {
+  it("manual recalc adds service without opening-time waits, no network for co-located points", async () => {
     const shipments = [
       zoneShipment(1, { unloadingMinutes: 15 }),
       zoneShipment(2, { partnerId: 1, unloadingMinutes: 15 }),
@@ -224,10 +224,7 @@ describe("unloading contracts and clocks", () => {
         deliveryWindows: [{ startMinute: 540, endMinute: 600 }],
       }),
     ];
-    expect([...consecutiveServiceSeconds(shipments)]).toEqual([
-      ["s3", 1200],
-      ["s4", 420],
-    ]);
+    expect([...consecutiveServiceSeconds(shipments)]).toEqual([["s4", 1620]]);
     const result = await calculateManualRoutes(
       zoneBoard(shipments, 1),
       zoneSettings,
@@ -238,18 +235,18 @@ describe("unloading contracts and clocks", () => {
       "2026-10-02T08:00:00.000Z",
       "2026-10-02T08:00:00.000Z",
       "2026-10-02T08:00:00.000Z",
-      "2026-10-02T09:00:00.000Z",
+      "2026-10-02T08:00:00.000Z",
     ]);
-    expect(route.finishedAt).toBe("2026-10-02T09:07:00.000Z");
+    expect(route.finishedAt).toBe("2026-10-02T08:27:00.000Z");
     expect(route.metrics).toMatchObject({
       travelDurationSeconds: 0,
-      waitDurationSeconds: 2400,
-      totalDurationSeconds: 4020,
+      waitDurationSeconds: 0,
+      totalDurationSeconds: 1620,
     });
     expect(
       consecutiveServiceSeconds([
         shipments[0],
-        shipments[3],
+        { ...shipments[3], latitude: 20.66 },
         { ...shipments[0], id: "return" },
       ]).get("return"),
     ).toBe(900);

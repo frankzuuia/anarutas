@@ -54,21 +54,17 @@ describe("deadline exceptions are explicit visit alternatives", () => {
     ).toBe(true);
     expect(options[0].arrivalLocation).toEqual(options[1].arrivalLocation);
   });
-  it("keeps multiple windows available instead of turning the gap into an on-time delivery", () => {
+  it("permits early reception before the last window without waiting in a gap", () => {
     const options = choices([
       { startMinute: 480, endMinute: 540 },
       { startMinute: 720, endMinute: 780 },
     ]);
-    expect(options).toHaveLength(4);
+    expect(options).toHaveLength(2);
     expect(
       options.filter((v) => !("cost" in v)).map((v) => v.timeWindows![0]),
     ).toEqual([
       {
         startTime: "2026-10-02T08:00:00.000Z",
-        endTime: "2026-10-02T09:00:00.000Z",
-      },
-      {
-        startTime: "2026-10-02T12:00:00.000Z",
         endTime: "2026-10-02T13:00:00.000Z",
       },
     ]);
@@ -76,7 +72,7 @@ describe("deadline exceptions are explicit visit alternatives", () => {
       options
         .filter((v) => "cost" in v)
         .map((v) => (v as { cost: number }).cost),
-    ).toEqual([45, 45]);
+    ).toEqual([45]);
   });
   it("never manufactures an on-time window after the customer closed", () => {
     const request = model(
@@ -87,8 +83,8 @@ describe("deadline exceptions are explicit visit alternatives", () => {
       720,
     );
     const options = request.model.shipments[0].deliveries;
-    expect(options).toHaveLength(2);
-    expect(options).toMatchObject([{ cost: 45 }, { cost: 18 }]);
+    expect(options).toHaveLength(1);
+    expect(options).toMatchObject([{ cost: 18 }]);
     for (const v of options) {
       expect(v.timeWindows![0].startTime).toBe(request.model.globalStartTime);
       expect(v.timeWindows![0].softEndTime).toBe(request.model.globalStartTime);
@@ -116,23 +112,19 @@ describe("deadline exceptions are explicit visit alternatives", () => {
     expect(options[0]).not.toHaveProperty("cost");
     expect(options[0]).not.toHaveProperty("timeWindows");
   });
-  it("keeps overlapping or adjacent windows as separate valid alternatives and deduplicates exact copies", () => {
+  it("normalizes overlapping, adjacent and repeated windows to the final reception deadline", () => {
     const options = choices([
       { startMinute: 480, endMinute: 600 },
       { startMinute: 540, endMinute: 660 },
       { startMinute: 660, endMinute: 720 },
       { startMinute: 480, endMinute: 600 },
     ]);
-    expect(options).toHaveLength(6);
+    expect(options).toHaveLength(2);
     expect(options.every((v) => v.timeWindows!.length === 1)).toBe(true);
     expect(
       options
         .filter((v) => !("cost" in v))
         .map((v) => v.timeWindows![0].endTime),
-    ).toEqual([
-      "2026-10-02T10:00:00.000Z",
-      "2026-10-02T11:00:00.000Z",
-      "2026-10-02T12:00:00.000Z",
-    ]);
+    ).toEqual(["2026-10-02T12:00:00.000Z"]);
   });
 });

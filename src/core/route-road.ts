@@ -176,14 +176,12 @@ export function visitTiming(
     )
   )
     throw new AppError("ROUTING_MODEL_INVALID");
-  const window = ordered.find((w) => arrival <= w.end);
-  const eta = window ? Math.max(arrival, window.start) : arrival;
   const lastEnd = ordered.length
     ? Math.max(...ordered.map((w) => w.end))
     : arrival;
   return {
-    eta,
-    waitDurationSeconds: Math.ceil((eta - arrival) / 1000),
+    eta: arrival,
+    waitDurationSeconds: 0,
     lateSeconds: Math.max(0, Math.ceil((arrival - lastEnd) / 1000)),
   };
 }

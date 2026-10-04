@@ -1601,7 +1601,7 @@ describe("logistics precedence and physical-stop quality", () => {
     ).toEqual({ routes: [{ vehicleId: "v1", shipmentIds: [] }] });
   });
 
-  it("uses opening, angle, radius and stable identity as deadline tie breakers", () => {
+  it("uses angle, radius and stable identity for deadline ties without an opening-time detour", () => {
     const source = board();
     source.shipments = [
       ["west", 20, -103.1, 480],
@@ -1630,12 +1630,12 @@ describe("logistics precedence and physical-stop quality", () => {
         { latitude: 20, longitude: -103 },
       ).routes[0].shipmentIds,
     ).toEqual([
+      "opens-later",
       "near-east",
       "far-east",
       "same-a",
       "same-b",
       "west",
-      "opens-later",
     ]);
   });
 
@@ -1694,7 +1694,7 @@ describe("logistics precedence and physical-stop quality", () => {
     ).toEqual(["group-first", "group-second", "competitor"]);
   });
 
-  it("uses the earliest opening when customer deadlines are equal", () => {
+  it("ignores opening times when customer deadlines and geometry are equal", () => {
     const source = board();
     source.shipments = [
       shipment("group-first", 1, "high"),
@@ -1723,7 +1723,7 @@ describe("logistics precedence and physical-stop quality", () => {
         },
         { latitude: 20, longitude: -103 },
       ).routes[0].shipmentIds,
-    ).toEqual(["group-first", "group-second", "competitor"]);
+    ).toEqual(["competitor", "group-first", "group-second"]);
   });
 
   it("rejects missing geographic points instead of inventing a route", () => {
@@ -1840,7 +1840,7 @@ describe("logistics precedence and physical-stop quality", () => {
     ).toEqual(new Set(["high", "high2"]));
   });
 
-  it("allows independent trucks to deliver while another high-priority destination is still closed", async () => {
+  it("allows independent trucks and high-priority destinations to receive before their openings", async () => {
     const source = board();
     source.shipments[2].deliveryWindows = [
       { startMinute: 600, endMinute: 660 },
@@ -1854,12 +1854,12 @@ describe("logistics precedence and physical-stop quality", () => {
     const result = await evaluateCandidate(source, split, settings, "UTC");
     expect(result.priorityConflicts).toBe(0);
     expect(result.result.routes[0].stops[0].eta).toBe(
-      "2026-09-12T10:00:00.000Z",
+      "2026-09-12T08:00:00.000Z",
     );
     expect(result.result.routes[1].stops[0].eta).toBe(
       "2026-09-12T08:00:00.000Z",
     );
-    expect(result.imbalanceSeconds).toBe(7200);
+    expect(result.imbalanceSeconds).toBe(0);
   });
 
   it("counts an unused truck when destinations equal trucks and excludes it from active-driver time imbalance", async () => {
@@ -1956,7 +1956,7 @@ describe("logistics precedence and physical-stop quality", () => {
       priorityConflicts: 0,
       lateStops: 1,
       lateSeconds: 3600,
-      waitSeconds: 3600,
+      waitSeconds: 0,
     });
     expect(result.result.routes[0].stops).toMatchObject([
       {
@@ -1971,8 +1971,8 @@ describe("logistics precedence and physical-stop quality", () => {
       },
       {
         shipmentId: "medium",
-        eta: "2026-09-12T09:00:00.000Z",
-        waitDurationSeconds: 3600,
+        eta: "2026-09-12T08:00:00.000Z",
+        waitDurationSeconds: 0,
         lateSeconds: 0,
       },
       { shipmentId: "schedule", lateSeconds: 0 },
@@ -1980,7 +1980,7 @@ describe("logistics precedence and physical-stop quality", () => {
     expect(result.timezone).toBe("UTC");
   });
 
-  it("improves measured lateness by changing allocation even when both candidates have correct identical priorities", async () => {
+  it("does not invent lateness or a timing benefit from splitting co-located clients with later openings", async () => {
     const source = board();
     source.shipments.forEach((s) => {
       s.priority = "schedule";
@@ -2013,8 +2013,8 @@ describe("logistics precedence and physical-stop quality", () => {
     );
     expect(bad.score).toMatchObject({
       priorityConflicts: 0,
-      lateStops: 2,
-      lateSeconds: 21600,
+      lateStops: 0,
+      lateSeconds: 0,
     });
     expect(split.score).toMatchObject({
       priorityConflicts: 0,
@@ -2030,14 +2030,14 @@ describe("logistics precedence and physical-stop quality", () => {
       "UTC",
     );
     expect(reordered.score.lateStops).toBe(0);
-    expect(compareLogisticsScores(reordered.score, bad.score)).toBeLessThan(0);
+    expect(compareLogisticsScores(reordered.score, bad.score)).toBe(0);
     expect(compareLogisticsScores(split.score, reordered.score)).toBeLessThan(
       0,
     );
     expect(split.result.metrics.performedShipmentCount).toBe(3);
     expect(bad.result.routes[0].stops[0]).toMatchObject({
-      eta: "2026-09-12T12:00:00.000Z",
-      waitDurationSeconds: 14400,
+      eta: "2026-09-12T08:00:00.000Z",
+      waitDurationSeconds: 0,
     });
   });
 
@@ -2286,7 +2286,7 @@ describe("Google grouped seed / pure request and response mapping", () => {
       request.model.vehicles[0].loadLimits.orders.costPerUnitAboveSoftMax,
     );
     const multiple = request.model.shipments[1].deliveries[0].timeWindows![0];
-    expect(multiple.startTime).toBe("2026-09-12T10:00:00.000Z");
+    expect(multiple.startTime).toBe("2026-09-12T08:00:00.000Z");
     expect(multiple.softEndTime).toBe("2026-09-12T16:00:00.000Z");
     expect(request.model.shipments[2].deliveries[0]).not.toHaveProperty(
       "timeWindows",

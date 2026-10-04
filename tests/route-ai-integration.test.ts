@@ -301,7 +301,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       )
     ).rows[0].details;
     expect(audit).toMatchObject({
-      planner: "google-zones-v4-deadline-options",
+      planner: "google-zones-v5-early-reception",
       evaluatedCandidates: 1,
       candidateSources: ["Google"],
       chosenSource: "Google",
@@ -309,7 +309,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       fleetRoutingRequests: 1,
       fleetRoutingRequestLimit: 1,
       fleetRoutingShipmentUnits: 3,
-      logisticsPolicy: "google-zones-v4-deadline-options",
+      logisticsPolicy: "google-zones-v5-early-reception",
       score: {
         priorityConflicts: 1,
         lateStops: 0,

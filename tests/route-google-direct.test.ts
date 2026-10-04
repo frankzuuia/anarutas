@@ -117,7 +117,7 @@ function response(sequence = [2, 0, 1]): GoogleOptimizationResult {
 
 describe("single global model, no paid calls", () => {
   it("pins the cost equations, coordinates, identifiers and priority tags of the one request", () => {
-    expect(directFleetPolicy).toBe("google-zones-v4-deadline-options");
+    expect(directFleetPolicy).toBe("google-zones-v5-early-reception");
     const current = board();
     const { request, groups } = buildDirectFleetRequest(
       current,
@@ -155,7 +155,7 @@ describe("single global model, no paid calls", () => {
     ).toEqual([896, 1792, 896]);
   });
 
-  it("sorts windows canonically, including identical openings, and promotes the physical stop's highest priority", () => {
+  it("uses the final closing independently of window order and promotes the physical stop's highest priority", () => {
     const current = board(2);
     current.shipments[0].priority = "schedule";
     current.shipments[1].priority = "high";
@@ -171,11 +171,7 @@ describe("single global model, no paid calls", () => {
     const { groups } = buildDirectFleetRequest(current, settings, "UTC");
     expect(groups).toHaveLength(1);
     expect(groups[0].shipmentIds).toEqual(["order-1", "order-0"]);
-    expect(groups[0].windows).toEqual([
-      { startMinute: 480, endMinute: 540 },
-      { startMinute: 480, endMinute: 600 },
-      { startMinute: 600, endMinute: 800 },
-    ]);
+    expect(groups[0].windows).toEqual([{ startMinute: 600, endMinute: 800 }]);
   });
 
   it("validates every coordinate component without coercing null to zero", () => {
@@ -292,7 +288,7 @@ describe("single global model, no paid calls", () => {
     expect(buildDirectFleetRequest(current, settings, "UTC")).toEqual(initial);
   });
 
-  it("keeps distinct clients and near points distinct; merges only exact coordinates and identical windows", () => {
+  it("keeps distinct clients and near points distinct; merges exact coordinates with different windows", () => {
     const current = board(4, 3);
     current.shipments[1].latitude = current.shipments[0].latitude;
     current.shipments[2].latitude = current.shipments[0].latitude;
@@ -304,14 +300,14 @@ describe("single global model, no paid calls", () => {
       settings,
       "UTC",
     );
-    expect(groups).toHaveLength(3);
+    expect(groups).toHaveLength(2);
     const grouped = groups.find((g) => g.shipmentIds.includes("order-1"))!;
-    expect(grouped.shipmentIds).toEqual(["order-0", "order-1"]);
+    expect(grouped.shipmentIds).toEqual(["order-0", "order-1", "order-2"]);
     expect(grouped.rank).toBe(0);
     expect(
       request.model.shipments.find((s) => s.label === grouped.id)?.loadDemands
         .orders.amount,
-    ).toBe("2");
+    ).toBe("3");
     expect(request.model.vehicles[0].loadLimits.destinations.softMaxLoad).toBe(
       "1",
     );
@@ -337,7 +333,7 @@ describe("single global model, no paid calls", () => {
     ).toEqual(["order-1", "order-0", "order-2"]);
   });
 
-  it("models separate windows as alternatives, including past dates and a late departure", () => {
+  it("uses the final closing for multiple windows, including past dates and a late departure", () => {
     const current = board(1, 1);
     current.shipments[0].deliveryWindows = [
       { startMinute: 480, endMinute: 600 },
@@ -346,12 +342,12 @@ describe("single global model, no paid calls", () => {
     ];
     const { request } = buildDirectFleetRequest(current, settings, "UTC");
     const choices = request.model.shipments[0].deliveries;
-    expect(choices).toHaveLength(4);
+    expect(choices).toHaveLength(2);
     expect(
       choices
         .filter((v) => v.cost !== undefined)
         .map((v) => v.timeWindows![0].softEndTime),
-    ).toEqual(["2026-09-12T10:00:00.000Z", "2026-09-12T14:00:00.000Z"]);
+    ).toEqual(["2026-09-12T14:00:00.000Z"]);
     expect(choices.every((v) => v.timeWindows!.length === 1)).toBe(true);
     current.plan.departure_minute = 1439;
     const late = buildDirectFleetRequest(current, settings, "UTC").request;
@@ -500,6 +496,7 @@ describe("provider result is authoritative, adaptation is pure", () => {
       unusedVehicles: 2,
       operationalSeconds: 14400,
       travelSeconds: 7200,
+      trafficAdjustmentSeconds: 0,
       makespanSeconds: 7200,
       distanceMeters: 257632,
       maxOrders: 3,
@@ -510,6 +507,10 @@ describe("provider result is authoritative, adaptation is pure", () => {
     });
     expect(directFleetDiagnostics(current, expanded).lateSeconds).toBe(0);
     expect(directFleetDiagnostics(current, expanded).lateStops).toBe(0);
+    expanded.routes[0].trafficAdjustmentSeconds = 12;
+    expect(
+      directFleetDiagnostics(current, expanded).trafficAdjustmentSeconds,
+    ).toBe(12);
   });
   it("regresses the 257632m response overwritten by a 442329m alternative", () => {
     const current = board();
@@ -573,7 +574,7 @@ describe("provider result is authoritative, adaptation is pure", () => {
     ]);
   });
 
-  it("keeps actual planned lateness and does not confuse between-window arrivals with on-time", () => {
+  it("keeps actual planned lateness after the final closing and accepts early reception between windows", () => {
     const current = board(1, 1);
     current.shipments[0].deliveryWindows = [
       { startMinute: 480, endMinute: 500 },
@@ -588,7 +589,7 @@ describe("provider result is authoritative, adaptation is pure", () => {
       ["10:30", 0],
       ["11:00", 0],
       ["07:30", 0],
-      ["08:40", 1200],
+      ["08:40", 0],
       ["11:30", 1800],
     ] as const) {
       raw.routes[0].visits[0].eta = `2026-09-12T${eta}:00Z`;

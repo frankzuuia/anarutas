@@ -30,7 +30,7 @@ import { startPostgres, freePort } from "../helpers/postgres";
 // fabricated routes or additional Fleet calls. Remote Odoo and plans stay read-only.
 async function verifyRealReceipt(
   browser: Browser,
-  receiptKind: "new" | "deadline",
+  receiptKind: "new" | "deadline" | "early",
 ) {
   const directory = process.env.RUTAS_QA_ZONE_TIME_CAPTURE_DIRECTORY;
   test.skip(
@@ -212,6 +212,23 @@ async function verifyRealReceipt(
       .filter((v) => (v.lateSeconds ?? 0) > 0).length;
     expect(conflicts).toHaveLength(expectedLate);
     if (receiptKind === "deadline") expect(conflicts).toHaveLength(0);
+    if (receiptKind === "early") {
+      const points = new Map<string, Set<string>>();
+      for (const route of run!.routes)
+        for (const stop of route.stops) {
+          const shipment = current.shipments.find(
+            (s) => s.id === stop.shipmentId,
+          )!;
+          const key = JSON.stringify([shipment.latitude, shipment.longitude]);
+          const owners = points.get(key) ?? new Set<string>();
+          owners.add(route.vehicleId);
+          points.set(key, owners);
+        }
+      expect([...points.values()].every((owners) => owners.size === 1)).toBe(
+        true,
+      );
+      expect(run!.metrics.waitDurationSeconds).toBe(0);
+    }
     expect(run?.routes.flatMap((r) => r.stops)).toHaveLength(
       before.shipments.length,
     );
@@ -398,4 +415,9 @@ test("real Google deadline receipt preserves all orders without forecast warning
   browser,
 }) => {
   await verifyRealReceipt(browser, "deadline");
+});
+test("real Google early reception receipt preserves one truck per point and honest traffic warnings", async ({
+  browser,
+}) => {
+  await verifyRealReceipt(browser, "early");
 });

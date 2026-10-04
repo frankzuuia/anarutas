@@ -1,4 +1,5 @@
 import { AppError } from "./errors";
+import { receivingWindows } from "./route-reception";
 import type { Shipment } from "./orders-contract";
 import {
   priorityConflictIds,
@@ -12,7 +13,6 @@ type GeographicGroup = ReturnType<typeof priorityGroups>[number] & {
   point: Point;
   angle: number;
   radius: number;
-  firstOpening: number;
   firstDeadline: number;
 };
 
@@ -45,16 +45,13 @@ function geographicGroups(shipments: Shipment[], depot: Point) {
     };
     if (!validPoint(point) || shipment.locationStatus === "pending")
       throw new AppError("ROUTING_POINTS_REQUIRED", 409);
-    const windows = group.shipmentIds.flatMap(
-      (id) => byId.get(id)!.deliveryWindows,
+    const windows = receivingWindows(
+      group.shipmentIds.map((id) => byId.get(id)!),
     );
     return {
       ...group,
       point,
       ...geometry(point, depot),
-      firstOpening: windows.length
-        ? Math.min(...windows.map((window) => window.startMinute))
-        : Number.POSITIVE_INFINITY,
       firstDeadline: windows.length
         ? Math.min(...windows.map((window) => window.endMinute))
         : Number.POSITIVE_INFINITY,
@@ -569,7 +566,8 @@ export function colocatedAllocationCandidate(
 
 // A safe alternative for a measured route that still arrives late. It keeps
 // every allocation fixed and applies the business hierarchy literally:
-// priority, earliest closing window, earliest opening, then geographic tie.
+// priority, earliest applicable closing, then geographic tie. Early reception
+// must not create a preference for waiting until a customer's opening.
 export function deadlineSequenceCandidate(
   shipments: Shipment[],
   candidate: RoutingCandidate,
@@ -590,7 +588,6 @@ export function deadlineSequenceCandidate(
         (left, right) =>
           left.rank - right.rank ||
           left.firstDeadline - right.firstDeadline ||
-          left.firstOpening - right.firstOpening ||
           left.angle - right.angle ||
           left.radius - right.radius ||
           left.id.localeCompare(right.id),

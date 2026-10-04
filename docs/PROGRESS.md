@@ -917,3 +917,18 @@ cero conflictos de prioridad y 228.703 km. Modelo final idéntico; 72 contratos,
 100% cobertura crítica, 26/26 mutaciones, 1,021 regresiones aprobadas/3 omisiones
 externas preexistentes y 2 E2E reales. Typecheck/lint/build y auditoría de
 dependencias aprobados; p95 del modelo 72.52 ms. Entrega develop autorizada.
+
+## RA — recepción anticipada y punto único, autorizado 2026-10-04
+
+- [x] RA-T01: reproducción roja; apertura informativa, cierre por miembro y
+      punto físico indivisible; servicio y evaluación manual coherentes.
+- [x] RA-T02: una llamada Google real con 44/44 pedidos, 39 visitas físicas,
+      cero puntos compartidos entre camionetas, cero revisitas y 220.678 km.
+      Tres atrasos de tráfico explícitos; no se declara puntualidad perfecta.
+- [x] RA-T03: contratos, cobertura, mutaciones, Odoo/PG/HTTP, regresión y QA
+      comprobados antes de entrega a develop. Sin deploy ni APK.
+
+Evidencia y límites: QA-RECEPCION-ANTICIPADA-2026-10-04.md. Política v5 sustituye
+la interpretación rígida de apertura de PH. El déficit temporal que Google marca
+por tráfico se propaga a las llegadas/regreso y auditoría sin perder su reparto.
+Los cierres, clientes, descarga y prioridades conservan datos originales.
