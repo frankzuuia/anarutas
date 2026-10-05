@@ -275,7 +275,7 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       {
         srcTag: "priority:medium",
         dstTag: "priority:high",
-        cost: expect.any(Number),
+        delay: "31449601s",
       },
     ]);
     expect(result).toMatchObject({
@@ -299,15 +299,17 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       )
     ).rows[0].details;
     expect(audit).toMatchObject({
-      planner: "google-zones-v6-strict-client-priority",
+      planner: "google-zones-v7-joint-priority",
       evaluatedCandidates: 1,
       candidateSources: ["Google"],
       chosenSource: "Google",
+      priorityEnforcement: "native_transition_horizon",
+      pointOwnership: "native_same_vehicle_requirement",
       providerSequencePreserved: true,
       fleetRoutingRequests: 1,
       fleetRoutingRequestLimit: 1,
       fleetRoutingShipmentUnits: 3,
-      logisticsPolicy: "google-zones-v6-strict-client-priority",
+      logisticsPolicy: "google-zones-v7-joint-priority",
       score: {
         priorityConflicts: 0,
         lateStops: 0,
@@ -431,6 +433,20 @@ describe("deterministic Google routing with real PostgreSQL", () => {
       },
     });
     expect(fallbackLogs.at(-1)?.event).toBe("routing.completed");
+    const fallbackAudit = (
+      await db.pool.query(
+        "SELECT details FROM route_audit WHERE action='plan.optimized' AND entity_id=$1 ORDER BY id DESC LIMIT 1",
+        [plan.id],
+      )
+    ).rows[0].details;
+    expect(fallbackAudit).toMatchObject({
+      chosenSource: "cluster",
+      priorityEnforcement: "local_strict_priority",
+      pointOwnership: "geographic_point_owner",
+      providerSequencePreserved: false,
+      fleetRoutingRequests: 1,
+      reorderedVehicleIds: [],
+    });
 
     const failedLogs: RoutingLogEntry[] = [];
     await expect(

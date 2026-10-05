@@ -17,6 +17,90 @@ await mkdir(scratch, { recursive: true });
 const sandbox = await mkdtemp(join(scratch, "zone-time-mutants-"));
 const cases = [
   [
+    "omit-native-route-horizon",
+    "route-fleet-constraints.ts",
+    "vehicle.routeDurationLimit = { maxDuration: `${limits[index]}s` };",
+    "vehicle.routeDurationLimit = undefined;",
+  ],
+  [
+    "omit-global-validation-padding",
+    "route-fleet-constraints.ts",
+    "Math.max(span, delay) * 1000",
+    "span * 1000",
+  ],
+  [
+    "forget-native-business-guard",
+    "route-google-direct.ts",
+    "  assertFleetBusinessConstraints(request, result);",
+    "",
+  ],
+  [
+    "promote-mixed-point-priority-again",
+    "route-google-direct.ts",
+    "JSON.stringify([physicalVisitKey(members[0]), group.rank])",
+    "physicalVisitKey(members[0])",
+  ],
+  [
+    "allow-native-priority-descent",
+    "route-fleet-constraints.ts",
+    "to < from",
+    "to > from",
+  ],
+  [
+    "forbidden-delay-does-not-exceed-horizon",
+    "route-fleet-constraints.ts",
+    "Math.floor(Math.max(...limits)) + 1",
+    "Math.floor(Math.max(...limits))",
+  ],
+  [
+    "accept-invalid-native-horizon",
+    "route-fleet-constraints.ts",
+    "!Number.isFinite(span) || span <= 0",
+    "false",
+  ],
+  [
+    "omit-owner-dependency",
+    "route-fleet-constraints.ts",
+    "model.shipmentTypeRequirements = requirements",
+    "model.shipmentTypeRequirements = []",
+  ],
+  [
+    "replace-anchor-with-dependent-type",
+    "route-fleet-constraints.ts",
+    "model.shipments[anchor].shipmentType = required",
+    "model.shipments[anchor].shipmentType = dependent",
+  ],
+  [
+    "leave-dependent-visit-unbound",
+    "route-fleet-constraints.ts",
+    "model.shipments[index].shipmentType = dependent",
+    "model.shipments[index].shipmentType = undefined",
+  ],
+  [
+    "reverse-owner-requirement",
+    "route-fleet-constraints.ts",
+    "requiredShipmentTypeAlternatives: [required]",
+    "requiredShipmentTypeAlternatives: [dependent]",
+  ],
+  [
+    "accept-inverted-native-receipt",
+    "route-fleet-constraints.ts",
+    "rank < 0 || rank < previousRank",
+    "rank < 0",
+  ],
+  [
+    "accept-missing-priority-tag",
+    "route-fleet-constraints.ts",
+    "rank < 0 || rank < previousRank",
+    "rank !== -1 && rank < previousRank",
+  ],
+  [
+    "native-point-may-have-two-owners",
+    "route-fleet-constraints.ts",
+    "owner !== undefined && owner !== route.vehicleIndex",
+    "false",
+  ],
+  [
     "omit-safe-boundary-compaction",
     "route-strict-priority.ts",
     "shipmentIds = proposed",
@@ -161,15 +245,15 @@ const cases = [
     "  }).filter(visit => visit.cost === undefined);\n}",
   ],
   [
-    "priority-ignores-deadline-charge",
+    "omit-native-transition-constraints",
     "route-google-direct.ts",
-    "lateExceptionCost + lateCost * windowHours",
-    "lateCost * windowHours",
+    "request.model.transitionAttributes = strictPriorityTransitions(",
+    "request.model.transitionAttributes = [].concat(...[]); strictPriorityTransitions(",
   ],
   [
     "reuse-previous-model-policy",
     "route-google-direct.ts",
-    "google-zones-v6-strict-client-priority",
+    "google-zones-v7-joint-priority",
     "google-zones-v4-deadline-options",
   ],
   [
@@ -217,9 +301,9 @@ const cases = [
   ],
   [
     "unknown-shipment-accepted",
-    "route-google-direct.ts",
-    "!shipment ||",
-    "false ||",
+    "route-fleet-constraints.ts",
+    "if (!delivery)",
+    "if (false)",
   ],
   [
     "ignore-forecast-lateness",
@@ -349,6 +433,7 @@ const cases = [
   ],
 ];
 const testFiles = [
+  "route-fleet-constraints.test.ts",
   "route-strict-priority.test.ts",
   "route-deadline-preference.test.ts",
   "route-zone-time.test.ts",

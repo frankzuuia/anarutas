@@ -951,3 +951,23 @@ promovido del punto de RA; el conteo v5 no certificaba prioridades individuales.
 56/56 mutantes, 1061 regresiones consolidadas, 37 contratos posteriores de
 publicación/ejecución y un E2E final. Typecheck/lint/build/audit verdes.
 Entrega a develop autorizada; despliegue y nuevo armado a cargo del propietario.
+
+## RC — reparto y prioridad conjuntos, autorizado 2026-10-04
+
+- [x] RC-T01 (RC01..06): regresión roja, modelo nativo y guarda, política v7.
+- [x] RC-T02 (RC07..08,12): comparación Google/Odoo/PG reales y métricas.
+- [x] RC-T03 (todos): contratos/Gherkin, cobertura/mutación, HTTP/Chrome,
+  seguridad/regresión y entrega comprobada develop. Sin deploy.
+
+Especificación y autopsia: BLOQUE-RUTEO-CONJUNTO.md. Conserva la operación
+actual fuera del armado automático; ninguna regla de cliente o flota fija.
+Evidencia RC: QA-RUTEO-CONJUNTO-2026-10-04.md. Google real: 44 pedidos,
+39 puntos, reparto 13/15/16, 220.819 km, cero atrasos previstos/inversiones
+o puntos con dos dueños; Fleet1, Routes0, secuencia nativa sin corrección.
+Nuevo contrato 100% cobertura; 70/70 mutaciones detectadas y Chrome/HTTP real
+aprobado. ABARROTES FRANCO queda con margen previsto de5s, registrado en QA.
+Regresión consolidada1078 aprobadas y4 opt-in. El único fallo final de reloj
+PostgreSQL/Node se midió y corrigió sólo en la preparación del test financiero,
+con fecha futura aún rechazada; sus4 casos finales verdes. Typecheck/lint/build,
+audit producción y escaneo de secretos verdes. Entrega verificada a develop;
+deploy y nuevo armado manual del propietario.

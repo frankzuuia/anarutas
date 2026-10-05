@@ -1946,3 +1946,16 @@ cambiadas. La guarda final exige cobertura y prioridad completas; fallos,
 reservas y versiones impiden guardar resultados incompletos. No cambia orden
 manual, publicación, Android ni liquidación. Calidad y límites en
 QA-PRIORIDAD-ESTRICTA-2026-10-04.md; estado SP-T01..03 en PROGRESS.
+
+## RC01..12 — reparto y prioridad nativos conjuntos
+
+Bloque autorizado por «dale» el 2026-10-04 después de revisar el plan real v16.
+BLOQUE-RUTEO-CONJUNTO.md corrige la relajación de SP: Google recibe visitas por
+punto/rango, restricciones de prioridad por horizonte y un único propietario
+del punto mediante requisitos nativos. Reparto/secuencia se resuelven juntos;
+el éxito no se reordena después. Preserva recepción temprana, cierres, descarga,
+zonas/flota dinámicas, cobertura, recuperación explícita, permisos y leases.
+No exige igualar prioridades por chofer. Matriz RC01..12, tareas RC-T01..03.
+Evidencia y límites en QA-RUTEO-CONJUNTO-2026-10-04.md. Sustituye el
+reordenamiento posterior de SP únicamente en el éxito del armado Google;
+preserva la recuperación existente, el historial y los contratos operativos.

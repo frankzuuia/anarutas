@@ -117,7 +117,7 @@ function response(sequence = [2, 0, 1]): GoogleOptimizationResult {
 
 describe("single global model, no paid calls", () => {
   it("pins the cost equations, coordinates, identifiers and priority tags of the one request", () => {
-    expect(directFleetPolicy).toBe("google-zones-v6-strict-client-priority");
+    expect(directFleetPolicy).toBe("google-zones-v7-joint-priority");
     const current = board();
     const { request, groups } = buildDirectFleetRequest(
       current,
@@ -151,11 +151,11 @@ describe("single global model, no paid calls", () => {
       ),
     ).toEqual([84, 56, 28]);
     expect(
-      request.model.transitionAttributes!.map((edge) => edge.cost),
-    ).toEqual([896, 1792, 896]);
+      request.model.transitionAttributes!.map((edge) => edge.delay),
+    ).toEqual(Array(3).fill("31449601s"));
   });
 
-  it("uses the final closing independently of window order and promotes the physical stop's highest priority", () => {
+  it("uses the final closing independently of window order and preserves each priority at a mixed point", () => {
     const current = board(2);
     current.shipments[0].priority = "schedule";
     current.shipments[1].priority = "high";
@@ -169,9 +169,15 @@ describe("single global model, no paid calls", () => {
     });
     current.shipments[1].deliveryWindows.reverse();
     const { groups } = buildDirectFleetRequest(current, settings, "UTC");
-    expect(groups).toHaveLength(1);
-    expect(groups[0].shipmentIds).toEqual(["order-1", "order-0"]);
-    expect(groups[0].windows).toEqual([{ startMinute: 600, endMinute: 800 }]);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.shipmentIds)).toEqual([
+      ["order-1"],
+      ["order-0"],
+    ]);
+    expect(groups.map((g) => g.rank)).toEqual([0, 2]);
+    expect(groups.map((g) => g.windows)).toEqual(
+      Array(2).fill([{ startMinute: 600, endMinute: 800 }]),
+    );
   });
 
   it("validates every coordinate component without coercing null to zero", () => {
@@ -255,16 +261,12 @@ describe("single global model, no paid calls", () => {
       ["priority:schedule", "priority:high"],
       ["priority:schedule", "priority:medium"],
     ]);
-    const largestLateCost = Math.max(
-      ...request.model.shipments.map(
-        (s) =>
-          s.deliveries.find((v) => v.cost !== undefined)!.timeWindows![0]
-            .costPerHourAfterSoftEndTime!,
-      ),
+    const horizonSeconds = Number(
+      request.model.vehicles[0].routeDurationLimit!.maxDuration.slice(0, -1),
     );
     for (const edge of request.model.transitionAttributes!) {
-      expect(Number.isFinite(edge.cost)).toBe(true);
-      expect(edge.cost).toBeGreaterThan(largestLateCost);
+      expect(edge.cost).toBeUndefined();
+      expect(Number(edge.delay!.slice(0, -1))).toBeGreaterThan(horizonSeconds);
     }
     const singleTier = board();
     singleTier.shipments.forEach((s) => {
@@ -290,6 +292,8 @@ describe("single global model, no paid calls", () => {
 
   it("keeps distinct clients and near points distinct; merges exact coordinates with different windows", () => {
     const current = board(4, 3);
+    current.shipments[1].priority = current.shipments[0].priority;
+    current.shipments[2].priority = current.shipments[0].priority;
     current.shipments[1].latitude = current.shipments[0].latitude;
     current.shipments[2].latitude = current.shipments[0].latitude;
     current.shipments[2].deliveryWindows = [
@@ -407,7 +411,7 @@ describe("provider result is authoritative, adaptation is pure", () => {
     const expanded = expandDirectFleetResult(
       current,
       directDeliveryGroups(current.shipments),
-      response([0, 1, 2]),
+      response([0, 3, 1, 2]),
       "UTC",
     );
     expect(expanded.routes[0].visits.map((v) => v.shipmentIndex)).toEqual([
@@ -568,6 +572,7 @@ describe("provider result is authoritative, adaptation is pure", () => {
 
   it("expands physical visits without double-counting travel/wait/distance or losing the return leg", () => {
     const current = board(2);
+    current.shipments[1].priority = current.shipments[0].priority;
     current.shipments[1].latitude = current.shipments[0].latitude;
     const raw = response([0]);
     const expanded = expandDirectFleetResult(

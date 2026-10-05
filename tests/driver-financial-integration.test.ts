@@ -73,6 +73,16 @@ const persist = async (s = snapshot) => {
       persistFinancialSnapshot(sql, s, 60, 1),
     )
   ).revision;
+  // PostgreSQL and Node may resolve the Windows clock a few milliseconds
+  // apart. A fresh-source scenario needs the caller clock to have reached
+  // the committed observation; the production future-date guard stays strict.
+  const observed = (
+    await f.db.pool.query<{ last_success_at: Date }>(
+      "SELECT last_success_at FROM route_financial_targets WHERE source=$1 AND picking_id=$2 AND order_id=$3",
+      [s.target.source, s.target.pickingId, s.target.orderId],
+    )
+  ).rows[0].last_success_at.getTime();
+  await expect.poll(() => Date.now()).toBeGreaterThanOrEqual(observed);
 };
 
 beforeAll(async () => {
@@ -211,6 +221,14 @@ it("guards freshness, source version, exact IDs and bypass attempts before recor
   });
   await f.db.pool.query(
     "UPDATE route_financial_targets SET last_success_at=now()-interval '181 seconds' WHERE picking_id=1",
+  );
+  await expect(report(valid)).rejects.toMatchObject({
+    code: "FINANCIAL_SOURCE_STALE",
+  });
+  expect((await projected()).fresh).toBe(false);
+  await persist();
+  await f.db.pool.query(
+    "UPDATE route_financial_targets SET last_success_at=now()+interval '181 seconds' WHERE picking_id=1",
   );
   await expect(report(valid)).rejects.toMatchObject({
     code: "FINANCIAL_SOURCE_STALE",

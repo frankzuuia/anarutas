@@ -66,6 +66,7 @@ export type GoogleOptimizationRequest = {
       }[];
       allowedVehicleIndices?: number[];
       costsPerVehicle?: number[];
+      shipmentType?: string;
     }[];
     vehicles: {
       label: string;
@@ -75,6 +76,7 @@ export type GoogleOptimizationRequest = {
       costPerTraveledHour: number;
       costPerHour?: number;
       costPerKilometer: number;
+      routeDurationLimit?: { maxDuration: string };
       loadLimits: {
         orders: {
           softMaxLoad: string;
@@ -91,7 +93,13 @@ export type GoogleOptimizationRequest = {
     transitionAttributes?: {
       srcTag: string;
       dstTag: string;
-      cost: number;
+      cost?: number;
+      delay?: string;
+    }[];
+    shipmentTypeRequirements?: {
+      requiredShipmentTypeAlternatives: string[];
+      dependentShipmentTypes: string[];
+      requirementMode: "PERFORMED_BY_SAME_VEHICLE";
     }[];
   };
 };

@@ -51,7 +51,7 @@ const directory = process.env.RUTAS_QA_STRICT_PRIORITY_CAPTURE_DIRECTORY;
 describe.skipIf(!directory || !process.env.ODOO_URL)(
   "real strict-priority routing",
   () => {
-    it("orders the complete fleet, measures corrections, and persists once with version/concurrency guards", async () => {
+    it("jointly allocates and orders the complete fleet natively, and persists once with version/concurrency guards", async () => {
       const captured: {
         board: OrderBoard;
         settings: RoutingSettings;
@@ -189,6 +189,14 @@ describe.skipIf(!directory || !process.env.ODOO_URL)(
                 String(init!.body),
               );
               const response = await fetch(input, init);
+              if (!response.ok)
+                await writeFile(
+                  `${directory}/strict-google-error.json`,
+                  JSON.stringify({
+                    status: response.status,
+                    payload: await response.clone().json(),
+                  }),
+                );
               if (response.ok) {
                 raw = await response.clone().json();
                 await writeFile(
@@ -200,6 +208,10 @@ describe.skipIf(!directory || !process.env.ODOO_URL)(
             },
             readLeg: async (...args) => {
               roadReads++;
+              await writeFile(
+                `${directory}/strict-failed-stage.json`,
+                JSON.stringify(logs),
+              );
               const leg = await road(...args);
               return leg;
             },
@@ -250,15 +262,17 @@ describe.skipIf(!directory || !process.env.ODOO_URL)(
           )
         ).rows[0].details;
         expect(stored).toMatchObject({
-          planner: "google-zones-v6-strict-client-priority",
+          planner: "google-zones-v7-joint-priority",
           fleetRoutingRequests: 1,
           priorityScope: "per_vehicle",
+          priorityEnforcement: "native_transition_horizon",
+          pointOwnership: "native_same_vehicle_requirement",
           score: { priorityConflicts: 0 },
         });
         const changed: string[] = stored.reorderedVehicleIds;
-        expect(changed.length).toBeGreaterThan(0);
-        expect(roadReads).toBeGreaterThan(0);
-        expect(stored.providerSequencePreserved).toBe(false);
+        expect(changed).toEqual([]);
+        expect(roadReads).toBe(0);
+        expect(stored.providerSequencePreserved).toBe(true);
         for (const route of initial.routes) {
           const vehicleId = before.vehicles[route.vehicleIndex].id;
           if (!changed.includes(vehicleId)) {

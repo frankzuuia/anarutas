@@ -7,6 +7,7 @@ export default defineConfig({
       "tests/route-deadline-preference.test.ts",
       "tests/route-zones-service.test.ts",
       "tests/route-google-direct.test.ts",
+      "tests/route-fleet-constraints.test.ts",
       "tests/route-strict-priority.test.ts",
       "tests/route-strict-priority-live.test.ts",
       "tests/route-map-selection.test.ts",
@@ -25,6 +26,7 @@ export default defineConfig({
       include: [
         "src/core/route-zones.ts",
         "src/core/route-google-direct.ts",
+        "src/core/route-fleet-constraints.ts",
         "src/core/route-strict-priority.ts",
         "src/core/route-visit-windows.ts",
         "src/core/route-time-conflicts.ts",

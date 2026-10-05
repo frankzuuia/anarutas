@@ -3,6 +3,11 @@ import { physicalVisitKey, visitServiceSeconds } from "./route-service-time";
 import { receivingWindows } from "./route-reception";
 import { visitWindowAlternatives } from "./route-visit-windows";
 import { geographicZones, zoneVehicleCosts } from "./route-zones";
+import {
+  assertFleetBusinessConstraints,
+  bindPhysicalPointOwners,
+  strictPriorityTransitions,
+} from "./route-fleet-constraints";
 import type { OrderBoard, Shipment } from "./orders-contract";
 import { assertDeliveryGroups } from "./route-delivery-groups";
 import {
@@ -21,7 +26,7 @@ import {
 import { expandedRoutingCandidate } from "./route-strict-priority";
 import type { RoutingSettings } from "./routing-contract";
 
-export const directFleetPolicy = "google-zones-v6-strict-client-priority";
+export const directFleetPolicy = "google-zones-v7-joint-priority";
 
 function validCoordinate(
   value: number | null,
@@ -61,13 +66,12 @@ export function directDeliveryGroups(shipments: Shipment[]) {
     )
       throw new AppError("ROUTING_POINTS_REQUIRED", 409);
     const windows = receivingWindows(members);
-    // Exact point remains indivisible for fleet allocation. The expanded
-    // sequence must separately honor each customer's priority before saving.
-    const key = physicalVisitKey(members[0]);
+    // Equal-priority clients at an exact point can share a visit. Different
+    // priorities remain visible to the joint solver, with one vehicle owner.
+    const key = JSON.stringify([physicalVisitKey(members[0]), group.rank]);
     const existing = physical.get(key);
     if (existing) {
       existing.shipmentIds.push(...group.shipmentIds);
-      existing.rank = Math.min(existing.rank, group.rank);
       existing.windows = receivingWindows(
         existing.shipmentIds.map((id) => byId.get(id)!),
       );
@@ -175,22 +179,11 @@ export function buildDirectFleetRequest(
     );
   }
 
-  const ranks = [...new Set(groups.map((group) => group.rank))];
-  // Preserve the finite priority preference while accounting for both the
-  // exception charge and the reference-window delay of the batch. Neither this
-  // cost nor the visit alternatives forbid an otherwise complete solution.
-  const lateExceptionCost = lateCost * windowHours;
-  const priorityCost =
-    (lateExceptionCost + lateCost * windowHours) * (groups.length + 1);
-  request.model.transitionAttributes = ranks.flatMap((from) =>
-    ranks
-      .filter((to) => to < from)
-      .map((to) => ({
-        srcTag: tag(from),
-        dstTag: tag(to),
-        cost: priorityCost * (from - to),
-      })),
+  request.model.transitionAttributes = strictPriorityTransitions(
+    groups,
+    request.model,
   );
+  bindPhysicalPointOwners(groups, request.model);
   return { request, groups, zones };
 }
 
@@ -198,6 +191,7 @@ export function assertDirectFleetResponse(
   request: GoogleOptimizationRequest,
   result: GoogleOptimizationResult,
 ) {
+  assertFleetBusinessConstraints(request, result);
   for (const route of result.routes) {
     if (
       !Number.isSafeInteger(route.vehicleIndex) ||

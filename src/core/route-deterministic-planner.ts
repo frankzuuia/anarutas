@@ -34,7 +34,6 @@ import {
   asOptimizationResult,
   assertStrictPriorityResult,
   prioritizeRoutingCandidate,
-  reconcileStrictPriorities,
 } from "./route-strict-priority";
 import {
   createRoutingLogger,
@@ -102,7 +101,7 @@ export async function planRouteDeterministically(
     "routing.request.received",
     "Ana Rutas",
     "recepción",
-    "Ana Rutas recibió la solicitud. Preparará un único modelo global de Google y verificará el orden altas, medias y por horario de cada camioneta.",
+    "Ana Rutas recibió la solicitud. Resolverá reparto, zonas, horarios y prioridades de cada camioneta en un único modelo de Google.",
   );
   try {
     const expectedVersion = integer(input.expectedVersion, 1);
@@ -182,7 +181,7 @@ export async function planRouteDeterministically(
           "routing.google.started",
           "Google Route Optimization",
           "optimización global única",
-          "Google está resolviendo reparto y secuencia en una sola solicitud Fleet. Si el orden incumple prioridades, Routes medirá únicamente las camionetas afectadas.",
+          "Google está resolviendo reparto y secuencia con prioridad estricta y un vehículo por punto en una sola solicitud Fleet.",
           {
             orders: deliveries.length,
             deliveryGroups: groups.length,
@@ -215,7 +214,7 @@ export async function planRouteDeterministically(
           "routing.google.completed",
           "Google Route Optimization",
           "respuesta vial completa",
-          "Google devolvió el recorrido completo. Ana Rutas conservará el reparto y comprobará la prioridad individual antes de guardar.",
+          "Google devolvió el recorrido completo. Ana Rutas verificó prioridades y un vehículo por punto, y conservará su secuencia y medición.",
           {
             stepDurationMs: Math.round(performance.now() - started),
             assignedOrders: deliveries.length,
@@ -291,45 +290,7 @@ export async function planRouteDeterministically(
         );
         result = asOptimizationResult(evaluation, board);
       }
-      const priorityConflicts = directFleetDiagnostics(
-        board,
-        result,
-      ).priorityConflicts;
-      if (priorityConflicts)
-        progress(
-          "info",
-          "routing.priority.started",
-          "Google Routes API",
-          "orden de prioridad por camioneta",
-          "Se ordenarán altas, medias y por horario sin cambiar pedidos de camioneta. Google Routes recalculará los recorridos afectados y sus descargas.",
-          { priorityConflicts },
-        );
-      const priorityStarted = performance.now();
-      const corrected = await reconcileStrictPriorities(
-        board,
-        result,
-        settings,
-        timezone,
-        () => renewOptimizationLease(pool, planId, lease, externalTimeout),
-        dependencies.readLeg ?? createRoadLegReader(),
-      );
-      result = corrected.result;
-      const reorderedVehicleIds = corrected.reorderedVehicleIds;
       assertStrictPriorityResult(board, result);
-      if (reorderedVehicleIds.length)
-        progress(
-          "info",
-          "routing.priority.completed",
-          "Google Routes API",
-          "recorrido de prioridad medido",
-          "Orden de prioridad y cobertura verificados. Los tiempos, kilómetros y trazos de las camionetas reordenadas corresponden al recorrido recalculado.",
-          {
-            stepDurationMs: Math.round(performance.now() - priorityStarted),
-            vehicles: reorderedVehicleIds.length,
-            distanceMeters: result.metrics.travelDistanceMeters,
-            durationSeconds: result.metrics.totalDurationSeconds,
-          },
-        );
       const diagnostics = directFleetDiagnostics(board, result);
       progress(
         diagnostics.priorityConflicts || diagnostics.lateStops
@@ -382,9 +343,16 @@ export async function planRouteDeterministically(
           fleetRoutingShipmentUnits,
           score: diagnostics,
           priorityScope: "per_vehicle",
-          reorderedVehicleIds,
-          providerSequencePreserved:
-            chosenSource === "Google" && reorderedVehicleIds.length === 0,
+          priorityEnforcement:
+            chosenSource === "Google"
+              ? "native_transition_horizon"
+              : "local_strict_priority",
+          pointOwnership:
+            chosenSource === "Google"
+              ? "native_same_vehicle_requirement"
+              : "geographic_point_owner",
+          reorderedVehicleIds: [],
+          providerSequencePreserved: chosenSource === "Google",
         },
       );
       progress(
