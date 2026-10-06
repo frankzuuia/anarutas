@@ -1,4 +1,14 @@
 export const errors: Record<string, string> = {
+  SEGMENT_ROUTE_CHANGED: "El recorrido cambió. Vuelve a consultar el tramo.",
+  SEGMENT_STOP_INVALID: "Selecciona un origen y una parada posterior pendiente de atender.",
+  SEGMENT_GPS_STALE: "Se necesita ubicación reciente del chofer para estimar desde ahora.",
+  SEGMENT_POINTS_REQUIRED: "Una parada del tramo no tiene un punto válido.",
+  SEGMENT_SERVICE_INVALID: "Revisa el tiempo de descarga de los clientes del tramo.",
+  SEGMENT_GOOGLE_CONFIG: "Falta configurar Google Routes para consultar tiempos.",
+  SEGMENT_GOOGLE_RESPONSE: "Google no devolvió un tiempo válido para este tramo.",
+  SEGMENT_GOOGLE_UNAVAILABLE: "Google no pudo calcular este tiempo. Vuelve a consultar.",
+  SEGMENT_GOOGLE_QUOTA: "Google alcanzó su cuota de consultas. Intenta más tarde.",
+  SEGMENT_BUSY: "Hay otras consultas de tiempo en proceso. Intenta de nuevo en unos segundos.",
   PLAN_CREATION_REUSED:
     "Esta solicitud ya creó un borrador con otros datos. Abre Nuevo borrador para crear otro.",
   PLAN_CREATION_REMOVED:

@@ -1,5 +1,18 @@
 # Bloque 1 — especificación y auditoría previa
 
+## TP01..08 — tiempo consultado entre paradas
+
+Bloque aprobado por «vale dale» el 2026-10-05. Dos relojes en Ver avance
+seleccionan origen/destino de una misma ejecución. Origen activo significa
+desde ahora: GPS, parada activa, intermedias abiertas y llegada al destino,
+con descarga restante/intermedia; otro origen calcula desde su salida.
+Google Routes recibe el orden vigente, sin optimizar ni modificar navegación.
+Consulta privada, caché acotada, GPS fresco y revalidación de contexto después
+de la red. Descargas desconocidas y reintentos omitidos se informan.
+Contrato, Gherkin, evidencias y límites: BLOQUE-TIEMPO-ENTRE-PARADAS.md,
+tests/acceptance-live-segment.feature y QA-TIEMPO-ENTRE-PARADAS-2026-10-05.md.
+Sin esquema nuevo, cambios Android, liquidación ni despliegue automático.
+
 ## BL-143..146 — archivo e incidencias de producto
 
 Autopsia: `deletePlan` elimina envíos/asignaciones; no reutilizable para archivo.

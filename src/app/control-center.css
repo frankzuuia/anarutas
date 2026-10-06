@@ -126,6 +126,17 @@
 .live-stop.incident .live-stop-number { color: var(--amber); }
 .live-stop.delivered .live-stop-number { color: var(--green); }
 .live-stop-number { min-width: 20px; font-size: .8rem; }
+.live-stop-row { display: grid; grid-template-columns: minmax(0,1fr) 34px; gap: 5px; align-items: stretch; }
+.live-stop-row .live-stop { min-width: 0; overflow-wrap: anywhere; }
+.app .live-stop-clock { padding: 5px; min-width: 0; color: var(--muted); }
+.app .live-stop-clock[aria-pressed="true"] { color: var(--green); border-color: var(--green); background: var(--raised); }
+.live-segment-readout { border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: .75rem; color: var(--green); }
+.live-segment-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 5px; }
+.live-segment-heading strong, .live-segment-summary { display: inline-flex; align-items: center; gap: 5px; }
+.app .live-segment-heading button { min-height: 24px; padding: 3px; }
+.live-segment-readout small { display: block; color: var(--muted); margin-top: 5px; line-height: 1.4; }
+.live-segment-readout .live-segment-warning { color: var(--amber); }
+.live-segment-summary { color: var(--green); overflow-wrap: anywhere; }
 .live-selected-stop { border: 1px solid var(--green); padding: 12px; border-radius: 10px; font-size: .8rem; }
 .live-empty { display: flex; align-items: center; justify-content: center; flex-direction: column; flex: 1; padding: 24px 16px; text-align: center; color: var(--muted); min-height: 0; }
 .live-empty svg { color: var(--green); }

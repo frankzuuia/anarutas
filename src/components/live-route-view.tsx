@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode } from "react";
-import { LocateFixed, MapPin, Navigation, Truck, CheckCircle2, AlertTriangle, List, X } from "lucide-react";
+import { LocateFixed, MapPin, Navigation, Truck, CheckCircle2, AlertTriangle, List, X, Clock } from "lucide-react";
 import type { LiveRoute, LiveStop } from "@/core/live-routes";
 import type { ControlScreen } from "@/core/live-tracking-policy";
 import type { MapConfig } from "@/core/map-config";
@@ -11,10 +11,14 @@ import { createLiveMapMarkerNode } from "./live-map-marker";
 import { useLiveRoutes } from "./use-live-routes";
 import { routeEta } from "@/core/live-eta";
 import { routeDestinationLabel, warehouseReturnStatus } from "@/core/live-route-destination";
+import { activeSegmentStop, segmentMinutes, toggleSegmentStop, type SegmentSelection } from "@/core/live-segment-policy";
+import { useLiveSegment } from "./use-live-segment";
+import { LiveSegmentReadout } from "./live-segment-readout";
 
 const statusNames = { open: "Abierto", closed_pending: "Cliente cerrado · reintento", rejected: "Rechazado", rescheduled: "Reprogramado", delivered: "Entregado" };
 const colors = ["#8dddac", "#c591ee", "#80bffd", "#f5d676", "#f497bc", "#88ded8"];
-function RouteProgress({ route, now, selected, onSelect }: { route: LiveRoute; now: number; selected: string; onSelect: (id: string) => void }) {
+function RouteProgress({ route, now, selected, onSelect, segment, onClock, segmentReadout }: { route: LiveRoute; now: number; selected: string; onSelect: (id: string) => void;
+  segment: SegmentSelection | null; onClock: (id: string) => void; segmentReadout: ReactNode }) {
   const health = locationHealth(route, now);
   return <article className="live-route-card">
     <header><div><h3><Truck size={17} />{route.driver}</h3><p>{route.vehicle} · {route.plate}</p></div><span className={`badge ${route.completedAt || health.live ? "green" : "amber"}`}>{health.label}</span></header>
@@ -24,14 +28,19 @@ function RouteProgress({ route, now, selected, onSelect }: { route: LiveRoute; n
     <progress aria-label={`Entregas de ${route.driver}`} value={route.progress.delivered} max={Math.max(1, route.progress.orders)} />
     <p className="live-route-destination"><Navigation size={16} />{routeDestinationLabel(route, now)}</p>
     <p className="live-eta" aria-label={`Tiempo de ${route.driver}`}>{routeEta(route, now)}</p>
+    {segmentReadout}
     <p className="small">{route.progress.completedStops}/{route.progress.totalStops} paradas entregadas · {route.progress.rescheduled} pedidos reprogramados · {route.progress.incidentOrders} con incidencia</p>
     {route.location && <p className="small">Precisión ±{Math.round(route.location.accuracy)} m · {new Date(route.location.observedAt).toLocaleTimeString("es-MX")}</p>}
     {!route.location && !route.completedAt && <p className="live-gps-help">Aún no se ha recibido GPS de esta ruta. En el teléfono, abre la ruta con la APK 0.7.0 o posterior, permite ubicación precisa y revisa el estado de seguimiento. Si está detenido, pulsa «Reanudar seguimiento».</p>}
     {route.corrected && <p className="small">Puntos corregidos. El recorrido anterior se omite.</p>}
-    <div className="live-stop-list">{route.stops.map(stop => <button className={`live-stop ${selected === stop.id ? "selected" : ""} ${stop.progress.status}`} key={stop.id} onClick={() => onSelect(stop.id)}>
+    <p className="small">Marca dos relojes para estimar un tramo con sus descargas. Si marcas la parada activa, se calcula desde ahora.</p>
+    <div className="live-stop-list">{route.stops.map(stop => <div className="live-stop-row" key={stop.id}><button className={`live-stop ${selected === stop.id ? "selected" : ""} ${stop.progress.status}`} onClick={() => onSelect(stop.id)}>
       <span className="live-stop-number">{stop.progress.status === "delivered" ? <CheckCircle2 size={15} /> : stop.progress.status === "incident" ? <AlertTriangle size={15} /> : stop.position}</span>
       <span><strong>{stop.position} · {stop.customer}</strong><small>{stop.orders.map(o => `${o.name} · ${statusNames[o.status]}`).join(" / ")}</small></span>
-    </button>)}</div>
+    </button><button className="quiet live-stop-clock" aria-label={`Seleccionar parada ${stop.position} para estimar tiempo`}
+      title={`Tiempo por ${stop.position} · ${stop.customer}`} disabled={!!route.completedAt || !stop.orders.some(o => o.status === "open")}
+      aria-pressed={segment?.executionId === route.id && [segment.fromCurrent ? activeSegmentStop(route) : segment.fromStopId,segment.toStopId].includes(stop.id)}
+      onClick={() => onClock(stop.id)}><Clock size={17} /></button></div>)}</div>
   </article>;
 }
 
@@ -141,6 +150,7 @@ function LiveMap({ routes, now, filterKey, selected, onSelect, onDriverSelect, s
 export function LiveRouteView({ feed, filter, onFilter, progressOnly = false }: { feed: ReturnType<typeof useLiveRoutes>; filter: Pick<ControlScreen, "driverId" | "vehicleId">;
   onFilter: (value: Pick<ControlScreen, "driverId" | "vehicleId">) => void; progressOnly?: boolean }) {
   const [selected, setSelected] = useState("");
+  const [segment,setSegment] = useState<SegmentSelection | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [timesOpen, setTimesOpen] = useState(false);
   const timesId = useId();
@@ -148,7 +158,7 @@ export function LiveRouteView({ feed, filter, onFilter, progressOnly = false }: 
   const timesClose = useRef<HTMLButtonElement>(null);
   function closeTimes() { setTimesOpen(false); timesButton.current?.focus(); }
   function chooseDriver(driverId: string) {
-    setSelected(""); setTimesOpen(false); onFilter({ driverId, vehicleId: "" });
+    setSelected(""); setSegment(null); setTimesOpen(false); onFilter({ driverId, vehicleId: "" });
   }
   useEffect(() => { if (timesOpen) timesClose.current?.focus(); }, [timesOpen]);
   const detailsId = useId();
@@ -159,6 +169,8 @@ export function LiveRouteView({ feed, filter, onFilter, progressOnly = false }: 
   useEffect(() => { if (detailsOpen) detailsClose.current?.focus(); }, [detailsOpen]);
   const all = feed.report?.routes ?? [];
   const routes = routesForDriver(all, filter.driverId);
+  const segmentRoute = routes.find(r => r.id === segment?.executionId);
+  const segmentQuery = useLiveSegment(segmentRoute,segment,feed.now);
   const drivers = [...new Map(all.map(r => [r.driverId, r.driver])).entries()];
   const stop: LiveStop | undefined = routes.flatMap(r => r.stops).find(s => s.id === selected);
   const summary = <div className="live-route-summary" aria-label="Resumen de avance">
@@ -169,6 +181,10 @@ export function LiveRouteView({ feed, filter, onFilter, progressOnly = false }: 
       ? <span className="live-eta" title="Tiempo estimado al destino activo del chofer">{warehouseReturnStatus(routes[0], feed.now) ? `${routeDestinationLabel(routes[0], feed.now)} · ` : "Próximo destino: "}{routeEta(routes[0], feed.now)}</span>
       : <button ref={timesButton} className="quiet live-times-toggle" aria-expanded={timesOpen} aria-controls={timesId}
           disabled={!routes.length} onClick={() => { setDetailsOpen(false); setTimesOpen(v => !v); }}>Tiempos por chofer</button>}
+    {segmentRoute && segment && <span className="live-segment-summary" aria-label="Resumen de tiempo entre paradas">
+      <Clock size={12} />{!filter.driverId && `${segmentRoute.driver} · `}{segmentQuery.result
+        ? `${segmentQuery.result.fromCurrent ? "Desde ahora" : "Al salir"} · ${segmentQuery.result.fromPosition} → ${segmentQuery.result.toPosition}: ${segmentMinutes(segmentQuery.result.totalSeconds)}${segmentQuery.result.unknownServiceStops ? " · Falta descarga por configurar" : ""}`
+        : segmentQuery.error ? "Estimado no disponible" : segmentQuery.loading ? "Calculando tramo…" : "Elige destino con otro reloj"}</span>}
   </div>;
   return <section className={`live-route-view ${progressOnly ? "progress-view" : "map-first"}`} onKeyDown={event => {
     if (event.key === "Escape" && timesOpen) { event.stopPropagation(); closeTimes(); }
@@ -201,7 +217,9 @@ export function LiveRouteView({ feed, filter, onFilter, progressOnly = false }: 
       <aside id={detailsId} hidden={!progressOnly && !detailsOpen} className="live-route-progress" aria-label="Avance de los choferes">
         {!progressOnly && <div className="live-details-heading"><strong>Avance y paradas</strong><button ref={detailsClose} className="quiet" aria-label="Cerrar avance" onClick={closeDetails}><X size={17} /></button></div>}
         {stop && <div className="live-selected-stop"><strong>{stop.position} · {stop.customer}</strong><p>{stop.address}</p><button className="quiet" onClick={() => setSelected("")}>Cerrar detalle</button></div>}
-        {routes.map(route => <RouteProgress key={route.id} route={route} now={feed.now} selected={selected} onSelect={selectStop} />)}
+        {routes.map(route => <RouteProgress key={route.id} route={route} now={feed.now} selected={selected} onSelect={selectStop}
+          segment={segment} onClock={id => setSegment(previous => toggleSegmentStop(route,previous,id))}
+          segmentReadout={segment?.executionId === route.id ? <LiveSegmentReadout query={segmentQuery} onClear={() => setSegment(null)} /> : null} />)}
       </aside></div>}
   </section>;
 }

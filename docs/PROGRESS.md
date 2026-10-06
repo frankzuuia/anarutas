@@ -1,5 +1,19 @@
 # Progreso — bloque 1
 
+## Tiempo entre paradas — TP01..08
+
+- [x] TP-T01: contrato aprobado, origen actual/manual, descargas y orden de Google.
+- [x] TP-T02: consulta privada, concurrencia/caché y revalidación tras la red.
+- [x] TP-T03: relojes, resumen junto al tiempo del chofer, móvil/cuatro pantallas.
+- [x] TP-T04: 19 pruebas enfocadas con PostgreSQL y Google real; 100% de líneas
+  y ramas de la política, 97.56% de líneas del bloque. 15/15 mutaciones críticas
+  detectadas en copia aislada; 3 E2E del bloque y 5 del Centro de control verdes.
+- Implementación y QA completos; entrega a develop autorizada con excepción
+  explícita para las 5 alertas heredadas de herramientas de desarrollo.
+  Auditoría productiva: 0 vulnerabilidades. El propietario despliega;
+  no se modifica la ruta remota ni se genera una APK. Evidencia y límites en
+  QA-TIEMPO-ENTRE-PARADAS-2026-10-05.md.
+
 ## Archivo y productos — BL-143..146
 
 - [x] PI-T01: esquema aditivo v27 y archivo dominical 20:00 auditable sin borrar datos.

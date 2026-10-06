@@ -9,6 +9,7 @@ import { getRoutingSettings } from "./routing-settings";
 
 export type LiveStop = { id: string; position: number; customer: string; address: string;
   latitude: number | null; longitude: number | null; arrivedAt: string | null;
+  unloadingMinutes?: number | null;
   orders: { id: string; name: string; status: DriverOrderStatus }[]; progress: ReturnType<typeof stopProgress> };
 export type LiveRoute = { id: string; planId: string; label: string; date: string;
   driverId: string; driver: string; vehicleId: string; vehicle: string; plate: string;
@@ -43,16 +44,18 @@ export async function readLiveRoutes(pool: Pool, actor: string): Promise<LiveRou
       ORDER BY e.service_date DESC,e.driver_name,e.id`)).rows;
     const ids = executions.map(e => e.id);
     const settings = await getRoutingSettings(sql);
-    const stops = (await sql.query(`SELECT s.*,coalesce((SELECT jsonb_agg(jsonb_build_object(
+    const stops = (await sql.query(`SELECT s.*,customer.unloading_minutes,coalesce((SELECT jsonb_agg(jsonb_build_object(
       'id',o.shipment_id,'name',s.order_names[array_position(s.shipment_ids,o.shipment_id)],'status',o.status)
       ORDER BY array_position(s.shipment_ids,o.shipment_id)) FROM route_driver_execution_orders o
       WHERE o.execution_id=s.execution_id AND o.stop_id=s.id),'[]'::jsonb) AS orders
-      FROM route_driver_execution_stops s WHERE s.execution_id=ANY($1::uuid[]) ORDER BY s.position`, [ids])).rows;
+      FROM route_driver_execution_stops s LEFT JOIN route_customers customer ON customer.id=s.customer_id
+      WHERE s.execution_id=ANY($1::uuid[]) ORDER BY s.position`, [ids])).rows;
     return { serverTime: new Date().toISOString(), policy: trackingPolicy, routes: executions.map(e => {
       const rows = stops.filter(s => s.execution_id === e.id);
       const corrected = rows.some(s => s.corrected_at !== null);
       const mapped: LiveStop[] = rows.map(s => ({ id: s.id, position: s.position, customer: s.customer_name,
         address: s.address, latitude: s.latitude, longitude: s.longitude, arrivedAt: s.arrived_at?.toISOString() ?? null,
+        unloadingMinutes: s.unloading_minutes ?? null,
         orders: s.orders, progress: stopProgress((s.orders as LiveStop["orders"]).map(o => o.status)) }));
       const route = e.published_route as PublicOptimizedRoute | null;
       const warehouse = liveWarehouseDestination({ version: e.warehouse_depot_version ?? null, target: e.target_stop_id,
