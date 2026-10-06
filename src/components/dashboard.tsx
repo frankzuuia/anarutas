@@ -487,7 +487,7 @@ export function Dashboard({
                     {section === "vehicles"
                       ? "Registra tus unidades y administra la asignación de choferes."
                       : section === "unit_control"
-                        ? "Fotografías privadas de cada camioneta, organizadas por fecha y disponibles durante 15 días."
+                        ? "Fotografías privadas de cada camioneta, organizadas por fecha y disponibles durante 30 días."
                         : section === "drivers"
                           ? "Datos de contacto, disponibilidad y documentos privados de tu equipo."
                           : section === "customers"

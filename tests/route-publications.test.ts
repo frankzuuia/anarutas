@@ -1890,7 +1890,7 @@ it("route publication lifecycle / real PostgreSQL", async () => {
       expect(
         (await db.pool.query("SELECT schema_version FROM rutas_installation"))
           .rows[0].schema_version,
-      ).toBe(43);
+      ).toBe(44);
       vehicle = await getVehicle(db.pool, vehicleId);
       await assignDriver(db.pool, actor, vehicleId, {
         driver_id: driverId,

@@ -166,7 +166,7 @@ Distancias, tiempos y horarios son previsiones guardadas, no progreso real del
 chofer. Si falta una optimización vigente se muestra su ausencia.
 
 El bloque 2B añade publicación explícita por camioneta, fotos privadas de la
-unidad (WebP, máximo ocho, eliminación a los 15 días) y el inicio de ruta tras
+unidad (WebP, máximo ocho, eliminación a los 30 días) y el inicio de ruta tras
 cinco fotos distintas. `Inicio` y `Ruta` muestran sólo el snapshot publicado.
 Las tarjetas de paradas y pedidos abren su detalle. Después de iniciar, el
 acceso compacto `Mapa` queda en el centro de la barra inferior. Usa el
@@ -209,7 +209,8 @@ como firma de producción.
   absoluta del contenedor, sin exposición web, y configurar
   `RUTAS_UNIT_PHOTO_DIR` con esa ruta. Sin el volumen, la captura y el inicio
   fallan cerrados; no se guardan fotos en PostgreSQL/base64. El worker borra
-  metadatos y archivos al vencer 15 días; los respaldos del volumen deben
+  metadatos y archivos vencidos en un barrido cada 24 horas. El acceso vence
+  a los 30 días desde la captura; los respaldos del volumen deben
   respetar también esa retención.
 - Habilitar Navigation SDK y su facturación en el proyecto de Google Maps.
   Crear una clave Android restringida al paquete

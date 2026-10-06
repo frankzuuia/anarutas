@@ -350,7 +350,7 @@ Especificación: `BLOQUE-APK-RUTA-PUBLICACION.md`; MR01..17.
 - [x] MP-T01 (BL-088..095): auditar esquema, API, Android, recálculo lateral, almacenamiento y facturación oficial; escenario y contrato documentados.
 - [ ] MP-T02 (BL-088..089 / MR01..05): migración de snapshot por camioneta, API admin individual/global idempotente y lectura móvil sólo publicada.
 - [ ] MP-T03 (BL-091 / MR10..12): proteger camioneta iniciada en plan, pedidos, flota, importación, optimización y recálculo, sin bloquear otras camionetas.
-- [ ] MP-T04 (BL-092..093 / MR06..09,13..14): fotos WebP privadas fuera de PostgreSQL, volumen, limpieza 15 días y control admin por fecha.
+- [ ] MP-T04 (BL-092..093 / MR06..09,13..14): fotos WebP privadas fuera de PostgreSQL, volumen, limpieza 30 días y control admin por fecha.
 - [ ] MP-T05 (BL-090 / MR06..12): inicio transaccional con foto/fecha/asignación, respuesta idempotente y auditoría.
 - [ ] MP-T06 (BL-094 / MR15..16): APK compacta con Ruta activa, detalle/recorrido/secuencia, captura, inicio y mapa Navigation SDK real, accesible abajo tras iniciar.
 - [ ] MP-T07 (BL-088..089,095 / MR02..05,17): panel de publicación individual/global con modal y Control de unidades.
@@ -985,3 +985,18 @@ PostgreSQL/Node se midió y corrigió sólo en la preparación del test financie
 con fecha futura aún rechazada; sus4 casos finales verdes. Typecheck/lint/build,
 audit producción y escaneo de secretos verdes. Entrega verificada a develop;
 deploy y nuevo armado manual del propietario.
+
+## 2026-10-06 — Fotos de unidades: treinta días y barrido diario
+
+Bloque solicitado: retención de treinta días desde captura y limpieza física
+cada veinticuatro horas, exclusivamente para fotos de unidades. Migración 44
+para filas existentes con la política anterior; no recupera fotos eliminadas.
+El barrido drena lotes y protege referencias vigentes; otras evidencias siguen
+independientes. Se actualiza el texto de Control de unidades y la documentación.
+QA dirigido, migraciones reales, mutation testing y contrato HTTP/Chrome en
+`QA-FOTOS-UNIDADES-2026-10-06.md`: 108 regresiones correctas, una opt-in remota
+no aplicable omitida, dos E2E correctos y 12/12 mutaciones detectadas. Cobertura
+de líneas 95.13%; política, migración y programador nuevos al 100%. Build,
+TypeScript y bundle de migración correctos; lint sin errores.
+Se corrige además Sharp a 0.35.5 tras la alerta nueva de supply chain; auditoría
+productiva sin vulnerabilidades. Sin despliegue ni cambios en Android.

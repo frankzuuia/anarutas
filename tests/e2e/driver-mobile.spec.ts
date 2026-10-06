@@ -480,7 +480,9 @@ test("admin provisioning, native device login, route isolation and revocation ov
       },
     );
     expect(uploaded.status()).toBe(201);
-    photoIds.push((await uploaded.json()).id);
+    const photo = await uploaded.json();
+    expect(Date.parse(photo.expiresAt) - Date.parse(photo.createdAt)).toBe(30 * 86_400_000);
+    photoIds.push(photo.id);
   }
   const deleteUrl = `${origin}/api/mobile/unit-photos/${photoIds[4]}`;
   expect((await request.delete(deleteUrl)).status()).toBe(401);
@@ -518,6 +520,7 @@ test("admin provisioning, native device login, route isolation and revocation ov
   await livePanel
     .getByRole("button", { name: "Control de unidades", exact: true })
     .click();
+  await expect(livePanel.getByText(/disponibles durante 30 días/)).toBeVisible();
   await livePanel.getByRole("button", { name: /HTTP camioneta 1/ }).click();
   await expect(
     livePanel.getByLabel("Fotos de Contrato HTTP móvil"),
@@ -1113,8 +1116,16 @@ test("admin provisioning, native device login, route isolation and revocation ov
     [planId, vehicleId],
   )).rowCount).toBe(1);
   await lane.getByRole("button", { name: "Activar ruta", exact: true }).click();
+  const manualReady = preStartPanel.waitForResponse(response =>
+    response.url().endsWith(`/api/plans/${planId}/recalculation/manual`) && response.request().method() === "POST");
+  const publicationReady = preStartPanel.waitForResponse(response =>
+    response.url().endsWith(`/api/plans/${planId}/publications`) && response.request().method() === "POST");
   await preStartPanel.getByRole("dialog", { name: "Confirmar publicación" })
     .getByRole("button", { name: "Confirmar publicación" }).click();
+  const manualResponse = await manualReady;
+  expect(manualResponse.status()).toBe(202);
+  expect(await manualResponse.json()).toMatchObject({ current: true });
+  expect((await publicationReady).status()).toBe(200);
   await expect(lane.getByText("Ruta publicada", { exact: true })).toBeVisible();
   await expect(lane.getByRole("button", { name: "Guardar y publicar", exact: true })).toHaveCount(0);
   await mkdir("reports/screenshots", { recursive: true });
@@ -1224,6 +1235,7 @@ test("driver edit modal enables direct phone and PIN access", async ({
   await modal.getByRole("button", { name: "Revocar acceso" }).click();
   await expect(modal.getByText("Sin acceso móvil habilitado")).toBeVisible();
   await modal.getByRole("button", { name: "Cerrar formulario" }).click();
+  await page.getByRole("button", { name: "Abrir menú", exact: true }).click();
   await page.getByRole("button", { name: "Control de unidades" }).click();
   await page.getByRole("button", { name: /HTTP camioneta 1/ }).click();
   await expect(
@@ -1270,6 +1282,7 @@ test("driver edit modal enables direct phone and PIN access", async ({
     driver_id: relief.id,
     expectedVersion: vehicle.version,
   });
+  await page.getByRole("button", { name: "Abrir menú", exact: true }).click();
   await page.getByRole("button", { name: "Planificar rutas" }).click();
   await page.getByLabel("Abrir borrador").selectOption(planId);
   await expect(

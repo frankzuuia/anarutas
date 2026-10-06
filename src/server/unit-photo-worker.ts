@@ -1,6 +1,6 @@
 import { assertInstallation, getPool } from "@/core/database";
 import { readConfig } from "@/core/config";
-import { cleanExpiredUnitPhotos } from "@/core/unit-photos";
+import { UnitPhotoCleanup } from "./unit-photo-cleanup";
 import { tryCleanIncidentEvidence } from "@/core/driver-incident-evidence";
 
 const state = globalThis as typeof globalThis & {
@@ -10,7 +10,7 @@ const state = globalThis as typeof globalThis & {
 export function startUnitPhotoWorker() {
   if (state.unitPhotoWorker || !process.env.RUTAS_UNIT_PHOTO_DIR) return;
   let running = false;
-  let nextUnitCleanup = 0;
+  const unitCleanup = new UnitPhotoCleanup();
   const tick = () => {
     if (running) return;
     running = true;
@@ -20,12 +20,9 @@ export function startUnitPhotoWorker() {
       await assertInstallation(pool, config.instanceId);
       await tryCleanIncidentEvidence(pool);
       // Incident access expires immediately; its physical cleanup runs minutely.
-      // Keep the existing larger unit-photo sweep hourly, not once a minute.
-      if (Date.now() >= nextUnitCleanup) {
-        const removed = await cleanExpiredUnitPhotos(pool);
-        nextUnitCleanup = Date.now() + 60 * 60 * 1000;
-        if (removed) console.info(JSON.stringify({ event: "unit_photos.cleaned", removed }));
-      }
+      // Unit photos use an independent daily deadline; other ticks do no unit I/O.
+      const removed = await unitCleanup.runIfDue(pool);
+      if (removed) console.info(JSON.stringify({ event: "unit_photos.cleaned", removed }));
     })()
       .catch(() => console.warn(JSON.stringify({ event: "unit_photos.cleanup_unavailable" })))
       .finally(() => { running = false; });

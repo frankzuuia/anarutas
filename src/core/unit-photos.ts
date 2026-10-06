@@ -7,6 +7,7 @@ import { assertActiveActor, transaction, type Sql } from "./database";
 import { AppError } from "./errors";
 import { todayInTimezone } from "./local-date";
 import { uuid } from "./orders-validation";
+import { unitPhotoRetentionDays } from "./unit-photo-retention";
 
 const maxInputBytes = 8 * 1024 * 1024;
 const maxStoredBytes = 1_572_864;
@@ -176,7 +177,7 @@ export async function uploadDriverUnitPhoto(
         throw new AppError("UNIT_PHOTO_LIMIT", 409);
       const inserted = await sql.query(
         `INSERT INTO route_unit_photos(id,plan_id,vehicle_id,driver_id,storage_key,content_hash,bytes,created_at,expires_at)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,$8::timestamptz+interval '15 days')
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,$8::timestamptz+($11::integer * interval '1 day'))
          ON CONFLICT(plan_id,vehicle_id,driver_id,content_hash) DO UPDATE SET
            id=EXCLUDED.id,driver_id=EXCLUDED.driver_id,
            storage_key=EXCLUDED.storage_key,bytes=EXCLUDED.bytes,
@@ -185,7 +186,7 @@ export async function uploadDriverUnitPhoto(
             OR (route_unit_photos.created_at AT TIME ZONE $9)::date<>$10::date
          RETURNING id,plan_id,vehicle_id,driver_id,storage_key,created_at,expires_at,bytes`,
         [photoId, id, publication.vehicle_id, driverId, storageKey, hash, bytes.length,
-          capturedAt.toISOString(), timezone, plan.rows[0].service_date],
+          capturedAt.toISOString(), timezone, plan.rows[0].service_date, unitPhotoRetentionDays],
       );
       if (!inserted.rowCount) throw new AppError("UNIT_PHOTO_LIMIT", 409);
       await sql.query(
@@ -343,20 +344,31 @@ export async function readAdminUnitPhoto(
 
 export async function cleanExpiredUnitPhotos(pool: Pool, configuredRoot?: string) {
   const root = await unitPhotoRoot(configuredRoot);
-  const { rows } = await pool.query(
-    `DELETE FROM route_unit_photos WHERE id IN (
-       SELECT id FROM route_unit_photos WHERE expires_at<=now()
-       ORDER BY expires_at,id LIMIT 200
-     ) RETURNING storage_key`,
-  );
-  for (const row of rows) await unlink(join(root, row.storage_key)).catch(() => undefined);
-  const cutoff = Date.now() - (15 * 24 + 1) * 60 * 60 * 1000;
+  let removed = 0;
+  // Drain all expired rows in bounded batches during the daily sweep.
+  for (;;) {
+    const { rows } = await pool.query(
+      `DELETE FROM route_unit_photos WHERE id IN (
+         SELECT id FROM route_unit_photos WHERE expires_at<=now()
+         ORDER BY expires_at,id LIMIT 200 FOR UPDATE SKIP LOCKED
+       ) RETURNING storage_key`,
+    );
+    for (const row of rows) await unlink(join(root, row.storage_key)).catch(() => undefined);
+    removed += rows.length;
+    if (rows.length < 200) break;
+  }
+  const cutoff = Date.now() - (unitPhotoRetentionDays * 24 + 1) * 60 * 60 * 1000;
   for (const item of await readdir(root, { withFileTypes: true })) {
     if (!item.isFile() || !/^[0-9a-f-]{36}\.webp$/.test(item.name)) continue;
     const path = join(root, item.name);
     const info = await lstat(path).catch(() => null);
-    if (info?.isFile() && info.mtimeMs < cutoff)
-      await unlink(path).catch(() => undefined);
+    if (info?.isFile() && info.mtimeMs < cutoff) {
+      // File timestamps can predate a restored, still-valid metadata record.
+      const reference = await pool.query(
+        "SELECT 1 FROM route_unit_photos WHERE storage_key=$1", [item.name],
+      );
+      if (!reference.rowCount) await unlink(path).catch(() => undefined);
+    }
   }
-  return rows.length;
+  return removed;
 }

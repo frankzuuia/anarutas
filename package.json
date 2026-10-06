@@ -61,7 +61,7 @@
     "pg": "8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "sharp": "0.35.4"
+    "sharp": "0.35.5"
   },
   "overrides": {
     "brace-expansion@^5.0.0": "5.0.12",

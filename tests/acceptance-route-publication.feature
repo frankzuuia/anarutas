@@ -78,7 +78,7 @@ Feature: Publicación e inicio de rutas por camioneta
     Then la publicación responde conflicto y no crea ni altera el snapshot
 
   Scenario: Caducidad de evidencia
-    Given fotos de una unidad cuyo plazo de quince días venció
+    Given fotos de una unidad cuyo plazo de treinta días venció
     When corre el worker de retención
     Then dejan de ser accesibles y se eliminan sus archivos privados
 

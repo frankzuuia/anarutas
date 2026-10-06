@@ -380,7 +380,7 @@ it("admin and driver cancellation serialize, and v29 migration retains the origi
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(43);
+    ).toBe(44);
     expect(
       (
         await f.db.pool.query(

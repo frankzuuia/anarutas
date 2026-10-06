@@ -560,7 +560,7 @@ Las incidencias administrativas existentes son únicamente repunte/retraso.
 `route_customers.phone` es teléfono operativo, mientras que la publicación
 guarda una copia inmutable del teléfono en `snapshot.orders`; guardar el
 teléfono maestro sin superponerlo en la lectura móvil dejaría la APK obsoleta.
-`route_unit_photos` tiene retención de 15 días para inspección de unidad y no
+`route_unit_photos` tiene retención de 30 días para inspección de unidad y no
 es almacenamiento de evidencia de negocio. El panel ya usa PostgreSQL NOTIFY
 → SSE → invalidación de lectura.
 BL-155 agrega finalización operativa durable en `route_driver_execution_completions`, independiente del libro de cobros, que sigue sin existir. `finishedAt` de la ruta es
@@ -1430,7 +1430,7 @@ a ocho fotos válidas de la fecha local de servicio; congela responsable,
 pedidos y secuencia de esa ruta, no las demás. La asignación persistente de
 flota puede cambiar para planes futuros sin transferir la ruta iniciada.
 Metadatos de fotos en PostgreSQL y WebP en volumen privado con limpieza a los
-quince días. Navigation SDK provee los giros reales; la UI del mapa nunca los
+treinta días. Navigation SDK provee los giros reales; la UI del mapa nunca los
 inventa ni reoptimiza la flota al abrirse.
 
 La matriz de escenarios, flujo, datos, permisos, integraciones, costos, fallos,
@@ -1972,3 +1972,22 @@ No exige igualar prioridades por chofer. Matriz RC01..12, tareas RC-T01..03.
 Evidencia y límites en QA-RUTEO-CONJUNTO-2026-10-04.md. Sustituye el
 reordenamiento posterior de SP únicamente en el éxito del armado Google;
 preserva la recuperación existente, el historial y los contratos operativos.
+
+## Fotos de unidades — retención y limpieza (2026-10-06)
+
+El propietario amplía únicamente las fotografías de inspección de unidades
+a treinta días desde captura y solicita un barrido cada veinticuatro horas.
+La caducidad de acceso no depende de que el barrido ya haya corrido. Las otras
+evidencias y documentos conservan sus políticas independientes.
+
+La migración 44 convierte los vencimientos que corresponden a la política
+anterior de quince días, conserva la fecha de captura y no recrea fotos borradas.
+Carga, default SQL, barrido de huérfanos y texto del panel usan el nuevo plazo.
+El trabajador conserva su recuperación al arrancar y tras fallos; entre barridos
+diarios no hay consultas ni recorridos del volumen de unidades. Drena vencidos
+en lotes y protege los archivos todavía referenciados incluso si su mtime es viejo.
+
+Contratos, escenarios, verificaciones y límites de despliegue documentados en
+`QA-FOTOS-UNIDADES-2026-10-06.md` y `acceptance-unit-photo-retention.feature`.
+No modifica navegación Android, requisitos de fotografías para iniciar,
+publicaciones, Odoo, ruteo, liquidación ni retención de incidencias.
