@@ -55,7 +55,7 @@ export async function readLiveRoutes(pool: Pool, actor: string): Promise<LiveRou
       const corrected = rows.some(s => s.corrected_at !== null);
       const mapped: LiveStop[] = rows.map(s => ({ id: s.id, position: s.position, customer: s.customer_name,
         address: s.address, latitude: s.latitude, longitude: s.longitude, arrivedAt: s.arrived_at?.toISOString() ?? null,
-        unloadingMinutes: s.unloading_minutes ?? null,
+        unloadingMinutes: publishedUnloadingMinutes(e.published_orders, s.shipment_ids, s.unloading_minutes),
         orders: s.orders, progress: stopProgress((s.orders as LiveStop["orders"]).map(o => o.status)) }));
       const route = e.published_route as PublicOptimizedRoute | null;
       const warehouse = liveWarehouseDestination({ version: e.warehouse_depot_version ?? null, target: e.target_stop_id,
@@ -77,4 +77,12 @@ export async function readLiveRoutes(pool: Pool, actor: string): Promise<LiveRou
           completedStops: mapped.filter(s => s.progress.status === "delivered").length, totalStops: mapped.length } };
     }) };
   });
+}
+
+// New snapshots already carry the effective time used by Google. Old snapshots
+// without this field retain the previous manual fallback, not later learning.
+export function publishedUnloadingMinutes(orders: { id: string; unloadingMinutes?: number | null }[],
+  shipmentIds: string[], manual: number | null): number | null {
+  const published = orders.find(o => shipmentIds.includes(o.id));
+  return published && "unloadingMinutes" in published ? published.unloadingMinutes ?? null : manual ?? null;
 }

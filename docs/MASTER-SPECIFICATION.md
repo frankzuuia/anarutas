@@ -1,5 +1,14 @@
 # Bloque 1 — especificación y auditoría previa
 
+## DA01..10 — descarga automática por cliente
+
+Bloque aprobado el 2026-10-06: mínimo dos visitas válidas, mediana de últimas
+tres, llegada GPS hasta cobro final. Evidencia idempotente y tiempo capturado
+antes de sincronizar; respaldo manual y modo fijo. Proyección sin worker,
+sin disparar recálculos ni modificar snapshots iniciados. Especificación y
+escenarios en BLOQUE-DESCARGA-AUTOMATICA.md y acceptance-unloading-learning.feature.
+Resultados, límites y reproducción en QA-DESCARGA-AUTOMATICA-2026-10-06.md.
+
 ## TP01..08 — tiempo consultado entre paradas
 
 Bloque aprobado por «vale dale» el 2026-10-05. Dos relojes en Ver avance

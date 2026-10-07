@@ -122,6 +122,7 @@ export function customerInput(input: Record<string, unknown>) {
     "deliveryNote",
     "priority",
     "unloadingMinutes",
+    "unloadingAutomatic",
     "fulfillmentMode",
     "deliveryAddress",
     "mapUrl",
@@ -131,6 +132,8 @@ export function customerInput(input: Record<string, unknown>) {
   ]);
   if (Object.keys(input).some((key) => !allowed.has(key)))
     throw new AppError("INVALID_INPUT");
+  if (input.unloadingAutomatic !== undefined && typeof input.unloadingAutomatic !== "boolean")
+    throw new AppError("INVALID_INPUT");
   return {
     displayName: text(input.displayName, 180, true),
     phone:
@@ -138,6 +141,7 @@ export function customerInput(input: Record<string, unknown>) {
     deliveryNote: text(input.deliveryNote, 2000),
     priority: selected(input.priority, customerPriorities) as CustomerPriority,
     unloadingMinutes: unloadingMinutesInput(input.unloadingMinutes),
+    unloadingAutomatic: input.unloadingAutomatic as boolean | undefined,
     fulfillmentMode: selected(
       input.fulfillmentMode,
       fulfillmentModes,

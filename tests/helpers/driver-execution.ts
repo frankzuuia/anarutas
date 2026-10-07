@@ -16,7 +16,7 @@ import { todayInTimezone } from "../../src/core/local-date";
 
 // Real isolated PostgreSQL, signatures, image files and start transaction. No HTTP/API mocks.
 // The persisted publication is a fixture for execution, not a claim of a Google calculation.
-export async function executionFixture(options: { groupFourthOrderWithFirst?: boolean; sourceFingerprint?: string; secondLinePerOrder?: boolean; orderCount?: number; now?: Date } = {}) {
+export async function executionFixture(options: { groupFourthOrderWithFirst?: boolean; sourceFingerprint?: string; secondLinePerOrder?: boolean; orderCount?: number; partnerIds?: number[]; legacyUnloadingSnapshot?: boolean; now?: Date } = {}) {
   const db = await startPostgres();
   const photoRoot = await mkdtemp(join(tmpdir(), "rutas-execution-"));
   const oldPepper = process.env.RUTAS_DRIVER_PIN_PEPPER;
@@ -50,8 +50,8 @@ export async function executionFixture(options: { groupFourthOrderWithFirst?: bo
     await persistImportPage(db.pool, actor, plan.id, {
       fingerprint: options.sourceFingerprint ?? createHash("sha256").update("execution-qa").digest("hex"),
       shipments: Array.from({ length: options.orderCount ?? 4 }, (_, index) => index + 1).map(index => ({ pickingId: index, pickingName: `OUT/${index}`, orderId: index,
-        orderName: `S${index}`, partnerId: index === 4 ? 1 : index, customerName: `Cliente ${index === 4 ? 1 : index}`,
-        address: `Calle ${index === 4 ? 1 : index}`, validatedAt: options.now?.toISOString() ?? "2026-09-24T12:00:00.000Z", promisedAt: null,
+        orderName: `S${index}`, partnerId: options.partnerIds?.[index - 1] ?? (index === 4 ? 1 : index), customerName: `Cliente ${options.partnerIds?.[index - 1] ?? (index === 4 ? 1 : index)}`,
+        address: `Calle ${options.partnerIds?.[index - 1] ?? (index === 4 ? 1 : index)}`, validatedAt: options.now?.toISOString() ?? "2026-09-24T12:00:00.000Z", promisedAt: null,
         backorderId: null, lines: [{ moveId: index, productId: index, name: `Producto ${index}`, quantity: 2, unit: "kg" },
           ...(options.secondLinePerOrder ? [{ moveId: index + 10, productId: index + 10, name: `Producto ${index + 10}`, quantity: 3, unit: "kg" }] : [])] })),
       nextCursor: options.orderCount ?? 4, ceiling: options.orderCount ?? 4, hasMore: false, inspected: options.orderCount ?? 4, excluded: 0,
@@ -61,7 +61,7 @@ export async function executionFixture(options: { groupFourthOrderWithFirst?: bo
     const imported = await orderBoard(db.pool, plan.id);
     for (const shipment of imported.shipments) {
       await db.pool.query("UPDATE route_shipments SET vehicle_id=$2 WHERE id=$1", [shipment.id,
-        members[shipment.orderName === "S4" && !options.groupFourthOrderWithFirst ? 1 : 0].vehicleId]);
+        members[shipment.orderName === "S4" && !options.groupFourthOrderWithFirst && !options.partnerIds ? 1 : 0].vehicleId]);
     }
     const board = await orderBoard(db.pool, plan.id);
     for (const member of members) {
@@ -72,7 +72,15 @@ export async function executionFixture(options: { groupFourthOrderWithFirst?: bo
         const [fourth] = snapshot.orders.splice(fourthIndex, 1);
         snapshot.orders.splice(firstIndex + 1, 0, fourth);
       }
-      const serialized = JSON.stringify(snapshot);
+      // Pre-v45 publications did not store unloading time. Preserve that real
+      // wire shape explicitly when testing their existing manual fallback.
+      const serialized = JSON.stringify(options.legacyUnloadingSnapshot ? {
+        ...snapshot, orders: snapshot.orders.map(order => {
+          const legacy: Partial<typeof order> = { ...order };
+          delete legacy.unloadingMinutes;
+          return legacy;
+        }),
+      } : snapshot);
       await db.pool.query(`INSERT INTO route_plan_publications(plan_id,vehicle_id,driver_id,source_plan_version,snapshot,snapshot_hash,published_by)
         VALUES($1,$2,$3,$4,$5,$6,$7)`, [plan.id, member.vehicleId, member.driverId, board.plan.version,
         serialized, createHash("sha256").update(serialized).digest("hex"), actor]);

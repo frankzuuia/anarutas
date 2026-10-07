@@ -13,7 +13,7 @@ let execution: Awaited<ReturnType<typeof readDriverExecution>>;
 let identity: { executionId:string; publicationRevision:number; sessionId:string };
 let sequence=0;
 beforeAll(async()=>{
-  f=await executionFixture({orderCount:6,now:new Date()}); await f.start(); await f.start(f.members[1]);
+  f=await executionFixture({orderCount:6,legacyUnloadingSnapshot:true,now:new Date()}); await f.start(); await f.start(f.members[1]);
   execution=await readDriverExecution(f.db.pool,f.members[0].driverId,f.planId,f.timezone);
   identity={executionId:execution.id,publicationRevision:execution.publicationRevision,sessionId:randomUUID()};
   await f.db.pool.query("UPDATE route_customers SET unloading_minutes=10");
@@ -30,7 +30,7 @@ async function businessState() {
     (SELECT jsonb_agg(s ORDER BY s.id) FROM route_driver_execution_stops s) AS stops,
     (SELECT jsonb_agg(o ORDER BY o.shipment_id) FROM route_driver_execution_orders o) AS orders`)).rows;
 }
-it("reads configured unloads, coalesces concurrent estimates, follows the driver, preserves business state",async()=>{
+it("preserves legacy publication manual unloads, coalesces concurrent estimates and follows the driver",async()=>{
   await sample(); const before=await businessState();
   const start=performance.now();
   const results=await Promise.all(Array.from({length:12},()=>readSegmentEstimate(f.db.pool,f.actor,selection())));

@@ -363,7 +363,7 @@ it("upgrades v27 non-destructively and serializes repeated v28 installation", as
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(44);
+    ).toBe(45);
     expect(
       (await f.db.pool.query("SELECT count(*) FROM route_shipments")).rows[0]
         .count,

@@ -1,5 +1,19 @@
 # Progreso — bloque 1
 
+## DA — descarga automática, autorizado 2026-10-06
+
+- [x] DA-T01: flujo real y bloque aprobado; mínimo dos visitas, últimas tres.
+- [x] DA-T02: evidencia por cobro/visita, proyección, panel y Android.
+- [x] DA-T03: 1,117 regresiones aprobadas tras corregir fixtures de compatibilidad;
+  10 pruebas del bloque, Google real 22 min, 5 E2E, 165 JVM; núcleo 100%
+  líneas/ramas y 19/19 mutaciones dirigidas detectadas. Build/tipos/lint verdes.
+- APK de prueba 0.8.22/code44 en escritorio. Sin dispositivo ADB; queda
+  comprobación física tras desplegar primero backend/panel. Sin certificación
+  de salida productiva ni despliegue automático.
+
+Contrato en BLOQUE-DESCARGA-AUTOMATICA.md; evidencia en
+QA-DESCARGA-AUTOMATICA-2026-10-06.md. Sin deploy automático.
+
 ## Tiempo entre paradas — TP01..08
 
 - [x] TP-T01: contrato aprobado, origen actual/manual, descargas y orden de Google.

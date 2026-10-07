@@ -1,4 +1,4 @@
-param([string[]]$Only = @(), [ValidateSet('financial', 'receipt', 'navigation', 'quantity', 'settlement', 'lifecycle')][string]$Scope = 'financial')
+param([string[]]$Only = @(), [ValidateSet('financial', 'receipt', 'navigation', 'quantity', 'settlement', 'lifecycle', 'capture')][string]$Scope = 'financial')
 $ErrorActionPreference = 'Stop'
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $taskTempRoot = [IO.Path]::GetTempPath()
@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Path (Join-Path $workRoot 'app') | Out-Null
 foreach ($entry in @('build.gradle.kts', 'google-services.json', 'src')) {
     Copy-Item -LiteralPath (Join-Path $sourceRoot ('app/' + $entry)) -Destination (Join-Path $workRoot 'app') -Recurse
 }
-$policyFile = switch ($Scope) { 'lifecycle' { 'DriverRouteLifecycle.kt' } 'settlement' { 'DriverSettlementPolicy.kt' } 'receipt' { 'DriverReceiptOrder.kt' } 'navigation' { 'DriverBackPolicy.kt' } default { 'DriverFinancial.kt' } }
+$policyFile = switch ($Scope) { 'capture' { 'CollectionCaptureTime.kt' } 'lifecycle' { 'DriverRouteLifecycle.kt' } 'settlement' { 'DriverSettlementPolicy.kt' } 'receipt' { 'DriverReceiptOrder.kt' } 'navigation' { 'DriverBackPolicy.kt' } default { 'DriverFinancial.kt' } }
 $policy = Join-Path $workRoot ('app/src/main/java/com/five/anarutas/driver/' + $policyFile)
 $original = [IO.File]::ReadAllText($policy)
 $cases = @(
@@ -66,8 +66,16 @@ if ($Scope -eq 'lifecycle') {
         @{ name='preserve_finance_on_cancellation'; from='workFinished && destination'; to='true && destination' }
     )
 }
+if ($Scope -eq 'capture') {
+    $cases = @(
+        @{ name='allow_rebooted_clock'; from='nowElapsedMillis < receivedElapsedMillis'; to='false' },
+        @{ name='reject_equal_clock'; from='nowElapsedMillis < receivedElapsedMillis'; to='nowElapsedMillis <= receivedElapsedMillis' },
+        @{ name='reverse_elapsed_time'; from='nowElapsedMillis - receivedElapsedMillis'; to='receivedElapsedMillis - nowElapsedMillis' },
+        @{ name='wrong_time_unit'; from='serverTime.plusMillis('; to='serverTime.plusSeconds(' }
+    )
+}
 if ($Only.Count) { $cases = @($cases | Where-Object { $Only -contains $_.name }); if ($cases.Count -ne $Only.Count) { throw 'Unknown mutation filter' } }
-$testClass = switch ($Scope) { 'lifecycle' { 'DriverRouteLifecycleTest' } 'settlement' { 'DriverSettlementPolicyTest' } 'receipt' { 'DriverReceiptOrderTest' } 'navigation' { 'DriverBackPolicyTest' } default { 'DriverFinancialTest' } }
+$testClass = switch ($Scope) { 'capture' { 'CollectionCaptureTimeTest' } 'lifecycle' { 'DriverRouteLifecycleTest' } 'settlement' { 'DriverSettlementPolicyTest' } 'receipt' { 'DriverReceiptOrderTest' } 'navigation' { 'DriverBackPolicyTest' } default { 'DriverFinancialTest' } }
 $arguments = @('testDebugUnitTest', '--tests', ('com.five.anarutas.driver.' + $testClass), '--console=plain')
 $results = @()
 Push-Location $workRoot

@@ -155,6 +155,8 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
             .put("publicationRevision", execution.publicationRevision).put("executionRevision", execution.revision)
             .put("stopVersion", stop.version).put("visitSequence", stop.visitSequence).put("orderVersion", order.version)
             .put("productIncidentsAcknowledged", stop.productIncidents.any { it.shipmentId == shipmentId && it.status != "canceled" })
+            .apply { collectionCaptureTime(execution.serverTime, execution.receivedElapsedMillis,
+                SystemClock.elapsedRealtime())?.let { put("capturedAt", it.toString()) } }
     }
     fun collectionConfirmed(executionId: String, stopId: String, paymentId: String) {
         viewModelScope.launch { gate.withLock {

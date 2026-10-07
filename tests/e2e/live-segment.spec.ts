@@ -13,7 +13,7 @@ let server:ChildProcess, origin:string;
 let identity:{executionId:string;publicationRevision:number;sessionId:string}, sequence=0;
 const login=randomUUID(),password=randomUUID();
 test.beforeAll(async()=>{
-  test.setTimeout(120000); f=await executionFixture({orderCount:6,now:new Date()}); await f.start(); await f.start(f.members[1]);
+  test.setTimeout(120000); f=await executionFixture({orderCount:6,legacyUnloadingSnapshot:true,now:new Date()}); await f.start(); await f.start(f.members[1]);
   await createUser(f.db.pool,f.actor,{name:"Segment QA",login,password});
   await f.db.pool.query("UPDATE route_customers SET unloading_minutes=10");
   execution=await readDriverExecution(f.db.pool,f.members[0].driverId,f.planId,f.timezone);

@@ -58,7 +58,7 @@ it("automatically tracks imports and backfills schema33 without changing operati
   expect(
     (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
       .rows[0].schema_version,
-  ).toBe(44);
+  ).toBe(45);
   expect(
     (await f.db.pool.query("SELECT * FROM route_shipments ORDER BY id")).rows,
   ).toEqual(before);

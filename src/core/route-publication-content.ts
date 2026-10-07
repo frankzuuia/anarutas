@@ -27,6 +27,7 @@ export function routePublicationSnapshot(
         position: shipment.position,
         phone: shipment.phone,
         priority: shipment.priority,
+        unloadingMinutes: shipment.unloadingMinutes ?? null,
         deliveryWindows: shipment.deliveryWindows,
         deliveryNote: shipment.deliveryNote,
         fulfillmentMode: shipment.fulfillmentMode,
@@ -46,7 +47,10 @@ export function routePublicationSnapshot(
   };
 }
 
-type Snapshot = Partial<ReturnType<typeof routePublicationSnapshot>>;
+type Publication = ReturnType<typeof routePublicationSnapshot>;
+type Snapshot = Omit<Partial<Publication>, "orders"> & {
+  orders?: (Omit<Publication["orders"][number], "unloadingMinutes"> & { unloadingMinutes?: number | null })[];
+};
 
 /** Before first start, source products must still match the frozen publication. */
 export function routePublicationSourceChanged(
@@ -99,6 +103,7 @@ export function routePublicationContentChanged(
     // Positions are global slots in the draft; only this vehicle's sequence matters.
     orders: value.orders?.map((order, index) => ({
       ...order,
+      unloadingMinutes: order.unloadingMinutes ?? null,
       position: index + 1,
     })),
     routeStatus: value.routeStatus,

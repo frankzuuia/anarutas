@@ -93,7 +93,7 @@ describe("customer service duration on real PostgreSQL", () => {
       )
     ).rows;
     await f.db.pool.query(
-      "ALTER TABLE route_customers DROP COLUMN unloading_minutes; UPDATE rutas_installation SET schema_version=42",
+      "DROP VIEW route_customer_unloading; ALTER TABLE route_customers DROP COLUMN unloading_minutes; UPDATE rutas_installation SET schema_version=42",
     );
     await Promise.all([
       migrate(f.db.pool, f.db.config.instanceId),
@@ -102,7 +102,7 @@ describe("customer service duration on real PostgreSQL", () => {
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(44);
+    ).toBe(45);
     expect(
       (
         await f.db.pool.query(

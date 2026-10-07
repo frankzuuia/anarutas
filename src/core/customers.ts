@@ -60,6 +60,13 @@ function toCustomer(row: Row, windows: Row[] = []): Customer {
     deliveryNote: String(row.delivery_note),
     priority: row.priority as Customer["priority"],
     unloadingMinutes: row.unloading_minutes == null ? null : Number(row.unloading_minutes),
+    unloadingAutomatic: row.unloading_automatic !== false,
+    unloadingEstimate: {
+      effectiveMinutes: row.effective_minutes == null ? null : Number(row.effective_minutes),
+      learnedMinutes: row.learned_minutes == null ? null : Number(row.learned_minutes),
+      sampleCount: Number(row.sample_count ?? 0),
+      lastObservedAt: row.last_observed_at == null ? null : new Date(String(row.last_observed_at)).toISOString(),
+    },
     fulfillmentMode: row.fulfillment_mode as Customer["fulfillmentMode"],
     deliveryAddress: String(row.delivery_address),
     mapUrl: row.map_url === null ? null : String(row.map_url),
@@ -83,8 +90,10 @@ function toCustomer(row: Row, windows: Row[] = []): Customer {
 }
 
 const selectCustomer = `
-  SELECT c.*,p.odoo_name AS parent_name,commercial.odoo_name AS commercial_name
+  SELECT c.*,u.effective_minutes,u.learned_minutes,u.sample_count,u.last_observed_at,
+    p.odoo_name AS parent_name,commercial.odoo_name AS commercial_name
   FROM route_customers c
+  LEFT JOIN route_customer_unloading u ON u.id=c.id
   LEFT JOIN route_customers p
     ON p.source=c.source AND p.odoo_partner_id=c.odoo_parent_id
   LEFT JOIN route_customers commercial
@@ -409,7 +418,8 @@ export async function updateCustomer(
         map_url=$8,latitude=$9,longitude=$10,place_id=$11,
         location_status=$12,location_version=$13,search_key=$14,
         version=version+1,updated_by=$15,updated_by_driver=NULL,updated_at=now(),
-        unloading_minutes=CASE WHEN $16::boolean THEN $17::integer ELSE unloading_minutes END
+        unloading_minutes=CASE WHEN $16::boolean THEN $17::integer ELSE unloading_minutes END,
+        unloading_automatic=coalesce($18::boolean,unloading_automatic)
        WHERE id=$1`,
       [
         id,
@@ -429,6 +439,7 @@ export async function updateCustomer(
         actor,
         input.unloadingMinutes !== undefined,
         input.unloadingMinutes ?? null,
+        input.unloadingAutomatic ?? null,
       ],
     );
     await sql.query("DELETE FROM route_customer_windows WHERE customer_id=$1", [
@@ -470,6 +481,7 @@ export async function updateCustomer(
       windows: input.windows.length,
       priority: input.priority,
       unloadingMinutes: input.unloadingMinutes === undefined ? previous.unloading_minutes : input.unloadingMinutes,
+      unloadingAutomatic: input.unloadingAutomatic ?? previous.unloading_automatic,
       locationStatus: confirmed ? "confirmed" : "pending",
       locationVersion,
     });

@@ -31,6 +31,13 @@ export type Customer = {
   deliveryNote: string;
   priority: CustomerPriority;
   unloadingMinutes?: number | null;
+  unloadingAutomatic?: boolean;
+  unloadingEstimate?: {
+    effectiveMinutes: number | null;
+    learnedMinutes: number | null;
+    sampleCount: number;
+    lastObservedAt: string | null;
+  };
   fulfillmentMode: FulfillmentMode;
   deliveryAddress: string;
   mapUrl: string | null;

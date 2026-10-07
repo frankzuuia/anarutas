@@ -18,6 +18,7 @@ import { lockServiceContext, serviceIdentity } from "./driver-service-context";
 import { applyDriverOrderAction } from "./driver-order-command";
 import { serviceAction } from "./driver-service-policy";
 import { saveDriverCommandReceipt } from "./driver-command-receipts";
+import { collectionCapturedAt, recordUnloadingCollection } from "./unloading-learning";
 
 export type PaymentRecord = PaymentAmounts & {
   id: string;
@@ -91,6 +92,7 @@ export async function confirmOrderPayment(
     ...serviceIdentity({ ...context, commandId, executionId }),
     orderVersion: integer(context.orderVersion, 1),
     productIncidentsAcknowledged: context.productIncidentsAcknowledged === true,
+    ...(context.capturedAt !== undefined ? { capturedAt: collectionCapturedAt(context.capturedAt) } : {}),
   };
   const hash = financialHash({
     executionId,
@@ -212,6 +214,9 @@ export async function confirmOrderPayment(
         input.captureVersion ?? 1,
       ],
     );
+    if (delivery && service?.stop && attention)
+      await recordUnloadingCollection(sql, id, service.stop.id, service.stop.visit_sequence,
+        attention.capturedAt ?? null, now);
     if (delivery && service)
       await saveDriverCommandReceipt(
         sql,

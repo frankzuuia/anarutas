@@ -68,11 +68,12 @@ export async function readOrderBoard(
     `SELECT s.id,s.vehicle_id,s.position,s.snapshot,
               s.window_start::text,s.window_end::text,s.high_priority,
               c.id AS customer_id,c.display_name,c.phone,c.delivery_note,
-              c.priority,c.unloading_minutes,c.fulfillment_mode,c.delivery_address,c.map_url,
+              c.priority,u.effective_minutes AS unloading_minutes,c.fulfillment_mode,c.delivery_address,c.map_url,
               c.latitude,c.longitude,c.location_status,c.archived_at
        FROM route_shipments s
        LEFT JOIN route_customers c
          ON c.source=s.source AND c.odoo_partner_id=s.partner_id
+       LEFT JOIN route_customer_unloading u ON u.id=c.id
        WHERE s.plan_id=$1 ORDER BY s.position,s.id`,
     [id],
   );

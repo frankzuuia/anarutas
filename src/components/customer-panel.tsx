@@ -38,6 +38,7 @@ type FormState = {
   deliveryNote: string;
   priority: Customer["priority"];
   unloadingMinutes: string;
+  unloadingAutomatic: boolean;
   fulfillmentMode: Customer["fulfillmentMode"];
   deliveryAddress: string;
   mapUrl: string;
@@ -55,6 +56,7 @@ function formState(customer: Customer): FormState {
     deliveryNote: customer.deliveryNote,
     priority: customer.priority,
     unloadingMinutes: customer.unloadingMinutes == null ? "" : String(customer.unloadingMinutes),
+    unloadingAutomatic: customer.unloadingAutomatic !== false,
     fulfillmentMode: customer.fulfillmentMode,
     deliveryAddress: customer.deliveryAddress,
     mapUrl: customer.mapUrl || "",
@@ -227,6 +229,7 @@ export function CustomerPanel({ revision }: { revision: number }) {
           deliveryNote: form.deliveryNote,
           priority: form.priority,
           unloadingMinutes: form.unloadingMinutes === "" ? null : Number(form.unloadingMinutes),
+          unloadingAutomatic: form.unloadingAutomatic,
           fulfillmentMode: form.fulfillmentMode,
           deliveryAddress: form.deliveryAddress,
           mapUrl: form.mapUrl || null,
@@ -586,6 +589,28 @@ export function CustomerPanel({ revision }: { revision: number }) {
                 </fieldset>
                 <fieldset>
                   <legend>Tiempo de descarga</legend>
+                  <div className="segmented" aria-label="Ajuste del tiempo de descarga">
+                    <button type="button" className={form.unloadingAutomatic ? "active" : ""}
+                      aria-pressed={form.unloadingAutomatic}
+                      onClick={() => setForm({ ...form, unloadingAutomatic: true })}>Automático</button>
+                    <button type="button" className={!form.unloadingAutomatic ? "active" : ""}
+                      aria-pressed={!form.unloadingAutomatic}
+                      onClick={() => setForm({ ...form, unloadingAutomatic: false })}>Manual fijo</button>
+                  </div>
+                  {form.unloadingAutomatic && (
+                    <p aria-live="polite">
+                      {selected.unloadingEstimate?.learnedMinutes != null
+                        ? <strong>Automático: {selected.unloadingEstimate.learnedMinutes} min por visita</strong>
+                        : <strong>Aprendiendo: {selected.unloadingEstimate?.sampleCount ?? 0}/2 visitas</strong>}
+                      <br />
+                      <small>{selected.unloadingEstimate?.learnedMinutes != null
+                        ? `Mediana de las últimas ${selected.unloadingEstimate.sampleCount} visitas completas. Se actualiza al cerrar los pedidos.`
+                        : "Se usa el valor manual hasta completar dos visitas con cobro."}</small>
+                      {selected.unloadingEstimate?.lastObservedAt && <><br /><small>
+                        Última visita: {new Date(selected.unloadingEstimate.lastObservedAt).toLocaleString("es-MX")}
+                      </small></>}
+                    </p>
+                  )}
                   <label>
                     Minutos por visita
                     <input type="number" min="0" step="1"
@@ -594,6 +619,7 @@ export function CustomerPanel({ revision }: { revision: number }) {
                       onChange={(event) => setForm({ ...form, unloadingMinutes: event.target.value })}
                     />
                   </label>
+                  {form.unloadingAutomatic && <small>Valor manual de respaldo. El tiempo automático se usa al armar nuevas rutas.</small>}
                 </fieldset>
                 <fieldset>
                   <legend>Modalidad</legend>

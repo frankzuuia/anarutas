@@ -159,13 +159,16 @@ export async function executeStopCommand(pool: Pool, authorization: string | nul
         postalCode: input.address.postalCode, city: input.address.city };
     }
     const eventId = randomUUID();
+    const customerLocationVersion = kind === "arrival" ? (await sql.query(
+      "SELECT location_version FROM route_customers WHERE id=$1", [stop.customer_id],
+    )).rows[0]?.location_version : undefined;
     await sql.query(
       `INSERT INTO route_driver_stop_events(id,execution_id,stop_id,driver_id,device_id,kind,
          incident_kind,occurred_at,event_date,timezone,details,visit_sequence) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [eventId, route.id, stop.id, driver.driver_id, driver.device_id, kind,
         kind === "repoint" ? "location_corrected" : lateSeconds !== null && lateSeconds > 0 ? "late_arrival" : null,
         now, todayInTimezone(timezone, now), timezone, JSON.stringify({ ...historicalContext(route, stop),
-          point, before: { latitude: stop.latitude, longitude: stop.longitude }, customerBefore,
+          point, customerLocationVersion, before: { latitude: stop.latitude, longitude: stop.longitude }, customerBefore,
           previousAddress, correctedAddress, correctedAddressFields,
           sample: input.sample, policy, distanceMeters: distance, windows: stop.windows, lateSeconds }),
         kind === "arrival" ? stop.visit_sequence + 1 : stop.visit_sequence || null],
