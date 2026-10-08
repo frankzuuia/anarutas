@@ -226,7 +226,7 @@ export async function fleetFlow(
     ).toBe(true);
     expect(
       await page
-        .locator("dialog")
+        .getByRole("dialog")
         .evaluate((el) => el.scrollWidth <= el.clientWidth),
     ).toBe(true);
   }
@@ -261,7 +261,7 @@ export async function fleetFlow(
     });
     expect(
       await page
-        .locator("dialog")
+        .getByRole("dialog")
         .evaluate((el) => el.scrollWidth <= el.clientWidth),
     ).toBe(true);
     await page.getByRole("button", { name: "Cancelar", exact: true }).click();

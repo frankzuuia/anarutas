@@ -42,6 +42,12 @@
 
 ## Ventanas diarias de clientes — BL-142 (28/09/2026)
 
+Actualización de presentación aprobada el 08/10/2026: el administrador captura
+Desde/Hasta inmediatamente debajo de Prioridad, sin botón Añadir ventana.
+El cliente sin horario muestra campos vacíos; sólo editar esos campos crea una
+ventana. Quitarla permite volver a capturarla. Se preservan los intervalos ya
+existentes y el contrato de validación, permisos, versiones y auditoría.
+
 - Actor: administrador de Ana Rutas. Cada ventana de un cliente/sucursal se
   define únicamente con «Desde» y «Hasta» en formato de 24 horas y aplica todos
   los días, sin calendario semanal. Varias ventanas no pueden traslaparse.

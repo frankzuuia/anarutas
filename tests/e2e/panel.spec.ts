@@ -1386,9 +1386,9 @@ test("setup, two sessions, shared draft, CSRF, accounts, revocation and restart"
     "Café E2E Odoo",
   );
   await page.getByLabel("Cliente", { exact: true }).fill("Sucursal E2E");
-  await page
-    .getByRole("button", { name: "Añadir ventana", exact: true })
-    .click();
+  await expect(
+    page.getByRole("button", { name: "Añadir ventana", exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByLabel("Días de la ventana 1")).toHaveCount(0);
   await page.getByLabel("Desde", { exact: true }).fill("11:00");
   await page.getByLabel("Hasta", { exact: true }).fill("13:00");

@@ -48,6 +48,20 @@ QA-DESCARGA-AUTOMATICA-2026-10-06.md. Sin deploy automático.
 
 ## Ventanas diarias de clientes — BL-142 / VH01..VH08
 
+### 08/10/2026 — Editor del horario, VE01..VE05
+
+- [x] Diagnóstico: quitar sólo Añadir ventana impediría capturar horarios faltantes.
+- [x] Bloque confirmado: mover debajo de Prioridad, retirar creación adicional y
+  mantener captura vacía, borrado y recaptura sin modificar el servidor.
+- [x] Ajustar el E2E anterior y añadir regresiones de preservación y campos vacíos.
+- [x] Ejecutar contratos, cobertura, seguridad HTTP, Chrome móvil/desktop y controles estáticos.
+- [x] Documentar evidencia en `QA-EDITOR-HORARIO-2026-10-08.md`: 13 contratos,
+  82/82 mutantes y 3 E2E correctos, cobertura dirigida de líneas 88.70%,
+  build/tipos correctos y lint sin errores. Cinco alertas heredadas de desarrollo
+  bajo la excepción previamente autorizada; auditoría productiva en cero.
+- [x] Preparar entrega autorizada por commit/push sólo en develop con el bloque
+  verificado; comprobar referencia remota antes de informar. Deploy manual del propietario.
+
 - [x] VH-T01: contrato y validación de intervalos diarios con control de versión existente.
 - [x] VH-T02: migración v26 transaccional, consolidación y archivo auditable; PostgreSQL real y concurrencia.
 - [x] VH-T03: directorio, Excel y pedidos sin selector/filtro de días.

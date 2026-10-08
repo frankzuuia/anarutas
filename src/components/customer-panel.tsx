@@ -5,7 +5,6 @@ import {
   Building2,
   Download,
   PanelRightClose,
-  Plus,
   RefreshCw,
   RotateCcw,
   Save,
@@ -323,6 +322,10 @@ export function CustomerPanel({ revision }: { revision: number }) {
     }
   }
 
+  const editableWindows: FormWindow[] = form?.windows.length
+    ? form.windows
+    : [{ key: "empty", start: "", end: "" }];
+
   const exportUrl = useMemo(() => {
     const params = new URLSearchParams({
       archived: String(archived),
@@ -587,6 +590,78 @@ export function CustomerPanel({ revision }: { revision: number }) {
                     ))}
                   </div>
                 </fieldset>
+                <fieldset className="windows-editor">
+                  <legend>Ventanas de horario · 24 horas</legend>
+                  {editableWindows.map((window, index) => (
+                    <div className="window-row" key={window.key}>
+                      <label>
+                        Desde
+                        <input
+                          type="text"
+                          required={form.windows.length > 0}
+                          maxLength={5}
+                          pattern={clockPattern.source}
+                          placeholder="HH:MM"
+                          title="Usa horario de 24 horas, por ejemplo 11:00"
+                          aria-invalid={
+                            window.start !== "" && !clockPattern.test(window.start)
+                          }
+                          value={window.start}
+                          onChange={(event) =>
+                            setForm({
+                              ...form,
+                              windows: editableWindows.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, start: event.target.value }
+                                  : item,
+                              ),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Hasta
+                        <input
+                          type="text"
+                          required={form.windows.length > 0}
+                          maxLength={5}
+                          pattern={clockPattern.source}
+                          placeholder="HH:MM"
+                          title="Usa horario de 24 horas, por ejemplo 13:00"
+                          aria-invalid={
+                            window.end !== "" && !clockPattern.test(window.end)
+                          }
+                          value={window.end}
+                          onChange={(event) =>
+                            setForm({
+                              ...form,
+                              windows: editableWindows.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, end: event.target.value }
+                                  : item,
+                              ),
+                            })
+                          }
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="danger icon-only window-remove-action"
+                        aria-label={`Quitar ventana ${index + 1}`}
+                        onClick={() =>
+                          setForm({
+                            ...form,
+                            windows: form.windows.filter(
+                              (_, itemIndex) => itemIndex !== index,
+                            ),
+                          })
+                        }
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))}
+                </fieldset>
                 <fieldset>
                   <legend>Tiempo de descarga</legend>
                   <div className="segmented" aria-label="Ajuste del tiempo de descarga">
@@ -647,94 +722,6 @@ export function CustomerPanel({ revision }: { revision: number }) {
                       Recoge
                     </button>
                   </div>
-                </fieldset>
-                <fieldset className="windows-editor">
-                  <legend>Ventanas de horario · 24 horas</legend>
-                  {form.windows.map((window, index) => (
-                    <div className="window-row" key={window.key}>
-                      <label>
-                        Desde
-                        <input
-                          type="text"
-                          required
-                          maxLength={5}
-                          pattern={clockPattern.source}
-                          placeholder="HH:MM"
-                          title="Usa horario de 24 horas, por ejemplo 11:00"
-                          aria-invalid={!clockPattern.test(window.start)}
-                          value={window.start}
-                          onChange={(event) =>
-                            setForm({
-                              ...form,
-                              windows: form.windows.map((item, itemIndex) =>
-                                itemIndex === index
-                                  ? { ...item, start: event.target.value }
-                                  : item,
-                              ),
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        Hasta
-                        <input
-                          type="text"
-                          required
-                          maxLength={5}
-                          pattern={clockPattern.source}
-                          placeholder="HH:MM"
-                          title="Usa horario de 24 horas, por ejemplo 13:00"
-                          aria-invalid={!clockPattern.test(window.end)}
-                          value={window.end}
-                          onChange={(event) =>
-                            setForm({
-                              ...form,
-                              windows: form.windows.map((item, itemIndex) =>
-                                itemIndex === index
-                                  ? { ...item, end: event.target.value }
-                                  : item,
-                              ),
-                            })
-                          }
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className="danger icon-only window-remove-action"
-                        aria-label={`Quitar ventana ${index + 1}`}
-                        onClick={() =>
-                          setForm({
-                            ...form,
-                            windows: form.windows.filter(
-                              (_, itemIndex) => itemIndex !== index,
-                            ),
-                          })
-                        }
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    className="quiet"
-                    disabled={form.windows.length >= 32}
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        windows: [
-                          ...form.windows,
-                          {
-                            key: crypto.randomUUID(),
-                            start: "09:00",
-                            end: "13:00",
-                          },
-                        ],
-                      })
-                    }
-                  >
-                    <Plus size={15} /> Añadir ventana
-                  </button>
                 </fieldset>
                 <label>
                   Nota de entrega

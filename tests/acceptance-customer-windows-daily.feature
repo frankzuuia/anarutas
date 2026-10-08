@@ -6,10 +6,35 @@ Característica: Ventanas diarias de entrega por cliente
 
   Escenario: Editar y guardar una ventana
     Dado que abrí un cliente con permisos de administración
-    Cuando agrego una ventana Desde 11:00 Hasta 13:00 y guardo
+    Cuando capturo Desde 11:00 Hasta 13:00 y guardo
     Entonces no veo selector de días
     Y la lista muestra 11:00–13:00
     Y el pedido del cliente recibe el intervalo 660–780 minutos
+
+  Escenario: Mostrar el horario debajo de Prioridad
+    Dado que abrí la ficha de un cliente en escritorio o celular
+    Entonces veo Ventanas de horario inmediatamente después de Prioridad
+    Y no existe el botón Añadir ventana
+
+  Escenario: Capturar horario en un cliente sin ventana
+    Dado que el cliente no tiene horario configurado
+    Entonces Desde y Hasta están vacíos sin marcar cambios ni inventar horas
+    Cuando modifico únicamente la nota y guardo
+    Entonces el cliente continúa sin ventanas
+    Cuando capturo Desde 11:00 y Hasta 13:00 y guardo
+    Entonces existe una ventana con esas horas después de recargar
+
+  Escenario: Quitar y volver a capturar el horario
+    Dado que el cliente tiene horario configurado
+    Cuando quito su ventana y guardo
+    Entonces queda sin horario y Desde y Hasta permanecen disponibles vacíos
+    Y capturar sólo una hora o 24:00 impide guardar sin enviar un PATCH
+
+  Escenario: Conservar ventanas ya existentes
+    Dado que un cliente anterior tiene dos ventanas configuradas
+    Cuando cambio su nota sin editar horarios y guardo
+    Entonces ambas ventanas se conservan
+    Y prioridad, descarga, modalidad, ubicación y teléfono permanecen iguales
 
   Escenario: Aplicar el mismo horario en domingo
     Dado que el cliente tiene una ventana Desde 09:00 Hasta 12:00

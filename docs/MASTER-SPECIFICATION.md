@@ -71,6 +71,24 @@ BD destino. Libro fuente no adjunto: no afirmar igualdad visual exacta con él.
 
 ## Ventanas diarias de clientes — BL-142 / VH01..VH08
 
+### Ajuste del editor aprobado el 08/10/2026 — VE01..VE05
+
+| Caso | Condición y resultado | Verificación |
+| --- | --- | --- |
+| VE01 | Ficha desktop/móvil: Prioridad → Ventanas → Descarga → Modalidad; sin Añadir ventana | Chrome compilado |
+| VE02 | Cliente sin ventana: Desde/Hasta vacíos y formulario limpio; editar otro campo mantiene `windows: []` | HTTP/PG/Chrome |
+| VE03 | Capturar ambas horas crea una ventana; quitarla guarda vacío y permite recaptura | HTTP/PG/recarga |
+| VE04 | Horario incompleto o 24:00: validación nativa evita el PATCH; contrato servidor intacto | Chrome/unitarias |
+| VE05 | Cliente anterior con varias ventanas: editar otro campo conserva todas; sin truncarlas ni alterar operación | HTTP/PG/regresión |
+
+El único cambio de aplicación está en `customer-panel.tsx`. Una fila visual
+vacía se usa cuando el estado tiene cero ventanas; no modifica el estado ni se
+incluye en el PATCH mientras no se edite. Al escribir se usan los controladores
+existentes. No cambia API, migración, días, ruteo, descarga, exportación ni APK.
+La validación de múltiples intervalos sigue vigente para datos anteriores.
+La retirada del botón no autoriza borrar intervalos almacenados. Los guardados
+conservan `expectedVersion`, sesión, Origin y auditoría del servidor.
+
 Autopsia: los botones de días no eran sólo presentación. `CustomerWindow.days`
 viajaba por PATCH hasta `route_customer_windows.days_mask`; `readOrderBoard`
 filtraba por el día del plan, y Excel exportaba la columna «Días». Quitar sólo
