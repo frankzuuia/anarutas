@@ -43,6 +43,15 @@ internal fun ProductSelectField(label: String, value: String, options: List<Pair
 }
 
 @Composable
+internal fun ProductClassificationFields(kind: ProductIncidentKind, department: String, concept: String,
+    editable: Boolean, onDepartment: (String) -> Unit, onConcept: (String) -> Unit) {
+    if (productClassificationRequired(kind)) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ProductSelectField("Departamento", department, productDepartments.map { it to it }, editable, Modifier.weight(1f), onDepartment)
+        ProductSelectField("Concepto", concept, productConcepts.map { it to it }, editable, Modifier.weight(1f), onConcept)
+    }
+}
+
+@Composable
 internal fun ShortageProductFields(product: String, quantity: String, unit: String, enabled: Boolean,
     onProduct: (String) -> Unit, onQuantity: (String) -> Unit, onUnit: (String) -> Unit) {
     OutlinedTextField(product, { onProduct(it.take(300)) }, modifier = Modifier.fillMaxWidth(),

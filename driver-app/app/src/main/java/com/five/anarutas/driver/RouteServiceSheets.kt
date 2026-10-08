@@ -210,7 +210,6 @@ internal fun ServiceIncidentSheet(stop: ExecutionStop, initialOrderId: String?, 
     val context = LocalContext.current
     val state = model.state
     var mode by rememberSaveable(stop.id) { mutableStateOf("customer_closed") }
-    var missingKind by rememberSaveable(stop.id) { mutableStateOf<String?>(null) }
     var reason by rememberSaveable(stop.id) { mutableStateOf("") }
     var note by rememberSaveable(stop.id) { mutableStateOf("") }
     var selectedId by rememberSaveable(stop.id) { mutableStateOf(initialOrderId) }
@@ -257,10 +256,6 @@ internal fun ServiceIncidentSheet(stop: ExecutionStop, initialOrderId: String?, 
     LaunchedEffect(state.serviceRevision) {
         if (confirmedRevision != state.serviceRevision) { confirmedRevision = state.serviceRevision; discardPhoto(); close() }
     }
-    if (missingKind != null && selected != null) {
-        ProductIncidentSheet(stop, selected, null, ProductIncidentKind.entries.first { it.wire == missingKind }, model) { missingKind = null }
-        return
-    }
     ServiceFormSurface(::dismiss, header = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -272,19 +267,9 @@ internal fun ServiceIncidentSheet(stop: ExecutionStop, initialOrderId: String?, 
     }) {
         Text("Selecciona lo que ocurrió. Se enviará a administración con tu nombre y la hora del registro.", color = DriverColors.muted)
         Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            IncidentChoice.entries.forEach { choice ->
+            arrivalIncidentChoices.forEach { choice ->
                 IncidentChoiceCard(choice, mode == choice.code, incidentChoiceEnabled(choice, available, orders.isNotEmpty())) { mode = choice.code }
             }
-        }
-        if (mode == IncidentChoice.SHORTAGE_VALIDATION.code || mode == IncidentChoice.SHORTAGE_WAREHOUSE.code) {
-            Text("Selecciona el pedido al que corresponde el producto faltante.", color = DriverColors.muted, style = MaterialTheme.typography.bodySmall)
-            if (orders.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                orders.forEach { order -> FilterChip(order.id == selected?.id, { selectedId = order.id }, enabled = available, label = { Text(order.name) }) }
-            } else Text(selected?.name ?: "Sin pedidos disponibles")
-            AppAction("Continuar con faltante", DriverIcon.ALERT, Modifier.fillMaxWidth(), enabled = available && selected != null) { missingKind = mode }
-            ServiceFeedback(model)
-            TextButton(enabled = !state.busy, onClick = ::dismiss) { Text("Volver al pedido") }
-            return@ServiceFormSurface
         }
         if (mode == "customer_closed") {
             Text("Todos los pedidos sin cerrar de esta parada quedarán pendientes de reintento. Toma una foto del negocio cerrado.", color = DriverColors.amber, style = MaterialTheme.typography.bodySmall)

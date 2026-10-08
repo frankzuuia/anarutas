@@ -114,8 +114,9 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
         !productIncidentValid(kind, quantity, product, unit, remaining, completeNote, linked = line != null) ->
             if (completeNote.length > 2000) "Máximo 2,000 caracteres entre comentarios y notas."
             else "Completa producto, unidad y una cantidad válida."
-        department !in productDepartments -> "Selecciona el departamento."
-        concept !in productConcepts -> "Selecciona el concepto."
+        productClassificationRequired(kind) && department !in productDepartments -> "Selecciona el departamento."
+        productClassificationRequired(kind) && concept !in productConcepts -> "Selecciona el concepto."
+        !productCommentsValid(kind, comments) -> "Revisa y retira los comentarios anteriores que ya no corresponden a este tipo."
         kind == ProductIncidentKind.SHORTAGE_WAREHOUSE && warehouseReason.isEmpty() -> "Selecciona el motivo desde bodega."
         replacement && replacementPayment !in listOf("pay_full", "defer") -> "Indica cómo pagará el cliente la reposición."
         saved == null && !productPhotosValid(kind, photos.size) -> "Agrega al menos una foto de evidencia."
@@ -171,7 +172,11 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
             ProductIncidentKind.entries.filter { candidate ->
                 (if (line == null) candidate.manual else !candidate.manual || financialLine != null || candidate == kind) &&
                     (saved == null || saved.evidenceCount > 0 || candidate.manual)
-            }.map { it.wire to it.label }, editable) { kindCode = it }
+            }.map { it.wire to it.label }, editable) { selectedKind ->
+                kindCode = selectedKind
+                val selected = ProductIncidentKind.entries.first { it.wire == selectedKind }
+                comments = comments.filter { code -> productCommentOptions(selected).any { it.code == code } }
+            }
         if (line != null) OutlinedTextField(quantity, { quantity = it.take(20) }, modifier = Modifier.fillMaxWidth(),
             label = { Text(if (kind == ProductIncidentKind.RETURN) "Cantidad devuelta · ${financialLine?.unit ?: line.unit}" else "Cantidad afectada · ${financialLine?.unit ?: line.unit}") },
             enabled = editable, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
@@ -183,10 +188,7 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
         }
         if (remaining != null) TextButton(enabled = editable && remaining.signum() > 0,
             onClick = { quantity = remaining.stripTrailingZeros().toPlainString() }) { Text("Usar toda la cantidad disponible") }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ProductSelectField("Departamento", department, productDepartments.map { it to it }, editable, Modifier.weight(1f)) { department = it }
-            ProductSelectField("Concepto", concept, productConcepts.map { it to it }, editable, Modifier.weight(1f)) { concept = it }
-        }
+        ProductClassificationFields(kind, department, concept, editable, { department = it }, { concept = it })
         if (kind == ProductIncidentKind.SHORTAGE_WAREHOUSE) ProductSelectField("Motivo desde bodega", warehouseReason,
             WarehouseReason.entries.map { it.wire to it.label }, editable) { warehouseReason = it }
         if (!kind.manual) {
@@ -216,6 +218,16 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
             if (photoError.isNotBlank()) Text(photoError, color = DriverColors.amber)
         }
         ProductCommentChoices(comments, editable, productCommentOptions(kind)) { comments = it }
+        val previousComments = comments.filter { code -> productCommentOptions(kind).none { it.code == code } }
+        if (previousComments.isNotEmpty()) {
+            Text("Comentarios anteriores · retíralos para guardar con el catálogo actual. El historial conserva el registro original.",
+                style = MaterialTheme.typography.bodySmall, color = DriverColors.amber)
+            previousComments.forEach { code ->
+                TextButton(enabled = editable, onClick = { comments = comments - code }) {
+                    Text("Quitar: ${ProductComment.entries.find { it.code == code }?.label ?: code}")
+                }
+            }
+        }
         ServiceNoteField(note, { note = it }, "Notas adicionales · opcional", editable)
         Text("${completeNote.length}/2000 caracteres · comentarios y notas", style = MaterialTheme.typography.labelSmall, color = DriverColors.muted)
         Text(if (kind == ProductIncidentKind.RETURN) "Se registra para administración. No genera todavía una devolución ni ajuste en Odoo."

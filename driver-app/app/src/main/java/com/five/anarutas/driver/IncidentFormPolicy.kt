@@ -8,6 +8,8 @@ internal enum class IncidentChoice(val code: String, val label: String, val deta
     ORDER_REJECTED("reject", "Pedido rechazado", "Selecciona el motivo", DriverIcon.ORDER_REJECTED),
 }
 
+internal val arrivalIncidentChoices = listOf(IncidentChoice.CUSTOMER_CLOSED, IncidentChoice.ORDER_REJECTED)
+
 internal fun incidentChoiceEnabled(choice: IncidentChoice, available: Boolean, hasRejectableOrders: Boolean): Boolean =
     available && (choice == IncidentChoice.CUSTOMER_CLOSED || hasRejectableOrders)
 

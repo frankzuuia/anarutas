@@ -208,10 +208,11 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
         val stop = execution.stops.find { it.id == stopId } ?: return
         val order = stop.orderStates.find { it.shipmentId == shipmentId } ?: return
         if (!serviceAvailable(stop) || !stop.canAttend() || !canDeliverOrder(order.status)) return
-        if (!productPhotosValid(kind, photos.size) || department !in productDepartments || concept !in productConcepts) return
+        if (!productPhotosValid(kind, photos.size) || !productClassificationValid(kind, department, concept) || !productCommentsValid(kind, comments)) return
         val payload = visitExitCommand(execution, stop, UUID.randomUUID().toString()).put("orderVersion", order.version)
-            .put("kind", kind.wire).put("quantity", quantity).put("note", note).put("department", department)
-            .put("formVersion", 2).put("concept", concept).put("comments", org.json.JSONArray(comments))
+            .put("kind", kind.wire).put("quantity", quantity).put("note", note)
+            .put("department", department.takeIf { productClassificationRequired(kind) })
+            .put("formVersion", 3).put("concept", concept.takeIf { productClassificationRequired(kind) }).put("comments", org.json.JSONArray(comments))
         if (warehouseReason != null) payload.put("warehouseReason", warehouseReason)
         if (lineIndex == null) payload.put("product", product).put("unit", unit) else payload.put("lineIndex", lineIndex)
         appendIncidentFinancial(payload, financial, replacementPayment)
@@ -224,10 +225,11 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
         val stop = execution.stops.find { it.id == stopId } ?: return
         val order = stop.orderStates.find { it.shipmentId == shipmentId } ?: return
         if (!serviceAvailable(stop) || !stop.canAttend() || !canDeliverOrder(order.status) || incident.status != "pending") return
-        if (department !in productDepartments || concept !in productConcepts) return
+        if (!productClassificationValid(kind, department, concept) || !productCommentsValid(kind, comments)) return
         val payload = visitExitCommand(execution, stop, UUID.randomUUID().toString()).put("orderVersion", order.version)
             .put("expectedVersion", incident.version).put("kind", kind.wire).put("quantity", quantity).put("note", note)
-            .put("department", department).put("formVersion", 2).put("concept", concept)
+            .put("department", department.takeIf { productClassificationRequired(kind) }).put("formVersion", 3)
+            .put("concept", concept.takeIf { productClassificationRequired(kind) })
             .put("comments", org.json.JSONArray(comments))
         if (warehouseReason != null) payload.put("warehouseReason", warehouseReason)
         if (incident.lineIndex == null) payload.put("product", product).put("unit", unit) else payload.put("lineIndex", incident.lineIndex)

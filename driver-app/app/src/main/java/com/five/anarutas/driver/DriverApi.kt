@@ -480,7 +480,7 @@ class DriverApi(private val server: String) {
     internal suspend fun productIncidentCommand(token: String, planId: String, stopId: String, shipmentId: String, payload: JSONObject, photos: List<ByteArray>): JSONObject {
         val path = "/api/mobile/plans/$planId/stops/$stopId/orders/$shipmentId/product-incidents"
         if (photos.isEmpty()) return JSONObject(exchange("POST", path, token, payload))
-        if (payload.optInt("formVersion") != 2) {
+        if (!productUsesMultiplePhotos(payload.optInt("formVersion"))) {
             require(photos.size == 1)
             return evidenceCommand(token, path, payload, photos.single())
         }

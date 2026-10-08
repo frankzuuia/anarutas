@@ -5,6 +5,11 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class IncidentFormPolicyTest {
+    @Test fun arrivalOnlyOffersClosedAndRejectedWhileOrderShortagesRemain() {
+        assertEquals(listOf(IncidentChoice.CUSTOMER_CLOSED, IncidentChoice.ORDER_REJECTED), arrivalIncidentChoices)
+        assertEquals(listOf(ProductIncidentKind.SHORTAGE_VALIDATION, ProductIncidentKind.SHORTAGE_WAREHOUSE),
+            ProductIncidentKind.entries.filter { it.manual })
+    }
     @Test fun incidentCardsKeepExactExistingCodesAndDistinctIcons() {
         assertEquals(4, IncidentChoice.entries.size)
         assertEquals("customer_closed", IncidentChoice.CUSTOMER_CLOSED.code)

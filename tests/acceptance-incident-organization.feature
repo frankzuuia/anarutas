@@ -1,5 +1,17 @@
 Feature: Incidencias de producto separadas del reporte de devoluciones
-  # IO-T01; el resto de IO se implementa en sus bloques aprobados.
+  # IO-T01/02 y contratos de los bloques aprobados.
+  Scenario: IO04 Selector de llegada sin faltantes
+    Given el chofer atiende una parada autorizada
+    When abre Registrar incidencia desde el mapa
+    Then sólo aparecen Cliente cerrado y Pedido rechazado
+    And los faltantes siguen disponibles dentro del pedido
+
+  Scenario: IO07 Cambio de tipo y edición de capturas anteriores
+    Given una devolución nueva con comentarios seleccionados
+    When el chofer cambia a reposición
+    Then se retiran sólo las selecciones incompatibles del borrador
+    And una captura histórica conserva sus comentarios hasta una edición explícita
+    And el formulario avisa si debe retirar un comentario anterior incompatible
   Scenario: IO01 IO02 Cuatro tipos en reporte y Excel
     Given cinco incidencias reales, una de cada tipo, en una ejecución
     When administración consulta el reporte y exporta el Excel

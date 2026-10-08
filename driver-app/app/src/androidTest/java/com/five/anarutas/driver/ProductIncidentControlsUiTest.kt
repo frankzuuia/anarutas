@@ -23,6 +23,27 @@ import java.io.File
 class ProductIncidentControlsUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
+    @Test fun returnHasOnlyItsCommentsAndNoClassification() {
+        var kind by mutableStateOf(ProductIncidentKind.RETURN)
+        var comments by mutableStateOf(emptyList<String>())
+        compose.setContent { DriverTheme {
+            Column {
+                ProductClassificationFields(kind, "", "", true, {}, {})
+                ProductCommentChoices(comments, true, productCommentOptions(kind)) { comments = it }
+            }
+        } }
+        compose.onNodeWithContentDescription("Departamento").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Concepto").assertDoesNotExist()
+        for (text in listOf("Especiales", "Se modificó la cantidad en la orden", "No venía el producto en el pedido"))
+            compose.onNodeWithText(text).assertDoesNotExist()
+        for (text in listOf("No cumple con las especificaciones del cliente", "Mala calidad", "Producto golpeado"))
+            compose.onNodeWithText(text).performClick().assertIsSelected()
+        compose.runOnIdle { kind = ProductIncidentKind.SHORTAGE_VALIDATION; comments = emptyList() }
+        compose.onNodeWithContentDescription("Concepto").performClick()
+        compose.onNodeWithText("Error en compra").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Llegada tardía").performClick().assertIsSelected()
+    }
+
     @Test fun shortagesCaptureQuantityAndUnitOnceWithOnlyTheRelevantQuickComment() {
         var product by mutableStateOf("")
         var quantity by mutableStateOf("")

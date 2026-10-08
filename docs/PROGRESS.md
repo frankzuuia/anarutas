@@ -6,7 +6,7 @@
   aclaradas exclusión de devolución y confirmación Visto compartida.
 - [x] IO-T01: contratos por tipo compatibles, catálogo, comentarios auditados
   y selección de cuatro tipos en reporte/export; validación de IO-BL01/03/04/05/09.
-- [ ] IO-T02: APK, selector exterior, devolución/fotos, comentarios y cola;
+- [x] IO-T02: APK, selector exterior, devolución/fotos, comentarios y cola;
   validación de IO-BL02/03/04/09.
 - [ ] IO-T03: editor y agrupación del panel, tardanzas, Visto/novedades/alarma;
   validación de IO-BL05/06/07/08/09.
@@ -19,7 +19,11 @@ IO-T01 verificado: 124 pruebas, 3 E2E, 16/16 mutaciones, cobertura dirigida
 96.88% líneas/96.51% ramas/100% funciones; contratos nuevos al 100%.
 Evidencia: QA-INCIDENCIAS-BLOQUE1-2026-10-08.md. Excepción heredada de cinco
 alertas devtools conservada; auditoría productiva cero. IO-T02/03 todavía
-no implementados; no hay APK nueva, migración remota ni despliegue de este bloque.
+pendientes al cerrar IO-T01; sin migración remota ni despliegue.
+IO-T02 autorizado por «Sí, continúa con APK y panel»: APK 0.8.23/code45,
+168 JVM verdes, 12/12 mutaciones, política 100% líneas/99.06% ramas,
+build/lint correctos. QA físico pendiente por ausencia de dispositivo disponible,
+conforme al alcance aprobado. Evidencia: QA-INCIDENCIAS-APK-2026-10-08.md.
 
 ## OA — aviso de contactos archivados en Odoo, autorizado 2026-10-08
 

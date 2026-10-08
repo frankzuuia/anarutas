@@ -3,7 +3,8 @@
 Estado: bloque IO-T01 aprobado por «dale carnal tokio» el 2026-10-08 y verificado localmente.
 Fecha: 2026-10-08. Repositorio: Ana Rutas, rama develop, base 075d63e.
 Este documento es el contrato; la evidencia ejecutada se registra por separado.
-IO-T02/03/04 conservan su ejecución por bloques; no hay despliegue autorizado.
+IO-T02/03/04 autorizados posteriormente por «Sí, continúa con APK y panel»:
+ejecución separada con evidencia y entrega a develop; sin despliegue.
 
 ## 1. Alcance confirmado por el propietario
 

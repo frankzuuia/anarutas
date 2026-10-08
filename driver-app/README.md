@@ -1,5 +1,18 @@
 # Ana Rutas Chofer — Android, acceso, ejecución e incidencias
 
+## Incidencias por tipo — 0.8.23
+
+Primero desplegar el backend develop compatible con formulario v3 (esquema 46
+o posterior), después instalar code45 sobre la anterior sin borrar datos. El
+selector de llegada ofrece Cliente cerrado y Pedido rechazado; los faltantes
+siguen dentro del pedido. Devolución no pide departamento/concepto, tiene sus
+tres comentarios y exige foto lista. Las otras cuatro incidencias incorporan
+Error en compra y los nuevos comentarios/motivos acordados.
+
+Los comandos pendientes v2 se conservan y envían sus fotos sin migración. QA,
+cobertura, mutaciones y limitación de prueba física en
+`docs/QA-INCIDENCIAS-APK-2026-10-08.md`. No hay deploy automático.
+
 ## Continuación de paradas — 0.7.1
 
 Instalar 0.7.1/code20 encima de 0.7.0, sin borrar datos; mismo paquete y firma

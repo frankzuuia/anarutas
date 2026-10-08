@@ -31,7 +31,7 @@ class IncidentFormUiTest {
         var hasOrders by mutableStateOf(true)
         compose.setContent { DriverTheme {
             Column(Modifier.selectableGroup()) {
-                IncidentChoice.entries.forEach { choice ->
+                arrivalIncidentChoices.forEach { choice ->
                     IncidentChoiceCard(choice, selected == choice, incidentChoiceEnabled(choice, available, hasOrders)) { selected = choice }
                 }
             }
@@ -39,8 +39,7 @@ class IncidentFormUiTest {
         val closed = compose.onNodeWithText("Cliente cerrado")
         val rejected = compose.onNodeWithText("Pedido rechazado")
         for (text in listOf("Faltante por validación", "Faltante desde bodega")) {
-            compose.onNodeWithText(text).performClick().assertIsSelected()
-            closed.assertIsNotSelected()
+            compose.onNodeWithText(text).assertDoesNotExist()
         }
         closed.performClick()
         closed.assertIsSelected().assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton))
