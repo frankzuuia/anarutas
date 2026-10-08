@@ -529,7 +529,7 @@ it("amends and cancels real incidents without losing evidence, oversubscribing l
       f.timezone,
       "export",
     );
-    expect(exported.rows.map((i) => i.id)).toEqual([b.incidentId]);
+    expect(exported.rows).toEqual([]);
     const visible = await readProductIncidents(
       f.db.pool,
       f.actor,
@@ -537,8 +537,9 @@ it("amends and cancels real incidents without losing evidence, oversubscribing l
       f.timezone,
       "history",
     );
-    expect(visible.rows.map((i) => i.id)).toEqual([b.incidentId]);
-    expect(visible.pending).toBe(1);
+    expect(visible.rows).toEqual([]);
+    expect(visible.pending).toBe(0);
+    expect((await state()).stops[0].productIncidents.find(i => i.id === b.incidentId)?.status).toBe("pending");
     await expect(
       classifyProductIncident(f.db.pool, f.actor, a.incidentId!, {
         expectedVersion: 3,
@@ -854,7 +855,7 @@ it("records real product incidents atomically, scopes access, preserves replacem
       p = params,
       mode: "history" | "live" | "export" = "history",
     ) => readProductIncidents(f.db.pool, f.actor, p, f.timezone, mode);
-    expect((await read()).rows).toHaveLength(4);
+    expect((await read()).rows).toHaveLength(3);
     expect(
       (await read()).rows.find((i) => i.kind === "shortage_warehouse"),
     ).toMatchObject({
@@ -985,7 +986,7 @@ it("records real product incidents atomically, scopes access, preserves replacem
       }),
     ).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
     expect((await read(new URLSearchParams(), "live")).rows).toHaveLength(0);
-    expect((await read()).rows).toHaveLength(4);
+    expect((await read()).rows).toHaveLength(3);
     await expect(
       f.db.pool.query("DELETE FROM route_product_incidents WHERE id=$1", [
         replacement.id,
@@ -1013,7 +1014,7 @@ it("upgrades v26, protects concurrent quantities and closed visits, and exports 
   try {
     // Real upgrade fixture; remove only this feature from the isolated test database.
     await f.db.pool
-      .query(`DROP TABLE route_product_incident_photos; DROP TABLE route_product_incident_changes; DROP TABLE route_product_incidents;
+      .query(`DROP TABLE route_product_incident_annotations; DROP TABLE route_product_incident_photos; DROP TABLE route_product_incident_changes; DROP TABLE route_product_incidents;
       ALTER TABLE route_plans DROP COLUMN archived_at;
       UPDATE rutas_installation SET schema_version=26`);
     await Promise.all([
@@ -1023,7 +1024,7 @@ it("upgrades v26, protects concurrent quantities and closed visits, and exports 
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(45);
+    ).toBe(46);
     await f.start();
     const state = () =>
       readDriverExecution(
@@ -1188,11 +1189,11 @@ it("upgrades v26, protects concurrent quantities and closed visits, and exports 
       }),
       f.timezone,
     );
-    expect(second.rows).toHaveLength(2);
+    expect(second.rows).toHaveLength(1);
     expect(second.nextCursor).toBeNull();
     expect(
       new Set([...first.rows, ...second.rows].map((row) => row.id)).size,
-    ).toBe(52);
+    ).toBe(51);
     expect(
       (
         await readProductIncidents(
@@ -1203,7 +1204,7 @@ it("upgrades v26, protects concurrent quantities and closed visits, and exports 
           "export",
         )
       ).rows,
-    ).toHaveLength(52);
+    ).toHaveLength(51);
     await expect(
       readProductIncidents(f.db.pool, randomUUID(), params, f.timezone),
     ).rejects.toMatchObject({ status: 401 });

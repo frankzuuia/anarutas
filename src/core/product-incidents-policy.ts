@@ -11,10 +11,14 @@ export const productIncidentNames = {
   return: "Devolución",
 } as const;
 export type ProductIncidentKind = keyof typeof productIncidentNames;
+export const reportableProductIncidentKinds = [
+  "shortage_validation", "shortage_warehouse", "replacement_quality", "replacement_wrong_product",
+] as const satisfies readonly ProductIncidentKind[];
 export const warehouseReasonNames = {
   special: "Especiales",
   quality: "Calidad",
   late_arrival: "Llegada tardía",
+  product_not_ordered: "No venía el producto en el pedido",
 } as const;
 export type WarehouseReason = keyof typeof warehouseReasonNames;
 export function productIncidentDetail(
@@ -33,7 +37,7 @@ export function productIncidentDetail(
 }
 export function productIncidentClassification(
   kind: ProductIncidentKind,
-  department: (typeof incidentDepartments)[number],
+  department: (typeof incidentDepartments)[number] | null,
 ) {
   return {
     department,
@@ -44,9 +48,16 @@ export function productIncidentClassification(
   };
 }
 export function incidentClassificationInput(raw: Record<string, unknown>) {
+  if (Object.keys(raw).some(key => !["expectedVersion", "department", "concept", "comment"].includes(key)))
+    throw new AppError("INVALID_PRODUCT_INCIDENT");
+  const comment = raw.comment;
+  if (comment !== undefined && comment !== null &&
+      (typeof comment !== "string" || Array.from(comment).length > 2000 || comment.includes("\u0000")))
+    throw new AppError("INVALID_SERVICE_NOTE");
   return {
     department: field(raw.department, 120),
     concept: field(raw.concept, 120),
+    ...(comment === undefined ? {} : { comment: comment === null ? null : (comment as string).trim() }),
   };
 }
 export function isReplacement(kind: ProductIncidentKind) {
@@ -96,9 +107,10 @@ export function productIncidentInput(raw: Record<string, unknown>) {
   )
     throw new AppError("INVALID_PRODUCT_INCIDENT");
   const kind = raw.kind as ProductIncidentKind;
-  if (!incidentDepartments.some((value) => value === raw.department))
+  const unclassifiedReturn = raw.formVersion === 3 && kind === "return";
+  if (unclassifiedReturn ? raw.department != null : !incidentDepartments.some((value) => value === raw.department))
     throw new AppError("INVALID_INCIDENT_DEPARTMENT");
-  const department = raw.department as (typeof incidentDepartments)[number];
+  const department = unclassifiedReturn ? null : raw.department as (typeof incidentDepartments)[number];
   const form = productFormInput(raw);
   const warehouseReason = raw.warehouseReason;
   if (

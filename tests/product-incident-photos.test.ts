@@ -146,7 +146,8 @@ it("stores twelve independent incidents on the same open order with three immuta
       new URLSearchParams({ from: "2026-09-24", to: "2026-09-24" }),
       f.timezone,
     );
-    expect(report.rows).toHaveLength(12);
+    expect(report.rows).toHaveLength(6);
+    expect(report.rows.every(row => row.kind !== "return")).toBe(true);
     expect(await readdir(root)).toHaveLength(36);
     for (const incident of report.rows) {
       expect(incident.evidenceIds).toHaveLength(3);
@@ -237,7 +238,7 @@ it("stores twelve independent incidents on the same open order with three immuta
       (await productIncidentsWorkbook(report.rows)) as never,
     );
     const sheet = workbook.getWorksheet("Incidencias")!;
-    expect(sheet.rowCount).toBe(13);
+    expect(sheet.rowCount).toBe(7);
     expect(sheet.columnCount).toBe(9);
     expect(sheet.getCell("H2").value).toBe(firstRow.note);
     expect(JSON.stringify(sheet.model)).not.toContain("Picking");
@@ -363,7 +364,7 @@ it("upgrades v27 non-destructively and serializes repeated v28 installation", as
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(45);
+    ).toBe(46);
     expect(
       (await f.db.pool.query("SELECT count(*) FROM route_shipments")).rows[0]
         .count,

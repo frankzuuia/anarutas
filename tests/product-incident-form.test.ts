@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { incidentCommentNames, incidentConcepts, incidentDepartments, productFormInput, productPhotoCount } from "../src/core/product-incident-form";
+import { legacyIncidentCommentNames as incidentCommentNames, legacyIncidentConcepts as incidentConcepts, incidentDepartments, productFormInput, productPhotoCount } from "../src/core/product-incident-form";
 import { productIncidentInput } from "../src/core/product-incidents-policy";
 import { productPhotosBody } from "../src/server/product-photos-body";
 

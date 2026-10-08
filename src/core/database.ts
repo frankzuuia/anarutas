@@ -46,6 +46,7 @@ import { migratePlanCreations } from "./plan-creation-schema";
 import { migrateCustomerUnloading } from "./customer-unloading-schema";
 import { migrateUnitPhotoRetention } from "./unit-photo-retention-schema";
 import { migrateUnloadingLearning } from "./unloading-learning-schema";
+import { migrateProductIncidentReports } from "./product-incident-report-schema";
 import { requireAccountRole, type AccountRole } from "./account-role";
 export type Sql = Pick<PoolClient, "query">;
 export function createPool(connectionString: string) {
@@ -121,7 +122,7 @@ export async function migrate(pool: Pool, instanceId: string) {
         ![
           1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
           21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
-          38, 39, 40, 41, 42, 43, 44, 45,
+          38, 39, 40, 41, 42, 43, 44, 45, 46,
         ].includes(version)
       )
         throw new AppError("SCHEMA_VERSION_UNSUPPORTED", 503);
@@ -181,6 +182,7 @@ export async function migrate(pool: Pool, instanceId: string) {
       if (version < 43) await migrateCustomerUnloading(client);
       if (version < 44) await migrateUnitPhotoRetention(client);
       if (version < 45) await migrateUnloadingLearning(client);
+      if (version < 46) await migrateProductIncidentReports(client);
       return;
     }
     await client.query(`
@@ -240,6 +242,7 @@ export async function migrate(pool: Pool, instanceId: string) {
     await migrateCustomerUnloading(client);
     await migrateUnitPhotoRetention(client);
     await migrateUnloadingLearning(client);
+    await migrateProductIncidentReports(client);
   });
 }
 export async function audit(

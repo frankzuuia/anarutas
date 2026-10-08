@@ -1,5 +1,16 @@
 # Bloque 1 — especificación y auditoría previa
 
+## IO — incidencias organizadas y Visto compartido, propuesta 2026-10-08
+
+Especificación de IO-BL01..09, autopsia, matriz IO01..33, contratos v2/v3,
+integridad financiera, Excel intacto, permisos, fallos y recuperación en
+[BLOQUE-INCIDENCIAS-ORGANIZACION-2026-10-08.md](BLOQUE-INCIDENCIAS-ORGANIZACION-2026-10-08.md).
+Las decisiones confirmadas del propietario están diferenciadas de valores
+propuestos para alarma/corte histórico. No se autoriza ni acredita ejecución
+por añadir esta referencia. IO-T01 aprobado posteriormente por «dale carnal tokio».
+Su implementación almacena el comentario administrativo en una tabla vinculada
+para conservar íntegro el registro original y sus triggers financieros.
+
 ## OA — aviso de pedidos con contacto de entrega archivado en Odoo
 
 Contrato autorizado el 2026-10-08: previsualización separa pedidos únicamente

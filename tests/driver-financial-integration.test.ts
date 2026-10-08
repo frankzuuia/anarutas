@@ -13,6 +13,7 @@ import {
   reportProductIncident,
   changeProductIncident,
   resolveProductIncident,
+  classifyProductIncident,
 } from "../src/core/product-incidents";
 import { reportProductIncidentWithEvidence } from "../src/core/product-incidents-evidence";
 import { driverPublicationFingerprint } from "../src/core/driver-mobile-events";
@@ -408,6 +409,13 @@ it("requires replacement payment choice and retains it in execution, history and
     net: "30",
   });
   const before = await projected();
+  const orderBeforeClassification = (await state()).stops.find(s => s.id === stopId)!.orderStates;
+  await classifyProductIncident(f.db.pool, f.actor, result.incidentId!, {
+    expectedVersion: 2, department: "Compras", concept: "Error en compra", comment: "Corrección administrativa sin cambiar el cobro",
+  });
+  expect((await projected()).totals).toEqual(before.totals);
+  expect((await projected()).lines).toEqual(before.lines);
+  expect((await state()).stops.find(s => s.id === stopId)!.orderStates).toEqual(orderBeforeClassification);
   const refresh = structuredClone(snapshot);
   refresh.order.writeDate = "2026-10-01T00:00:00Z";
   await persist(refresh);

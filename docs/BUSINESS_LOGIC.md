@@ -1,5 +1,16 @@
 # Ana Rutas — bloque 1 aprobado
 
+## IO — reorganización de incidencias, propuesta 2026-10-08
+
+IO-BL01..09 están definidos con actor, datos, permisos, auditoría y validación en
+[BLOQUE-INCIDENCIAS-ORGANIZACION-2026-10-08.md](BLOQUE-INCIDENCIAS-ORGANIZACION-2026-10-08.md).
+Confirmado: cuatro faltantes/reposiciones en reporte y Excel con formato intacto;
+devoluciones sólo en vivo; Visto compartido con nombre del primer administrador.
+La captura, organización y alarma solicitadas se detallan en esa propuesta.
+IO-T01 autorizado por «dale carnal tokio» el 2026-10-08: nuevos contratos por tipo,
+filtro de reporte y anotaciones administrativas; conserva registros previos.
+Los demás bloques continúan pendientes; el documento identifica sustituciones acotadas.
+
 ## Planes semanales e incidencias por producto — BL-143..145
 
 - BL-143 (sistema): archivar del selector planes de semanas terminadas el domingo

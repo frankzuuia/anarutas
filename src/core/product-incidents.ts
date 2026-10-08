@@ -16,6 +16,7 @@ import {
   productIncidentClassification,
   productIncidentInput,
   requireProductEvidence,
+  reportableProductIncidentKinds,
   type ProductIncidentKind,
   type WarehouseReason,
 } from "./product-incidents-policy";
@@ -38,6 +39,8 @@ export type ProductIncident = {
   quantity: string;
   unit: string;
   note: string | null;
+  originalNote?: string | null;
+  adminComment?: string | null;
   orderName: string;
   occurredAt: string;
   date: string;
@@ -170,7 +173,7 @@ export async function reportProductIncident(
     }
     const id = randomUUID();
     const classification =
-      input.formVersion === 2
+      input.formVersion !== undefined
         ? { department: input.department, concept: input.concept }
         : productIncidentClassification(input.kind, input.department);
     await sql.query(
@@ -201,7 +204,7 @@ export async function reportProductIncident(
         JSON.stringify({
           ...serviceSnapshot(route, stop!),
           reportedDepartment: input.department,
-          ...(input.formVersion === 2
+          ...(input.formVersion !== undefined
             ? {
                 reportedConcept: input.concept,
                 comments: input.comments,
@@ -215,9 +218,9 @@ export async function reportProductIncident(
         evidence?.id ?? null,
         evidence?.hash ?? null,
         evidence?.bytes ?? null,
-        JSON.stringify(input.formVersion === 2 ? input.comments : []),
-        input.formVersion === 2 ? input.additionalNote : input.note,
-        input.formVersion === 2,
+        JSON.stringify(input.formVersion !== undefined ? input.comments : []),
+        input.formVersion !== undefined ? input.additionalNote : input.note,
+        input.formVersion !== undefined,
         input.financial?.revision ?? null,
         input.financial?.moveId ?? null,
         input.financial?.saleLineId ?? null,
@@ -288,7 +291,7 @@ export async function changeProductIncident(
   const orderVersion = integer(raw.orderVersion, 1),
     expectedVersion = integer(raw.expectedVersion, 1);
   const form = action === "amend" ? productIncidentInput(raw) : null;
-  if (form && form.formVersion !== 2)
+  if (form && form.formVersion === undefined)
     throw new AppError("INVALID_PRODUCT_FORM");
   return transaction(pool, async (sql) => {
     const { previous, driver, route, stop, hash } = await lockServiceContext(
@@ -489,22 +492,32 @@ export async function classifyProductIncident(
     await assertActiveActor(sql, actor);
     const row = (
       await sql.query(
-        "SELECT department,concept,version,status,report_removed_at FROM route_product_incidents WHERE id=$1 FOR UPDATE",
+        `SELECT department,concept,version,status,report_removed_at,kind,
+          (SELECT comment FROM route_product_incident_annotations WHERE incident_id=id) AS admin_comment
+         FROM route_product_incidents WHERE id=$1 FOR UPDATE`,
         [incidentId],
       )
     ).rows[0];
     if (!row) throw new AppError("NOT_FOUND", 404);
     if (row.status === "canceled" || row.report_removed_at !== null)
       throw new AppError("INCIDENT_CANCELED", 409);
+    if (!reportableProductIncidentKinds.some(kind => kind === row.kind))
+      throw new AppError("NOT_FOUND", 404);
     if (row.version !== version) throw new AppError("VERSION_CONFLICT", 409);
+    await sql.query("SELECT set_config('ana.product_incident_actor_id',$1,true)", [actor]);
     const result = await sql.query(
       `UPDATE route_product_incidents SET department=$2,concept=$3,version=version+1
       WHERE id=$1 RETURNING version`,
       [incidentId, next.department, next.concept],
     );
+    if (next.comment !== undefined)
+      await sql.query(`INSERT INTO route_product_incident_annotations(incident_id,comment,updated_by)
+        VALUES($1,$2,$3) ON CONFLICT(incident_id) DO UPDATE
+        SET comment=EXCLUDED.comment,updated_by=EXCLUDED.updated_by,updated_at=now()`,
+      [incidentId, next.comment, actor]);
     await audit(sql, actor, "product_incident.classified", incidentId, {
-      before: { department: row.department, concept: row.concept },
-      after: next,
+      before: { department: row.department, concept: row.concept, comment: row.admin_comment },
+      after: { ...next, comment: next.comment === undefined ? row.admin_comment : next.comment },
     });
     return { ...next, version: result.rows[0].version };
   });
@@ -526,8 +539,9 @@ export async function readProductIncidents(
     await assertActiveActor(sql, actor);
     const where = `FROM route_product_incidents WHERE ($1::date IS NULL OR event_date>=$1::date)
       AND ($2::date IS NULL OR event_date<=$2::date) AND ($3::uuid IS NULL OR driver_id=$3) AND status<>'canceled' AND report_removed_at IS NULL
-      ${mode === "live" ? "AND status='pending' AND kind IN ('replacement_quality','replacement_wrong_product')" : ""}`;
-    const values = [filters.from, filters.to, filters.driverId];
+      AND kind=ANY($4::text[]) ${mode === "live" ? "AND status='pending'" : ""}`;
+    const values = [filters.from, filters.to, filters.driverId,
+      mode === "live" ? ["replacement_quality", "replacement_wrong_product"] : reportableProductIncidentKinds];
     const pending = (
       await sql.query(
         `SELECT count(*)::int AS n ${where} AND status='pending'`,
@@ -536,9 +550,10 @@ export async function readProductIncidents(
     ).rows[0].n;
     const { rows } = await sql.query(
       `SELECT *,quantity::text,event_date::text AS date_text,
+      (SELECT comment FROM route_product_incident_annotations WHERE incident_id=route_product_incidents.id) AS admin_comment,
       ARRAY(SELECT evidence_id FROM route_product_incident_photos photos WHERE photos.incident_id=route_product_incidents.id ORDER BY position) AS extra_evidence_ids,
       to_char(occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time ${where}
-      AND ($4::timestamptz IS NULL OR (occurred_at,id)<($4::timestamptz,$5::uuid))
+      AND ($5::timestamptz IS NULL OR (occurred_at,id)<($5::timestamptz,$6::uuid))
       ORDER BY occurred_at DESC,id DESC ${mode === "export" ? "" : "LIMIT 51"}`,
       [
         ...values,
@@ -559,7 +574,9 @@ export async function readProductIncidents(
         product: row.product,
         quantity: row.quantity,
         unit: row.unit,
-        note: row.note,
+        note: row.admin_comment ?? row.note,
+        originalNote: row.note,
+        adminComment: row.admin_comment,
         orderName: row.order_name,
         occurredAt: row.occurred_at.toISOString(),
         date: row.date_text,

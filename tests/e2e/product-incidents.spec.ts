@@ -18,6 +18,68 @@ let f: Awaited<ReturnType<typeof executionFixture>>;
 let server: ChildProcess;
 let origin: string;
 const login = `product-${randomUUID()}`, password = randomUUID();
+
+test("IO v3: real HTTP capture, return excluded and audited comment reflected in Chrome and unchanged Excel", async ({ page, request }) => {
+  test.setTimeout(90000);
+  const bytes = await sharp({ create: { width: 24, height: 24, channels: 3, background: "#8cab33" } }).jpeg().toBuffer();
+  const latest = () => readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);
+  const initial = await latest(), stop = initial.stops[0], shipment = stop.shipmentIds[0];
+  const path = `${origin}/api/mobile/plans/${f.planId}/stops/${stop.id}/orders/${shipment}/product-incidents`;
+  const identity = async () => {
+    const route = await latest(), current = route.stops[0];
+    return { commandId: randomUUID(), executionId: route.id, publicationRevision: route.publicationRevision,
+      executionRevision: route.revision, stopVersion: current.version, visitSequence: current.visitSequence,
+      orderVersion: current.orderStates[0].version };
+  };
+  const headers = { Authorization: f.members[0].authorization };
+  const returned = { ...(await identity()), formVersion: 3, kind: "return", lineIndex: 0, quantity: "0.25",
+    comments: ["damaged_product"], note: "Devolución de prueba actual" };
+  expect((await request.post(path, { headers, data: returned })).status()).toBe(400);
+  const withPhoto = (raw: unknown) => request.post(path, { headers, multipart: {
+    command: JSON.stringify(raw), photos: { name: "evidence.jpg", mimeType: "image/jpeg", buffer: bytes },
+  } });
+  const returnResponse = await withPhoto(returned);
+  expect(returnResponse.status()).toBe(201);
+  const returnId = (await returnResponse.json()).incidentId;
+  expect((await (await withPhoto(returned)).json()).duplicate).toBe(true);
+  const replacement = { ...(await identity()), formVersion: 3, kind: "replacement_quality", lineIndex: 0, quantity: "0.25",
+    department: "Compras", concept: "Error en compra", comments: ["product_not_ordered"], note: "Comentario original" };
+  const replacementResponse = await withPhoto(replacement);
+  expect(replacementResponse.status()).toBe(201);
+  const incidentId = (await replacementResponse.json()).incidentId;
+  const classification = `${origin}/api/incidents/products/${incidentId}/classification`;
+  const edit = { expectedVersion: 1, department: "Operaciones", concept: "Error en compra", comment: "Comentario corregido por administración" };
+  expect((await request.patch(classification, { headers: { Origin: origin }, data: edit })).status()).toBe(401);
+  expect((await page.request.post(`${origin}/api/session`, { headers: { Origin: origin }, data: { login, password } })).status()).toBe(200);
+  expect((await page.request.patch(classification, { headers: { Origin: "https://foreign.invalid" }, data: edit })).status()).toBe(403);
+  expect((await page.request.patch(classification, { headers: { Origin: origin }, data: { ...edit, quantity: "9" } })).status()).toBe(400);
+  expect((await page.request.patch(`${origin}/api/incidents/products/${returnId}/classification`, { headers: { Origin: origin }, data: edit })).status()).toBe(404);
+  const started = performance.now();
+  expect((await page.request.patch(classification, { headers: { Origin: origin }, data: edit })).status()).toBe(200);
+  console.log(`IO audited classification HTTP: ${Math.round(performance.now() - started)} ms`);
+  expect((await page.request.patch(classification, { headers: { Origin: origin }, data: edit })).status()).toBe(409);
+  const report = await (await page.request.get(`${origin}/api/incidents/products`)).json();
+  expect(report.rows.map((row: { id: string }) => row.id)).toEqual([incidentId]);
+  expect(report.rows[0]).toMatchObject({ note: edit.comment, originalNote: "No venía el producto en el pedido\nComentario original" });
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(await (await page.request.get(`${origin}/api/incidents/products/export`)).body() as never);
+  const sheet = book.getWorksheet("Incidencias")!;
+  expect(sheet.columnCount).toBe(9); expect(sheet.rowCount).toBe(2);
+  expect(sheet.getCell("H2").value).toBe(edit.comment);
+  expect(sheet.getCell("D2").value).toBe(.25);
+  expect((await page.request.get(`${origin}/api/incidents/products/${returnId}/evidence`)).status()).toBe(200);
+  await page.goto(origin);
+  await page.getByRole("button", { name: "Incidencias", exact: true }).click();
+  const history = page.getByRole("region", { name: "Incidencias por producto", exact: true });
+  await expect(history).toContainText(edit.comment);
+  await expect(history).not.toContainText(returned.note);
+  await page.getByRole("button", { name: "Incidencias en vivo", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Reposiciones pendientes", exact: true })).toContainText(edit.comment);
+  await mkdir(".local/qa/incident-organization", { recursive: true });
+  await page.screenshot({ path: ".local/qa/incident-organization/comment-live.png", fullPage: true });
+  expect((await f.db.pool.query("SELECT count(*)::int n FROM route_product_incidents")).rows[0].n).toBe(2);
+  expect((await latest()).stops[0].orderStates[0].status).toBe("open");
+});
 test.beforeEach(async () => {
   test.setTimeout(120_000);
   f = await executionFixture(); await f.start();

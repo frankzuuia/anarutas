@@ -89,7 +89,7 @@ it("migrates concurrently and preserves manual customer data and zero historical
   expect(
     (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
       .rows[0].schema_version,
-  ).toBe(45);
+  ).toBe(46);
   expect(await current()).toMatchObject({
     unloadingMinutes: 15,
     unloadingAutomatic: true,

@@ -286,7 +286,7 @@ it("accepts only the current terminal warehouse, isolates sessions and preserves
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(45);
+    ).toBe(46);
     expect(
       (
         await f.db.pool.query(

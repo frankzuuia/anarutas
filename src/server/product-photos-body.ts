@@ -1,5 +1,5 @@
 import { AppError } from "../core/errors";
-import { productPhotoCount } from "../core/product-incident-form";
+import { productPhotoCount, supportedProductFormVersion } from "../core/product-incident-form";
 
 const photoMaximum = 8 * 1024 * 1024;
 const maximum = 3 * photoMaximum + 32_768;
@@ -31,7 +31,7 @@ export async function productPhotosBody(request: Request) {
   try {
     raw = JSON.parse(command);
     // JSON primitives/arrays cannot carry a formVersion property; null is handled explicitly.
-    if (raw?.formVersion !== 2) throw new Error();
+    if (!supportedProductFormVersion(raw?.formVersion)) throw new Error();
   } catch { throw new AppError("INVALID_PRODUCT_FORM"); }
   const files = form.getAll("photos");
   productPhotoCount(files.length);

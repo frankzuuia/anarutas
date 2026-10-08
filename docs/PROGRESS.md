@@ -1,5 +1,26 @@
 # Progreso — bloque 1
 
+## IO — reorganización de incidencias, IO-T01 aprobado 2026-10-08
+
+- [x] IO-T00: inspección del flujo real APK/API/PostgreSQL/panel/Excel;
+  aclaradas exclusión de devolución y confirmación Visto compartida.
+- [x] IO-T01: contratos por tipo compatibles, catálogo, comentarios auditados
+  y selección de cuatro tipos en reporte/export; validación de IO-BL01/03/04/05/09.
+- [ ] IO-T02: APK, selector exterior, devolución/fotos, comentarios y cola;
+  validación de IO-BL02/03/04/09.
+- [ ] IO-T03: editor y agrupación del panel, tardanzas, Visto/novedades/alarma;
+  validación de IO-BL05/06/07/08/09.
+- [ ] IO-T04: integración IO01..33, métricas, mutaciones, QA y entrega develop
+  sólo tras puertas aplicables verdes o excepción explícita; sin deploy.
+
+Contrato y correspondencia regla/escenario/tarea:
+[BLOQUE-INCIDENCIAS-ORGANIZACION-2026-10-08.md](BLOQUE-INCIDENCIAS-ORGANIZACION-2026-10-08.md).
+IO-T01 verificado: 124 pruebas, 3 E2E, 16/16 mutaciones, cobertura dirigida
+96.88% líneas/96.51% ramas/100% funciones; contratos nuevos al 100%.
+Evidencia: QA-INCIDENCIAS-BLOQUE1-2026-10-08.md. Excepción heredada de cinco
+alertas devtools conservada; auditoría productiva cero. IO-T02/03 todavía
+no implementados; no hay APK nueva, migración remota ni despliegue de este bloque.
+
 ## OA — aviso de contactos archivados en Odoo, autorizado 2026-10-08
 
 - [x] OA-T01: causa real `active_test` comprobada, IDs exactos y bloque aprobado.

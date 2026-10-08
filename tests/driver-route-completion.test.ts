@@ -308,7 +308,7 @@ it("finishes atomically in the depot, recovers lost replies and freezes driver w
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(45);
+    ).toBe(46);
     expect((await state(f)).stops).toEqual(before.stops);
   } finally {
     await f.close();
