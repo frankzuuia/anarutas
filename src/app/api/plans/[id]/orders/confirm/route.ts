@@ -30,7 +30,7 @@ export function POST(request: Request, context: Context) {
     if (prepared.receipt) return json(prepared.receipt);
     const range = prepared.row.query_range;
     const started = performance.now();
-    const fresh = await readRoutingCandidates(
+    const { shipments: fresh } = await readRoutingCandidates(
       range,
       prepared.selected.map((c) => c.shipment),
       odoo,

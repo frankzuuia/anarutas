@@ -108,6 +108,26 @@ dialog.fleet-dialog.candidate-dialog {
 .candidate-overview h3 {
   margin: 0;
 }
+.candidate-archive-warning {
+  padding: 12px;
+  border: 1px solid var(--amber);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--amber) 10%, var(--panel));
+  color: var(--amber);
+  overflow-wrap: anywhere;
+}
+.candidate-archive-warning p {
+  margin: 4px 0 8px;
+}
+.candidate-archive-warning summary {
+  cursor: pointer;
+}
+.candidate-archive-warning ul {
+  margin-bottom: 0;
+  padding-left: 20px;
+  max-height: 200px;
+  overflow-y: auto;
+}
 .candidate-filters {
   display: flex;
   flex-wrap: wrap;

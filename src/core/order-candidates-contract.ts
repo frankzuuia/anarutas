@@ -6,6 +6,19 @@ export type RoutingShipment = SourceShipment & {
   scheduledAt: string | null;
   sourceUpdatedAt: string;
 };
+export type ArchivedCustomerOrder = Pick<
+  SourceShipment,
+  | "pickingId"
+  | "pickingName"
+  | "orderId"
+  | "orderName"
+  | "partnerId"
+  | "customerName"
+>;
+export type RoutingCandidateRead = {
+  shipments: RoutingShipment[];
+  archivedCustomerOrders: ArchivedCustomerOrder[];
+};
 export type Candidate = {
   candidateId: string;
   shipment: RoutingShipment;
@@ -23,6 +36,7 @@ export type CandidateBatch = {
   validated: number;
   pending: number;
   existing: number;
+  archivedCustomerOrders?: ArchivedCustomerOrder[];
 };
 export type CandidateSelection = {
   mode: "explicit" | "all_except";

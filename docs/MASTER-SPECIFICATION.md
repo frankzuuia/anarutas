@@ -1,5 +1,16 @@
 # Bloque 1 — especificación y auditoría previa
 
+## OA — aviso de pedidos con contacto de entrega archivado en Odoo
+
+Contrato autorizado el 2026-10-08: previsualización separa pedidos únicamente
+cuando el contacto de entrega exacto tiene `active: false`. Aviso amarillo bajo
+el resumen con folio, cliente y surtido; no se seleccionan esos pedidos ni
+bloquean los restantes. Se conservan confirmados/validados, fechas, filtros,
+identidades, domicilios, permisos y comprobación transaccional al guardar.
+Lectura inclusiva sólo para contactos por ID en preview/revalidación. La carga
+manual/directa mantiene su comportamiento. Sin cambios de ruteo o activación.
+Autopsia, escenarios, reproducción y límites: QA-ODOO-ARCHIVADOS-2026-10-08.md.
+
 ## DA01..10 — descarga automática por cliente
 
 Bloque aprobado el 2026-10-06: mínimo dos visitas válidas, mediana de últimas

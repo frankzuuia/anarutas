@@ -1,5 +1,16 @@
 # Progreso — bloque 1
 
+## OA — aviso de contactos archivados en Odoo, autorizado 2026-10-08
+
+- [x] OA-T01: causa real `active_test` comprobada, IDs exactos y bloque aprobado.
+- [x] OA-T02: lectura acotada, aviso amarillo y aislamiento de pedidos archivados;
+  estados, fechas, selección transaccional y rutas preservados.
+- [x] OA-T03: 124 pruebas dirigidas/regresiones, 100% cobertura nueva, 16/16
+  mutaciones, Chrome responsive y HTTP/Odoo/PG reales correctos. Build/tipos/lint
+  y auditoría productiva verdes; excepción devtools heredada documentada.
+
+Evidencia y límites: QA-ODOO-ARCHIVADOS-2026-10-08.md. Sin deploy ni producción.
+
 ## DA — descarga automática, autorizado 2026-10-06
 
 - [x] DA-T01: flujo real y bloque aprobado; mínimo dos visitas, últimas tres.

@@ -76,6 +76,30 @@ export function OrderCandidatePicker({
           {batch.existing} ya cargados
         </p>
       </div>
+      {!!batch.archivedCustomerOrders?.length && (
+        <aside
+          className="candidate-archive-warning"
+          aria-label="Pedidos de clientes archivados"
+        >
+          <strong>Tienes pedidos de clientes archivados en Odoo.</strong>
+          <p>
+            Estos pedidos no se pueden seleccionar. Puedes cargar los demás.
+          </p>
+          <details>
+            <summary>
+              Ver pedidos afectados ({batch.archivedCustomerOrders.length})
+            </summary>
+            <ul>
+              {batch.archivedCustomerOrders.map((order) => (
+                <li key={`${order.pickingId}:${order.orderId}`}>
+                  <strong>{order.orderName}</strong> · {order.customerName} ·{" "}
+                  {order.pickingName}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </aside>
+      )}
       {error && (
         <p id={errorId} role="alert" className="notice error">
           {error}

@@ -12,6 +12,7 @@ import {
   persistCandidateSelection,
 } from "../src/core/order-candidates";
 import { localShipment } from "./helpers/candidate";
+import { partitionArchivedOrders } from "../src/core/odoo-archived-orders";
 
 let db: Awaited<ReturnType<typeof startPostgres>>,
   actor: string,
@@ -47,7 +48,7 @@ afterAll(async () => {
 });
 async function setup() {
   const plan = await createPlan(db.pool, actor, {
-    date: `2026-09-${day++}`,
+    date: new Date(Date.UTC(2026, 8, day++)).toISOString().slice(0, 10),
     label: "QA selección",
   });
   const input = {
@@ -583,4 +584,109 @@ it("all-except persists globally and an unchanged existing shipment is not updat
     observation,
   );
   expect(unchanged).toMatchObject({ existing: 1, updated: 0, inserted: 0 });
+});
+
+it("archived delivery contacts cannot enter a batch while active pending/validated orders still save", async () => {
+  const { plan, input, items } = await setup();
+  const validated = {
+    ...items[2],
+    odooPickingState: "done",
+    fulfillmentStatus: "validated" as const,
+    validatedAt: items[2].scheduledAt,
+  };
+  const result = partitionArchivedOrders([
+    { ...items[0], odooPartnerActive: true },
+    { ...items[1], odooPartnerActive: false },
+    { ...validated, odooPartnerActive: true },
+  ]);
+  const batch = await createCandidateBatch(
+    db.pool,
+    actor,
+    plan.id,
+    input,
+    "America/Mexico_City",
+    source,
+    result.shipments,
+    observation,
+  );
+  expect(batch).toMatchObject({ total: 2, pending: 1, validated: 1 });
+  expect(batch.candidates.map((c) => c.shipment.orderId)).toEqual([1, 3]);
+  expect(result.archivedCustomerOrders).toHaveLength(1);
+  const request = {
+    ...input,
+    batchId: batch.batchId,
+    selection: { mode: "all_except", ids: [] },
+  };
+  expect(
+    await persistCandidateSelection(
+      db.pool,
+      actor,
+      plan.id,
+      source,
+      request,
+      result.shipments,
+      observation,
+    ),
+  ).toMatchObject({ inserted: 2, pending: 1, validated: 1 });
+  expect(
+    (await orderBoard(db.pool, plan.id)).shipments.map((s) => s.orderId),
+  ).toEqual([1, 3]);
+  expect(
+    (
+      await db.pool.query(
+        "SELECT count(*)::int AS n FROM route_customers WHERE source=$1 AND odoo_partner_id=$2",
+        [source, items[1].partnerId],
+      )
+    ).rows[0].n,
+  ).toBe(0);
+});
+
+it("archiving after preview rejects the original selection atomically and a new batch can save the remainder", async () => {
+  const { plan, input, items, confirm } = await setup();
+  const before = await orderBoard(db.pool, plan.id);
+  const fresh = partitionArchivedOrders([
+    { ...items[0], odooPartnerActive: true },
+    { ...items[2], odooPartnerActive: false },
+  ]);
+  await expect(
+    persistCandidateSelection(
+      db.pool,
+      actor,
+      plan.id,
+      source,
+      confirm,
+      fresh.shipments,
+      observation,
+    ),
+  ).rejects.toMatchObject({ code: "CANDIDATE_CHANGED", status: 409 });
+  expect(await orderBoard(db.pool, plan.id)).toEqual(before);
+  const batch = await createCandidateBatch(
+    db.pool,
+    actor,
+    plan.id,
+    input,
+    "America/Mexico_City",
+    source,
+    fresh.shipments,
+    observation,
+  );
+  const request = {
+    ...input,
+    batchId: batch.batchId,
+    selection: { mode: "all_except", ids: [] },
+  };
+  const saved = await persistCandidateSelection(
+    db.pool,
+    actor,
+    plan.id,
+    source,
+    request,
+    fresh.shipments,
+    observation,
+  );
+  expect(saved).toMatchObject({ selected: 1, inserted: 1 });
+  expect(
+    (await prepareConfirmation(db.pool, actor, plan.id, source, request))
+      .receipt,
+  ).toEqual(saved);
 });

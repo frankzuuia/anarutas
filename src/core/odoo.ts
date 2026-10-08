@@ -13,7 +13,11 @@ import {
   routingDateEligible,
 } from "./order-candidates-validation";
 import { candidateConfig } from "./order-candidates-config";
-import type { RoutingShipment } from "./order-candidates-contract";
+import type {
+  RoutingShipment,
+  RoutingCandidateRead,
+} from "./order-candidates-contract";
+import { partitionArchivedOrders } from "./odoo-archived-orders";
 import type { FinancialTarget } from "./financial-contract";
 import { financialCapabilities, financialId, normalizeFinancialObservation, type FinancialCapabilities, type FinancialRaw } from "./odoo-financial-contract";
 import { assertFinancialCoherence, buildFinancialSnapshot, financialHash } from "./financial-policy";
@@ -193,6 +197,7 @@ type BasicReadSession = {
     ids: number[],
     fields: string[],
     scoped?: boolean,
+    includeArchivedPartner?: boolean,
   ) => Promise<Map<number, Row>>;
 };
 
@@ -240,6 +245,7 @@ async function openBasicReadSession(
     domain: unknown[],
     fields: string[],
     limit: number,
+    includeArchived = false,
   ) =>
     records(
       await rpc(config, "object", "execute_kw", [
@@ -247,13 +253,19 @@ async function openBasicReadSession(
         model,
         "search_read",
         [domain],
-        { fields, limit, order: "id asc", context },
+        {
+          fields,
+          limit,
+          order: "id asc",
+          context: includeArchived ? { ...context, active_test: false } : context,
+        },
       ]),
     );
   async function all(
     model: ReadModel,
     domain: unknown[],
     fieldNames: string[],
+    includeArchived = false,
   ) {
     const result: Row[] = [];
     let after = 0;
@@ -263,6 +275,7 @@ async function openBasicReadSession(
         [...domain, ["id", ">", after]],
         fieldNames,
         500,
+        includeArchived,
       );
       result.push(...page);
       if (page.length < 500) return result;
@@ -276,6 +289,7 @@ async function openBasicReadSession(
     ids: number[],
     names: string[],
     scoped = true,
+    includeArchivedPartner = false,
   ) {
     const result: Row[] = [];
     const unique = [...new Set(ids)];
@@ -288,6 +302,8 @@ async function openBasicReadSession(
           ...(scoped ? [["company_id", "=", config.companyId]] : []),
         ],
         names,
+        // Known partner IDs must remain readable when archived; ACL/company context still applies.
+        includeArchivedPartner && model === "res.partner",
       );
       if (rows.length !== batch.length)
         throw new AppError("ODOO_INCOMPLETE_READ", 502);
@@ -366,6 +382,7 @@ const pickingFields = [
   "date_done",
   "backorder_id",
 ];
+type HydratedShipment = SourceShipment & { odooPartnerActive: unknown };
 
 async function hydratePickings(
   session: ReadSession,
@@ -430,6 +447,7 @@ async function hydratePickings(
     [
       "id",
       "name",
+      "active",
       "street",
       "street2",
       "city",
@@ -438,10 +456,11 @@ async function hydratePickings(
       "country_id",
     ],
     false,
+    routing,
   );
-  const shipments: SourceShipment[] = [];
+  const shipments: HydratedShipment[] = [];
   for (const picking of pickings) {
-    const groups = new Map<number, SourceShipment>();
+    const groups = new Map<number, HydratedShipment>();
     for (const move of moves.filter(
       (record) => relation(record.picking_id)[0] === picking.id,
     )) {
@@ -461,6 +480,7 @@ async function hydratePickings(
           orderName: String(sale.name),
           partnerId,
           customerName: String(partner.name),
+          odooPartnerActive: partner.active,
           address: [
             partner.street,
             partner.street2,
@@ -557,7 +577,9 @@ export async function readFulfilledPage(
       ceiling: pageCeiling,
       hasMore: false,
     };
-  const shipments = await hydratePickings(session, pickings);
+  const { shipments } = partitionArchivedOrders(
+    await hydratePickings(session, pickings),
+  );
   return {
     fingerprint: config.fingerprint,
     shipments,
@@ -633,8 +655,10 @@ export async function readFulfilledByOrderNames(
       )
     : [];
   const requestedSet = new Set(names);
-  const shipments = (await hydratePickings(session, pickings)).filter(
-    (shipment) => requestedSet.has(shipment.orderName),
+  const { shipments } = partitionArchivedOrders(
+    (await hydratePickings(session, pickings)).filter(
+      (shipment) => requestedSet.has(shipment.orderName),
+    ),
   );
   const eligible = new Set(shipments.map((shipment) => shipment.orderName));
   const unavailable = names.filter((name) => !eligible.has(name));
@@ -660,7 +684,7 @@ export async function readRoutingCandidates(
   range: { start: string; end: string },
   selected?: { pickingId: number; orderId: number }[],
   config = readOdooConfig(),
-): Promise<RoutingShipment[]> {
+): Promise<RoutingCandidateRead> {
   const limits = candidateConfig();
   const deadline = Date.now() + limits.timeoutMs;
   const session = await openReadSession(config);
@@ -698,7 +722,7 @@ export async function readRoutingCandidates(
       : []),
   ];
   const ceiling = await session.latestId("stock.picking", base);
-  const result: RoutingShipment[] = [];
+  const result: (RoutingShipment & { odooPartnerActive: unknown })[] = [];
   let cursor = 0;
   while (cursor < ceiling) {
     if (Date.now() >= deadline) throw new AppError("ODOO_UNAVAILABLE", 502);
@@ -725,7 +749,7 @@ export async function readRoutingCandidates(
         },
         group,
         true,
-      )) as RoutingShipment[];
+      )) as (RoutingShipment & { odooPartnerActive: unknown })[];
       result.push(...hydrated.filter((s) => routingDateEligible(s, range)));
     }
     if (result.length > limits.maxCandidates)
@@ -734,9 +758,11 @@ export async function readRoutingCandidates(
   }
   const identities =
     selected && new Set(selected.map((s) => `${s.pickingId}:${s.orderId}`));
-  return result
-    .filter((s) => !identities || identities.has(`${s.pickingId}:${s.orderId}`))
-    .sort((a, b) => a.pickingId - b.pickingId || a.orderId - b.orderId);
+  return partitionArchivedOrders(
+    result
+      .filter((s) => !identities || identities.has(`${s.pickingId}:${s.orderId}`))
+      .sort((a, b) => a.pickingId - b.pickingId || a.orderId - b.orderId),
+  );
 }
 
 function sourceCustomer(row: Row): SourceCustomer {

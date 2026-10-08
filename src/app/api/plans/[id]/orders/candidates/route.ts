@@ -28,18 +28,21 @@ export function POST(request: Request, context: Context) {
       odoo.fingerprint,
     );
     const started = performance.now();
-    const shipments = await readRoutingCandidates(range, undefined, odoo);
-    return json(
-      await createCandidateBatch(
-        pool,
-        user.id,
-        id,
-        input,
-        config.timezone,
-        odoo.fingerprint,
-        shipments,
-        { requestId, odooMs: Math.round(performance.now() - started) },
-      ),
+    const { shipments, archivedCustomerOrders } = await readRoutingCandidates(
+      range,
+      undefined,
+      odoo,
     );
+    const batch = await createCandidateBatch(
+      pool,
+      user.id,
+      id,
+      input,
+      config.timezone,
+      odoo.fingerprint,
+      shipments,
+      { requestId, odooMs: Math.round(performance.now() - started) },
+    );
+    return json({ ...batch, archivedCustomerOrders });
   });
 }
