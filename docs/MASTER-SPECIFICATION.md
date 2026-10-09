@@ -1,12 +1,26 @@
 # Bloque 1 — especificación y auditoría previa
 
+## AG — alarma global y recepción en segundo plano, aprobado 2026-10-08
+
+Contrato AG01..10 en BLOQUE-ALARMA-GLOBAL-2026-10-08.md. La raíz del panel con
+rol de rutas mantiene el monitor entre secciones. Con audio activado, el SSE
+permanece conectado con la pestaña oculta o la ventana minimizada y procesa
+alertas; las lecturas operativas de pantallas ocultas quedan diferidas.
+Conserva permisos, cursor, reserva entre pestañas, duración y Visto compartido.
+Esto amplía el alcance anterior de TA e IO23: cambiar de sección ya no detiene
+el sonido. Recarga, autenticación y límites de suspensión del navegador siguen
+vigentes. Títulos por tipo y apartados inferiores en ámbar claro, sin alterar
+agrupación, datos ni el formato Excel. Las llegadas tarde conservan tarjeta y
+Visto pero quedan excluidas del sonido; los otros tipos y el cursor durable se
+conservan. Evidencia ejecutada y límites: QA-ALARMA-GLOBAL-2026-10-08.md.
+
 ## TA — tarjetas compactas y continuidad de audio, aprobado 2026-10-08
 
 Contrato y escenarios TA01..10 en BLOQUE-TARJETAS-ALARMA-2026-10-08.md.
 Detalles cerrados en ambas vistas, resumen compacto, activación visible y
 conservada sólo dentro del mismo documento/ámbito con contexto de audio activo.
-Salir detiene sonido y libera exclusivamente la reserva propia; volver recupera
-novedades mediante el cursor existente. No amplía monitoreo fuera de esas vistas.
+El alcance original detenía el sonido al salir y no monitoreaba fuera de esas
+vistas; el bloque AG aprobado después sustituye esa limitación.
 Sustituye la desactivación obligatoria por navegación de IO23/25; recarga y
 autenticación siguen iniciando un documento sin activación. Sin cambios de datos.
 Evidencia ejecutada y límites: QA-TARJETAS-ALARMA-2026-10-08.md; no constituye

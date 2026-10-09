@@ -103,6 +103,14 @@ test("TA compact cards and returning to live incidents retains real armed audio"
   await expect(extra).not.toBeVisible();
   await expect(card).toContainText("Producto golpeado");
   const collapsed = (await card.boundingBox())!.height;
+  await expect(page.locator(".incident-type-group > h4").first()).toHaveCSS(
+    "color",
+    "rgb(255, 208, 128)",
+  );
+  await expect(page.locator(".incident-board-late > .toolbar h3")).toHaveCSS(
+    "color",
+    "rgb(255, 208, 128)",
+  );
   console.log(`TA desktop collapsed card: ${collapsed}px`);
   expect(collapsed).toBeLessThanOrEqual(160);
   await mkdir(".local/qa/incident-compact", { recursive: true });
@@ -138,7 +146,7 @@ test("TA compact cards and returning to live incidents retains real armed audio"
   await expect(
     page.getByText("Reproduciendo alarma…", { exact: true }),
   ).toBeVisible();
-  // Leave during the test burst, then return before its five-second lease ends.
+  // AG: changing sections no longer stops the root-owned alarm.
   await page.getByRole("button", { name: "Incidencias", exact: true }).click();
   await openLive();
   await expect(
@@ -146,7 +154,10 @@ test("TA compact cards and returning to live incidents retains real armed audio"
   ).toBeVisible();
   await expect(
     page.getByText("Reproduciendo alarma…", { exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
+  await expect(
+    page.getByText("Reproduciendo alarma…", { exact: true }),
+  ).toHaveCount(0, { timeout: 6500 });
   const longNote =
     "Nota completa de la incidencia. " +
     "Se verificó la entrega y se conservó la evidencia. ".repeat(20);
@@ -220,7 +231,7 @@ test("TA compact cards and returning to live incidents retains real armed audio"
   expect(errors).toEqual([]);
 });
 
-test("IO reconnect: real offline recovery drains 105 arrivals once and leaving the panel stops audio", async ({
+test("IO reconnect: real offline recovery drains 105 arrivals once and navigation retains audio", async ({
   page,
   context,
 }) => {
@@ -336,7 +347,10 @@ test("IO reconnect: real offline recovery drains 105 arrivals once and leaving t
   ).toBeVisible();
   await expect(
     page.getByText("Reproduciendo alarma…", { exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
+  await expect(
+    page.getByText("Reproduciendo alarma…", { exact: true }),
+  ).toHaveCount(0, { timeout: 6500 });
 });
 
 test("IO panel: shared seen, real audio 5/10/15 seconds, two tabs, comments and mobile layout", async ({

@@ -329,7 +329,7 @@ export async function readIncidentAlerts(
         : (
             await sql.query(
               `SELECT n.sequence::text,e.driver_id,
-      n.seen_at IS NULL AND e.id IS NOT NULL AS pending FROM route_incident_notifications n
+      n.seen_at IS NULL AND e.id IS NOT NULL AND e.kind<>'late_arrival' AS pending FROM route_incident_notifications n
       LEFT JOIN route_incident_live_entries e ON (e.source='product' AND e.id=n.product_id)
         OR (e.source='service' AND e.id=n.service_id) OR (e.source='stop' AND e.id=n.stop_event_id)
       WHERE n.sequence>$1 ORDER BY n.sequence LIMIT 101`,
@@ -341,7 +341,7 @@ export async function readIncidentAlerts(
       ? (
           await sql.query(
             `SELECT n.sequence::text ${entries}
-      WHERE n.sequence=ANY($1::bigint[]) AND n.seen_at IS NULL`,
+      WHERE n.sequence=ANY($1::bigint[]) AND n.seen_at IS NULL AND e.kind<>'late_arrival'`,
             [watch],
           )
         ).rows.map((row) => row.sequence)

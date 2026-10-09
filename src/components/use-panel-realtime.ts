@@ -2,18 +2,24 @@
 
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { navigateAfterAuth } from "./api";
+import { panelRealtimeMode } from "./panel-realtime-policy";
 
 export function usePanelRealtime(
   refresh: () => Promise<boolean>,
   busy: boolean,
   enabled = true,
+  backgroundEvent?: () => void,
 ) {
   const [status, setStatus] = useState("Conectando…");
   const pending = useRef(false);
   const running = useRef(false);
   const retryAt = useRef(0);
+  const backgroundEnabled = backgroundEvent !== undefined;
+  const notifyBackground = useEffectEvent(() => backgroundEvent?.());
   const apply = useEffectEvent(async () => {
     if (
+      panelRealtimeMode(document.visibilityState, backgroundEnabled) !==
+        "foreground" ||
       busy ||
       running.current ||
       !pending.current ||
@@ -40,6 +46,7 @@ export function usePanelRealtime(
     let watchdogMs = 45000;
     const changed = () => {
       pending.current = true;
+      notifyBackground();
       void apply();
     };
     const received = () => {
@@ -58,7 +65,10 @@ export function usePanelRealtime(
     };
     const connect = () => {
       if (disposed || source) return;
-      if (document.visibilityState === "hidden") {
+      if (
+        panelRealtimeMode(document.visibilityState, backgroundEnabled) ===
+        "paused"
+      ) {
         setStatus("En pausa");
         return;
       }
@@ -113,8 +123,15 @@ export function usePanelRealtime(
       };
     };
     const visibility = () => {
-      close();
+      // An armed alarm keeps the same stream while hidden. Other views stay paused.
+      if (
+        !navigator.onLine ||
+        panelRealtimeMode(document.visibilityState, backgroundEnabled) ===
+          "paused"
+      )
+        close();
       connect();
+      void apply();
     };
     document.addEventListener("visibilitychange", visibility);
     window.addEventListener("online", visibility);
@@ -132,6 +149,6 @@ export function usePanelRealtime(
       window.removeEventListener("online", visibility);
       window.removeEventListener("offline", visibility);
     };
-  }, [enabled]);
+  }, [enabled, backgroundEnabled]);
   return status;
 }

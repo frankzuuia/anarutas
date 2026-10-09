@@ -314,14 +314,17 @@ export async function activateIncidentAlarm() {
     publish({ enabled: false, message: (error as Error).message });
   }
 }
-export function useIncidentAlarm(revision: number) {
+function noSubscription() {
+  return () => {};
+}
+export function useIncidentAlarm(revision: number, enabled = true) {
   const value = useSyncExternalStore(
-    subscribe,
-    () => state,
+    enabled ? subscribe : noSubscription,
+    () => (enabled ? state : initial),
     () => initial,
   );
   useEffect(() => {
-    refreshIncidentAlarm();
-  }, [revision]);
+    if (enabled) refreshIncidentAlarm();
+  }, [revision, enabled]);
   return value;
 }

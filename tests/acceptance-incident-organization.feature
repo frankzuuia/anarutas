@@ -84,9 +84,36 @@ Feature: Incidencias de producto separadas del reporte de devoluciones
     When se edita el comentario o cambia el filtro o la página
     Then no vuelve a sonar por esa identidad
     And el panel informa incidencias nuevas fuera del filtro
-    And salir del panel detiene el sonido
+    And cambiar de sección conserva el monitoreo y el sonido autorizado
     And volver al panel conserva la activación en el mismo documento y ámbito autorizado
     And una incidencia nueva tras volver suena sin repetir las anteriores
+
+  Scenario: AG01 AG02 AG03 Alarma global en primer y segundo plano
+    Given administración activó el sonido mediante un clic real
+    When registra una incidencia desde otra sección o con otra pestaña al frente o la ventana minimizada
+    Then un evento real del servidor despierta la alarma sin abrir Incidencias en vivo
+    And las pantallas ocultas no refrescan sus datos operativos
+    And la ráfaga termina en la duración configurada
+
+  Scenario: AG05 AG06 AG07 Visto, recuperación y sesión en segundo plano
+    Given administración tiene una alarma activada con la pestaña oculta
+    When se marca Visto en el servidor o se recupera una conexión interrumpida
+    Then se detiene la ráfaga vista o se recuperan nuevas identidades sin duplicarlas
+    And cerrar o revocar la sesión navega al login y detiene el audio
+    And recarga y relogin requieren una activación nueva
+
+  Scenario: AG08 AG09 Pausa sin audio y encabezados visibles
+    Given el sonido está desactivado o la cuenta sólo tiene permiso de liquidación
+    When la pestaña queda oculta
+    Then no se habilita el monitor de audio sin autorización
+    And los títulos por tipo y apartados inferiores se distinguen en ámbar claro
+
+  Scenario: AG10 Llegadas tarde visibles y silenciosas
+    Given sonido activado y una llegada fuera de horario nueva
+    When se confirma su registro
+    Then permanece visible en el apartado inferior con su estado Visto compartido
+    And no activa ni prolonga el sonido y su cursor se procesa normalmente
+    And una devolución, faltante u otra incidencia sonora del mismo lote sigue activando la alarma
 
   Scenario: TA01 TA02 TA03 Tarjetas compactas y evidencia accesible
     Given una devolución con producto, comentarios y evidencia privada

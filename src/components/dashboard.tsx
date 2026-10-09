@@ -42,6 +42,7 @@ import { IncidentsPanel } from "./incidents-panel";
 import { LiveIncidentsPanel } from "./live-incidents-panel";
 import { UnitControlPanel } from "./unit-control-panel";
 import { usePanelRealtime } from "./use-panel-realtime";
+import { refreshIncidentAlarm, useIncidentAlarm } from "./incident-alarm";
 import { ControlCenter, ExpandableScreen } from "./control-center";
 import { LiveRoutesPage } from "./live-route-view";
 import type { EmbeddedSection } from "@/core/control-screens";
@@ -232,7 +233,14 @@ export function Dashboard({
       setLoading(false);
     }
   }, [section]);
-  const liveStatus = usePanelRealtime(refresh, busy, !embeddedSection);
+  // The root owns monitoring across sections; embedded panels share its store.
+  const alarm = useIncidentAlarm(0, !embeddedSection && user.role === "routes");
+  const liveStatus = usePanelRealtime(
+    refresh,
+    busy,
+    !embeddedSection,
+    alarm.enabled ? refreshIncidentAlarm : undefined,
+  );
   useEffect(() => {
     let current = true;
     const fail = (error: Error) => {

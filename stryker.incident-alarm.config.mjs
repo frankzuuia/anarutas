@@ -1,7 +1,10 @@
 import baseConfig from "./stryker.base.config.mjs";
 const config = {
   ...baseConfig,
-  mutate: ["src/core/incident-board-policy.ts:36-56"],
+  mutate: [
+    "src/core/incident-board-policy.ts:36-56",
+    "src/components/panel-realtime-policy.ts",
+  ],
   testRunner: "vitest",
   vitest: { configFile: "vitest.incident-alarm.config.ts" },
   reporters: ["clear-text", "json"],

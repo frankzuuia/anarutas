@@ -1,5 +1,23 @@
 # Progreso — bloque 1
 
+## AG — alarma global y encabezados, bloque aprobado 2026-10-08
+
+- [x] AG-T00: causas y ampliación del alcance confirmadas por el propietario.
+- [x] AG-T01: montaje único de raíz, SSE con audio activo en segundo plano,
+  actualización de pantallas ocultas diferida y títulos en ámbar claro.
+- [x] AG-T02: Chrome con pestaña oculta/minimizado, Web Audio nativo,
+  reconexión/Visto/sesión, regresiones, cobertura y mutaciones.
+- [x] AG-T03: revisión final para entrega sólo develop sin deploy.
+
+Contrato: BLOQUE-ALARMA-GLOBAL-2026-10-08.md. Evidencia:
+QA-ALARMA-GLOBAL-2026-10-08.md. Llegadas tarde visibles/Visto pero silenciosas;
+otros tipos y cursor conservados. 35 pruebas de núcleo/regresión, 7 E2E reales,
+100% de cobertura dirigida y 27/27 mutaciones detectadas. Chrome oculto y
+minimizado con audio nativo; muestra 191/194 ms y ráfaga 4,995 ms.
+Build/tipos verdes, lint sin errores, auditoría productiva cero y excepción
+devtools heredada conservada. Encabezados en ámbar. Sin deploy ni QA físico de
+altavoces/Brave del propietario; entrega confirmada por el historial Git.
+
 ## TA — tarjetas y alarma, bloque aprobado 2026-10-08
 
 - [x] TA-T00: causas, contrato TA01..10 y alcance confirmados por el propietario.

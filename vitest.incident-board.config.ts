@@ -4,6 +4,7 @@ export default defineConfig({
     include: [
       "tests/incident-board.test.ts",
       "tests/incident-alarm-lifecycle.test.ts",
+      "tests/panel-realtime-policy.test.ts",
     ],
     fileParallelism: false,
     testTimeout: 60000,
@@ -13,6 +14,7 @@ export default defineConfig({
         "src/core/incident-board.ts",
         "src/core/incident-board-policy.ts",
         "src/core/incident-board-schema.ts",
+        "src/components/panel-realtime-policy.ts",
       ],
       reportsDirectory: "reports/coverage/incident-board",
       reporter: ["text", "json-summary", "html"],

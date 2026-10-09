@@ -528,6 +528,11 @@ it("IO15–33: real migration, unseen shared first-writer, paging, rollback and 
       f.timezone,
     );
     const secondStop = secondRoute.stops[0];
+    const beforeLate = await readIncidentAlerts(
+      f.db.pool,
+      f.actor,
+      new URLSearchParams(),
+    );
     await executeStopCommand(
       f.db.pool,
       f.members[1].authorization,
@@ -559,6 +564,31 @@ it("IO15–33: real migration, unseen shared first-writer, paging, rollback and 
     ).rows.find((row) => row.driverId === f.members[1].driverId)!;
     expect(newLate.notification?.seenAt).toBeNull();
     expect(newLate.notification?.sequence).toBeTruthy();
+    const silentLate = await readIncidentAlerts(
+      f.db.pool,
+      f.actor,
+      new URLSearchParams({
+        after: beforeLate.cursor,
+        watch: newLate.notification!.sequence,
+      }),
+    );
+    expect(silentLate.cursor).toBe(newLate.notification!.sequence);
+    expect(silentLate.rows).toEqual([]);
+    expect(silentLate.watching).toEqual([]);
+    // Audible arrivals immediately after a silent one are not skipped by its cursor.
+    const afterLate = await capture();
+    const mixed = await readIncidentAlerts(
+      f.db.pool,
+      f.actor,
+      new URLSearchParams({ after: beforeLate.cursor }),
+    );
+    const afterLateSequence = (
+      await f.db.pool.query(
+        "SELECT sequence::text FROM route_incident_notifications WHERE product_id=$1",
+        [afterLate.incidentId],
+      )
+    ).rows[0].sequence;
+    expect(mixed.rows.map((row) => row.sequence)).toEqual([afterLateSequence]);
     await markIncidentSeen(f.db.pool, second.id, { key: newLate.key });
     expect(
       (await board(new URLSearchParams({ section: "late" }))).rows.find(
@@ -566,10 +596,14 @@ it("IO15–33: real migration, unseen shared first-writer, paging, rollback and 
       )?.notification?.seenBy,
     ).toBe("Otro administrador");
     const seenTimes: number[] = [];
-    for (const pending of (await board(new URLSearchParams({unseen:"true"}))).rows.slice(0,15)) {
-      const start=performance.now();await markIncidentSeen(f.db.pool,f.actor,{key:pending.key});seenTimes.push(performance.now()-start);
+    for (const pending of (
+      await board(new URLSearchParams({ unseen: "true" }))
+    ).rows.slice(0, 15)) {
+      const start = performance.now();
+      await markIncidentSeen(f.db.pool, f.actor, { key: pending.key });
+      seenTimes.push(performance.now() - start);
     }
-    seenTimes.sort((a,b)=>a-b);
+    seenTimes.sort((a, b) => a - b);
     const times: number[] = [];
     for (let i = 0; i < 15; i++) {
       const start = performance.now();
@@ -581,7 +615,7 @@ it("IO15–33: real migration, unseen shared first-writer, paging, rollback and 
       ".local/io-board-latency.json",
       JSON.stringify({
         samples: 15,
-        rows: 114,
+        rows: (await board()).total,
         p50Ms: times[7],
         p95Ms: times[14],
         seenP50Ms: seenTimes[7],
