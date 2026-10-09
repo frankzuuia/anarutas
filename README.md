@@ -38,6 +38,15 @@ Google actualiza esas exportaciones con retraso, por lo que la pantalla muestra 
 
 ## QA reproducible
 
+La reorganización de incidencias de develop está descrita en
+[QA del panel](docs/QA-INCIDENCIAS-PANEL-2026-10-08.md) y
+[QA de la APK0.8.23](docs/QA-INCIDENCIAS-APK-2026-10-08.md).
+Incidencias mantiene los cuatro tipos y el Excel existente; las devoluciones
+se consultan en Incidencias en vivo. Allí se configura la alarma5/10/15s y
+se marca Visto para todos, con nombre del administrador. Activar sonido requiere
+un clic en cada navegador. La migración47 se aplica mediante el arranque normal
+al desplegar; no necesita reclasificar historia ni ejecutar scripts manuales.
+
 `npm run typecheck`, `npm run lint`, `npm run test:coverage`, `npm run test:mutation`, `npm run build`, `npm run test:e2e`, `npm audit`.
 
 Integración/E2E usan procesos PostgreSQL reales temporales, no mocks. Los registros QA no se crean en Odoo ni en servicios de otros proyectos. E2E requiere Chrome disponible (`PLAYWRIGHT_CHANNEL` permite elegir otro canal instalado). Los reportes y capturas quedan en `reports/`, `coverage/` y `playwright-report/` ignorados por git. Mutation está acotado a `src/core/policy.ts`, no equivale a cubrir todo el backend.

@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock3, MapPin, SlidersHorizontal, Truck, UserRound, ChevronRight } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import { api } from "./api";
 import { ProductIncidentsPanel } from "./product-incidents-panel";
-import type { DriverIncident, DriverIncidentReport } from "@/core/driver-incidents";
+import type { DriverIncidentReport } from "@/core/driver-incidents";
 import type { OperationPolicy } from "@/core/driver-execution-policy";
 
-function ArrivalSettings({ revision }: { revision: number }) {
+export function ArrivalSettings({ revision }: { revision: number }) {
   const [policy, setPolicy] = useState<OperationPolicy | null>(null);
   const [draft, setDraft] = useState<OperationPolicy | null>(null);
   const [error, setError] = useState("");
@@ -45,47 +45,12 @@ function ArrivalSettings({ revision }: { revision: number }) {
   </details>;
 }
 
-function IncidentCard({ incident }: { incident: DriverIncident }) {
-  const pointChanged = incident.kind === "location_corrected";
-  const detail = incident.details;
-  const coordinates = (point: typeof detail.before) => point.latitude === null || point.longitude === null
-    ? "Sin ubicación" : `${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}`;
-  return <article className="incident-card">
-    <div className={`incident-symbol ${pointChanged ? "" : "late"}`}>
-      {pointChanged ? <MapPin size={20} aria-hidden="true" /> : <Clock3 size={20} aria-hidden="true" />}
-    </div>
-    <div className="incident-content">
-      <div className="incident-card-heading">
-        <span className={`badge ${pointChanged ? "green" : "amber"}`}>{pointChanged ? "Punto corregido" : "Llegada fuera de horario"}</span>
-        <time dateTime={incident.occurredAt}>{new Date(incident.occurredAt).toLocaleString("es-MX", {
-          timeZone: incident.timezone, dateStyle: "medium", timeStyle: "short",
-        })}</time>
-      </div>
-      <h3>{detail.customer}</h3><p>{pointChanged ? detail.correctedAddress ?? detail.address : detail.address}</p>
-      <div className="incident-meta"><span><UserRound size={14} aria-hidden="true" />{detail.driver}</span>
-        <span><Truck size={14} aria-hidden="true" />{detail.vehicle} · {detail.plate}</span></div>
-      <p className="incident-orders">{detail.planLabel} · {detail.orders.join(", ")} · Ruta del {detail.serviceDate}</p>
-      {pointChanged ? <div className="incident-point-change">
-        {detail.correctedAddress && detail.previousAddress && detail.correctedAddress !== detail.previousAddress &&
-          <p><small>Dirección anterior:</small> {detail.previousAddress}</p>}
-        <span><small>Punto anterior</small>{coordinates(detail.before)}</span><ChevronRight size={16} aria-hidden="true" />
-        <a href={`https://www.google.com/maps/search/?api=1&query=${detail.point.latitude},${detail.point.longitude}`} target="_blank" rel="noreferrer">
-          <small>Nuevo punto · ver en mapa</small>{coordinates(detail.point)}</a>
-      </div> : <p className="incident-lateness">{Math.ceil((detail.lateSeconds ?? 0) / 60)} min después del cierre de recepción. Hora real registrada por el chofer.</p>}
-    </div>
-  </article>;
-}
-
 export function IncidentsPanel({ today, timezone, revision }: { today: string; timezone: string; revision: number }) {
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
   const [driverId, setDriverId] = useState("");
-  const [page, setPage] = useState<{ key: string; cursors: string[] }>({ key: "", cursors: [] });
-  const filterKey = JSON.stringify([from, to, driverId, revision]);
-  const cursors = page.key === filterKey ? page.cursors : [];
   const params = new URLSearchParams({ from, to });
   if (driverId) params.set("driverId", driverId);
-  if (cursors.length) params.set("cursor", cursors.at(-1)!);
   const query = params.toString();
   const requestKey = `${query}:${revision}`;
   const [result, setResult] = useState<{ key: string; report: DriverIncidentReport } | null>(null);
@@ -111,16 +76,9 @@ export function IncidentsPanel({ today, timezone, revision }: { today: string; t
         </select></label>
       </div>
       <div className="incident-summary"><span>Fecha del evento · {timezone}</span><span>Actualización automática</span></div>
-      <ArrivalSettings revision={revision} />
       <ProductIncidentsPanel from={from} to={to} driverId={driverId} revision={revision} />
       {error && <p className="notice error" role="alert">{error}</p>}
       {loading && <p role="status">Consultando incidencias…</p>}
-      {report && (report.rows.length ? <div className="incident-feed">{report.rows.map(incident => <IncidentCard key={incident.id} incident={incident} />)}</div>
-        : <p className="notice">Sin repuntes ni llegadas fuera de horario en este periodo.</p>)}
-      <div className="incident-pagination">
-        {cursors.length > 0 && <button type="button" className="quiet" onClick={() => setPage({ key: filterKey, cursors: cursors.slice(0, -1) })}>Anteriores</button>}
-        {report?.nextCursor && <button type="button" className="quiet" onClick={() => setPage({ key: filterKey, cursors: [...cursors, report.nextCursor!] })}>Más incidencias<ChevronRight size={14} aria-hidden="true" /></button>}
-      </div>
     </div>
   </section>;
 }

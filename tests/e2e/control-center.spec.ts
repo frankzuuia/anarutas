@@ -160,12 +160,12 @@ test("independent drivers, arbitrary panel screens, persistence, expand and remo
   await expect(cards).toHaveCount(2);
   const incidentCard = cards.nth(1);
   await expect(incidentCard.getByLabel("Chofer", { exact: true })).toBeVisible();
-  await expect(incidentCard.locator('input[type="date"]')).toHaveCount(0);
-  const incidents = incidentCard.locator(".live-incident-card");
+  await expect(incidentCard.locator('input[type="date"]')).toHaveCount(2);
+  const incidents = incidentCard.locator(".incident-board-routes .live-incident-card");
   await expect(incidents).toHaveCount(2);
   await incidentCard.getByLabel("Chofer", { exact: true }).selectOption(f.members[0].driverId);
   await expect(incidents).toHaveCount(1);
-  await expect(incidentCard.locator(".live-incident-metrics")).toContainText("1");
+  await expect(incidentCard.locator(".incident-board-routes > .toolbar")).toContainText("1");
   await incidentCard.getByLabel("Chofer", { exact: true }).selectOption("");
   await expect(incidents).toHaveCount(2);
   await page.setViewportSize({ width: 1500, height: 800 });
@@ -179,20 +179,27 @@ test("independent drivers, arbitrary panel screens, persistence, expand and remo
   expect(Math.max(titleBox!.y, statusBox!.y, addBox!.y, refreshBox!.y) - Math.min(titleBox!.y, statusBox!.y, addBox!.y, refreshBox!.y)).toBeLessThan(12);
   expect(gridBox!.y).toBeLessThan(145);
   const routesRefreshed = page.waitForResponse(response => response.url().includes("/api/live-routes") && response.request().method() === "GET");
-  const incidentsRefreshed = page.waitForResponse(response => response.url().includes("/api/incidents/live") && response.request().method() === "GET");
+  const incidentsRefreshed = page.waitForResponse(response => response.url().includes("/api/incidents/board") && response.request().method() === "GET");
   await command.getByRole("button", { name: "Actualizar" }).click();
   expect((await routesRefreshed).status()).toBe(200);
   expect((await incidentsRefreshed).status()).toBe(200);
   await expect(incidents).toHaveCount(2);
+  // Driver/type headings and Visto increase card height; the embedded panel
+  // must keep every card reachable through its own scroll, without page overflow.
+  await incidents.nth(1).scrollIntoViewIfNeeded();
   const secondBox = await incidents.nth(1).boundingBox(), bodyBox = await incidentCard.locator(".control-screen-body").boundingBox();
-  expect(secondBox && bodyBox && secondBox.y + secondBox.height <= bodyBox.y + bodyBox.height).toBe(true);
+  expect(secondBox && bodyBox && secondBox.y + secondBox.height <= bodyBox.y + bodyBox.height + 1,
+    JSON.stringify({secondBox,bodyBox})).toBe(true);
   await mkdir(".local/qa/control-center", { recursive: true });
   await page.screenshot({ path: ".local/qa/control-center/incidents-compact.png" });
   await page.setViewportSize({ width: 1500, height: 1000 });
-  await expect(incidents.first().getByRole("button", { name: "Marcar resuelto" })).not.toBeVisible();
-  await incidents.first().getByText("Detalles y acciones").click();
+  const incidentDetails = incidents.first().locator(".live-incident-extra > div");
+  await expect(incidentDetails).not.toBeVisible();
   await expect(incidents.first().getByRole("button", { name: "Marcar resuelto" })).toBeVisible();
-  await incidents.first().getByText("Detalles y acciones").click();
+  await incidents.first().getByText("Ver detalles", { exact: true }).click();
+  await expect(incidentDetails).toBeVisible();
+  await incidents.first().getByText("Ver detalles", { exact: true }).click();
+  await expect(incidentDetails).not.toBeVisible();
   await expect(cards.nth(0).getByLabel("Chofer", { exact: true }).locator("option")).toHaveCount(3);
   await cards.nth(0).getByLabel("Chofer", { exact: true }).selectOption(f.members[0].driverId);
   await page.getByRole("button", { name: "Agregar pantalla", exact: true }).click();
@@ -284,9 +291,9 @@ test("independent drivers, arbitrary panel screens, persistence, expand and remo
   const navigation = page.getByRole("dialog", { name: "Menú de administración", exact: true });
   await navigation.getByRole("button", { name: "Incidencias en vivo", exact: true }).click();
   await expect(navigation).toBeHidden();
-  await expect(page.locator('input[type="date"]')).toHaveCount(0);
+  await expect(page.locator('input[type="date"]')).toHaveCount(2);
   await expect(page.getByLabel("Chofer", { exact: true })).toBeVisible();
-  await expect(page.locator(".live-incident-card")).toHaveCount(2);
+  await expect(page.locator(".incident-board-routes .live-incident-card")).toHaveCount(2);
   await page.getByRole("button", { name: "Abrir menú", exact: true }).click();
   await navigation.getByRole("button", { name: "Ruta en vivo", exact: true }).click();
   await expect(navigation).toBeHidden();

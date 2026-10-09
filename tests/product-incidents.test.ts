@@ -1014,7 +1014,7 @@ it("upgrades v26, protects concurrent quantities and closed visits, and exports 
   try {
     // Real upgrade fixture; remove only this feature from the isolated test database.
     await f.db.pool
-      .query(`DROP TABLE route_product_incident_annotations; DROP TABLE route_product_incident_photos; DROP TABLE route_product_incident_changes; DROP TABLE route_product_incidents;
+      .query(`DROP VIEW IF EXISTS route_incident_live_entries; DROP TABLE IF EXISTS route_incident_notifications,route_incident_alert_settings; DROP TABLE route_product_incident_annotations; DROP TABLE route_product_incident_photos; DROP TABLE route_product_incident_changes; DROP TABLE route_product_incidents;
       ALTER TABLE route_plans DROP COLUMN archived_at;
       UPDATE rutas_installation SET schema_version=26`);
     await Promise.all([
@@ -1024,7 +1024,7 @@ it("upgrades v26, protects concurrent quantities and closed visits, and exports 
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(46);
+    ).toBe(47);
     await f.start();
     const state = () =>
       readDriverExecution(

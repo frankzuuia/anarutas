@@ -355,7 +355,7 @@ it("upgrades v27 non-destructively and serializes repeated v28 installation", as
       )
     ).rows[0];
     await f.db.pool.query(
-      "DROP TABLE route_product_incident_photos; UPDATE rutas_installation SET schema_version=27",
+      "DROP VIEW route_incident_live_entries; DROP TABLE route_product_incident_photos; UPDATE rutas_installation SET schema_version=27",
     );
     await Promise.all([
       migrate(f.db.pool, f.db.config.instanceId),
@@ -364,7 +364,7 @@ it("upgrades v27 non-destructively and serializes repeated v28 installation", as
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(46);
+    ).toBe(47);
     expect(
       (await f.db.pool.query("SELECT count(*) FROM route_shipments")).rows[0]
         .count,

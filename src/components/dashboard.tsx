@@ -497,7 +497,7 @@ export function Dashboard({
                               : section === "audit"
                                 ? "Actividad registrada con su autor y fecha."
                                 : section === "incidents"
-                                  ? "Incidencias por producto, devoluciones, repuntes y llegadas fuera de horario. Consulta por fecha y chofer."
+                                  ? "Faltantes y reposiciones por producto. Consulta por fecha y chofer y exporta el reporte."
                                   : section === "live_incidents"
                                     ? "Casos de rutas iniciadas vigentes, agrupados por chofer y actualizados automáticamente."
                                     : section === "settlements"

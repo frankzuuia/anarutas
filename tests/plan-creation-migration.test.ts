@@ -65,7 +65,7 @@ it("upgrades41 without changing started route data, survives rollback and concur
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(46);
+    ).toBe(47);
     expect(await snapshot()).toEqual(before);
     expect(
       (

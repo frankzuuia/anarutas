@@ -372,6 +372,7 @@ it("admin and driver cancellation serialize, and v29 migration retains the origi
       { ...(await identity()), expectedVersion: 1 },
       "cancel",
     );
+    await f.db.pool.query("DROP VIEW route_incident_live_entries");
     await f.db.pool.query(
       "ALTER TABLE route_product_incidents DROP COLUMN canceled_by_admin, DROP COLUMN report_removed_at, DROP COLUMN report_removed_by",
     );
@@ -380,7 +381,7 @@ it("admin and driver cancellation serialize, and v29 migration retains the origi
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(46);
+    ).toBe(47);
     expect(
       (
         await f.db.pool.query(

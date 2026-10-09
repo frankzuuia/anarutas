@@ -19,7 +19,7 @@
 .embedded-live-incidents .product-incidents .muted { margin: 4px 0; font-size: .7rem; }
 .product-evidence-gallery { display: flex; flex-wrap: wrap; gap: 8px; }
 .product-incident-note { white-space: pre-wrap; }
-.product-incidents .product-incident-resolve svg { color: var(--green); }
+.product-incidents .product-incident-resolve svg, .live-incident-card .product-incident-resolve svg { color: var(--green); }
 dialog.product-incident-dialog { width: min(520px, calc(100vw - 32px)); max-width: 520px; padding: 24px; }
 .product-incident-dialog h2 { margin: 0 0 8px; font-size: 1.1rem; }
 .product-incident-dialog p { margin: 0 0 18px; color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }

@@ -1,6 +1,6 @@
 # Bloque 1 — especificación y auditoría previa
 
-## IO — incidencias organizadas y Visto compartido, propuesta 2026-10-08
+## IO — incidencias organizadas y Visto compartido, autorizado 2026-10-08
 
 Especificación de IO-BL01..09, autopsia, matriz IO01..33, contratos v2/v3,
 integridad financiera, Excel intacto, permisos, fallos y recuperación en
@@ -10,6 +10,14 @@ propuestos para alarma/corte histórico. No se autoriza ni acredita ejecución
 por añadir esta referencia. IO-T01 aprobado posteriormente por «dale carnal tokio».
 Su implementación almacena el comentario administrativo en una tabla vinculada
 para conservar íntegro el registro original y sus triggers financieros.
+IO-T02/03 aprobados por «Sí, continúa con APK y panel». La APK0.8.23 usa el
+contrato por tipo; migración47 añade notificación transaccional, Visto compartido
+y configuración de alarma5/10/15. Incidencias conserva sólo los cuatro tipos
+reportables y Excel; la vista en vivo agrupa por chofer/tipo, deja tardanzas abajo
+y conserva puntos/reglas GPS en un apartado secundario. Esto sustituye la
+distribución anterior de AI19, sin alterar transiciones operativas ni finanzas.
+Evidencias y límites: QA-INCIDENCIAS-APK-2026-10-08.md y
+QA-INCIDENCIAS-PANEL-2026-10-08.md. No implica autorización de despliegue.
 
 ## OA — aviso de pedidos con contacto de entrega archivado en Odoo
 

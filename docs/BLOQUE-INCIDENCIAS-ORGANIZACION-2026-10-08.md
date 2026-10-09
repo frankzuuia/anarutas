@@ -1,6 +1,6 @@
 # Incidencias: organización, captura y atención compartida
 
-Estado: bloque IO-T01 aprobado por «dale carnal tokio» el 2026-10-08 y verificado localmente.
+Estado: IO-T01..04 aprobados e implementados; verificados localmente para entrega a develop.
 Fecha: 2026-10-08. Repositorio: Ana Rutas, rama develop, base 075d63e.
 Este documento es el contrato; la evidencia ejecutada se registra por separado.
 IO-T02/03/04 autorizados posteriormente por «Sí, continúa con APK y panel»:
@@ -280,5 +280,9 @@ Referencias consultadas:
 - Documentación Next instalada bajo node_modules/next/dist/docs antes de tocar rutas/UI.
 
 IO-T01: contratos y migración implementados y verificados en entorno local aislado.
-Resultados y límites en QA-INCIDENCIAS-BLOQUE1-2026-10-08.md. No se han ejecutado
-migraciones remotas. Los demás bloques y el despliegue siguen pendientes.
+Resultados y límites en QA-INCIDENCIAS-BLOQUE1-2026-10-08.md.
+IO-T02 completado: APK 0.8.23, evidencia en QA-INCIDENCIAS-APK-2026-10-08.md;
+la comprobación física sigue pendiente según el alcance aprobado.
+IO-T03/04 completados: evidencia en QA-INCIDENCIAS-PANEL-2026-10-08.md,
+109 pruebas de servidor, 10 E2E y 14/14 mutaciones del núcleo nuevo.
+No se han ejecutado migraciones remotas. El despliegue queda a cargo del propietario.

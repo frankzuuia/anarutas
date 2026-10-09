@@ -26,9 +26,10 @@ it("upgrades a started v20 execution without losing arrival history or its per-o
     await pool.query(`
       DROP VIEW route_customer_unloading; DROP TABLE route_unloading_visits,route_unloading_observations;
       DROP TABLE route_settlement_claims,route_settlement_items,route_settlement_requests,route_order_payments,route_finance_execution_orders;
+      DROP VIEW IF EXISTS route_incident_live_entries;
       DROP TABLE route_product_incident_photos;
       DROP TABLE route_product_incident_changes;
-      DROP TABLE route_product_incident_annotations; DROP TABLE route_product_incidents;
+      DROP VIEW IF EXISTS route_incident_live_entries; DROP TABLE IF EXISTS route_incident_notifications,route_incident_alert_settings; DROP TABLE route_product_incident_annotations; DROP TABLE route_product_incidents;
       DROP TABLE route_live_tracking,route_tracking_sessions,route_control_layouts;
       DROP TABLE route_driver_incident_events,route_driver_incident_orders,
         route_driver_incident_evidence,route_driver_service_incidents CASCADE;

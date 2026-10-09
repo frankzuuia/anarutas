@@ -19,7 +19,7 @@ export type LiveIncidentReport = { rows: LiveIncident[]; nextCursor: string | nu
 
 // A retry disappears from the live feed only after a new verified arrival. If
 // the driver leaves without service the same case becomes visible again.
-function visibleCases() {
+export function liveCaseSource() {
   return `FROM route_driver_service_incidents i
   JOIN route_driver_execution_stops s ON s.execution_id=i.execution_id AND s.id=i.stop_id
   JOIN route_driver_executions execution ON execution.id=i.execution_id
@@ -28,11 +28,12 @@ function visibleCases() {
     AND publication.revision=execution.publication_revision
     AND publication.started_driver_id=execution.driver_id
     AND publication.revoked_at IS NULL
-  WHERE ($1::date IS NULL OR i.event_date >= $1::date)
-    AND ($2::date IS NULL OR i.event_date <= $2::date)
-    AND ($3::uuid IS NULL OR i.driver_id=$3)
-    AND i.status<>'handled'
+  WHERE i.status<>'handled'
     AND NOT(i.kind='customer_closed' AND i.status='active' AND s.visit_state='arrived' AND s.visit_sequence>i.visit_sequence)`;
+}
+function visibleCases() {
+  return `${liveCaseSource()} AND ($1::date IS NULL OR i.event_date >= $1::date)
+    AND ($2::date IS NULL OR i.event_date <= $2::date) AND ($3::uuid IS NULL OR i.driver_id=$3)`;
 }
 
 export async function readLiveIncidents(pool: Pool, actorId: string, params: URLSearchParams,

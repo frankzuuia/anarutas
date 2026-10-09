@@ -62,7 +62,7 @@ describe("unit photos: thirty-day retention and independent daily cleanup", () =
       UPDATE rutas_installation SET schema_version=43`);
     await Promise.all([migrate(f.db.pool, f.db.config.instanceId), migrate(f.db.pool, f.db.config.instanceId)]);
     await migrate(f.db.pool, f.db.config.instanceId);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(46);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(47);
     for (const photo of [active, surviving, pastThirty]) {
       const after = (await f.db.pool.query("SELECT * FROM route_unit_photos WHERE id=$1", [photo.id])).rows[0];
       expect(after).toEqual({ ...photo.row, expires_at: new Date(photo.row.created_at.getTime() + 30 * day) });

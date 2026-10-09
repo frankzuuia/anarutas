@@ -44,6 +44,7 @@ export function ProductIncidentsPanel({ from, to, driverId, revision, live = fal
   const editing = action === "classification", removing = action === "cancel";
   const [department, setDepartment] = useState("");
   const [concept, setConcept] = useState("");
+  const [comment, setComment] = useState("");
   const [commandError, setCommandError] = useState("");
   const [busy, setBusy] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -93,7 +94,7 @@ export function ProductIncidentsPanel({ from, to, driverId, revision, live = fal
         <td className="product-quantity">{Number(row.quantity).toLocaleString("es-MX", { maximumFractionDigits: 6 })} {row.unit}</td>
         <td><strong>{row.product}</strong><small>{productIncidentNames[row.kind]}{row.warehouseReason ? ` · ${warehouseReasonNames[row.warehouseReason]}` : ""}</small></td>
         {!live && <td><span>{row.department || "Sin departamento"}</span><small>{row.concept || "Concepto por clasificar"}</small>
-          {row.status !== "canceled" && <button className="quiet" onClick={() => { setAction("classification"); setSelected(row); setDepartment(row.department ?? ""); setConcept(row.concept ?? ""); setCommandError(""); }}>
+          {row.status !== "canceled" && <button className="quiet" onClick={() => { setAction("classification"); setSelected(row); setDepartment(row.department ?? ""); setConcept(row.concept ?? ""); setComment(row.note ?? ""); setCommandError(""); }}>
             <Pencil size={13} />Editar clasificación</button>}</td>}
         <td><span className="product-incident-note">{row.note || "Sin notas"}</span>
           <ProductEvidence incident={row} />
@@ -108,7 +109,7 @@ export function ProductIncidentsPanel({ from, to, driverId, revision, live = fal
       {page?.filter === filter && <button className="quiet" onClick={() => setPage(null)}>Volver al inicio</button>}
       {report?.nextCursor && <button className="quiet" onClick={() => setPage({ filter, cursor: report.nextCursor! })}>Más productos</button>}
     </div>
-    {selected && <dialog ref={dialog} className="fleet-dialog live-incident-confirm product-incident-dialog" aria-labelledby={title} aria-describedby={`${title}-description`}
+    {selected && <dialog ref={dialog} className="fleet-dialog live-incident-confirm product-incident-dialog" aria-label={removing ? "Eliminar incidencia de producto" : editing ? "Editar clasificación" : "Resolver incidencia de producto"} aria-describedby={`${title}-description`}
       onCancel={event => { event.preventDefault(); if (!busy) setSelected(null); }}>
       <h2 id={title}>{removing ? "Eliminar incidencia de producto" : editing ? "Editar clasificación" : "Resolver incidencia de producto"}</h2>
       <p>{selected.orderName} · {selected.product} · {Number(selected.quantity)} {selected.unit}</p>
@@ -118,7 +119,7 @@ export function ProductIncidentsPanel({ from, to, driverId, revision, live = fal
       <form onSubmit={async event => {
         event.preventDefault(); setBusy(true);
         try { await api(`/api/incidents/products/${selected.id}${removing ? "" : `/${action}`}`, removing ? "DELETE" : editing ? "PATCH" : "POST",
-          { expectedVersion: selected.version, ...(removing ? {} : editing ? { department, concept } : { note }) });
+          { expectedVersion: selected.version, ...(removing ? {} : editing ? { department, concept, comment } : { note }) });
           setSelected(null); setRefresh(value => value + 1); }
         catch (error) { setCommandError((error as Error).message); setSelected(null); setRefresh(value => value + 1); }
         finally { setBusy(false); }
@@ -127,7 +128,9 @@ export function ProductIncidentsPanel({ from, to, driverId, revision, live = fal
           <label>Departamento<input required maxLength={120} list={`${title}-departments`} value={department} onChange={e => setDepartment(e.target.value)} disabled={busy} /></label>
           <datalist id={`${title}-departments`}><option value="Operaciones" /><option value="Compras" /><option value="Ventas" /></datalist>
           <label>Concepto<input required maxLength={120} list={`${title}-concepts`} value={concept} onChange={e => setConcept(e.target.value)} disabled={busy} /></label>
-          <datalist id={`${title}-concepts`}>{["Reparto", "Picking", "Especiales", "Error_en_compra"].map(value => <option key={value} value={value} />)}</datalist>
+          <datalist id={`${title}-concepts`}>{["Reparto", "Picking", "Especiales", "Error en compra", "Error_en_compra"].map(value => <option key={value} value={value} />)}</datalist>
+          <label>Comentarios<textarea aria-label="Comentarios" maxLength={2000} value={comment} onChange={e => setComment(e.target.value)} disabled={busy} /></label>
+          <details><summary>Comentario original del chofer</summary><p className="product-incident-note">{selected.originalNote || "Sin comentario"}</p></details>
         </div> : !removing && <label>Cómo se resolvió<textarea required maxLength={2000} value={note} onChange={event => setNote(event.target.value)} disabled={busy} /></label>}
         <div className="toolbar"><button className={removing ? "danger" : undefined} disabled={busy || (editing ? !department.trim() || !concept.trim() : !removing && !note.trim())}>{busy ? "Guardando…" : removing ? "Eliminar incidencia" : editing ? "Guardar clasificación" : "Confirmar resolución"}</button>
           <button type="button" className="quiet" disabled={busy} onClick={() => setSelected(null)}>{removing ? "Conservar incidencia" : "Cancelar"}</button></div>

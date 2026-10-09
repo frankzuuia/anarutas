@@ -358,7 +358,7 @@ it("upgrades schema 30 from publications, execution history and both audit shape
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(46);
+    ).toBe(47);
     expect(await retained(f)).toBe(1); // Execution exists even after publication deletion.
     expect(await retained(f, other.vehicleId)).toBe(1); // Active publication preserved.
     expect(

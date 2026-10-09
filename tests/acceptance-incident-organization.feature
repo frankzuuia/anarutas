@@ -56,3 +56,53 @@ Feature: Incidencias de producto separadas del reporte de devoluciones
     When se solicita concurrentemente la migración nueva y se repite
     Then queda una sola estructura consistente con referencias válidas
     And se preservan los registros previos
+
+  Scenario: IO15 IO16 Agrupación operativa sin mezclar el reporte
+    Given incidencias de dos choferes con reposiciones, devoluciones y faltantes
+    When el administrador abre Incidencias en vivo
+    Then ve grupos por chofer y tipo con comentarios y evidencia privada
+    And las llegadas fuera de horario aparecen en un apartado inferior
+    And departamento y concepto sólo aparecen en el reporte editable
+
+  Scenario: IO17 IO18 IO19 Lectura compartida y primer administrador
+    Given una incidencia nueva sin ver
+    When dos administradores la marcan Visto simultáneamente
+    Then sólo el primero registra su identidad y hora
+    And todos ven Visto por ese administrador sin recuadro rojo
+    And se conserva el pedido, cobro, cantidad y resolución de la incidencia
+
+  Scenario: IO20 IO21 IO22 Audio autorizado y acotado
+    Given sonido activado por un gesto real del administrador
+    When llegan incidencias nuevas en dos pestañas de la misma sesión
+    Then sólo una reproduce una ráfaga de la duración configurada de 5, 10 o 15 segundos
+    And nuevos eventos durante la ráfaga no extienden su duración
+    And se detiene antes si todas las incidencias de esa ráfaga están vistas
+    And un navegador que bloquea audio muestra el impedimento y conserva el aviso rojo
+
+  Scenario: IO23 IO24 IO25 Duplicados, filtros y navegación
+    Given una incidencia que ya disparó su alarma
+    When se edita el comentario o cambia el filtro o la página
+    Then no vuelve a sonar por esa identidad
+    And el panel informa incidencias nuevas fuera del filtro
+    And salir del panel detiene el sonido
+
+  Scenario: IO26 IO27 Reconexión y más de una página
+    Given un navegador sin conexión y 105 nuevas incidencias confirmadas
+    When recupera la conexión
+    Then drena todas las páginas de notificaciones sin perder identidades
+    And emite una sola ráfaga acotada
+    And todos los registros permanecen consultables con su estado compartido
+
+  Scenario: IO28 IO29 IO30 IO31 Recepción tardía y commits concurrentes
+    Given un esquema anterior con incidencias históricas y comandos de fecha antigua
+    When se aplica la migración y se reciben nuevos comandos
+    Then el histórico queda silencioso sin atribuirlo a ningún administrador
+    And los nuevos se notifican por su inserción confirmada
+    And commits concurrentes no saltan eventos
+    And un rollback no produce una notificación visible
+
+  Scenario: IO33 Integridad financiera y seguridad
+    Given un pedido con incidencias y cobranza
+    When administración marca Visto o modifica el comentario permitido
+    Then no cambia el importe, saldo, recibos ni estado de entrega
+    And solicitudes sin sesión, sin rol, con actor falsificado u origen ajeno se rechazan

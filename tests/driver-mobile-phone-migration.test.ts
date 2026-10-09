@@ -99,7 +99,7 @@ describe("driver mobile phone migration", () => {
       [disabled.id, "5213311111111"],
     );
     await db.pool.query(
-      "DROP TABLE route_unit_photos,route_plan_publications; UPDATE rutas_installation SET schema_version=10 WHERE singleton=true",
+      "DROP VIEW route_incident_live_entries; DROP TABLE route_unit_photos,route_plan_publications; UPDATE rutas_installation SET schema_version=10 WHERE singleton=true",
     );
 
     await expect(migrate(db.pool, db.config.instanceId)).rejects.toMatchObject({
@@ -147,7 +147,7 @@ describe("driver mobile phone migration", () => {
     const version = await db.pool.query(
       "SELECT schema_version FROM rutas_installation WHERE singleton=true",
     );
-    expect(version.rows[0].schema_version).toBe(46);
+    expect(version.rows[0].schema_version).toBe(47);
     await expect(
       db.pool.query(
         "UPDATE route_driver_mobile_access SET login_phone='523311111111' WHERE driver_id=$1",

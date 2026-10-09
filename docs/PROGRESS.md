@@ -1,6 +1,6 @@
 # Progreso — bloque 1
 
-## IO — reorganización de incidencias, IO-T01 aprobado 2026-10-08
+## IO — reorganización de incidencias, bloques aprobados 2026-10-08
 
 - [x] IO-T00: inspección del flujo real APK/API/PostgreSQL/panel/Excel;
   aclaradas exclusión de devolución y confirmación Visto compartida.
@@ -8,9 +8,9 @@
   y selección de cuatro tipos en reporte/export; validación de IO-BL01/03/04/05/09.
 - [x] IO-T02: APK, selector exterior, devolución/fotos, comentarios y cola;
   validación de IO-BL02/03/04/09.
-- [ ] IO-T03: editor y agrupación del panel, tardanzas, Visto/novedades/alarma;
+- [x] IO-T03: editor y agrupación del panel, tardanzas, Visto/novedades/alarma;
   validación de IO-BL05/06/07/08/09.
-- [ ] IO-T04: integración IO01..33, métricas, mutaciones, QA y entrega develop
+- [x] IO-T04: integración IO01..33, métricas, mutaciones, QA y entrega develop
   sólo tras puertas aplicables verdes o excepción explícita; sin deploy.
 
 Contrato y correspondencia regla/escenario/tarea:
@@ -24,6 +24,15 @@ IO-T02 autorizado por «Sí, continúa con APK y panel»: APK 0.8.23/code45,
 168 JVM verdes, 12/12 mutaciones, política 100% líneas/99.06% ramas,
 build/lint correctos. QA físico pendiente por ausencia de dispositivo disponible,
 conforme al alcance aprobado. Evidencia: QA-INCIDENCIAS-APK-2026-10-08.md.
+IO-T03/04 verificados: 109 pruebas dirigidas y de regresión de servidor,
+10 E2E, 14/14 mutaciones detectadas, 100% de cobertura dirigida del núcleo
+de notificaciones. Visto concurrente compartido, comentarios, Web Audio real,
+105 avisos tras reconexión y navegación del Centro de control comprobados.
+Lectura p50/p95 13.83/19.74 ms y Visto 4.38/5.50 ms en PostgreSQL local
+(15 muestras por operación; no son métricas de producción).
+Build/tipos verdes, lint sin errores; auditoría productiva cero, cinco alertas
+devtools con excepción heredada. Evidencia y límites en
+QA-INCIDENCIAS-PANEL-2026-10-08.md. Sin deploy ni cambios remotos de datos.
 
 ## OA — aviso de contactos archivados en Odoo, autorizado 2026-10-08
 
