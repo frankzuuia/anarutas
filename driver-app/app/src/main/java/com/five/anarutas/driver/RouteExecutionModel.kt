@@ -17,7 +17,8 @@ internal data class ExecutionUiState(val route: AssignedPlan? = null, val execut
     val pending: Boolean = false, val message: String = "Cargando tu ruta…", val arrivedStop: String? = null,
     val correctedStop: String? = null, val exitDestination: String? = null, val serviceRevision: Int = 0,
     val continuation: StopContinuation? = null, val productRevision: Int = 0,
-    val lastProductIncidentId: String? = null, val lastProductAction: String? = null)
+    val lastProductIncidentId: String? = null, val lastProductAction: String? = null,
+    val lastProductStopId: String? = null, val lastProductShipmentId: String? = null)
 
 /** Owns network/retry state across rotation. Business facts only come from the server. */
 internal class RouteExecutionModel(private val credentials: DeviceCredentials, private val planId: String,
@@ -109,6 +110,8 @@ internal class RouteExecutionModel(private val credentials: DeviceCredentials, p
                     productRevision = state.productRevision + if (kind.startsWith("product-incident")) 1 else 0,
                     lastProductIncidentId = command.optString("incidentId").takeIf { kind.startsWith("product-incident") && it.isNotBlank() },
                     lastProductAction = kind.takeIf { it.startsWith("product-incident") },
+                    lastProductStopId = command.optString("stopId").takeIf { kind.startsWith("product-incident") },
+                    lastProductShipmentId = command.optString("shipmentId").takeIf { kind.startsWith("product-incident") },
                     continuation = confirmedStopContinuation(command.getJSONObject("payload").getString("commandId"), kind,
                         command.getJSONObject("payload").optString("kind"), execution.stops.find { it.id == command.optString("stopId") }),
                 )

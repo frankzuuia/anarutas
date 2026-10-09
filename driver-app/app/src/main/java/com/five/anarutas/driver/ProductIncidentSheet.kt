@@ -4,14 +4,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import java.io.File
@@ -54,7 +52,7 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
     val available = state.verified && !state.busy && !state.pending && !state.retired && stop.canAttend() &&
         (saved == null || saved.status == "pending" && !saved.reportRemoved) &&
         status in listOf(OrderServiceStatus.OPEN, OrderServiceStatus.REJECTED, OrderServiceStatus.CLOSED_PENDING)
-    var revision by remember { mutableIntStateOf(state.productRevision) }
+    var revision by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableIntStateOf(state.productRevision) }
     var cameraPath by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf<String?>(null) }
     var photos by rememberSaveable(stop.id, order.id, lineIndex, editingIncident?.id) { mutableStateOf<List<String>>(emptyList()) }
     var readyPhotos by remember { mutableStateOf(setOf<String>()) }
@@ -79,27 +77,11 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
             if (saved) photoError = "La fotografía está vacía o supera 8 MB. Tómala con menor resolución."
         }
     }
-    LaunchedEffect(state.productRevision) {
-        if (revision != state.productRevision) {
+    LaunchedEffect(state.productRevision, state.busy, state.pending, state.verified, state.retired) {
+        if (productFormCloseConfirmed(state, revision, stop.id, order.id, savedId)) {
             revision = state.productRevision
-            if (state.lastProductIncidentId == savedId && state.lastProductAction == "product-incident-cancel") close()
-            else if (state.lastProductAction == "product-incident" || state.lastProductAction == "product-incident-amend") {
-                savedId = state.lastProductIncidentId
-                state.execution?.stops?.flatMap { it.productIncidents }?.find { it.id == savedId }?.let { confirmed ->
-                    kindCode = confirmed.kind
-                    product = confirmed.product
-                    unit = confirmed.unit
-                    quantity = productQuantityText(confirmed.quantity)
-                    note = confirmed.additionalNote
-                    warehouseReason = confirmed.warehouseReason
-                    department = confirmed.department
-                    concept = confirmed.concept
-                    comments = confirmed.comments
-                    replacementPayment = confirmed.replacementPayment.orEmpty()
-                    reviewedReference = confirmed.financial?.key.orEmpty()
-                }
-                photos.forEach(::discardPhoto); photos = emptyList(); readyPhotos = emptySet()
-            }
+            photos.forEach(::discardPhoto); photos = emptyList(); readyPhotos = emptySet()
+            close()
         }
     }
     val completeNote = productCommentsText(comments, note)
@@ -177,17 +159,13 @@ internal fun ProductIncidentSheet(stop: ExecutionStop, order: DeliveryOrder, lin
                 val selected = ProductIncidentKind.entries.first { it.wire == selectedKind }
                 comments = comments.filter { code -> productCommentOptions(selected).any { it.code == code } }
             }
-        if (line != null) OutlinedTextField(quantity, { quantity = it.take(20) }, modifier = Modifier.fillMaxWidth(),
-            label = { Text(if (kind == ProductIncidentKind.RETURN) "Cantidad devuelta · ${financialLine?.unit ?: line.unit}" else "Cantidad afectada · ${financialLine?.unit ?: line.unit}") },
-            enabled = editable, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+        if (line != null) ProductQuantityField(kind, quantity, financialLine?.unit ?: line.unit, remaining, editable) { quantity = it }
         if (replacement) {
             ProductSelectField("Pago de la reposición", replacementPayment,
                 listOf("pay_full" to "El cliente paga completo", "defer" to "Deja pendiente el importe de la reposición"), editable) { replacementPayment = it }
             Text("Esta elección determina el importe pendiente; el registro del cobro se realiza por separado.",
                 style = MaterialTheme.typography.bodySmall, color = DriverColors.muted)
         }
-        if (remaining != null) TextButton(enabled = editable && remaining.signum() > 0,
-            onClick = { quantity = remaining.stripTrailingZeros().toPlainString() }) { Text("Usar toda la cantidad disponible") }
         ProductClassificationFields(kind, department, concept, editable, { department = it }, { concept = it })
         if (kind == ProductIncidentKind.SHORTAGE_WAREHOUSE) ProductSelectField("Motivo desde bodega", warehouseReason,
             WarehouseReason.entries.map { it.wire to it.label }, editable) { warehouseReason = it }

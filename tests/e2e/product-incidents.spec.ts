@@ -1165,11 +1165,80 @@ test("mobile report → live visibility → admin classification → exact priva
     .getByRole("button", { name: "Marcar resuelto", exact: true })
     .click();
   const resolve = page.getByRole("dialog", { name: "Resolver incidencia" });
+  const resolutionBounds = async () => {
+    const box = (await resolve.boundingBox())!;
+    expect(
+      await resolve.evaluate((element) =>
+        parseFloat(getComputedStyle(element).padding),
+      ),
+    ).toBeGreaterThanOrEqual(20);
+    for (const control of [
+      resolve.getByLabel("Cómo se resolvió"),
+      resolve.getByRole("button", { name: "Confirmar resolución" }),
+      resolve.getByRole("button", { name: "Cancelar", exact: true }),
+    ]) {
+      const child = (await control.boundingBox())!;
+      expect(child.x).toBeGreaterThanOrEqual(box.x + 19);
+      expect(child.x + child.width).toBeLessThanOrEqual(box.x + box.width - 19);
+      expect(child.y + child.height).toBeLessThanOrEqual(
+        box.y + box.height - 19,
+      );
+    }
+  };
+  await resolutionBounds();
+  await page.screenshot({
+    path: ".local/qa/product-incidents/resolution-desktop.png",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await resolutionBounds();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: ".local/qa/product-incidents/resolution-mobile.png",
+  });
   await resolve
     .getByLabel("Cómo se resolvió")
-    .fill("Reposición confirmada por administración");
+    .fill("Reposición confirmada por administración\nCliente conforme");
   await resolve.getByRole("button", { name: "Confirmar resolución" }).click();
   await expect(live).toContainText("Sin incidencias en este apartado");
+  const resolved = page.getByRole("region", { name: "Resueltas", exact: true });
+  await expect(
+    resolved.getByRole("heading", { name: "Resueltas", exact: true }),
+  ).toHaveCSS("color", "rgb(39, 219, 133)");
+  await expect(resolved).toContainText("Chofer 0");
+  await expect(resolved).toContainText("Reposiciones · 1");
+  await expect(resolved).toContainText(
+    "Reposición confirmada por administración",
+  );
+  await expect(resolved).toContainText("Cliente conforme");
+  await expect(
+    resolved.getByRole("button", { name: "Marcar resuelto", exact: true }),
+  ).toHaveCount(0);
+  const resolvedCard = resolved.locator(
+    `[data-incident-key="product:${receipt.incidentId}"]`,
+  );
+  await resolvedCard
+    .getByRole("checkbox", { name: "Visto", exact: true })
+    .click();
+  await expect(
+    resolvedCard.getByRole("checkbox", { name: "Visto", exact: true }),
+  ).toBeChecked();
+  await expect(resolvedCard).toContainText("Visto por Product QA");
+  await expect(resolvedCard).not.toHaveClass(/incident-unseen/);
+  await resolvedCard.getByText("Ver detalles", { exact: true }).click();
+  await expect(resolvedCard.getByRole("img")).toHaveCount(3);
+  await page.screenshot({
+    path: ".local/qa/product-incidents/resolved-mobile.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1500, height: 800 });
+  await page.screenshot({
+    path: ".local/qa/product-incidents/resolved-desktop.png",
+    fullPage: true,
+  });
   const rows = (
     await f.db.pool.query(
       "SELECT status,department,concept,quantity::text,snapshot FROM route_product_incidents WHERE id=$1",

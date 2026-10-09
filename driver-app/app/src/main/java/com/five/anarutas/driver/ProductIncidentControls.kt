@@ -20,6 +20,17 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.math.BigDecimal
+
+@Composable
+internal fun ProductQuantityField(kind: ProductIncidentKind, quantity: String, unit: String,
+    remaining: BigDecimal?, editable: Boolean, onQuantity: (String) -> Unit) {
+    OutlinedTextField(quantity, { onQuantity(it.take(20)) }, modifier = Modifier.fillMaxWidth(),
+        label = { Text(if (kind == ProductIncidentKind.RETURN) "Cantidad devuelta · $unit" else "Cantidad afectada · $unit") },
+        enabled = editable, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+    if (remaining != null) TextButton(enabled = editable && remaining.signum() > 0,
+        onClick = { onQuantity(remaining.stripTrailingZeros().toPlainString()) }) { Text("Usar toda la cantidad disponible") }
+}
 
 @Composable
 internal fun ProductSelectField(label: String, value: String, options: List<Pair<String, String>>, enabled: Boolean,

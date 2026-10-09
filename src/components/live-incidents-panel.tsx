@@ -43,7 +43,7 @@ const reasonNames: Record<string, string> = {
   late_arrival: "Llegada tarde",
   other: "Otro motivo",
 };
-type Section = "routes" | "late" | "location";
+type Section = "routes" | "resolved" | "late" | "location";
 const returnStatusNames: Record<string, string> = {
   awaiting_collection: "Se enviará al confirmar el cobro",
   queued: "Pendiente de envío",
@@ -157,6 +157,11 @@ function IncidentCard({
         )}
         {detail.reasonCode && <p>{reasonNames[detail.reasonCode]}</p>}
         {detail.note && <p className="live-incident-note">{detail.note}</p>}
+        {detail.resolutionNote && (
+          <p className="live-incident-resolution">
+            <strong>Resolución:</strong> {detail.resolutionNote}
+          </p>
+        )}
         {row.odooReturn && (
           <p className="muted" role="status">
             Odoo · {returnStatusNames[row.odooReturn.status] ?? "Pendiente"}
@@ -340,9 +345,11 @@ function BoardSection({
   const sectionName =
     section === "routes"
       ? "Incidencias de ruta"
-      : section === "late"
-        ? "Llegadas fuera de horario"
-        : "Puntos corregidos";
+      : section === "resolved"
+        ? "Resueltas"
+        : section === "late"
+          ? "Llegadas fuera de horario"
+          : "Puntos corregidos";
   return (
     <section
       className={`incident-board-section incident-board-${section}`}
@@ -438,7 +445,7 @@ function BoardSection({
       {selected && (
         <dialog
           ref={dialog}
-          className="fleet-dialog live-incident-confirm"
+          className="fleet-dialog live-incident-confirm product-incident-dialog"
           aria-labelledby={title}
           onCancel={(e) => {
             e.preventDefault();
@@ -676,6 +683,13 @@ export function LiveIncidentsPanel({
           refresh={refresh}
           onChange={changed}
           onReport={setReport}
+        />
+        <BoardSection
+          section="resolved"
+          filter={filter}
+          revision={revision}
+          refresh={refresh}
+          onChange={changed}
         />
         <BoardSection
           section="late"

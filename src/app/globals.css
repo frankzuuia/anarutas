@@ -3656,6 +3656,8 @@ button.confirm-cancel {
 .incident-board-section .toolbar, .incident-alarm-settings .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .incident-board-section > .toolbar h3 { margin: 0; color: #ffd080; }
 .incident-type-group > h4 { color: #ffd080; }
+.incident-board-resolved > .toolbar h3 { color: var(--green); }
+.live-incident-resolution { white-space: pre-wrap; overflow-wrap: anywhere; }
 .incident-seen-actions { margin-top: 10px; align-items: center; }
 .incident-seen-actions label { display: flex; gap: 8px; align-items: center; cursor: pointer; min-height: 44px; }
 .incident-seen-actions input { width: 18px; height: 18px; }

@@ -1,5 +1,18 @@
 # Bloque 1 — especificación y auditoría previa
 
+## IR — resolución visible y regreso al pedido, aprobado 2026-10-09
+
+Resueltas usa una proyección de lectura aparte del origen de alarmas, título
+verde, filtros/páginas por chofer y tipo, evidencia privada y explicación.
+Visto sigue compartido y retirar un reporte lo excluye aun en ruta cancelada.
+El cuadro de resolución reutiliza márgenes responsive existentes.
+La APK 0.8.24 vuelve a la ficha del pedido sólo por recibo nuevo válido del
+mismo pedido/parada y lectura verificada; conserva pendientes y borradores
+ante fallo. Cantidad completa va inmediatamente debajo de cantidad, antes del
+pago de reposición; cálculo de disponible, cobros, Excel y Odoo no cambian.
+Contrato y QA: BLOQUE-INCIDENCIAS-RESUELTAS-2026-10-09.md y
+QA-INCIDENCIAS-RESUELTAS-2026-10-09.md. QA físico sigue pendiente.
+
 ## DO — devolución parcial nativa a Odoo, aprobado 2026-10-09
 
 El cierre de atención/cobro conserva su transacción e identidad actuales y

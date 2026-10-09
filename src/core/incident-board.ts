@@ -4,6 +4,10 @@ import { assertActiveActor, audit, transaction } from "./database";
 import { AppError } from "./errors";
 import { incidentFilters } from "./driver-incidents";
 import { integer, uuid } from "./orders-validation";
+import {
+  resolvedIncidentSource,
+  seenIncidentSource,
+} from "./incident-board-resolved-source";
 
 export type IncidentSource = "product" | "service" | "stop";
 export type IncidentSeen = {
@@ -42,6 +46,7 @@ export type IncidentBoardRow = {
     reasonCode?: string | null;
     warehouseReason?: string | null;
     canResolve: boolean;
+    resolutionNote?: string | null;
     photos: string[];
     lateSeconds?: number;
     previousAddress?: string;
@@ -72,10 +77,11 @@ const notificationJoin = `LEFT JOIN route_incident_notifications n ON
   (e.source='product' AND n.product_id=e.id) OR (e.source='service' AND n.service_id=e.id)
   OR (e.source='stop' AND n.stop_event_id=e.id)`;
 const unseen = "(n.sequence IS NOT NULL AND n.seen_at IS NULL)";
-const entries = `FROM route_incident_live_entries e ${notificationJoin}
+const sourceEntries = (source: string) => `FROM ${source} e ${notificationJoin}
   LEFT JOIN route_odoo_return_capture rc ON e.source='product' AND e.kind='return' AND rc.incident_id=e.id
   LEFT JOIN route_odoo_return_incidents ri ON e.source='product' AND e.kind='return' AND ri.incident_id=e.id
   LEFT JOIN route_odoo_return_jobs rj ON rj.id=ri.job_id`;
+const entries = sourceEntries("route_incident_live_entries");
 
 export function incidentIdentity(value: unknown): {
   source: IncidentSource;
@@ -119,7 +125,7 @@ export async function readIncidentBoard(
   const filters = incidentFilters(query, timezone, "all");
   const section = params.get("section") ?? "routes";
   if (
-    !["routes", "late", "location"].includes(section) ||
+    !["routes", "resolved", "late", "location"].includes(section) ||
     ![null, "true"].includes(params.get("unseen"))
   )
     throw new AppError("INVALID_INPUT");
@@ -155,9 +161,12 @@ export async function readIncidentBoard(
       throw new AppError("INVALID_CURSOR");
     }
   }
-  const where = `${entries} WHERE ($1::date IS NULL OR e.event_date>=$1::date)
+  const boardEntries =
+    section === "resolved" ? sourceEntries(resolvedIncidentSource) : entries;
+  const where = `${boardEntries} WHERE ($1::date IS NULL OR e.event_date>=$1::date)
     AND ($2::date IS NULL OR e.event_date<=$2::date) AND ($3::uuid IS NULL OR e.driver_id=$3)
-    AND (($4='routes' AND e.source<>'stop') OR ($4='late' AND e.kind='late_arrival') OR ($4='location' AND e.kind='location_corrected'))
+    AND (($4='routes' AND e.source<>'stop' AND e.status<>'resolved_by_admin') OR $4='resolved'
+      OR ($4='late' AND e.kind='late_arrival') OR ($4='location' AND e.kind='location_corrected'))
     AND (NOT $5::boolean OR ${unseen})`;
   return transaction(pool, async (sql) => {
     await sql.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
@@ -200,7 +209,9 @@ export async function readIncidentBoard(
     ).rows[0].n;
     const drivers = (
       await sql.query(`SELECT d.id,d.name FROM route_drivers d WHERE d.active OR EXISTS
-      (SELECT 1 FROM route_incident_live_entries e WHERE e.driver_id=d.id) ORDER BY d.name,d.id`)
+      (SELECT 1 FROM route_incident_live_entries e WHERE e.driver_id=d.id)
+      OR EXISTS (SELECT 1 FROM route_product_incidents i WHERE i.driver_id=d.id AND i.status='resolved'
+        AND i.report_removed_at IS NULL) ORDER BY d.name,d.id`)
     ).rows;
     const page = rows.slice(0, 50),
       last = page.at(-1);
@@ -262,7 +273,7 @@ export async function markIncidentSeen(
     await assertActiveActor(sql, actor);
     const target = (
       await sql.query(
-        `SELECT n.sequence ${entries} WHERE e.source=$1 AND e.id=$2`,
+        `SELECT n.sequence ${sourceEntries(seenIncidentSource)} WHERE e.source=$1 AND e.id=$2`,
         [source, id],
       )
     ).rows[0];

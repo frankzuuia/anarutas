@@ -1,5 +1,19 @@
 # Progreso — bloque 1
 
+## IR — resolución y regreso al pedido, aprobado 2026-10-09
+
+- [x] IR-T00: autopsia de CSS, consulta de pendientes, recibo y navegación.
+- [x] IR-T01: marco responsive y sección Resueltas verde, sin ampliar alarmas;
+  permisos, comentarios, evidencia, paginación y Visto compartido.
+- [x] IR-T02: navegación por comprobante exacto y posición de cantidad completa;
+  APK 0.8.24/code46, 172 JVM, cobertura crítica 100%, 9/9 mutaciones Android.
+- [x] IR-T03: revisión final, 58 pruebas TS, 4 E2E y 18/18 mutaciones;
+  build/tipos/lint/auditoría/firma verdes. Preparado para entrega sólo develop.
+- [ ] IR-T04: recorrido físico APK tras deploy de develop del propietario.
+
+Contrato y evidencia: BLOQUE-INCIDENCIAS-RESUELTAS-2026-10-09.md y
+QA-INCIDENCIAS-RESUELTAS-2026-10-09.md. Odoo, cobro y Excel conservados.
+
 ## DO — devoluciones nativas Odoo, aprobado 2026-10-09
 
 - [x] DO-T00: auditoría y capacidades reales de develop 20.0+e, contratos oficiales

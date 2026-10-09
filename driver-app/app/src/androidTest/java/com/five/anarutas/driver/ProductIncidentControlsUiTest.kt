@@ -17,6 +17,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.math.BigDecimal
 
 /** Executes real UI controls, file decoding and Android semantics; no network mocks. */
 @RunWith(AndroidJUnit4::class)
@@ -66,6 +67,36 @@ class ProductIncidentControlsUiTest {
             assertEquals("Chile serrano", product); assertEquals("1", quantity); assertEquals("kg", unit)
             assertEquals(listOf("product_not_ordered"), comments)
         }
+    }
+
+    @Test fun fullAvailableQuantityAppearsDirectlyBelowQuantityBeforeReplacementPayment() {
+        var kind by mutableStateOf(ProductIncidentKind.REPLACEMENT_QUALITY)
+        var quantity by mutableStateOf("")
+        var editable by mutableStateOf(true)
+        var remaining by mutableStateOf<BigDecimal?>(BigDecimal("1.250000"))
+        compose.setContent { DriverTheme { Column {
+            ProductQuantityField(kind, quantity, "kg", remaining, editable) { quantity = it }
+            if (kind != ProductIncidentKind.RETURN)
+                ProductSelectField("Pago de la reposición", "", listOf("defer" to "Deja pendiente el importe"), editable) {}
+        } } }
+        for (type in listOf(ProductIncidentKind.REPLACEMENT_QUALITY, ProductIncidentKind.REPLACEMENT_WRONG, ProductIncidentKind.RETURN)) {
+            compose.runOnIdle { kind = type; quantity = "" }
+            val label = if (type == ProductIncidentKind.RETURN) "Cantidad devuelta · kg" else "Cantidad afectada · kg"
+            val field = compose.onNodeWithText(label)
+            val full = compose.onNodeWithText("Usar toda la cantidad disponible")
+            field.assertIsDisplayed(); full.assertIsDisplayed().assertIsEnabled()
+            assertTrue(field.fetchSemanticsNode().boundsInRoot.bottom <= full.fetchSemanticsNode().boundsInRoot.top)
+            if (type != ProductIncidentKind.RETURN)
+                assertTrue(full.fetchSemanticsNode().boundsInRoot.bottom <= compose.onNodeWithContentDescription("Pago de la reposición").fetchSemanticsNode().boundsInRoot.top)
+            full.performClick()
+            compose.runOnIdle { assertEquals("1.25", quantity) }
+        }
+        compose.runOnIdle { editable = false }
+        compose.onNodeWithText("Usar toda la cantidad disponible").assertIsNotEnabled()
+        compose.runOnIdle { editable = true; remaining = BigDecimal.ZERO }
+        compose.onNodeWithText("Usar toda la cantidad disponible").assertIsNotEnabled()
+        compose.runOnIdle { remaining = null }
+        compose.onNodeWithText("Usar toda la cantidad disponible").assertDoesNotExist()
     }
 
     @Test fun multipleCommentsAndClassificationAreSelectableAndFooterStaysVisible() {
