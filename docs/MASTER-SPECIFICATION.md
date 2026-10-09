@@ -1,5 +1,17 @@
 # Bloque 1 — especificación y auditoría previa
 
+## TA — tarjetas compactas y continuidad de audio, aprobado 2026-10-08
+
+Contrato y escenarios TA01..10 en BLOQUE-TARJETAS-ALARMA-2026-10-08.md.
+Detalles cerrados en ambas vistas, resumen compacto, activación visible y
+conservada sólo dentro del mismo documento/ámbito con contexto de audio activo.
+Salir detiene sonido y libera exclusivamente la reserva propia; volver recupera
+novedades mediante el cursor existente. No amplía monitoreo fuera de esas vistas.
+Sustituye la desactivación obligatoria por navegación de IO23/25; recarga y
+autenticación siguen iniciando un documento sin activación. Sin cambios de datos.
+Evidencia ejecutada y límites: QA-TARJETAS-ALARMA-2026-10-08.md; no constituye
+despliegue ni comprobación de altavoces físicos del propietario.
+
 ## IO — incidencias organizadas y Visto compartido, autorizado 2026-10-08
 
 Especificación de IO-BL01..09, autopsia, matriz IO01..33, contratos v2/v3,

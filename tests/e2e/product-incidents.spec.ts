@@ -23,6 +23,203 @@ let origin: string;
 const login = `product-${randomUUID()}`,
   password = randomUUID();
 
+test("TA compact cards and returning to live incidents retains real armed audio", async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  expect(
+    (
+      await page.request.post(`${origin}/api/session`, {
+        headers: { Origin: origin },
+        data: { login, password },
+      })
+    ).status(),
+  ).toBe(200);
+  await page.goto(origin);
+  const openLive = () =>
+    page
+      .getByRole("button", { name: "Incidencias en vivo", exact: true })
+      .click();
+  await openLive();
+  // Activation must be discoverable without opening the duration settings.
+  await expect(
+    page.getByRole("button", { name: "Activar sonido", exact: true }),
+  ).toBeVisible();
+  const bytes = await sharp({
+    create: { width: 24, height: 24, channels: 3, background: "#8cab33" },
+  })
+    .jpeg()
+    .toBuffer();
+  const capture = async (kind: "return" | "replacement_quality", note = "") => {
+    const route = await readDriverExecution(
+      f.db.pool,
+      f.members[0].driverId,
+      f.planId,
+      f.timezone,
+    );
+    const stop = route.stops[0];
+    const command = {
+      commandId: randomUUID(),
+      executionId: route.id,
+      publicationRevision: route.publicationRevision,
+      executionRevision: route.revision,
+      stopVersion: stop.version,
+      visitSequence: stop.visitSequence,
+      orderVersion: stop.orderStates[0].version,
+      formVersion: 3,
+      kind,
+      lineIndex: 0,
+      quantity: "0.25",
+      note,
+      comments:
+        kind === "return" ? ["damaged_product"] : ["product_not_ordered"],
+      ...(kind === "replacement_quality"
+        ? { department: "Compras", concept: "Error en compra" }
+        : {}),
+    };
+    const response = await page.request.post(
+      `${origin}/api/mobile/plans/${f.planId}/stops/${stop.id}/orders/${stop.shipmentIds[0]}/product-incidents`,
+      {
+        headers: { Authorization: f.members[0].authorization },
+        multipart: {
+          command: JSON.stringify(command),
+          photos: {
+            name: "evidence.jpg",
+            mimeType: "image/jpeg",
+            buffer: bytes,
+          },
+        },
+      },
+    );
+    expect(response.status()).toBe(201);
+    return (await response.json()).incidentId as string;
+  };
+  const id = await capture("return");
+  const card = page.locator(`[data-incident-key="product:${id}"]`);
+  await expect(card).toBeVisible();
+  const extra = card.locator(".live-incident-extra > div");
+  await expect(extra).not.toBeVisible();
+  await expect(card).toContainText("Producto golpeado");
+  const collapsed = (await card.boundingBox())!.height;
+  console.log(`TA desktop collapsed card: ${collapsed}px`);
+  expect(collapsed).toBeLessThanOrEqual(160);
+  await mkdir(".local/qa/incident-compact", { recursive: true });
+  await page.screenshot({
+    path: ".local/qa/incident-compact/desktop.png",
+    fullPage: true,
+  });
+  await card.getByText("Ver detalles", { exact: true }).click();
+  await expect(extra).toBeVisible();
+  await expect(extra.getByRole("img")).toBeVisible();
+  const expanded = (await card.boundingBox())!.height;
+  expect(expanded).toBeGreaterThan(collapsed + 50);
+  await card.getByText("Ver detalles", { exact: true }).click();
+  await expect(extra).not.toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  console.log(
+    `TA mobile collapsed card: ${(await card.boundingBox())!.height}px`,
+  );
+  expect((await card.boundingBox())!.height).toBeLessThanOrEqual(260);
+  await page.screenshot({
+    path: ".local/qa/incident-compact/mobile.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page
+    .getByRole("button", { name: "Activar sonido", exact: true })
+    .click();
+  await expect(
+    page.getByText("Reproduciendo alarma…", { exact: true }),
+  ).toBeVisible();
+  // Leave during the test burst, then return before its five-second lease ends.
+  await page.getByRole("button", { name: "Incidencias", exact: true }).click();
+  await openLive();
+  await expect(
+    page.getByRole("button", { name: "Probar sonido", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Reproduciendo alarma…", { exact: true }),
+  ).toHaveCount(0);
+  const longNote =
+    "Nota completa de la incidencia. " +
+    "Se verificó la entrega y se conservó la evidencia. ".repeat(20);
+  const newId = await capture("replacement_quality", longNote);
+  const newCard = page.locator(`[data-incident-key="product:${newId}"]`);
+  await expect(newCard).toHaveClass(/incident-unseen/);
+  await expect(
+    page.getByText("Reproduciendo alarma…", { exact: true }),
+  ).toBeVisible();
+  await newCard.getByRole("checkbox", { name: "Visto", exact: true }).click();
+  await expect(
+    newCard.getByRole("checkbox", { name: "Visto", exact: true }),
+  ).toBeChecked();
+  await expect(
+    page.getByText("Reproduciendo alarma…", { exact: true }),
+  ).toHaveCount(0);
+  await expect(newCard).toContainText("Visto por Product QA");
+  const noteSize = await newCard
+    .locator(".live-incident-note")
+    .evaluate((node) => ({
+      height: node.getBoundingClientRect().height,
+      line: Number.parseFloat(getComputedStyle(node).lineHeight),
+    }));
+  expect(noteSize.height).toBeLessThanOrEqual(noteSize.line * 2 + 1);
+  const summary = newCard.getByText("Ver detalles", { exact: true });
+  await summary.focus();
+  await summary.press("Enter");
+  await expect(newCard.locator(".live-incident-full-note")).toBeVisible();
+  await expect(newCard.locator(".live-incident-full-note")).toContainText(
+    longNote,
+  );
+  await summary.press("Enter");
+  await expect(newCard.locator(".live-incident-full-note")).not.toBeVisible();
+  await page.reload();
+  await openLive();
+  await expect(
+    page.getByRole("button", { name: "Activar sonido", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Reproduciendo alarma…", { exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Activar sonido", exact: true })
+    .click();
+  await expect(
+    page.getByText("Reproduciendo alarma…", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Cerrar sesión", exact: true })
+    .click();
+  await expect(page).toHaveURL(`${origin}/login`);
+  expect(
+    (await page.request.get(`${origin}/api/incidents/alerts`)).status(),
+  ).toBe(401);
+  expect(
+    (
+      await page.request.post(`${origin}/api/session`, {
+        headers: { Origin: origin },
+        data: { login, password },
+      })
+    ).status(),
+  ).toBe(200);
+  await page.goto(origin);
+  await openLive();
+  await expect(
+    page.getByRole("button", { name: "Activar sonido", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Reproduciendo alarma…", { exact: true }),
+  ).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("IO reconnect: real offline recovery drains 105 arrivals once and leaving the panel stops audio", async ({
   page,
   context,
@@ -135,7 +332,7 @@ test("IO reconnect: real offline recovery drains 105 arrivals once and leaving t
     .click();
   await page.getByText("Configuración de alarma", { exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Activar sonido" }),
+    page.getByRole("button", { name: "Probar sonido" }),
   ).toBeVisible();
   await expect(
     page.getByText("Reproduciendo alarma…", { exact: true }),

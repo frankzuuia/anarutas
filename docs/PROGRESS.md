@@ -1,5 +1,19 @@
 # Progreso — bloque 1
 
+## TA — tarjetas y alarma, bloque aprobado 2026-10-08
+
+- [x] TA-T00: causas, contrato TA01..10 y alcance confirmados por el propietario.
+- [x] TA-T01: tarjetas/resumen/detalles y regresión visual desktop/móvil/embebida.
+- [x] TA-T02: activación visible, conservación y liberación aislada de reserva.
+- [x] TA-T03: pruebas reales, cobertura, mutaciones, QA y entrega sólo develop.
+
+Evidencia: QA-TARJETAS-ALARMA-2026-10-08.md. 21 pruebas servidor/políticas,
+5 E2E reales (TA repetido con comentario largo/teclado/logout), cobertura
+dirigida100%, 15/15 mutantes detectados; tarjetas de muestra122/156 px.
+Alarmas10/15 s medidas9,995/14,995 ms; tipos/build/lint y auditoría productiva
+verdes. Excepción devtools heredada conservada. No despliegue ni QA de altavoces
+físicos; el propietario verifica Brave después de su deploy.
+
 ## IO — reorganización de incidencias, bloques aprobados 2026-10-08
 
 - [x] IO-T00: inspección del flujo real APK/API/PostgreSQL/panel/Excel;

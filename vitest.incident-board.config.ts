@@ -1,7 +1,10 @@
 import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
-    include: ["tests/incident-board.test.ts"],
+    include: [
+      "tests/incident-board.test.ts",
+      "tests/incident-alarm-lifecycle.test.ts",
+    ],
     fileParallelism: false,
     testTimeout: 60000,
     coverage: {

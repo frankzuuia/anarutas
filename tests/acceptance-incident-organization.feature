@@ -85,6 +85,23 @@ Feature: Incidencias de producto separadas del reporte de devoluciones
     Then no vuelve a sonar por esa identidad
     And el panel informa incidencias nuevas fuera del filtro
     And salir del panel detiene el sonido
+    And volver al panel conserva la activación en el mismo documento y ámbito autorizado
+    And una incidencia nueva tras volver suena sin repetir las anteriores
+
+  Scenario: TA01 TA02 TA03 Tarjetas compactas y evidencia accesible
+    Given una devolución con producto, comentarios y evidencia privada
+    When administración abre la página normal o una pantalla del Centro de control
+    Then los datos principales aparecen en una tarjeta compacta
+    And dirección, fotos y comentario completo están en Ver detalles cerrado inicialmente
+    And abrir y cerrar los detalles no cambia Visto ni la incidencia
+    And la vista móvil no desborda y sus acciones permanecen accesibles
+
+  Scenario: TA04 TA07 TA08 Activación visible y aislada
+    Given el navegador no tiene audio activado
+    When administración abre Incidencias en vivo
+    Then ve Activar sonido y el estado sin abrir Configuración de alarma
+    And cambiar de cuenta, instalación o perder la capacidad de audio no conserva activación
+    And recargar conserva el cursor pero no promete permiso de reproducción
 
   Scenario: IO26 IO27 Reconexión y más de una página
     Given un navegador sin conexión y 105 nuevas incidencias confirmadas

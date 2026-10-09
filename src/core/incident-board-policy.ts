@@ -31,3 +31,24 @@ export function newIncidentSequences(
     ),
   ];
 }
+
+// Browser capability and identity boundaries, independent of business data.
+export function retainedAlarmActivation(input: {
+  enabled: boolean;
+  previousScope: string | null;
+  nextScope: string;
+  audioState: AudioContextState | null;
+}): boolean {
+  return (
+    input.enabled &&
+    input.previousScope === input.nextScope &&
+    input.audioState === "running"
+  );
+}
+
+export function ownsAlarmReservation(
+  current: string | null,
+  owned: string,
+): boolean {
+  return current === owned;
+}

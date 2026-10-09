@@ -3674,3 +3674,33 @@ button.confirm-cancel {
 .embedded-live-incidents .incident-board-section > .toolbar h3 { font-size: 13px; }
 .embedded-live-incidents .incident-alarm-settings { padding: 6px 9px; }
 .incident-board-section .incident-content { overflow-wrap: anywhere; }
+
+/* Compact only the operational feed; report tables retain their layout. */
+.incident-board-section .live-incident-card { padding: 9px 11px; gap: 9px; }
+.incident-board-section .incident-symbol { flex-basis: 30px; height: 30px; border-radius: 8px; }
+.incident-board-section .incident-symbol svg { width: 16px; height: 16px; }
+.incident-board-section .incident-card-heading { justify-content: flex-start; gap: 5px 9px; }
+.incident-board-section .incident-card-heading h3 { margin: 0; font-size: 14px; color: var(--ink); }
+.incident-board-section .incident-card-heading time { margin-left: auto; font-size: 11px; }
+.incident-board-section .live-incident-facts { display: flex; flex-wrap: wrap; gap: 3px 14px; margin-top: 4px; }
+.incident-board-section .incident-content p { margin: 3px 0; font-size: 12px; line-height: 1.4; }
+.incident-board-section .live-incident-facts p { margin: 0; padding: 0; }
+.incident-board-section .live-incident-note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; padding-left: 8px; }
+.incident-board-section .live-incident-full-note { white-space: pre-wrap; }
+.incident-board-section .live-incident-controls { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: flex-start; margin-top: 3px; }
+.incident-board-section .live-incident-extra { flex: 1 1 160px; min-width: 0; }
+.incident-board-section .live-incident-extra summary { display: list-item; width: fit-content; padding: 6px 0; font-size: 12px; color: var(--green); cursor: pointer; }
+.incident-board-section .live-incident-extra summary:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.incident-board-section .live-incident-extra > div { padding: 5px 0; border-top: 1px solid var(--line); }
+.incident-board-section .incident-seen-actions { margin-top: 0; gap: 6px; }
+.incident-board-section .incident-seen-actions label { min-height: 32px; font-size: 12px; }
+.incident-board-section .incident-seen-actions small { font-size: 11px; }
+.incident-board-section .incident-seen-actions button { min-height: 32px; padding: 4px 8px; font-size: 12px; }
+.incident-alarm-bar .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.incident-alarm-bar p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+@media (max-width: 600px) {
+  .incident-board-section .incident-card-heading time { margin-left: 0; }
+  .incident-board-section .incident-card-heading h3 { flex-basis: 100%; order: -1; }
+  .incident-board-section .incident-seen-actions label { min-height: 44px; }
+  .incident-board-section .incident-seen-actions button { min-height: 44px; }
+}

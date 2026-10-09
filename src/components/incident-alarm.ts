@@ -5,7 +5,11 @@ import type {
   IncidentAlerts,
   IncidentAlertSettings,
 } from "@/core/incident-board";
-import { newIncidentSequences } from "@/core/incident-board-policy";
+import {
+  newIncidentSequences,
+  ownsAlarmReservation,
+  retainedAlarmActivation,
+} from "@/core/incident-board-policy";
 import { api } from "./api";
 
 type AlarmState = {
@@ -30,6 +34,7 @@ let polling = false,
   repoll = false;
 let scope: string | null = null;
 let burst: string[] = [];
+let reservation: { key: string; until: string } | null = null;
 function readAlerts(query = "") {
   return api<IncidentAlerts>(
     `/api/incidents/alerts${query}`,
@@ -46,9 +51,32 @@ function stopSound() {
   oscillator?.stop();
   oscillator = null;
   burst = [];
+  const owned = reservation;
+  reservation = null;
+  if (owned && navigator.locks) {
+    void navigator.locks
+      .request(owned.key, () => {
+        // Never erase a newer burst started by another tab after this one stopped.
+        if (
+          ownsAlarmReservation(
+            localStorage.getItem(`${owned.key}:until`),
+            owned.until,
+          )
+        ) {
+          localStorage.removeItem(`${owned.key}:until`);
+          localStorage.removeItem(`${owned.key}:burst`);
+        }
+      })
+      .catch(() =>
+        publish({
+          message:
+            "No se pudo liberar el sonido anterior. Se reintentará al actualizar.",
+        }),
+      );
+  }
   if (state.playing) publish({ playing: false });
 }
-function sound(seconds: number) {
+function sound(seconds: number, key: string) {
   if (!subscribers.size) return;
   if (!context || context.state !== "running")
     throw new Error("El navegador bloqueó el audio. Pulsa Activar sonido.");
@@ -65,6 +93,7 @@ function sound(seconds: number) {
   source.connect(volume);
   volume.connect(context.destination);
   oscillator = source;
+  reservation = { key, until: localStorage.getItem(`${key}:until`)! };
   publish({ playing: true });
   source.onended = () => {
     source.disconnect();
@@ -72,6 +101,7 @@ function sound(seconds: number) {
     if (oscillator === source) {
       oscillator = null;
       burst = [];
+      reservation = null;
       publish({ playing: false });
     }
   };
@@ -122,6 +152,16 @@ async function poll() {
   polling = true;
   try {
     const baseline = await readAlerts();
+    const enabled = retainedAlarmActivation({
+      enabled: state.enabled,
+      previousScope: scope,
+      nextScope: baseline.scope,
+      audioState: context?.state ?? null,
+    });
+    if (state.enabled && !enabled) {
+      stopSound();
+      publish({ enabled: false, message: initial.message });
+    }
     scope = baseline.scope;
     publish({ settings: baseline.settings });
     if (!state.enabled || !subscribers.size) return;
@@ -174,7 +214,7 @@ async function poll() {
         );
         burst = pending;
         localStorage.setItem(`${key}:burst`, JSON.stringify(pending));
-        sound(baseline.settings.seconds);
+        sound(baseline.settings.seconds, key);
         channel?.postMessage("changed");
       },
     );
@@ -216,7 +256,8 @@ function subscribe(listener: () => void) {
       window.removeEventListener("online", refreshIncidentAlarm);
       window.removeEventListener("focus", refreshIncidentAlarm);
       stopSound();
-      publish({ enabled: false, message: initial.message });
+      // Retain a successful gesture across panel navigation in this document.
+      // A reload/auth navigation creates a new document and starts disabled.
     }
   };
 }
@@ -265,7 +306,7 @@ export async function activateIncidentAlarm() {
             key,
             String(Date.now() + baseline.settings.seconds * 1000),
           );
-          sound(baseline.settings.seconds);
+          sound(baseline.settings.seconds, storageKey(baseline.scope));
         }
       },
     );

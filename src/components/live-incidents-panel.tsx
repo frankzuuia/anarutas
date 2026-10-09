@@ -86,13 +86,11 @@ function Evidence({ row }: { row: IncidentBoardRow }) {
 
 function IncidentCard({
   row,
-  compact,
   busy,
   onSeen,
   onResolve,
 }: {
   row: IncidentBoardRow;
-  compact: boolean;
   busy: boolean;
   onSeen: () => void;
   onResolve: () => void;
@@ -117,6 +115,7 @@ function IncidentCard({
       <div className="incident-content">
         <div className="incident-card-heading">
           <span className="badge amber">{name}</span>
+          <h3>{detail.customer}</h3>
           <time dateTime={row.occurredAt}>
             {new Date(row.occurredAt).toLocaleString("es-MX", {
               timeZone: row.timezone,
@@ -125,19 +124,20 @@ function IncidentCard({
             })}
           </time>
         </div>
-        <h3>{detail.customer}</h3>
-        <p className="incident-orders">
-          {detail.orders.join(" · ")} · {detail.vehicle} · {detail.plate}
-        </p>
-        {detail.product && (
-          <p>
-            <strong>{detail.product}</strong> ·{" "}
-            {Number(detail.quantity).toLocaleString("es-MX", {
-              maximumFractionDigits: 6,
-            })}{" "}
-            {detail.unit}
+        <div className="live-incident-facts">
+          <p className="incident-orders">
+            {detail.orders.join(" · ")} · {detail.vehicle} · {detail.plate}
           </p>
-        )}
+          {detail.product && (
+            <p>
+              <strong>{detail.product}</strong> ·{" "}
+              {Number(detail.quantity).toLocaleString("es-MX", {
+                maximumFractionDigits: 6,
+              })}{" "}
+              {detail.unit}
+            </p>
+          )}
+        </div>
         {detail.warehouseReason && (
           <p>
             {
@@ -155,74 +155,80 @@ function IncidentCard({
             de recepción. Hora real registrada por el chofer.
           </p>
         )}
-        <details className="live-incident-extra" open={!compact}>
-          <summary>Ver detalles</summary>
-          <div>
-            <p>
-              {detail.planLabel} · {detail.address}
-            </p>
-            {row.kind === "location_corrected" && (
+        <div className="live-incident-controls">
+          <details className="live-incident-extra">
+            <summary>Ver detalles</summary>
+            <div>
+              {detail.note && (
+                <p className="live-incident-full-note">{detail.note}</p>
+              )}
               <p>
-                Dirección anterior: {detail.previousAddress ?? detail.address}
-                <br />
-                Dirección corregida: {detail.correctedAddress ?? detail.address}
-                {detail.point && (
-                  <>
-                    {" "}
-                    ·{" "}
-                    <a
-                      target="_blank"
-                      rel="noreferrer"
-                      href={`https://www.google.com/maps/search/?api=1&query=${detail.point.latitude},${detail.point.longitude}`}
-                    >
-                      Ver punto confirmado
-                    </a>
-                  </>
-                )}
+                {detail.planLabel} · {detail.address}
               </p>
+              {row.kind === "location_corrected" && (
+                <p>
+                  Dirección anterior: {detail.previousAddress ?? detail.address}
+                  <br />
+                  Dirección corregida:{" "}
+                  {detail.correctedAddress ?? detail.address}
+                  {detail.point && (
+                    <>
+                      {" "}
+                      ·{" "}
+                      <a
+                        target="_blank"
+                        rel="noreferrer"
+                        href={`https://www.google.com/maps/search/?api=1&query=${detail.point.latitude},${detail.point.longitude}`}
+                      >
+                        Ver punto confirmado
+                      </a>
+                    </>
+                  )}
+                </p>
+              )}
+              {row.source === "service" && (
+                <p>
+                  {row.status === "completed"
+                    ? "Completada · entrega registrada"
+                    : row.status === "resolved_by_admin"
+                      ? "Incidencia resuelta por administración"
+                      : row.kind === "customer_closed"
+                        ? "Pendiente de reintento por el chofer"
+                        : row.kind === "rescheduled"
+                          ? "Cerrado en esta ruta · pendiente de gestión interna"
+                          : "Rechazado · todavía puede entregarse si el cliente lo solicita"}
+                </p>
+              )}
+              <Evidence row={row} />
+            </div>
+          </details>
+          <div className="toolbar incident-seen-actions">
+            {row.notification && (
+              <label>
+                <input
+                  type="checkbox"
+                  checked={!isNew}
+                  disabled={busy || !isNew}
+                  onChange={onSeen}
+                />
+                Visto
+              </label>
             )}
-            {row.source === "service" && (
-              <p>
-                {row.status === "completed"
-                  ? "Completada · entrega registrada"
-                  : row.status === "resolved_by_admin"
-                    ? "Incidencia resuelta por administración"
-                    : row.kind === "customer_closed"
-                      ? "Pendiente de reintento por el chofer"
-                      : row.kind === "rescheduled"
-                        ? "Cerrado en esta ruta · pendiente de gestión interna"
-                        : "Rechazado · todavía puede entregarse si el cliente lo solicita"}
-              </p>
+            {row.notification?.seenBy && (
+              <small>Visto por {row.notification.seenBy}</small>
             )}
-            <Evidence row={row} />
+            {detail.canResolve && (
+              <button
+                type="button"
+                className="quiet product-incident-resolve"
+                disabled={busy}
+                onClick={onResolve}
+              >
+                <CheckCircle2 size={15} />
+                Marcar resuelto
+              </button>
+            )}
           </div>
-        </details>
-        <div className="toolbar incident-seen-actions">
-          {row.notification && (
-            <label>
-              <input
-                type="checkbox"
-                checked={!isNew}
-                disabled={busy || !isNew}
-                onChange={onSeen}
-              />
-              Visto
-            </label>
-          )}
-          {row.notification?.seenBy && (
-            <small>Visto por {row.notification.seenBy}</small>
-          )}
-          {detail.canResolve && (
-            <button
-              type="button"
-              className="quiet product-incident-resolve"
-              disabled={busy}
-              onClick={onResolve}
-            >
-              <CheckCircle2 size={15} />
-              Marcar resuelto
-            </button>
-          )}
         </div>
       </div>
     </article>
@@ -231,7 +237,6 @@ function IncidentCard({
 
 function BoardSection({
   section,
-  compact,
   filter,
   revision,
   refresh,
@@ -239,7 +244,6 @@ function BoardSection({
   onReport,
 }: {
   section: Section;
-  compact: boolean;
   filter: string;
   revision: number;
   refresh: number;
@@ -373,7 +377,6 @@ function BoardSection({
                 </h4>
                 {incidents.map((row) => (
                   <IncidentCard
-                    compact={compact}
                     key={row.key}
                     row={row}
                     busy={busy}
@@ -570,6 +573,25 @@ export function LiveIncidentsPanel({
             />
           </label>
         </div>
+        <div className="incident-alarm-bar">
+          <div className="toolbar">
+            <button
+              type="button"
+              className="quiet"
+              onClick={() => void activateIncidentAlarm()}
+              disabled={alarm.playing}
+            >
+              <Volume2 size={16} />
+              {alarm.enabled ? "Probar sonido" : "Activar sonido"}
+            </button>
+            <span className={`badge ${alarm.enabled ? "green" : "amber"}`}>
+              {alarm.enabled ? "Sonido activo" : "Sonido desactivado"}
+            </span>
+          </div>
+          <p role="status">
+            {alarm.playing ? "Reproduciendo alarma…" : alarm.message}
+          </p>
+        </div>
         <details className="incident-alarm-settings">
           <summary>
             <Volume2 size={16} />
@@ -610,18 +632,7 @@ export function LiveIncidentsPanel({
                 ))}
               </select>
             </label>
-            <button
-              className="quiet"
-              onClick={() => void activateIncidentAlarm()}
-              disabled={alarm.playing}
-            >
-              <Volume2 size={16} />
-              {alarm.enabled ? "Probar sonido" : "Activar sonido"}
-            </button>
           </div>
-          <p role="status">
-            {alarm.playing ? "Reproduciendo alarma…" : alarm.message}
-          </p>
           {settingsError && (
             <p className="notice error" role="alert">
               {settingsError}
@@ -644,7 +655,6 @@ export function LiveIncidentsPanel({
           </p>
         )}
         <BoardSection
-          compact={compact}
           section="routes"
           filter={filter}
           revision={revision}
@@ -653,7 +663,6 @@ export function LiveIncidentsPanel({
           onReport={setReport}
         />
         <BoardSection
-          compact={compact}
           section="late"
           filter={filter}
           revision={revision}
@@ -664,7 +673,6 @@ export function LiveIncidentsPanel({
           <summary>Puntos corregidos y reglas de llegada</summary>
           <ArrivalSettings revision={revision} />
           <BoardSection
-            compact={compact}
             section="location"
             filter={filter}
             revision={revision}
