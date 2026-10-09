@@ -1,5 +1,28 @@
 # Ana Rutas — bloque 1 aprobado
 
+## DO — devolución a Odoo, aprobado 2026-10-09
+
+El chofer registra la devolución con evidencia y conserva la posibilidad de
+corregirla o cancelarla antes del cierre actual del pedido. Al confirmar atención
+y cobro se congela el recibo y se encolan sólo devoluciones nuevas elegibles.
+Cada movimiento original se agrega por ID y su unidad; nunca se resuelve por
+nombre ni se devuelven productos no seleccionados. La cola no afecta el pago
+cuando falla el servicio externo, y su resultado aparece en Incidencias en vivo.
+
+El trabajador detecta las capacidades de Odoo 17/19/20, crea el traslado nativo,
+confirma/reserva y verifica origen, cliente, compañía, ubicaciones y cantidades.
+La validación final es manual en Odoo. Correlación persistente, exclusión entre
+réplicas y referencias únicas impiden repetir la devolución propia tras un
+reinicio o respuesta perdida. Ante resultado incierto sin referencia encontrada,
+se reconcilia sin crear a ciegas. No se cambian ventas, facturas ni pagos de Odoo.
+
+No hay envío histórico ni cruce de cuentas; RUTAS_ODOO_RETURNS_ENABLED activa
+la instalación expresamente y vale false por defecto. Traslado remoto cambiado
+o fuente rotada requieren revisión. La prueba real actual corresponde al Odoo 20
+de develop; la certificación real 17 queda pendiente de instancia de pruebas.
+Contrato, evidencia y límites: BLOQUE-DEVOLUCIONES-ODOO-2026-10-09.md y
+QA-DEVOLUCIONES-ODOO-2026-10-09.md.
+
 ## IO — reorganización de incidencias, propuesta 2026-10-08
 
 IO-BL01..09 están definidos con actor, datos, permisos, auditoría y validación en

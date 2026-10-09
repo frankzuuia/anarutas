@@ -13,10 +13,11 @@ import { configureMobileAccess, enrollMobileDevice } from "../../src/core/driver
 import { uploadDriverUnitPhoto } from "../../src/core/unit-photos";
 import { startDriverRoute } from "../../src/core/route-start";
 import { todayInTimezone } from "../../src/core/local-date";
+import type { SourceShipment } from "../../src/core/orders-contract";
 
 // Real isolated PostgreSQL, signatures, image files and start transaction. No HTTP/API mocks.
 // The persisted publication is a fixture for execution, not a claim of a Google calculation.
-export async function executionFixture(options: { groupFourthOrderWithFirst?: boolean; sourceFingerprint?: string; secondLinePerOrder?: boolean; orderCount?: number; partnerIds?: number[]; legacyUnloadingSnapshot?: boolean; now?: Date } = {}) {
+export async function executionFixture(options: { groupFourthOrderWithFirst?: boolean; sourceFingerprint?: string; sourceShipments?: SourceShipment[]; sourceLineMetadata?: { uomId: number; saleLineId: number }; secondLinePerOrder?: boolean; orderCount?: number; partnerIds?: number[]; legacyUnloadingSnapshot?: boolean; now?: Date } = {}) {
   const db = await startPostgres();
   const photoRoot = await mkdtemp(join(tmpdir(), "rutas-execution-"));
   const oldPepper = process.env.RUTAS_DRIVER_PIN_PEPPER;
@@ -49,10 +50,10 @@ export async function executionFixture(options: { groupFourthOrderWithFirst?: bo
     await selectPlanVehicles(db.pool, actor, plan.id, { vehicleIds: members.map(m => m.vehicleId), expectedVersion: plan.version });
     await persistImportPage(db.pool, actor, plan.id, {
       fingerprint: options.sourceFingerprint ?? createHash("sha256").update("execution-qa").digest("hex"),
-      shipments: Array.from({ length: options.orderCount ?? 4 }, (_, index) => index + 1).map(index => ({ pickingId: index, pickingName: `OUT/${index}`, orderId: index,
+      shipments: options.sourceShipments ?? Array.from({ length: options.orderCount ?? 4 }, (_, index) => index + 1).map(index => ({ pickingId: index, pickingName: `OUT/${index}`, orderId: index,
         orderName: `S${index}`, partnerId: options.partnerIds?.[index - 1] ?? (index === 4 ? 1 : index), customerName: `Cliente ${options.partnerIds?.[index - 1] ?? (index === 4 ? 1 : index)}`,
         address: `Calle ${options.partnerIds?.[index - 1] ?? (index === 4 ? 1 : index)}`, validatedAt: options.now?.toISOString() ?? "2026-09-24T12:00:00.000Z", promisedAt: null,
-        backorderId: null, lines: [{ moveId: index, productId: index, name: `Producto ${index}`, quantity: 2, unit: "kg" },
+        backorderId: null, lines: [{ moveId: index, productId: index, name: `Producto ${index}`, quantity: 2, unit: "kg", ...options.sourceLineMetadata },
           ...(options.secondLinePerOrder ? [{ moveId: index + 10, productId: index + 10, name: `Producto ${index + 10}`, quantity: 3, unit: "kg" }] : [])] })),
       nextCursor: options.orderCount ?? 4, ceiling: options.orderCount ?? 4, hasMore: false, inspected: options.orderCount ?? 4, excluded: 0,
     });

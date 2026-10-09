@@ -10,14 +10,27 @@ type TestPool = ReturnType<typeof createPool>;
 
 // Only for reconstructing pre-v20 schemas in isolated migration tests.
 export async function dropExecutionTablesForLegacyFixture(pool: TestPool) {
-  await pool.query("DROP VIEW IF EXISTS route_incident_live_entries; DROP TABLE IF EXISTS route_incident_notifications,route_incident_alert_settings");
-  await pool.query("DROP VIEW IF EXISTS route_customer_unloading; DROP TABLE IF EXISTS route_unloading_visits,route_unloading_observations");
+  await pool.query(
+    "DROP TABLE route_odoo_return_attempts,route_odoo_return_incidents,route_odoo_return_jobs,route_odoo_return_capture,route_odoo_return_activation",
+  );
+  await pool.query(
+    "DROP VIEW IF EXISTS route_incident_live_entries; DROP TABLE IF EXISTS route_incident_notifications,route_incident_alert_settings",
+  );
+  await pool.query(
+    "DROP VIEW IF EXISTS route_customer_unloading; DROP TABLE IF EXISTS route_unloading_visits,route_unloading_observations",
+  );
   await pool.query("DROP TABLE route_driver_work_completions");
-  await pool.query("DROP TABLE route_settlement_claims,route_settlement_items,route_settlement_requests,route_order_payments,route_finance_execution_orders");
-  await pool.query("DROP TABLE route_live_tracking,route_tracking_sessions,route_control_layouts");
+  await pool.query(
+    "DROP TABLE route_settlement_claims,route_settlement_items,route_settlement_requests,route_order_payments,route_finance_execution_orders",
+  );
+  await pool.query(
+    "DROP TABLE route_live_tracking,route_tracking_sessions,route_control_layouts",
+  );
   // Include the v32 leaf before its execution, driver and device references.
   // CASCADE on the execution alone removes its foreign key, not this table.
-  await pool.query("DROP TABLE route_driver_execution_completions,route_driver_incident_events,route_driver_incident_orders,route_driver_incident_evidence,route_driver_service_incidents,route_driver_execution_orders,route_driver_command_receipts,route_driver_stop_events,route_driver_execution_stops,route_driver_executions,route_driver_operation_settings CASCADE; DROP FUNCTION seed_driver_execution_orders()");
+  await pool.query(
+    "DROP TABLE route_driver_execution_completions,route_driver_incident_events,route_driver_incident_orders,route_driver_incident_evidence,route_driver_service_incidents,route_driver_execution_orders,route_driver_command_receipts,route_driver_stop_events,route_driver_execution_stops,route_driver_executions,route_driver_operation_settings CASCADE; DROP FUNCTION seed_driver_execution_orders()",
+  );
 }
 
 async function captureCleanupFailure(

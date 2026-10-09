@@ -266,7 +266,7 @@ it("keeps live-case, order and 24-hour evidence identity atomic in real PostgreS
           "SELECT schema_version FROM rutas_installation WHERE singleton=true",
         )
       ).rows[0].schema_version,
-    ).toBe(47);
+    ).toBe(48);
     expect(
       (
         await pool.query(

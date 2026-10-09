@@ -539,7 +539,11 @@ it("amends and cancels real incidents without losing evidence, oversubscribing l
     );
     expect(visible.rows).toEqual([]);
     expect(visible.pending).toBe(0);
-    expect((await state()).stops[0].productIncidents.find(i => i.id === b.incidentId)?.status).toBe("pending");
+    expect(
+      (await state()).stops[0].productIncidents.find(
+        (i) => i.id === b.incidentId,
+      )?.status,
+    ).toBe("pending");
     await expect(
       classifyProductIncident(f.db.pool, f.actor, a.incidentId!, {
         expectedVersion: 3,
@@ -1014,7 +1018,8 @@ it("upgrades v26, protects concurrent quantities and closed visits, and exports 
   try {
     // Real upgrade fixture; remove only this feature from the isolated test database.
     await f.db.pool
-      .query(`DROP VIEW IF EXISTS route_incident_live_entries; DROP TABLE IF EXISTS route_incident_notifications,route_incident_alert_settings; DROP TABLE route_product_incident_annotations; DROP TABLE route_product_incident_photos; DROP TABLE route_product_incident_changes; DROP TABLE route_product_incidents;
+      .query(`DROP TABLE route_odoo_return_attempts,route_odoo_return_incidents,route_odoo_return_jobs,route_odoo_return_capture,route_odoo_return_activation;
+        DROP VIEW IF EXISTS route_incident_live_entries; DROP TABLE IF EXISTS route_incident_notifications,route_incident_alert_settings; DROP TABLE route_product_incident_annotations; DROP TABLE route_product_incident_photos; DROP TABLE route_product_incident_changes; DROP TABLE route_product_incidents;
       ALTER TABLE route_plans DROP COLUMN archived_at;
       UPDATE rutas_installation SET schema_version=26`);
     await Promise.all([
@@ -1024,7 +1029,7 @@ it("upgrades v26, protects concurrent quantities and closed visits, and exports 
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(47);
+    ).toBe(48);
     await f.start();
     const state = () =>
       readDriverExecution(

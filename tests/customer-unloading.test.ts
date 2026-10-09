@@ -102,7 +102,7 @@ describe("customer service duration on real PostgreSQL", () => {
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(47);
+    ).toBe(48);
     expect(
       (
         await f.db.pool.query(

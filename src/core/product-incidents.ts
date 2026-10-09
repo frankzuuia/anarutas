@@ -10,6 +10,7 @@ import {
   serviceSnapshot,
 } from "./driver-service-context";
 import { saveDriverCommandReceipt } from "./driver-command-receipts";
+import { captureOdooReturn } from "./odoo-return-store";
 import {
   incidentQuantity,
   incidentClassificationInput,
@@ -227,6 +228,7 @@ export async function reportProductIncident(
         input.replacementPayment ?? null,
       ],
     );
+    await captureOdooReturn(sql, id);
     for (const [index, photo] of extraEvidence.entries())
       await sql.query(
         `INSERT INTO route_product_incident_photos
@@ -437,6 +439,8 @@ export async function changeProductIncident(
       canceled_by=$2,version=version+1 WHERE id=$1`,
         [target, driver.driver_id],
       );
+    if (form?.kind === "return" && old.kind !== "return")
+      await captureOdooReturn(sql, target);
     await sql.query(
       "UPDATE route_driver_execution_orders SET version=version+1,updated_at=now() WHERE execution_id=$1 AND shipment_id=$2",
       [route.id, shipment],

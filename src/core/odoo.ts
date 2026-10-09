@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { odooRpc as rpc } from "./odoo-rpc";
 import { readOdooConfig } from "./config";
 import { AppError } from "./errors";
 import type { ImportPage, SourceShipment } from "./orders-contract";
@@ -21,49 +21,8 @@ import { partitionArchivedOrders } from "./odoo-archived-orders";
 import type { FinancialTarget } from "./financial-contract";
 import { financialCapabilities, financialId, normalizeFinancialObservation, type FinancialCapabilities, type FinancialRaw } from "./odoo-financial-contract";
 import { assertFinancialCoherence, buildFinancialSnapshot, financialHash } from "./financial-policy";
-import { odooRetryAfter } from "./odoo-retry";
 
 type OdooConfig = ReturnType<typeof readOdooConfig>;
-// Not exported: callers cannot select arbitrary models, methods, hosts or credentials.
-async function rpc(
-  config: OdooConfig,
-  service: string,
-  method: string,
-  args: unknown[],
-) {
-  const id = randomUUID();
-  let response: Response;
-  try {
-    response = await fetch(`${config.url}/jsonrpc`, {
-      method: "POST",
-      redirect: "error",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "call",
-        params: { service, method, args },
-        id,
-      }),
-      signal: AbortSignal.timeout(config.timeoutMs),
-    });
-  } catch {
-    throw new AppError("ODOO_UNAVAILABLE", 502);
-  }
-  if (response.status === 429) throw new AppError("ODOO_RATE_LIMITED", 503, {
-    retryAfterSeconds: odooRetryAfter(response.headers.get("Retry-After")),
-  });
-  if (!response.ok) throw new AppError("ODOO_UNAVAILABLE", 502);
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    throw new AppError("ODOO_INVALID_RESPONSE", 502);
-  }
-  if (data.id !== id || data.error || !Object.hasOwn(data, "result"))
-    throw new AppError("ODOO_DENIED", 502);
-  return data.result;
-}
 export function odooPublicStatus() {
   try {
     const config = readOdooConfig();
@@ -79,14 +38,14 @@ export function odooPublicStatus() {
   }
 }
 export async function diagnoseOdoo(config = readOdooConfig()) {
-  const version = await rpc(config, "common", "version", []);
+  const version = (await rpc(config, "common", "version", [])) as { server_version: unknown };
   const uid = await rpc(config, "common", "authenticate", [
     config.database,
     config.username,
     config.credential,
     {},
   ]);
-  if (!Number.isSafeInteger(uid) || uid <= 0)
+  if (!Number.isSafeInteger(uid) || Number(uid) <= 0)
     throw new AppError("ODOO_DENIED", 502);
   const prefix = [config.database, uid, config.credential];
   const users = await rpc(config, "object", "execute_kw", [
@@ -217,7 +176,7 @@ async function openBasicReadSession(
     config.credential,
     {},
   ]);
-  if (!Number.isSafeInteger(uid) || uid <= 0)
+  if (!Number.isSafeInteger(uid) || Number(uid) <= 0)
     throw new AppError("ODOO_DENIED", 502);
   const prefix = [config.database, uid, config.credential];
   const users = records(

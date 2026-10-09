@@ -130,6 +130,23 @@ El exportador ya incluye dos hojas:
 
 ## Tercer bloque: retirar únicamente el origen anterior
 
+### Dependencias adicionales desde esquema 48
+
+La integración de devoluciones agrega route_odoo_return_attempts,
+route_odoo_return_incidents, route_odoo_return_jobs, route_odoo_return_capture y
+route_odoo_return_activation. Antes de otra rotación, diagnosticar sus conteos,
+fuentes e identidades junto a los cobros e incidencias. Suspender el trabajador
+de devoluciones durante la operación administrativa y reconciliar primero cualquier
+creación incierta con el Odoo anterior. No reenviar trabajos viejos al nuevo Odoo.
+
+Si está autorizado retirar esos datos de prueba, borrar exclusivamente sus
+intentos/enlaces, trabajos y capturas antes de los cobros e incidencias referidos;
+la activación corresponde a su propia fuente. Se mantienen las guardas,
+transacción administrativa y validación de todas las FK descritas abajo.
+Los triggers del trabajo son inmutables en operación normal; no convertir esta
+excepción administrativa en un reset de aplicación. Esta nota no ejecuta una
+rotación ni cambia ninguna base.
+
 ### Dependencias que impiden un borrado simple
 
 Los clientes y envíos no son datos aislados. Las ejecuciones incluyen órdenes,

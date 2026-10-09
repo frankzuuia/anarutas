@@ -1,5 +1,29 @@
 # Bloque 1 — especificación y auditoría previa
 
+## DO — devolución parcial nativa a Odoo, aprobado 2026-10-09
+
+El cierre de atención/cobro conserva su transacción e identidad actuales y
+encola las devoluciones nuevas no canceladas de ese pedido. La integración
+escribe exclusivamente el traslado nativo de devolución; no valida, factura,
+crea notas de crédito ni modifica pagos o líneas de venta. El mismo artefacto
+selecciona por registro/campos/vistas el wizard 17/19 o action_return 20.
+Sólo los productos y cantidades reportados se preparan, por movimiento original.
+
+Datos nuevos: captura de elegibilidad, trabajos y vínculos de incidencias,
+activación por fuente e intentos auditados. Migración 48 sin backfill y con
+restricciones de identidad e inmutabilidad. Bloqueo entre réplicas por fuente,
+correlación AR/RETURN/UUID única por compañía y recuperación del mismo traslado
+si se pierde una respuesta. Sin referencia ante resultado incierto, reconciliar
+sin recrear. Verificar origen, compañía, cliente, ubicaciones, unidad, saldo y
+líneas exactas; un traslado validado o alterado externamente no se sobrescribe.
+
+Activación explícita RUTAS_ODOO_RETURNS_ENABLED=true, default false. El cobro
+queda congelado antes de la escritura Odoo; observar stock devuelto después no
+cambia recibos o liquidaciones anteriores. Estado y referencia visibles en la
+tarjeta compacta de Incidencias en vivo; Excel de cuatro tipos se conserva.
+Contratos y límites: BLOQUE-DEVOLUCIONES-ODOO-2026-10-09.md. Evidencia real de
+develop 20: QA-DEVOLUCIONES-ODOO-2026-10-09.md; 17 real pendiente de instancia QA.
+
 ## AG — alarma global y recepción en segundo plano, aprobado 2026-10-08
 
 Contrato AG01..10 en BLOQUE-ALARMA-GLOBAL-2026-10-08.md. La raíz del panel con

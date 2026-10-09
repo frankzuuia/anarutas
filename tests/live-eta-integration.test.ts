@@ -169,7 +169,7 @@ it("repeated migration preserves tracking and additive schema", async () => {
   expect(
     (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
       .rows[0].schema_version,
-  ).toBe(47);
+  ).toBe(48);
   expect(
     (
       await f.db.pool.query(
@@ -196,7 +196,7 @@ it("upgrades v24 concurrently without losing existing GPS or session state", asy
   expect(
     (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
       .rows[0].schema_version,
-  ).toBe(47);
+  ).toBe(48);
   const after = (
     await f.db.pool.query(
       "SELECT * FROM route_live_tracking ORDER BY execution_id",

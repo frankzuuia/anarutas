@@ -19,6 +19,7 @@ import { applyDriverOrderAction } from "./driver-order-command";
 import { serviceAction } from "./driver-service-policy";
 import { saveDriverCommandReceipt } from "./driver-command-receipts";
 import { collectionCapturedAt, recordUnloadingCollection } from "./unloading-learning";
+import { enqueueOdooReturn } from "./odoo-return-store";
 
 export type PaymentRecord = PaymentAmounts & {
   id: string;
@@ -214,6 +215,7 @@ export async function confirmOrderPayment(
         input.captureVersion ?? 1,
       ],
     );
+    await enqueueOdooReturn(sql, id);
     if (delivery && service?.stop && attention)
       await recordUnloadingCollection(sql, id, service.stop.id, service.stop.visit_sequence,
         attention.capturedAt ?? null, now);

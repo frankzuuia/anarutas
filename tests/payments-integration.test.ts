@@ -46,7 +46,8 @@ beforeAll(async () => {
   await f.start();
   // Reconstruct the actual pre-finance boundary in isolated PostgreSQL, with a started route and existing users.
   await f.db.pool
-    .query(`DROP VIEW route_customer_unloading; DROP TABLE route_unloading_visits,route_unloading_observations;
+    .query(`DROP TABLE route_odoo_return_attempts,route_odoo_return_incidents,route_odoo_return_jobs,route_odoo_return_capture,route_odoo_return_activation;
+    DROP VIEW route_customer_unloading; DROP TABLE route_unloading_visits,route_unloading_observations;
     DROP TABLE route_settlement_claims,route_settlement_items,route_settlement_requests,route_order_payments,route_finance_execution_orders;
     DROP TRIGGER preserve_account_role ON route_users; ALTER TABLE route_users DROP COLUMN role;
     UPDATE rutas_installation SET schema_version=35;`);

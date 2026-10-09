@@ -147,7 +147,7 @@ it("stores twelve independent incidents on the same open order with three immuta
       f.timezone,
     );
     expect(report.rows).toHaveLength(6);
-    expect(report.rows.every(row => row.kind !== "return")).toBe(true);
+    expect(report.rows.every((row) => row.kind !== "return")).toBe(true);
     expect(await readdir(root)).toHaveLength(36);
     for (const incident of report.rows) {
       expect(incident.evidenceIds).toHaveLength(3);
@@ -364,7 +364,7 @@ it("upgrades v27 non-destructively and serializes repeated v28 installation", as
     expect(
       (await f.db.pool.query("SELECT schema_version FROM rutas_installation"))
         .rows[0].schema_version,
-    ).toBe(47);
+    ).toBe(48);
     expect(
       (await f.db.pool.query("SELECT count(*) FROM route_shipments")).rows[0]
         .count,

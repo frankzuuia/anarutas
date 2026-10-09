@@ -88,7 +88,7 @@ it("IO01–14/32: real migration, v3 capture, four-type export and concurrent au
         CHECK(warehouse_reason IN ('special','quality','late_arrival'));
       UPDATE rutas_installation SET schema_version=45`);
     await Promise.all([migrate(f.db.pool, f.db.config.instanceId), migrate(f.db.pool, f.db.config.instanceId)]);
-    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(47);
+    expect((await f.db.pool.query("SELECT schema_version FROM rutas_installation")).rows[0].schema_version).toBe(48);
     expect((await f.db.pool.query("SELECT count(*)::int n FROM pg_constraint WHERE conrelid='route_product_incident_annotations'::regclass AND contype='f'")).rows[0].n).toBe(2);
     await f.start();
     const state = () => readDriverExecution(f.db.pool, f.members[0].driverId, f.planId, f.timezone);

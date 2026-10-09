@@ -44,6 +44,14 @@ const reasonNames: Record<string, string> = {
   other: "Otro motivo",
 };
 type Section = "routes" | "late" | "location";
+const returnStatusNames: Record<string, string> = {
+  awaiting_collection: "Se enviará al confirmar el cobro",
+  queued: "Pendiente de envío",
+  sending: "Enviando devolución",
+  uncertain: "Comprobando resultado del envío",
+  prepared: "Devolución creada · Validación manual",
+  review: "Requiere revisión",
+};
 
 function Evidence({ row }: { row: IncidentBoardRow }) {
   const [failed, setFailed] = useState<string[]>([]);
@@ -149,6 +157,13 @@ function IncidentCard({
         )}
         {detail.reasonCode && <p>{reasonNames[detail.reasonCode]}</p>}
         {detail.note && <p className="live-incident-note">{detail.note}</p>}
+        {row.odooReturn && (
+          <p className="muted" role="status">
+            Odoo · {returnStatusNames[row.odooReturn.status] ?? "Pendiente"}
+            {row.odooReturn.reference && <> · {row.odooReturn.reference}</>}
+            {row.odooReturn.error && <> · {row.odooReturn.error}</>}
+          </p>
+        )}
         {row.kind === "late_arrival" && (
           <p>
             {Math.ceil((detail.lateSeconds ?? 0) / 60)} min después del cierre

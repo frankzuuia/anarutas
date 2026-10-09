@@ -22,6 +22,11 @@ export type IncidentBoardRow = {
   status: string;
   version: number;
   notification: IncidentSeen | null;
+  odooReturn?: {
+    status: string;
+    reference: string | null;
+    error: string | null;
+  } | null;
   detail: {
     driver: string;
     customer: string;
@@ -67,7 +72,10 @@ const notificationJoin = `LEFT JOIN route_incident_notifications n ON
   (e.source='product' AND n.product_id=e.id) OR (e.source='service' AND n.service_id=e.id)
   OR (e.source='stop' AND n.stop_event_id=e.id)`;
 const unseen = "(n.sequence IS NOT NULL AND n.seen_at IS NULL)";
-const entries = `FROM route_incident_live_entries e ${notificationJoin}`;
+const entries = `FROM route_incident_live_entries e ${notificationJoin}
+  LEFT JOIN route_odoo_return_capture rc ON e.source='product' AND e.kind='return' AND rc.incident_id=e.id
+  LEFT JOIN route_odoo_return_incidents ri ON e.source='product' AND e.kind='return' AND ri.incident_id=e.id
+  LEFT JOIN route_odoo_return_jobs rj ON rj.id=ri.job_id`;
 
 export function incidentIdentity(value: unknown): {
   source: IncidentSource;
@@ -169,6 +177,8 @@ export async function readIncidentBoard(
     ).rows[0];
     const { rows } = await sql.query(
       `SELECT e.*,n.sequence::text,n.seen_name,n.seen_at,${unseen} AS pending,
+      COALESCE(rj.status,CASE WHEN rc.incident_id IS NOT NULL THEN 'awaiting_collection' END) AS return_status,
+      rj.receipt->>'name' AS return_reference,rj.last_error AS return_error,
       to_char(e.occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time
       ${where} AND ($6::boolean IS NULL OR (${unseen},e.occurred_at,e.id,e.source)<($6::boolean,$7::timestamptz,$8::uuid,$9::text))
       ORDER BY ${unseen} DESC,e.occurred_at DESC,e.id DESC,e.source DESC LIMIT 51`,
@@ -209,6 +219,13 @@ export async function readIncidentBoard(
         status: row.status,
         version: row.version,
         detail: row.detail,
+        odooReturn: row.return_status
+          ? {
+              status: row.return_status,
+              reference: row.return_reference,
+              error: row.return_error,
+            }
+          : null,
         notification: row.sequence
           ? {
               sequence: row.sequence,

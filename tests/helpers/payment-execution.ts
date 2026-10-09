@@ -19,9 +19,17 @@ export async function paymentExecutionFixture(
     partnerIds?: number[];
     warehouseRequired?: boolean;
     now?: Date;
+    sourceFingerprint?: string;
+    sourceLineMetadata?: { uomId: number; saleLineId: number };
   } = {},
 ) {
-  const f = await executionFixture({ orderCount: options.orderCount, partnerIds: options.partnerIds, now: options.now });
+  const f = await executionFixture({
+    orderCount: options.orderCount,
+    partnerIds: options.partnerIds,
+    now: options.now,
+    sourceFingerprint: options.sourceFingerprint,
+    sourceLineMetadata: options.sourceLineMetadata,
+  });
   try {
     // Financial regressions explicitly exercise the strict warehouse policy;
     // dedicated temporary-mode tests override this real persisted setting.

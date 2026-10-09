@@ -24,6 +24,7 @@ it("upgrades a started v20 execution without losing arrival history or its per-o
     // Restore the v21+ additions inside this isolated database. The real
     // arrival and publication remain in place as a v20 upgrade fixture.
     await pool.query(`
+      DROP TABLE route_odoo_return_attempts,route_odoo_return_incidents,route_odoo_return_jobs,route_odoo_return_capture,route_odoo_return_activation;
       DROP VIEW route_customer_unloading; DROP TABLE route_unloading_visits,route_unloading_observations;
       DROP TABLE route_settlement_claims,route_settlement_items,route_settlement_requests,route_order_payments,route_finance_execution_orders;
       DROP VIEW IF EXISTS route_incident_live_entries;

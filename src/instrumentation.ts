@@ -7,11 +7,13 @@ export async function register() {
     const { startRoutePushWorker } = await import("./server/route-push-worker");
     const { startPlanArchiveWorker } = await import("./server/plan-archive-worker");
     const { startFinancialWorker } = await import("./server/financial-worker");
+    const { startOdooReturnWorker } = await import("./server/odoo-return-worker");
     startRoutingWorker();
     startGoogleConsumptionWorker();
     startUnitPhotoWorker();
     startRoutePushWorker();
     startPlanArchiveWorker();
     startFinancialWorker();
+    startOdooReturnWorker();
   }
 }

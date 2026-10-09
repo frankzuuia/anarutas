@@ -1,5 +1,26 @@
 # Progreso — bloque 1
 
+## DO — devoluciones nativas Odoo, aprobado 2026-10-09
+
+- [x] DO-T00: auditoría y capacidades reales de develop 20.0+e, contratos oficiales
+  17/19/20, autorización para ejecutar el plan y pruebas exclusivamente develop.
+- [x] DO-T01: conector cerrado, unidades dinámicas, cantidades explícitas,
+  correlación nativa y recuperación sin nueva creación incierta.
+- [x] DO-T02: migración 48 aditiva, marcas de captura nueva sin backfill, cierre
+  atómico de cobro/cola, trabajador serializado y estado/referencia en el panel.
+- [x] DO-T03: prueba real Odoo 20 con foto, acceso de chofer, concurrencia,
+  repetición y recibo monetario intacto; política/configuración cobertura 100%,
+  12/12 mutaciones detectadas, build/tipos/lint/auditoría productiva verdes.
+- [x] DO-T04: regresión dirigida final 24/24, navegador 6 recorridos,
+  revisión independiente, evidencia y preparación de entrega develop, sin deploy.
+- [ ] DO-T05: prueba real en instancia Odoo 17 de pruebas y APK física después
+  del deploy del propietario; no se declara producción certificada.
+
+Contrato: BLOQUE-DEVOLUCIONES-ODOO-2026-10-09.md. QA y procedimiento:
+QA-DEVOLUCIONES-ODOO-2026-10-09.md. RUTAS_ODOO_RETURNS_ENABLED se mantiene false
+por defecto; la activación corresponde únicamente al entorno autorizado.
+No se accedió a producción, main, Five Ventas ni EasyPanel.
+
 ## AG — alarma global y encabezados, bloque aprobado 2026-10-08
 
 - [x] AG-T00: causas y ampliación del alcance confirmadas por el propietario.

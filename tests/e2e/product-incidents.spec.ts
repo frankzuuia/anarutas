@@ -16,6 +16,8 @@ import {
   reportProductIncident,
 } from "../../src/core/product-incidents";
 import { cancelPublishedRoute } from "../../src/core/route-publications";
+import { captureOdooReturn } from "../../src/core/odoo-return-store";
+import { transaction } from "../../src/core/database";
 
 let f: Awaited<ReturnType<typeof executionFixture>>;
 let server: ChildProcess;
@@ -97,8 +99,14 @@ test("TA compact cards and returning to live incidents retains real armed audio"
     return (await response.json()).incidentId as string;
   };
   const id = await capture("return");
+  // Enroll this newly captured real incident to exercise the admin status;
+  // no external API is substituted and no Odoo worker is enabled by this UI test.
+  await transaction(f.db.pool, (sql) => captureOdooReturn(sql, id, true));
   const card = page.locator(`[data-incident-key="product:${id}"]`);
   await expect(card).toBeVisible();
+  await expect(card).toContainText("Se enviará al confirmar el cobro", {
+    timeout: 30000,
+  });
   const extra = card.locator(".live-incident-extra > div");
   await expect(extra).not.toBeVisible();
   await expect(card).toContainText("Producto golpeado");
@@ -1036,6 +1044,10 @@ test("mobile report → live visibility → admin classification → exact priva
       .getByRole("button", { name: "Marcar resuelto", exact: true })
       .locator("svg"),
   ).toHaveCSS("color", "rgb(39, 219, 133)");
+  await live
+    .locator(`[data-incident-key="product:${receipt.incidentId}"]`)
+    .getByText("Ver detalles", { exact: true })
+    .click();
   await expect(
     live.getByRole("img", { name: /Evidencia de Cliente 1/ }),
   ).toHaveCount(3);
